@@ -1,0 +1,6 @@
+# Human: Tests may unwrap, expect, panic and print; production code may not (rust-quality.md).
+# Agent: SCOPES unwrap_used / expect_used / panic / print_* to non-test code; every other lint keeps its default.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-print-in-tests = true

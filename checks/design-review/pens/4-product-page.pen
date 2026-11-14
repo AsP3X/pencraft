@@ -1,0 +1,1757 @@
+{
+  "version": "2.22",
+  "children": [
+    {
+      "type": "frame",
+      "id": "page",
+      "x": 0,
+      "y": 0,
+      "name": "Product page · No. 4 Dripper",
+      "width": 1440,
+      "layout": "vertical",
+      "fill": "$bg",
+      "children": [
+        {
+          "type": "frame",
+          "id": "nav",
+          "name": "Navigation",
+          "width": "fill_container",
+          "padding": [
+            24,
+            96,
+            24,
+            64
+          ],
+          "justifyContent": "start",
+          "alignItems": "center",
+          "stroke": "$line",
+          "strokeWidth": {
+            "top": 0,
+            "right": 0,
+            "bottom": 1,
+            "left": 0
+          },
+          "children": [
+            {
+              "type": "text",
+              "id": "KxugT",
+              "width": 760,
+              "fill": "$ink",
+              "content": "Ember and Clay",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 20,
+              "fontWeight": "700"
+            },
+            {
+              "type": "frame",
+              "id": "NDpSi",
+              "width": "fill_container",
+              "gap": 32,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "ejtNS",
+                  "fill": "$ink",
+                  "content": "Shop",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "uIr5Q",
+                  "fill": "$ink",
+                  "content": "The studio",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "300"
+                },
+                {
+                  "type": "text",
+                  "id": "5tg8i",
+                  "fill": "$ink",
+                  "content": "Brew guides",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "300"
+                },
+                {
+                  "type": "text",
+                  "id": "kDnj6",
+                  "fill": "$ink",
+                  "content": "Open kiln days",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "300"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "VAGRG",
+              "gap": 8,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "t2FeL",
+                  "width": 20,
+                  "height": 20,
+                  "fill": "$ink",
+                  "library": "lucide",
+                  "icon": "shopping-bag"
+                },
+                {
+                  "type": "text",
+                  "id": "7Izm5",
+                  "fill": "$ink",
+                  "content": "Bag (1)",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "300"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "hero",
+          "name": "Hero",
+          "width": "fill_container",
+          "children": [
+            {
+              "type": "frame",
+              "id": "picture",
+              "name": "Picture · Ash Celadon",
+              "width": 760,
+              "height": "fill_container",
+              "clip": true,
+              "layout": "none",
+              "fill": "$celadon",
+              "children": [
+                {
+                  "type": "group",
+                  "id": "art",
+                  "x": 0,
+                  "y": 140,
+                  "name": "Dripper on cup",
+                  "children": [
+                    {
+                      "type": "ellipse",
+                      "id": "cIbXs",
+                      "x": 190,
+                      "y": 640,
+                      "width": 380,
+                      "height": 36,
+                      "fill": "$celadon-deep"
+                    },
+                    {
+                      "type": "path",
+                      "id": "bmyPr",
+                      "x": 0,
+                      "y": 0,
+                      "width": 760,
+                      "height": 760,
+                      "fill": "$tenmoku",
+                      "geometry": "M510 520 C584 520 584 624 510 624 V598 C552 598 552 546 510 546 Z",
+                      "viewBox": [
+                        0.0,
+                        0.0,
+                        760.0,
+                        760.0
+                      ]
+                    },
+                    {
+                      "type": "path",
+                      "id": "DTmcS",
+                      "x": 0,
+                      "y": 0,
+                      "width": 760,
+                      "height": 760,
+                      "fill": "$tenmoku",
+                      "geometry": "M250 488 H510 V600 Q510 664 446 664 H314 Q250 664 250 600 Z",
+                      "viewBox": [
+                        0.0,
+                        0.0,
+                        760.0,
+                        760.0
+                      ]
+                    },
+                    {
+                      "type": "rectangle",
+                      "id": "1yDKO",
+                      "x": 222,
+                      "y": 468,
+                      "width": 316,
+                      "height": 24,
+                      "fill": "$clay",
+                      "cornerRadius": 6
+                    },
+                    {
+                      "type": "path",
+                      "id": "LzKhh",
+                      "x": 0,
+                      "y": 0,
+                      "width": 760,
+                      "height": 760,
+                      "fill": "$glaze-light",
+                      "geometry": "M548 232 C628 232 632 336 530 336 L538 308 C592 306 590 260 544 260 Z",
+                      "viewBox": [
+                        0.0,
+                        0.0,
+                        760.0,
+                        760.0
+                      ]
+                    },
+                    {
+                      "type": "path",
+                      "id": "JdsCv",
+                      "x": 0,
+                      "y": 0,
+                      "width": 760,
+                      "height": 760,
+                      "fill": "$clay",
+                      "geometry": "M196 198 C214 300 280 420 316 472 H444 C480 420 546 300 564 198 Z",
+                      "viewBox": [
+                        0.0,
+                        0.0,
+                        760.0,
+                        760.0
+                      ]
+                    },
+                    {
+                      "type": "path",
+                      "id": "TJnqo",
+                      "x": 0,
+                      "y": 0,
+                      "width": 760,
+                      "height": 760,
+                      "fill": "$glaze-light",
+                      "geometry": "M196 198 C206 262 232 326 260 384 C272 404 280 428 292 430 C304 432 306 408 318 410 C334 412 340 444 352 444 C364 444 366 414 380 412 C396 410 400 428 414 428 C428 428 434 402 448 402 C460 402 466 420 468.6 433.3 C504.5 372.7 549.6 279.6 564 198 Z",
+                      "viewBox": [
+                        0.0,
+                        0.0,
+                        760.0,
+                        760.0
+                      ]
+                    },
+                    {
+                      "type": "path",
+                      "id": "AlT28",
+                      "x": 0,
+                      "y": 0,
+                      "width": 760,
+                      "height": 760,
+                      "stroke": "#c7d6ca",
+                      "strokeWidth": 3,
+                      "geometry": "M214 262 Q380 288 546 262",
+                      "viewBox": [
+                        0.0,
+                        0.0,
+                        760.0,
+                        760.0
+                      ]
+                    },
+                    {
+                      "type": "path",
+                      "id": "WS05g",
+                      "x": 0,
+                      "y": 0,
+                      "width": 760,
+                      "height": 760,
+                      "stroke": "#c7d6ca",
+                      "strokeWidth": 3,
+                      "geometry": "M234 326 Q380 348 526 326",
+                      "viewBox": [
+                        0.0,
+                        0.0,
+                        760.0,
+                        760.0
+                      ]
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "8F5cL",
+                      "x": 186,
+                      "y": 168,
+                      "width": 388,
+                      "height": 60,
+                      "fill": "#eef3ef"
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "i9Iu3",
+                      "x": 208,
+                      "y": 178,
+                      "width": 344,
+                      "height": 40,
+                      "fill": "$tenmoku"
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "2qibX",
+                      "x": 250,
+                      "y": 186,
+                      "width": 260,
+                      "height": 22,
+                      "fill": "#6b4a37"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "JEljE",
+                  "x": 64,
+                  "y": 1004,
+                  "fill": "$ink",
+                  "content": "Shown in Ash Celadon, large, on our Iron Tenmoku cup",
+                  "fontFamily": "$font",
+                  "fontSize": 14,
+                  "fontWeight": "300"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "buy",
+              "name": "Buy column",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 32,
+              "padding": [
+                64,
+                96,
+                64,
+                64
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "lC1kN",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 16,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "sZNav",
+                      "fill": "$ink-quiet",
+                      "content": "Shop  /  Brewing  /  Drippers",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "fontWeight": "300"
+                    },
+                    {
+                      "type": "text",
+                      "id": "9nBXb",
+                      "fill": "$ink",
+                      "content": "No. 4 Dripper",
+                      "fontFamily": "$font",
+                      "fontSize": 72,
+                      "fontWeight": "700",
+                      "letterSpacing": -2,
+                      "lineHeight": 1
+                    },
+                    {
+                      "type": "text",
+                      "id": "B3nAA",
+                      "width": "fill_container",
+                      "fill": "$ink",
+                      "content": "A hand-thrown stoneware cone for one to four cups, glazed inside and out and left bare at the foot so it grips the mug.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 20,
+                      "fontWeight": "300",
+                      "lineHeight": 1.45
+                    },
+                    {
+                      "type": "text",
+                      "id": "X4Ryi",
+                      "fill": "$ink",
+                      "content": "€68",
+                      "fontFamily": "$font",
+                      "fontSize": 28,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "glazes",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 16,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "h18yU",
+                      "width": "fill_container",
+                      "justifyContent": "space_between",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "iIy7b",
+                          "fill": "$ink",
+                          "content": "Glaze",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "06fmD",
+                          "fill": "$ink-quiet",
+                          "content": "Ash Celadon",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "300"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "SzvpM",
+                      "width": "fill_container",
+                      "gap": 16,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "GYc9N",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "type": "rectangle",
+                              "id": "3sf5T",
+                              "width": "fill_container",
+                              "height": 96,
+                              "fill": "$celadon",
+                              "stroke": "$ink",
+                              "strokeWidth": 2,
+                              "strokeAlignment": "inner",
+                              "cornerRadius": "$radius"
+                            },
+                            {
+                              "type": "text",
+                              "id": "oRfer",
+                              "fill": "$ink",
+                              "content": "Ash Celadon",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "UkoGr",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "type": "rectangle",
+                              "id": "jk5rF",
+                              "width": "fill_container",
+                              "height": 96,
+                              "fill": "$shino",
+                              "cornerRadius": "$radius"
+                            },
+                            {
+                              "type": "text",
+                              "id": "L6BI7",
+                              "fill": "$ink",
+                              "content": "Oat Shino",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "300"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "qN0MA",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "type": "rectangle",
+                              "id": "Mo267",
+                              "width": "fill_container",
+                              "height": 96,
+                              "fill": "$tenmoku",
+                              "cornerRadius": "$radius"
+                            },
+                            {
+                              "type": "text",
+                              "id": "MBKWA",
+                              "fill": "$ink",
+                              "content": "Iron Tenmoku",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "300"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "d2QNE",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "type": "rectangle",
+                              "id": "jSo1Q",
+                              "width": "fill_container",
+                              "height": 96,
+                              "fill": "$ember",
+                              "cornerRadius": "$radius"
+                            },
+                            {
+                              "type": "text",
+                              "id": "Ly1vm",
+                              "fill": "$ink",
+                              "content": "Ember Red",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "300"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "f05la",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 16,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Lb3wy",
+                      "fill": "$ink",
+                      "content": "Size",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ABnlW",
+                      "width": "fill_container",
+                      "gap": 16,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "URtTN",
+                          "width": "fill_container",
+                          "height": 56,
+                          "padding": [
+                            0,
+                            20
+                          ],
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "stroke": "$line",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "cornerRadius": "$radius",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "UltjX",
+                              "fill": "$ink",
+                              "content": "Small · 1–2 cups",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "300"
+                            },
+                            {
+                              "type": "text",
+                              "id": "AwXck",
+                              "fill": "$ink-quiet",
+                              "content": "€58",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "300"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "OcJxY",
+                          "width": "fill_container",
+                          "height": 56,
+                          "padding": [
+                            0,
+                            20
+                          ],
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "stroke": "$ink",
+                          "strokeWidth": 2,
+                          "strokeAlignment": "inner",
+                          "cornerRadius": "$radius",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "VJih6",
+                              "fill": "$ink",
+                              "content": "Large · 2–4 cups",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "text",
+                              "id": "gxFGu",
+                              "fill": "$ink",
+                              "content": "€68",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ZkwDG",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 16,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "l1gMu",
+                      "width": "fill_container",
+                      "height": 64,
+                      "gap": 12,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "fill": "$ink",
+                      "cornerRadius": "$radius",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "i5eSB",
+                          "fill": "$bg",
+                          "content": "Add to bag · €68",
+                          "fontFamily": "$font",
+                          "fontSize": 20,
+                          "fontWeight": "700"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "Q2Hp2",
+                      "width": "fill_container",
+                      "fill": "$ink-quiet",
+                      "content": "Thrown to order in our Falmouth studio. Ships in 11 to 14 days, wrapped in wool felt.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300",
+                      "lineHeight": 1.5
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "specs",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "stroke": "$line",
+                  "strokeWidth": {
+                    "top": 1,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "WZPQr",
+                      "width": "fill_container",
+                      "padding": [
+                        12,
+                        0
+                      ],
+                      "justifyContent": "space_between",
+                      "stroke": "$line",
+                      "strokeWidth": {
+                        "top": 0,
+                        "right": 0,
+                        "bottom": 1,
+                        "left": 0
+                      },
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "rIGkx",
+                          "fill": "$ink-quiet",
+                          "content": "Clay",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "300"
+                        },
+                        {
+                          "type": "text",
+                          "id": "VSAc9",
+                          "fill": "$ink",
+                          "content": "Cornish stoneware, reduction fired",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "300"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "rdnLL",
+                      "width": "fill_container",
+                      "padding": [
+                        12,
+                        0
+                      ],
+                      "justifyContent": "space_between",
+                      "stroke": "$line",
+                      "strokeWidth": {
+                        "top": 0,
+                        "right": 0,
+                        "bottom": 1,
+                        "left": 0
+                      },
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "lNG1G",
+                          "fill": "$ink-quiet",
+                          "content": "Filter",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "300"
+                        },
+                        {
+                          "type": "text",
+                          "id": "64IkL",
+                          "fill": "$ink",
+                          "content": "Size 02 paper cones",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "300"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ahtk4",
+                      "width": "fill_container",
+                      "padding": [
+                        12,
+                        0
+                      ],
+                      "justifyContent": "space_between",
+                      "stroke": "$line",
+                      "strokeWidth": {
+                        "top": 0,
+                        "right": 0,
+                        "bottom": 1,
+                        "left": 0
+                      },
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "5DQod",
+                          "fill": "$ink-quiet",
+                          "content": "Height and weight",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "300"
+                        },
+                        {
+                          "type": "text",
+                          "id": "IzvxA",
+                          "fill": "$ink",
+                          "content": "11.5 cm, about 430 g",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "300"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "LB4ap",
+                      "width": "fill_container",
+                      "padding": [
+                        12,
+                        0
+                      ],
+                      "justifyContent": "space_between",
+                      "stroke": "$line",
+                      "strokeWidth": {
+                        "top": 0,
+                        "right": 0,
+                        "bottom": 1,
+                        "left": 0
+                      },
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "ODQIm",
+                          "fill": "$ink-quiet",
+                          "content": "Care",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "300"
+                        },
+                        {
+                          "type": "text",
+                          "id": "rWp1R",
+                          "fill": "$ink",
+                          "content": "Dishwasher safe, top rack",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "300"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "firing",
+          "name": "Firing record",
+          "width": "fill_container",
+          "gap": 64,
+          "padding": [
+            96,
+            96,
+            96,
+            64
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "8GZih",
+              "width": 520,
+              "layout": "vertical",
+              "gap": 24,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "KasRj",
+                  "width": "fill_container",
+                  "fill": "$ink",
+                  "content": "Eleven days from wet clay to your counter",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "$font",
+                  "fontSize": 48,
+                  "fontWeight": "700",
+                  "letterSpacing": -1,
+                  "lineHeight": 1.05
+                },
+                {
+                  "type": "text",
+                  "id": "FjrxL",
+                  "width": 440,
+                  "fill": "$ink",
+                  "content": "Every No. 4 goes through the same six stages on our wheel and in our two gas kilns. The reduction firing is what turns the ash glaze from grey to celadon, so no two come out quite alike.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "$font",
+                  "fontSize": 18,
+                  "fontWeight": "300",
+                  "lineHeight": 1.55
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "log",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "ttJsU",
+                  "width": "fill_container",
+                  "gap": 24,
+                  "padding": [
+                    0,
+                    0,
+                    12,
+                    0
+                  ],
+                  "stroke": "$ink",
+                  "strokeWidth": {
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 2,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "rDRfE",
+                      "width": 64,
+                      "fill": "$ink",
+                      "content": "Day",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "uI2Xx",
+                      "width": "fill_container",
+                      "fill": "$ink",
+                      "content": "Stage",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "yLdIP",
+                      "width": 96,
+                      "fill": "$ink",
+                      "content": "Kiln",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "fontWeight": "700",
+                      "textAlign": "right"
+                    },
+                    {
+                      "type": "text",
+                      "id": "YQEJ0",
+                      "width": 80,
+                      "fill": "$ink",
+                      "content": "Hands",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "3sQg1",
+                  "width": "fill_container",
+                  "gap": 24,
+                  "padding": [
+                    16,
+                    0
+                  ],
+                  "stroke": "$line",
+                  "strokeWidth": {
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 1,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "fMGBZ",
+                      "width": 64,
+                      "fill": "$ink",
+                      "content": "1",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "ss2sl",
+                      "width": "fill_container",
+                      "fill": "$ink",
+                      "content": "Wedge and throw on the wheel",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    },
+                    {
+                      "type": "text",
+                      "id": "KTiwi",
+                      "width": 96,
+                      "fill": "$ink-quiet",
+                      "content": "—",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300",
+                      "textAlign": "right"
+                    },
+                    {
+                      "type": "text",
+                      "id": "MreKt",
+                      "width": 80,
+                      "fill": "$ink",
+                      "content": "Mira",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ik6Ef",
+                  "width": "fill_container",
+                  "gap": 24,
+                  "padding": [
+                    16,
+                    0
+                  ],
+                  "stroke": "$line",
+                  "strokeWidth": {
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 1,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "SLj8U",
+                      "width": 64,
+                      "fill": "$ink",
+                      "content": "2",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "2D95K",
+                      "width": "fill_container",
+                      "fill": "$ink",
+                      "content": "Trim the foot, cut three drain holes, add handle",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    },
+                    {
+                      "type": "text",
+                      "id": "sYLrC",
+                      "width": 96,
+                      "fill": "$ink-quiet",
+                      "content": "—",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300",
+                      "textAlign": "right"
+                    },
+                    {
+                      "type": "text",
+                      "id": "BZ6Et",
+                      "width": 80,
+                      "fill": "$ink",
+                      "content": "Mira",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "z9OtT",
+                  "width": "fill_container",
+                  "gap": 24,
+                  "padding": [
+                    16,
+                    0
+                  ],
+                  "stroke": "$line",
+                  "strokeWidth": {
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 1,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "2Bj5m",
+                      "width": 64,
+                      "fill": "$ink",
+                      "content": "4",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Sror4",
+                      "width": "fill_container",
+                      "fill": "$ink",
+                      "content": "Bisque fire",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    },
+                    {
+                      "type": "text",
+                      "id": "FvKda",
+                      "width": 96,
+                      "fill": "$ink",
+                      "content": "980 °C",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700",
+                      "textAlign": "right"
+                    },
+                    {
+                      "type": "text",
+                      "id": "2ZmAb",
+                      "width": 80,
+                      "fill": "$ink",
+                      "content": "Kiln 2",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "AM0W5",
+                  "width": "fill_container",
+                  "gap": 24,
+                  "padding": [
+                    16,
+                    0
+                  ],
+                  "stroke": "$line",
+                  "strokeWidth": {
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 1,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "7pfGR",
+                      "width": 64,
+                      "fill": "$ink",
+                      "content": "6",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "EgRAD",
+                      "width": "fill_container",
+                      "fill": "$ink",
+                      "content": "Wax the foot, dip in glaze",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    },
+                    {
+                      "type": "text",
+                      "id": "N2tZJ",
+                      "width": 96,
+                      "fill": "$ink-quiet",
+                      "content": "—",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300",
+                      "textAlign": "right"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Zf3v9",
+                      "width": 80,
+                      "fill": "$ink",
+                      "content": "Jonas",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "6blUg",
+                  "width": "fill_container",
+                  "gap": 24,
+                  "padding": [
+                    16,
+                    0
+                  ],
+                  "stroke": "$line",
+                  "strokeWidth": {
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 1,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "lDaIe",
+                      "width": 64,
+                      "fill": "$ink",
+                      "content": "8",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "S3bV1",
+                      "width": "fill_container",
+                      "fill": "$ink",
+                      "content": "Reduction glaze fire, 14 hours",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Mnlev",
+                      "width": 96,
+                      "fill": "$ink",
+                      "content": "1,285 °C",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700",
+                      "textAlign": "right"
+                    },
+                    {
+                      "type": "text",
+                      "id": "nrZob",
+                      "width": 80,
+                      "fill": "$ink",
+                      "content": "Kiln 1",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "aZblR",
+                  "width": "fill_container",
+                  "gap": 24,
+                  "padding": [
+                    16,
+                    0
+                  ],
+                  "stroke": "$line",
+                  "strokeWidth": {
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 1,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "O0IXG",
+                      "width": 64,
+                      "fill": "$ink",
+                      "content": "11",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "TBtqe",
+                      "width": "fill_container",
+                      "fill": "$ink",
+                      "content": "Unload, sand the foot, test-pour with water",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    },
+                    {
+                      "type": "text",
+                      "id": "QRlUw",
+                      "width": 96,
+                      "fill": "$ink-quiet",
+                      "content": "—",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300",
+                      "textAlign": "right"
+                    },
+                    {
+                      "type": "text",
+                      "id": "yajEC",
+                      "width": 80,
+                      "fill": "$ink",
+                      "content": "Mira",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "brew",
+          "name": "Brew recipe",
+          "width": "fill_container",
+          "gap": 64,
+          "padding": [
+            96,
+            96,
+            96,
+            64
+          ],
+          "fill": "$ember",
+          "children": [
+            {
+              "type": "frame",
+              "id": "KpOqF",
+              "width": 520,
+              "layout": "vertical",
+              "gap": 24,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "C5NGP",
+                  "width": "fill_container",
+                  "fill": "$bg",
+                  "content": "How we brew with it",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "$font",
+                  "fontSize": 48,
+                  "fontWeight": "700",
+                  "letterSpacing": -1,
+                  "lineHeight": 1.05
+                },
+                {
+                  "type": "text",
+                  "id": "efrRS",
+                  "width": 440,
+                  "fill": "$bg",
+                  "content": "Three holes in the base keep the drawdown steady, so you can pour slowly without the bed running dry. Our studio recipe for a light Ethiopian roast:",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "$font",
+                  "fontSize": 18,
+                  "fontWeight": "300",
+                  "lineHeight": 1.55
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "recipe",
+              "width": "fill_container",
+              "layout": "vertical",
+              "stroke": "#ffffff66",
+              "strokeWidth": {
+                "top": 1,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "jlmmU",
+                  "width": "fill_container",
+                  "gap": 24,
+                  "padding": [
+                    16,
+                    0
+                  ],
+                  "stroke": "#ffffff66",
+                  "strokeWidth": {
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 1,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "CmkSC",
+                      "width": 64,
+                      "fill": "$bg",
+                      "content": "Prep",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "344QM",
+                      "width": "fill_container",
+                      "fill": "$bg",
+                      "content": "Rinse the paper, add 18 g coffee, ground medium-fine",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    },
+                    {
+                      "type": "text",
+                      "id": "cEwIb",
+                      "width": 112,
+                      "fill": "$bg",
+                      "content": "18 g coffee",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700",
+                      "textAlign": "right"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "KGltw",
+                  "width": "fill_container",
+                  "gap": 24,
+                  "padding": [
+                    16,
+                    0
+                  ],
+                  "stroke": "#ffffff66",
+                  "strokeWidth": {
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 1,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "HrGhC",
+                      "width": 64,
+                      "fill": "$bg",
+                      "content": "0:00",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "z1a98",
+                      "width": "fill_container",
+                      "fill": "$bg",
+                      "content": "Bloom with water at 94 °C",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    },
+                    {
+                      "type": "text",
+                      "id": "27Ew0",
+                      "width": 112,
+                      "fill": "$bg",
+                      "content": "45 g",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700",
+                      "textAlign": "right"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "MLOz4",
+                  "width": "fill_container",
+                  "gap": 24,
+                  "padding": [
+                    16,
+                    0
+                  ],
+                  "stroke": "#ffffff66",
+                  "strokeWidth": {
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 1,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "QHCJp",
+                      "width": 64,
+                      "fill": "$bg",
+                      "content": "0:40",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "sronZ",
+                      "width": "fill_container",
+                      "fill": "$bg",
+                      "content": "Pour in slow circles, three pours",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Rupfi",
+                      "width": 112,
+                      "fill": "$bg",
+                      "content": "290 g",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700",
+                      "textAlign": "right"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "lnsIx",
+                  "width": "fill_container",
+                  "gap": 24,
+                  "padding": [
+                    16,
+                    0
+                  ],
+                  "stroke": "#ffffff66",
+                  "strokeWidth": {
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 1,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "vUR0A",
+                      "width": 64,
+                      "fill": "$bg",
+                      "content": "3:10",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "hv5VH",
+                      "width": "fill_container",
+                      "fill": "$bg",
+                      "content": "Drawdown finished, swirl and serve",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    },
+                    {
+                      "type": "text",
+                      "id": "DnXGl",
+                      "width": 112,
+                      "fill": "$bg",
+                      "content": "—",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700",
+                      "textAlign": "right"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "footer",
+          "name": "Footer",
+          "width": "fill_container",
+          "padding": [
+            64,
+            96,
+            64,
+            64
+          ],
+          "justifyContent": "space_between",
+          "alignItems": "end",
+          "fill": "$tenmoku",
+          "children": [
+            {
+              "type": "frame",
+              "id": "oGAs9",
+              "layout": "vertical",
+              "gap": 12,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "EuLg3",
+                  "fill": "$bg",
+                  "content": "Ember and Clay",
+                  "fontFamily": "$font",
+                  "fontSize": 28,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "WjsIL",
+                  "fill": "#ffffffb3",
+                  "content": "Mira Holt and Jonas Wirth, 14 Jacob's Wharf, Falmouth TR11 3QS",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "300"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "hokZi",
+              "gap": 32,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "FinGK",
+                  "fill": "$bg",
+                  "content": "Shipping and returns",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "300"
+                },
+                {
+                  "type": "text",
+                  "id": "z1uQP",
+                  "fill": "$bg",
+                  "content": "Seconds sale",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "300"
+                },
+                {
+                  "type": "text",
+                  "id": "A0ssJ",
+                  "fill": "$bg",
+                  "content": "Instagram",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "300"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "bg": {
+      "type": "color",
+      "value": "#ffffff"
+    },
+    "ink": {
+      "type": "color",
+      "value": "#1f1a17"
+    },
+    "ink-quiet": {
+      "type": "color",
+      "value": "#6b625c"
+    },
+    "line": {
+      "type": "color",
+      "value": "#e3ddd8"
+    },
+    "celadon": {
+      "type": "color",
+      "value": "#9db8a5"
+    },
+    "celadon-deep": {
+      "type": "color",
+      "value": "#86a391"
+    },
+    "glaze-light": {
+      "type": "color",
+      "value": "#e4ece5"
+    },
+    "shino": {
+      "type": "color",
+      "value": "#e6d3b8"
+    },
+    "tenmoku": {
+      "type": "color",
+      "value": "#3b2a22"
+    },
+    "ember": {
+      "type": "color",
+      "value": "#b9461b"
+    },
+    "clay": {
+      "type": "color",
+      "value": "#c99b74"
+    },
+    "font": {
+      "type": "string",
+      "value": "Bahnschrift"
+    },
+    "radius": {
+      "type": "number",
+      "value": 2
+    }
+  }
+}

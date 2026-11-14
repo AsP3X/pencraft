@@ -1,0 +1,65 @@
+name: Bug report
+description: Something does not work the way it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time. Please do not report security problems here: see SECURITY.md.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: file
+    attributes:
+      label: A file or a picture that shows it
+      description: Drag in a small `.pen` file and a screenshot if you can share them. `pencraft your.pen --screenshot shot.png` takes a picture of the window.
+  - type: input
+    id: version
+    attributes:
+      label: Pencraft version
+      description: Settings → General → Updates names it.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How was it installed?
+      options:
+        - Windows setup wizard (setup.exe)
+        - Windows MSI
+        - Windows plain executable
+        - macOS disk image (dmg)
+        - Built from source
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      placeholder: Windows 11 with an NVIDIA GPU, or macOS 15 on an M2
+    validations:
+      required: true
+  - type: dropdown
+    id: assistant
+    attributes:
+      label: Was an AI model involved?
+      options:
+        - "No"
+        - The chat in the app, through Claude Code
+        - The chat in the app, through a provider's API
+        - Another client through pencraft mcp

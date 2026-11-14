@@ -1,0 +1,18 @@
+# Human: The `.pen` document without any window: its types, reading and writing, variables and themes, components
+# (refs), the flex layout and SVG path geometry. Tested headless.
+# Agent: no egui, no I/O beyond what callers pass in; text measurement is injected by the caller.
+[package]
+name = "pen-doc"
+description = "The .pen design document: model, JSON round-trip, variables, components and flex layout"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

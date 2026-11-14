@@ -1,0 +1,881 @@
+{
+  "version": "2.22",
+  "children": [
+    {
+      "type": "frame",
+      "id": "home",
+      "x": 0,
+      "y": 0,
+      "name": "Northfield Home",
+      "width": 390,
+      "height": 844,
+      "clip": true,
+      "layout": "vertical",
+      "fill": "$bg",
+      "children": [
+        {
+          "type": "frame",
+          "id": "status",
+          "width": "fill_container",
+          "height": 44,
+          "padding": [
+            0,
+            24
+          ],
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "fill": "$field",
+          "children": [
+            {
+              "type": "text",
+              "id": "3ZTQq",
+              "fill": "$onField",
+              "content": "9:41",
+              "fontFamily": "$font",
+              "fontSize": 16,
+              "fontWeight": "700"
+            },
+            {
+              "type": "frame",
+              "id": "rBj7y",
+              "gap": 8,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "DiEeh",
+                  "width": 16,
+                  "height": 16,
+                  "fill": "$onField",
+                  "library": "lucide",
+                  "icon": "signal"
+                },
+                {
+                  "type": "icon",
+                  "id": "hWEEi",
+                  "width": 16,
+                  "height": 16,
+                  "fill": "$onField",
+                  "library": "lucide",
+                  "icon": "wifi"
+                },
+                {
+                  "type": "icon",
+                  "id": "4WT9W",
+                  "width": 20,
+                  "height": 16,
+                  "fill": "$onField",
+                  "library": "lucide",
+                  "icon": "battery-full"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "accounts",
+          "name": "Accounts field",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 0,
+          "padding": [
+            12,
+            24,
+            16,
+            24
+          ],
+          "fill": "$field",
+          "children": [
+            {
+              "type": "frame",
+              "id": "mlzgm",
+              "width": "fill_container",
+              "height": 40,
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "9KlJN",
+                  "fill": "$onField",
+                  "content": "Northfield",
+                  "fontFamily": "$font",
+                  "fontSize": 22,
+                  "fontWeight": "700",
+                  "letterSpacing": -0.2
+                },
+                {
+                  "type": "frame",
+                  "id": "i0uUH",
+                  "gap": 16,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "rE4nv",
+                      "width": 22,
+                      "height": 22,
+                      "fill": "$onField",
+                      "library": "lucide",
+                      "icon": "bell"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "vJnhk",
+                      "width": 32,
+                      "height": 32,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "fill": "#FFFFFF26",
+                      "cornerRadius": 16,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "as6bS",
+                          "fill": "$onField",
+                          "content": "MR",
+                          "fontFamily": "$font",
+                          "fontSize": 11,
+                          "fontWeight": "700"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "meMev",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 4,
+              "padding": [
+                16,
+                0,
+                16,
+                0
+              ],
+              "children": [
+                {
+                  "type": "text",
+                  "id": "R0TRl",
+                  "fill": "$onFieldMuted",
+                  "content": "Share Draft Checking  ·· 4471",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "300"
+                },
+                {
+                  "type": "text",
+                  "id": "Xwikm",
+                  "fill": "$onField",
+                  "content": "$4,382.16",
+                  "fontFamily": "$font",
+                  "fontSize": 52,
+                  "fontWeight": "300",
+                  "letterSpacing": -1.5,
+                  "lineHeight": 1.05
+                },
+                {
+                  "type": "text",
+                  "id": "VTdwl",
+                  "fill": "$onFieldMuted",
+                  "content": "$4,264.07 after 1 pending payment",
+                  "fontFamily": "$font",
+                  "fontSize": 13,
+                  "fontWeight": "300"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "iWBrz",
+              "width": "fill_container",
+              "layout": "vertical",
+              "stroke": "#FFFFFF33",
+              "strokeWidth": {
+                "top": 1
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "wfhbV",
+                  "width": "fill_container",
+                  "height": 44,
+                  "gap": 12,
+                  "alignItems": "center",
+                  "stroke": "#FFFFFF33",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "eP3jG",
+                      "width": "fill_container",
+                      "fill": "$onField",
+                      "content": "Share Savings  ·· 0938",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    },
+                    {
+                      "type": "text",
+                      "id": "dMjQY",
+                      "width": 110,
+                      "fill": "$onField",
+                      "content": "$12,906.40",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700",
+                      "textAlign": "right"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "dC1uQ",
+                  "width": "fill_container",
+                  "height": 44,
+                  "gap": 12,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "gFimq",
+                      "width": "fill_container",
+                      "fill": "$onField",
+                      "content": "Holiday Club  ·· 2210",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    },
+                    {
+                      "type": "text",
+                      "id": "DmoXg",
+                      "width": 110,
+                      "fill": "$onField",
+                      "content": "$615.00",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700",
+                      "textAlign": "right"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "signs",
+          "name": "Main actions",
+          "width": "fill_container",
+          "height": 96,
+          "children": [
+            {
+              "type": "frame",
+              "id": "signSend",
+              "name": "Send money",
+              "width": "fill_container",
+              "height": "fill_container",
+              "layout": "vertical",
+              "padding": [
+                16,
+                24
+              ],
+              "justifyContent": "space_between",
+              "fill": "$sign",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "ybIs4",
+                  "width": 32,
+                  "height": 32,
+                  "fill": "$ink",
+                  "library": "lucide",
+                  "icon": "arrow-up-right"
+                },
+                {
+                  "type": "text",
+                  "id": "zFvPb",
+                  "fill": "$ink",
+                  "content": "Send money",
+                  "fontFamily": "$font",
+                  "fontSize": 22,
+                  "fontWeight": "700",
+                  "letterSpacing": -0.3
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "signPay",
+              "name": "Pay a bill",
+              "width": "fill_container",
+              "height": "fill_container",
+              "layout": "vertical",
+              "padding": [
+                16,
+                24
+              ],
+              "justifyContent": "space_between",
+              "fill": "$slab",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "Gjfpu",
+                  "width": 32,
+                  "height": 32,
+                  "fill": "$sign",
+                  "library": "lucide",
+                  "icon": "arrow-right"
+                },
+                {
+                  "type": "text",
+                  "id": "oV1qh",
+                  "fill": "#FFFFFF",
+                  "content": "Pay a bill",
+                  "fontFamily": "$font",
+                  "fontSize": 22,
+                  "fontWeight": "700",
+                  "letterSpacing": -0.3
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "activity",
+          "name": "Recent activity",
+          "width": "fill_container",
+          "height": "fill_container",
+          "clip": true,
+          "layout": "vertical",
+          "padding": [
+            24,
+            24,
+            0,
+            24
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "CSQwC",
+              "width": "fill_container",
+              "padding": [
+                0,
+                0,
+                8,
+                0
+              ],
+              "justifyContent": "space_between",
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "rQRCI",
+                  "fill": "$text",
+                  "content": "Recent activity",
+                  "fontFamily": "$font",
+                  "fontSize": 18,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "KuM6c",
+                  "fill": "$field",
+                  "content": "See all",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "700"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "r1",
+              "width": "fill_container",
+              "height": 60,
+              "gap": 12,
+              "padding": [
+                10,
+                0,
+                0,
+                0
+              ],
+              "alignItems": "start",
+              "stroke": "$line",
+              "strokeWidth": {
+                "bottom": 1
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Knc8U",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "sdUPb",
+                      "fill": "$text",
+                      "content": "Consumers Energy",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "zgy4H",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "pNH4c",
+                          "fill": "$muted",
+                          "content": "Nov 14 · Bill pay",
+                          "fontFamily": "$font",
+                          "fontSize": 13,
+                          "fontWeight": "300"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "vukHZ",
+                          "padding": 0,
+                          "cornerRadius": 2,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "bJQor",
+                              "fill": "$pending",
+                              "content": "Pending",
+                              "fontFamily": "$font",
+                              "fontSize": 11,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "OW6p7",
+                  "width": 100,
+                  "fill": "$text",
+                  "content": "−$118.09",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "700",
+                  "textAlign": "right"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "r2",
+              "width": "fill_container",
+              "height": 60,
+              "gap": 12,
+              "padding": [
+                10,
+                0,
+                0,
+                0
+              ],
+              "alignItems": "start",
+              "stroke": "$line",
+              "strokeWidth": {
+                "bottom": 1
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "RjVhz",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "XhW6v",
+                      "fill": "$text",
+                      "content": "Harvest Co-op Market",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    },
+                    {
+                      "type": "text",
+                      "id": "ZFu2E",
+                      "fill": "$muted",
+                      "content": "Nov 13 · Debit card",
+                      "fontFamily": "$font",
+                      "fontSize": 13,
+                      "fontWeight": "300"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "0SOtJ",
+                  "width": 100,
+                  "fill": "$text",
+                  "content": "−$64.27",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "700",
+                  "textAlign": "right"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "r3",
+              "width": "fill_container",
+              "height": 60,
+              "gap": 12,
+              "padding": [
+                10,
+                0,
+                0,
+                0
+              ],
+              "alignItems": "start",
+              "stroke": "$line",
+              "strokeWidth": {
+                "bottom": 1
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "gJfLY",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "lwEEQ",
+                      "fill": "$text",
+                      "content": "Lakeshore Dental Group payroll",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    },
+                    {
+                      "type": "text",
+                      "id": "7pFX5",
+                      "fill": "$muted",
+                      "content": "Nov 13 · Direct deposit",
+                      "fontFamily": "$font",
+                      "fontSize": 13,
+                      "fontWeight": "300"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "fiEUO",
+                  "width": 100,
+                  "fill": "$field",
+                  "content": "+$1,842.50",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "700",
+                  "textAlign": "right"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "r4",
+              "width": "fill_container",
+              "height": 60,
+              "gap": 12,
+              "padding": [
+                10,
+                0,
+                0,
+                0
+              ],
+              "alignItems": "start",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Vrdy6",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "JtEul",
+                      "fill": "$text",
+                      "content": "To Holiday Club",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "300"
+                    },
+                    {
+                      "type": "text",
+                      "id": "jTfGj",
+                      "fill": "$muted",
+                      "content": "Nov 11 · Scheduled transfer",
+                      "fontFamily": "$font",
+                      "fontSize": 13,
+                      "fontWeight": "300"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "5mbwJ",
+                  "width": 100,
+                  "fill": "$text",
+                  "content": "−$50.00",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "700",
+                  "textAlign": "right"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "tabs",
+          "name": "Tab bar",
+          "width": "fill_container",
+          "height": 84,
+          "padding": [
+            8,
+            8,
+            24,
+            8
+          ],
+          "fill": "$bg",
+          "stroke": "$line",
+          "strokeWidth": {
+            "top": 1
+          },
+          "children": [
+            {
+              "type": "frame",
+              "id": "lmoRr",
+              "width": "fill_container",
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 4,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "FTDgA",
+                  "width": 24,
+                  "height": 24,
+                  "fill": "$field",
+                  "library": "lucide",
+                  "icon": "house"
+                },
+                {
+                  "type": "text",
+                  "id": "nEZ6r",
+                  "fill": "$field",
+                  "content": "Home",
+                  "fontFamily": "$font",
+                  "fontSize": 11,
+                  "fontWeight": "700"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "Aa26J",
+              "width": "fill_container",
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 4,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "4yoEn",
+                  "width": 24,
+                  "height": 24,
+                  "fill": "$muted",
+                  "library": "lucide",
+                  "icon": "wallet"
+                },
+                {
+                  "type": "text",
+                  "id": "S8wCj",
+                  "fill": "$muted",
+                  "content": "Accounts",
+                  "fontFamily": "$font",
+                  "fontSize": 11,
+                  "fontWeight": "300"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "l6bYM",
+              "width": "fill_container",
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 4,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "a9I6f",
+                  "width": 24,
+                  "height": 24,
+                  "fill": "$muted",
+                  "library": "lucide",
+                  "icon": "arrow-left-right"
+                },
+                {
+                  "type": "text",
+                  "id": "Ghvil",
+                  "fill": "$muted",
+                  "content": "Transfers",
+                  "fontFamily": "$font",
+                  "fontSize": 11,
+                  "fontWeight": "300"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "L1ta2",
+              "width": "fill_container",
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 4,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "i95oE",
+                  "width": 24,
+                  "height": 24,
+                  "fill": "$muted",
+                  "library": "lucide",
+                  "icon": "credit-card"
+                },
+                {
+                  "type": "text",
+                  "id": "IG0h7",
+                  "fill": "$muted",
+                  "content": "Cards",
+                  "fontFamily": "$font",
+                  "fontSize": 11,
+                  "fontWeight": "300"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "VGveR",
+              "width": "fill_container",
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 4,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "CpYeX",
+                  "width": 24,
+                  "height": 24,
+                  "fill": "$muted",
+                  "library": "lucide",
+                  "icon": "menu"
+                },
+                {
+                  "type": "text",
+                  "id": "Ko6kA",
+                  "fill": "$muted",
+                  "content": "More",
+                  "fontFamily": "$font",
+                  "fontSize": 11,
+                  "fontWeight": "300"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "bg": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "text": {
+      "type": "color",
+      "value": "#131A16"
+    },
+    "muted": {
+      "type": "color",
+      "value": "#4A5750"
+    },
+    "line": {
+      "type": "color",
+      "value": "#DDE4DF"
+    },
+    "field": {
+      "type": "color",
+      "value": "#0D5A3B"
+    },
+    "onField": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "onFieldMuted": {
+      "type": "color",
+      "value": "#FFFFFFCC"
+    },
+    "sign": {
+      "type": "color",
+      "value": "#F4C01E"
+    },
+    "ink": {
+      "type": "color",
+      "value": "#131A16"
+    },
+    "font": {
+      "type": "string",
+      "value": "Bahnschrift"
+    },
+    "pad": {
+      "type": "number",
+      "value": 24
+    },
+    "slab": {
+      "type": "color",
+      "value": "#0B2E1F"
+    },
+    "pending": {
+      "type": "color",
+      "value": "#734A00"
+    }
+  }
+}

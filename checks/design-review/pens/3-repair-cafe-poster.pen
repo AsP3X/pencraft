@@ -1,0 +1,508 @@
+{
+  "version": "2.22",
+  "children": [
+    {
+      "type": "frame",
+      "id": "poster",
+      "x": 0,
+      "y": 0,
+      "name": "Repair Cafe Poster",
+      "width": 1123,
+      "height": 1587,
+      "clip": true,
+      "layout": "none",
+      "fill": "$paper",
+      "children": [
+        {
+          "type": "path",
+          "id": "pieceTop",
+          "x": 64,
+          "y": 64,
+          "name": "Block top piece",
+          "width": 995,
+          "height": 984,
+          "fill": "$signal",
+          "geometry": "M0 0 H995 V675 L940 700 L905 688 L850 740 L800 718 L745 762 L700 745 L640 790 L590 758 L520 780 L470 730 L420 752 L360 700 L300 730 L250 712 L180 758 L130 740 L60 780 L0 762 Z",
+          "viewBox": [
+            0.0,
+            0.0,
+            995.0,
+            984.0
+          ]
+        },
+        {
+          "type": "path",
+          "id": "pieceBottom",
+          "x": 64,
+          "y": 64,
+          "name": "Block bottom piece",
+          "width": 995,
+          "height": 984,
+          "fill": "$signal",
+          "geometry": "M0 786 L60 804 L130 764 L180 782 L250 736 L300 754 L360 724 L420 776 L470 754 L520 804 L590 782 L640 814 L700 769 L745 786 L800 742 L850 764 L905 712 L940 724 L995 699 V984 H0 Z",
+          "viewBox": [
+            0.0,
+            0.0,
+            995.0,
+            984.0
+          ]
+        },
+        {
+          "type": "rectangle",
+          "id": "l4i04",
+          "x": 238,
+          "y": 788,
+          "name": "Staple",
+          "rotation": 6,
+          "width": 12,
+          "height": 88,
+          "fill": "$ink",
+          "cornerRadius": 2
+        },
+        {
+          "type": "rectangle",
+          "id": "vCvi8",
+          "x": 478,
+          "y": 779,
+          "name": "Staple",
+          "rotation": -5,
+          "width": 12,
+          "height": 88,
+          "fill": "$ink",
+          "cornerRadius": 2
+        },
+        {
+          "type": "rectangle",
+          "id": "Q25yq",
+          "x": 718,
+          "y": 807,
+          "name": "Staple",
+          "rotation": 5,
+          "width": 12,
+          "height": 88,
+          "fill": "$ink",
+          "cornerRadius": 2
+        },
+        {
+          "type": "rectangle",
+          "id": "cYBM6",
+          "x": 908,
+          "y": 768,
+          "name": "Staple",
+          "rotation": -6,
+          "width": 12,
+          "height": 88,
+          "fill": "$ink",
+          "cornerRadius": 2
+        },
+        {
+          "type": "text",
+          "id": "brand",
+          "x": 611,
+          "y": 88,
+          "name": "Name",
+          "width": 400,
+          "fill": "$ink",
+          "content": "Repair Café Lindenhof",
+          "textGrowth": "fixed-width",
+          "fontFamily": "$font",
+          "fontSize": "$size-value",
+          "fontWeight": "700",
+          "textAlign": "right"
+        },
+        {
+          "type": "text",
+          "id": "headline",
+          "x": 83,
+          "y": 192,
+          "name": "Headline",
+          "width": 960,
+          "fill": "$ink",
+          "content": "Don’t\nbin it.",
+          "textGrowth": "fixed-width",
+          "fontFamily": "$font",
+          "fontSize": 360,
+          "fontWeight": "700",
+          "letterSpacing": -4,
+          "lineHeight": 0.85
+        },
+        {
+          "type": "text",
+          "id": "lead",
+          "x": 112,
+          "y": 920,
+          "name": "Lead",
+          "width": 860,
+          "fill": "$ink",
+          "content": "Bring your broken toaster, lamp, jacket or bike. Our volunteers fix it with you, for free.",
+          "textGrowth": "fixed-width",
+          "fontFamily": "$font",
+          "fontSize": "$size-lead",
+          "fontWeight": "300",
+          "lineHeight": 1.2
+        },
+        {
+          "type": "frame",
+          "id": "info",
+          "x": 64,
+          "y": 1096,
+          "name": "Info",
+          "width": 995,
+          "layout": "horizontal",
+          "gap": 64,
+          "stroke": "$ink",
+          "strokeWidth": {
+            "top": 0,
+            "right": 0,
+            "bottom": 2,
+            "left": 0
+          },
+          "children": [
+            {
+              "type": "frame",
+              "id": "rows",
+              "name": "Details",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 0,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "tiHLd",
+                  "name": "Row When",
+                  "width": "fill_container",
+                  "layout": "horizontal",
+                  "gap": 24,
+                  "padding": [
+                    12,
+                    0,
+                    16,
+                    0
+                  ],
+                  "stroke": "$ink",
+                  "strokeWidth": {
+                    "top": 2,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "g0hZw",
+                      "width": 96,
+                      "fill": "$ink",
+                      "content": "When",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": "$size-label",
+                      "fontWeight": "700",
+                      "lineHeight": 1.4
+                    },
+                    {
+                      "type": "text",
+                      "id": "AxSNq",
+                      "width": "fill_container",
+                      "fill": "$ink",
+                      "content": "First Saturday of every month\n10:00 – 14:00",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": "$size-value",
+                      "fontWeight": "300",
+                      "lineHeight": 1.15
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "T1N9J",
+                  "name": "Row Where",
+                  "width": "fill_container",
+                  "layout": "horizontal",
+                  "gap": 24,
+                  "padding": [
+                    12,
+                    0,
+                    16,
+                    0
+                  ],
+                  "stroke": "$rule",
+                  "strokeWidth": {
+                    "top": 1,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "rHm4Y",
+                      "width": 96,
+                      "fill": "$ink",
+                      "content": "Where",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": "$size-label",
+                      "fontWeight": "700",
+                      "lineHeight": 1.4
+                    },
+                    {
+                      "type": "text",
+                      "id": "xYDbU",
+                      "width": "fill_container",
+                      "fill": "$ink",
+                      "content": "Lindenhof community hall, big room on the ground floor",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": "$size-value",
+                      "fontWeight": "300",
+                      "lineHeight": 1.15
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "GhkTO",
+                  "name": "Row Bring",
+                  "width": "fill_container",
+                  "layout": "horizontal",
+                  "gap": 24,
+                  "padding": [
+                    12,
+                    0,
+                    16,
+                    0
+                  ],
+                  "stroke": "$rule",
+                  "strokeWidth": {
+                    "top": 1,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "hi55X",
+                      "width": 96,
+                      "fill": "$ink",
+                      "content": "Bring",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": "$size-label",
+                      "fontWeight": "700",
+                      "lineHeight": 1.4
+                    },
+                    {
+                      "type": "text",
+                      "id": "aQ7mY",
+                      "width": "fill_container",
+                      "fill": "$ink",
+                      "content": "Anything you can carry in: small electrics, clothes, toys, bikes, chairs",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": "$size-value",
+                      "fontWeight": "300",
+                      "lineHeight": 1.15
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "nrE5w",
+                  "name": "Row Cost",
+                  "width": "fill_container",
+                  "layout": "horizontal",
+                  "gap": 24,
+                  "padding": [
+                    12,
+                    0,
+                    16,
+                    0
+                  ],
+                  "stroke": "$rule",
+                  "strokeWidth": {
+                    "top": 1,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Df8zF",
+                      "width": 96,
+                      "fill": "$ink",
+                      "content": "Cost",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": "$size-label",
+                      "fontWeight": "700",
+                      "lineHeight": 1.4
+                    },
+                    {
+                      "type": "text",
+                      "id": "K7cV2",
+                      "width": "fill_container",
+                      "fill": "$ink",
+                      "content": "Free. Coffee and cake for a donation",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": "$size-value",
+                      "fontWeight": "300",
+                      "lineHeight": 1.15
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "dates",
+              "name": "Next dates",
+              "width": 260,
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 0,
+              "padding": [
+                12,
+                0,
+                12,
+                0
+              ],
+              "justifyContent": "space_between",
+              "stroke": "$ink",
+              "strokeWidth": {
+                "top": 2,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "id": "1hLql",
+                  "fill": "$ink",
+                  "content": "Next Saturdays",
+                  "fontFamily": "$font",
+                  "fontSize": "$size-label",
+                  "fontWeight": "700",
+                  "lineHeight": 1.4
+                },
+                {
+                  "type": "text",
+                  "id": "flXqB",
+                  "fill": "$signal",
+                  "content": "5 Dec",
+                  "fontFamily": "$font",
+                  "fontSize": 64,
+                  "fontWeight": "700",
+                  "letterSpacing": -1,
+                  "lineHeight": 1.05
+                },
+                {
+                  "type": "text",
+                  "id": "XDPuV",
+                  "fill": "$ink",
+                  "content": "2 Jan",
+                  "fontFamily": "$font",
+                  "fontSize": 64,
+                  "fontWeight": "300",
+                  "letterSpacing": -1,
+                  "lineHeight": 1.05
+                },
+                {
+                  "type": "text",
+                  "id": "1t6L1",
+                  "fill": "$ink",
+                  "content": "6 Feb",
+                  "fontFamily": "$font",
+                  "fontSize": 64,
+                  "fontWeight": "300",
+                  "letterSpacing": -1,
+                  "lineHeight": 1.05
+                },
+                {
+                  "type": "text",
+                  "id": "71QKQ",
+                  "fill": "$ink",
+                  "content": "6 Mar",
+                  "fontFamily": "$font",
+                  "fontSize": 64,
+                  "fontWeight": "300",
+                  "letterSpacing": -1,
+                  "lineHeight": 1.05
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "footer",
+          "x": 64,
+          "y": 1503,
+          "name": "Footer",
+          "width": 995,
+          "fill": "$ink-quiet",
+          "content": "Can you solder, sew or true a wheel? Join the fixers – ask at the coffee table.",
+          "textGrowth": "fixed-width",
+          "fontFamily": "$font",
+          "fontSize": "$size-label",
+          "fontWeight": "400",
+          "lineHeight": 1.4
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "paper": {
+      "type": "color",
+      "value": "#ffffff"
+    },
+    "ink": {
+      "type": "color",
+      "value": "#16181b"
+    },
+    "ink-quiet": {
+      "type": "color",
+      "value": "#5b5f66"
+    },
+    "rule": {
+      "type": "color",
+      "value": "#d6d8db"
+    },
+    "signal": {
+      "type": "color",
+      "value": "#ff5a1f"
+    },
+    "font": {
+      "type": "string",
+      "value": "Bahnschrift"
+    },
+    "size-display": {
+      "type": "number",
+      "value": 210
+    },
+    "size-lead": {
+      "type": "number",
+      "value": 40
+    },
+    "size-value": {
+      "type": "number",
+      "value": 32
+    },
+    "size-label": {
+      "type": "number",
+      "value": 24
+    },
+    "size-small": {
+      "type": "number",
+      "value": 18
+    },
+    "margin": {
+      "type": "number",
+      "value": 64
+    }
+  }
+}

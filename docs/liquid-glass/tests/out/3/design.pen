@@ -1,0 +1,574 @@
+{
+  "version": "2.22",
+  "children": [
+    {
+      "type": "frame",
+      "id": "player",
+      "x": 0,
+      "y": 0,
+      "name": "Now playing",
+      "width": 393,
+      "height": 852,
+      "clip": true,
+      "layout": "none",
+      "fill": "#000000",
+      "children": [
+        {
+          "type": "rectangle",
+          "id": "artwork",
+          "x": 0,
+          "y": 0,
+          "name": "Artwork",
+          "width": 393,
+          "height": 852,
+          "fill": {
+            "type": "image",
+            "url": "docs/liquid-glass/tests/photos/bright-artwork.jpg",
+            "mode": "cover"
+          }
+        },
+        {
+          "type": "rectangle",
+          "id": "dim",
+          "x": 0,
+          "y": 0,
+          "name": "Dimming",
+          "width": 393,
+          "height": 852,
+          "fill": "#00000059"
+        },
+        {
+          "type": "rectangle",
+          "id": "scrim",
+          "x": 0,
+          "y": 420,
+          "name": "Bottom scrim",
+          "width": 393,
+          "height": 432,
+          "fill": {
+            "type": "gradient",
+            "gradientType": "linear",
+            "rotation": 180,
+            "colors": [
+              {
+                "color": "#00000000",
+                "position": 0
+              },
+              {
+                "color": "#00000099",
+                "position": 1
+              }
+            ]
+          }
+        },
+        {
+          "type": "rectangle",
+          "id": "scrim-top",
+          "x": 0,
+          "y": 0,
+          "name": "Top scrim",
+          "width": 393,
+          "height": 180,
+          "fill": {
+            "type": "gradient",
+            "gradientType": "linear",
+            "rotation": 0,
+            "colors": [
+              {
+                "color": "#00000000",
+                "position": 0
+              },
+              {
+                "color": "#00000052",
+                "position": 1
+              }
+            ]
+          }
+        },
+        {
+          "type": "frame",
+          "id": "btn-close",
+          "x": 16,
+          "y": 58,
+          "name": "Close player",
+          "width": 44,
+          "height": 44,
+          "justifyContent": "center",
+          "alignItems": "center",
+          "stroke": "$glass-outline",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
+          "material": {
+            "type": "liquid_glass",
+            "variant": "clear"
+          },
+          "cornerRadius": 22,
+          "children": [
+            {
+              "type": "icon",
+              "id": "HGRWf",
+              "width": 24,
+              "height": 24,
+              "fill": "$on-dark-glass",
+              "library": "lucide",
+              "icon": "chevron-down"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "btn-more",
+          "x": 333,
+          "y": 58,
+          "name": "More",
+          "width": 44,
+          "height": 44,
+          "justifyContent": "center",
+          "alignItems": "center",
+          "stroke": "$glass-outline",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
+          "material": {
+            "type": "liquid_glass",
+            "variant": "clear"
+          },
+          "cornerRadius": 22,
+          "children": [
+            {
+              "type": "icon",
+              "id": "xO4Vh",
+              "width": 24,
+              "height": 24,
+              "fill": "$on-dark-glass",
+              "library": "lucide",
+              "icon": "ellipsis"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "info",
+          "x": 24,
+          "y": 530,
+          "name": "Track",
+          "width": 345,
+          "layout": "horizontal",
+          "gap": 16,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "2dGof",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 4,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "title",
+                  "fill": "$on-art",
+                  "content": "Tangerine Weather",
+                  "fontFamily": "Bahnschrift",
+                  "fontSize": 34,
+                  "fontWeight": "700",
+                  "letterSpacing": -0.5,
+                  "lineHeight": 1.1
+                },
+                {
+                  "type": "text",
+                  "id": "artist",
+                  "fill": "$on-art-quiet",
+                  "content": "Marta Okafor, Paper Lanterns",
+                  "fontFamily": "Segoe UI Variable",
+                  "fontSize": 17,
+                  "fontWeight": "500"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "btn-like",
+              "name": "Favourite",
+              "width": 44,
+              "height": 44,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "stroke": "$glass-outline",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "material": {
+                "type": "liquid_glass",
+                "variant": "clear"
+              },
+              "cornerRadius": 22,
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "7ERoy",
+                  "width": 22,
+                  "height": 22,
+                  "fill": "$on-dark-glass",
+                  "library": "lucide",
+                  "icon": "heart"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "scrubber",
+          "x": 24,
+          "y": 616,
+          "name": "Scrubber",
+          "width": 345,
+          "height": 40,
+          "layout": "none",
+          "children": [
+            {
+              "type": "rectangle",
+              "id": "cHEvI",
+              "x": 0,
+              "y": 4,
+              "width": 345,
+              "height": 4,
+              "fill": "$track",
+              "cornerRadius": 2
+            },
+            {
+              "type": "rectangle",
+              "id": "JsYtC",
+              "x": 0,
+              "y": 4,
+              "width": 158,
+              "height": 4,
+              "fill": "$on-art",
+              "cornerRadius": 2
+            },
+            {
+              "type": "ellipse",
+              "id": "wum2V",
+              "x": 152,
+              "y": 0,
+              "width": 12,
+              "height": 12,
+              "fill": "$on-art"
+            },
+            {
+              "type": "text",
+              "id": "OZZGG",
+              "x": 0,
+              "y": 20,
+              "fill": "$on-art-quiet",
+              "content": "1:47",
+              "fontFamily": "Segoe UI Variable",
+              "fontSize": 13,
+              "fontWeight": "600"
+            },
+            {
+              "type": "text",
+              "id": "Db6bu",
+              "x": 295,
+              "y": 20,
+              "width": 50,
+              "fill": "$on-art-quiet",
+              "content": "-2:06",
+              "textGrowth": "fixed-width",
+              "fontFamily": "Segoe UI Variable",
+              "fontSize": 13,
+              "fontWeight": "600",
+              "textAlign": "right"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "transport",
+          "x": 24,
+          "y": 688,
+          "name": "Transport",
+          "width": 345,
+          "layout": "horizontal",
+          "gap": 18,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "btn-shuffle",
+              "name": "Shuffle",
+              "width": 48,
+              "height": 48,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "stroke": "$glass-outline",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "material": {
+                "type": "liquid_glass",
+                "variant": "clear"
+              },
+              "cornerRadius": 24,
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "PuTY7",
+                  "width": 22,
+                  "height": 22,
+                  "fill": "$on-dark-glass",
+                  "library": "lucide",
+                  "icon": "shuffle"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "playback",
+              "name": "Playback",
+              "width": 213,
+              "height": 72,
+              "layout": "horizontal",
+              "padding": [
+                0,
+                16
+              ],
+              "justifyContent": "space_around",
+              "alignItems": "center",
+              "stroke": "$glass-outline",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "material": {
+                "type": "liquid_glass",
+                "variant": "clear"
+              },
+              "cornerRadius": 36,
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "HJWeo",
+                  "width": 28,
+                  "height": 28,
+                  "fill": "$on-dark-glass",
+                  "library": "lucide",
+                  "icon": "skip-back"
+                },
+                {
+                  "type": "icon",
+                  "id": "ezanh",
+                  "width": 36,
+                  "height": 36,
+                  "fill": "$on-dark-glass",
+                  "library": "lucide",
+                  "icon": "pause"
+                },
+                {
+                  "type": "icon",
+                  "id": "U0NJi",
+                  "width": 28,
+                  "height": 28,
+                  "fill": "$on-dark-glass",
+                  "library": "lucide",
+                  "icon": "skip-forward"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "btn-repeat",
+              "name": "Repeat",
+              "width": 48,
+              "height": 48,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "stroke": "$glass-outline",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "material": {
+                "type": "liquid_glass",
+                "variant": "clear"
+              },
+              "cornerRadius": 24,
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "5osI6",
+                  "width": 22,
+                  "height": 22,
+                  "fill": "$on-dark-glass",
+                  "library": "lucide",
+                  "icon": "repeat"
+                }
+              ]
+            }
+          ],
+          "glassGroup": 18
+        },
+        {
+          "type": "frame",
+          "id": "utilities",
+          "x": 115,
+          "y": 786,
+          "name": "Output, lyrics, queue",
+          "width": 163,
+          "height": 44,
+          "layout": "horizontal",
+          "padding": [
+            0,
+            12
+          ],
+          "justifyContent": "space_around",
+          "alignItems": "center",
+          "stroke": "$glass-outline",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
+          "material": {
+            "type": "liquid_glass",
+            "variant": "clear"
+          },
+          "cornerRadius": 22,
+          "children": [
+            {
+              "type": "icon",
+              "id": "4A66w",
+              "width": 22,
+              "height": 22,
+              "fill": "$on-dark-glass",
+              "library": "lucide",
+              "icon": "airplay"
+            },
+            {
+              "type": "icon",
+              "id": "vvD9W",
+              "width": 22,
+              "height": 22,
+              "fill": "$on-dark-glass",
+              "library": "lucide",
+              "icon": "mic-vocal"
+            },
+            {
+              "type": "icon",
+              "id": "ry5H4",
+              "width": 22,
+              "height": 22,
+              "fill": "$on-dark-glass",
+              "library": "lucide",
+              "icon": "list-music"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "themes": {
+    "Glass": [
+      "Clear",
+      "Tinted",
+      "Reduced transparency",
+      "Increased contrast"
+    ]
+  },
+  "variables": {
+    "on-light-glass": {
+      "type": "color",
+      "value": "#000000"
+    },
+    "on-dark-glass": {
+      "type": "color",
+      "value": "#ffffff"
+    },
+    "selection-on-light": {
+      "type": "color",
+      "value": "#0000001f"
+    },
+    "selection-on-dark": {
+      "type": "color",
+      "value": "#ffffff33"
+    },
+    "accent": {
+      "type": "color",
+      "value": "#0060df"
+    },
+    "on-art": {
+      "type": "color",
+      "value": "#ffffff"
+    },
+    "on-art-quiet": {
+      "type": "color",
+      "value": "#ffffffcc"
+    },
+    "track": {
+      "type": "color",
+      "value": "#ffffff59"
+    },
+    "glass-outline": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#00000000"
+        },
+        {
+          "value": "#000000",
+          "theme": {
+            "Glass": "Increased contrast"
+          }
+        }
+      ]
+    },
+    "glass-regular-tint-opacity": {
+      "type": "number",
+      "value": [
+        {
+          "value": 0.6,
+          "theme": {
+            "Glass": "Tinted"
+          }
+        },
+        {
+          "value": 0.9,
+          "theme": {
+            "Glass": "Reduced transparency"
+          }
+        },
+        {
+          "value": 1,
+          "theme": {
+            "Glass": "Increased contrast"
+          }
+        }
+      ]
+    },
+    "glass-regular-blur": {
+      "type": "number",
+      "value": [
+        {
+          "value": 40,
+          "theme": {
+            "Glass": "Reduced transparency"
+          }
+        },
+        {
+          "value": 40,
+          "theme": {
+            "Glass": "Increased contrast"
+          }
+        }
+      ]
+    },
+    "glass-regular-refraction": {
+      "type": "number",
+      "value": [
+        {
+          "value": 0.4,
+          "theme": {
+            "Glass": "Reduced transparency"
+          }
+        },
+        {
+          "value": 0,
+          "theme": {
+            "Glass": "Increased contrast"
+          }
+        }
+      ]
+    }
+  }
+}

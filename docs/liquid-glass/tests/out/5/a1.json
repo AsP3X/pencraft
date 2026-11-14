@@ -1,0 +1,5 @@
+{"description":"Three accessibility looks of the Journal screen beside the original","operations":[
+{"op":"copy","id":"screen","properties":{"x":473,"y":0,"name":"Journal - Tinted","theme":{"Glass":"Tinted"}}},
+{"op":"copy","id":"screen","properties":{"x":946,"y":0,"name":"Journal - Reduced transparency","theme":{"Glass":"Reduced transparency"}}},
+{"op":"copy","id":"screen","properties":{"x":1419,"y":0,"name":"Journal - Increased contrast","theme":{"Glass":"Increased contrast"}}}
+]}

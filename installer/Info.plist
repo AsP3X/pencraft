@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- What macOS reads about Pencraft.app. installer/build-macos.sh puts the
+     version from app/Cargo.toml in place of @VERSION@. The identifier is the
+     one the window uses (app/src/main.rs) and must never change. -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>Pencraft</string>
+  <key>CFBundleDisplayName</key>
+  <string>Pencraft</string>
+  <key>CFBundleIdentifier</key>
+  <string>dev.pencraft.desktop</string>
+  <key>CFBundleExecutable</key>
+  <string>pencraft</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleShortVersionString</key>
+  <string>@VERSION@</string>
+  <key>CFBundleVersion</key>
+  <string>@VERSION@</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>11.0</string>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.graphics-design</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSSupportsAutomaticGraphicsSwitching</key>
+  <true/>
+</dict>
+</plist>

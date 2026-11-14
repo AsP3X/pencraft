@@ -1,0 +1,140 @@
+# Human: Pencraft, a canvas design editor for `.pen` files written in Rust, as a Craft app. The root package is the
+# desktop app (egui window); `crates/pen-doc` is the window-free document library it builds on.
+# Agent: workspace root AND the binary package `pencraft`; members inherit [workspace.package], [workspace.dependencies]
+# and [workspace.lints] (docs/agent-rules/rust-quality.md in the user's other projects).
+[workspace]
+resolver = "3"
+members = ["crates/pen-doc"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license-file = "../LICENSE"
+publish = false
+
+[workspace.dependencies]
+pen-doc = { path = "crates/pen-doc" }
+
+# Human: The storytold Craft libraries, all from one craft-libs commit so they agree with each other.
+# Agent: craft-atomic = crash-safe saves; craft-settings = config.toml in the suite's folder; craft-dialogs = native
+# file dialogs that never block winit; craft-quit + craft-menu = macOS quit that asks about unsaved work.
+craft-atomic = { git = "https://github.com/storytold/craft-libs", rev = "915fc544587fb9ce7c3d0110f4be7159bca0ff16" }
+craft-settings = { git = "https://github.com/storytold/craft-libs", rev = "915fc544587fb9ce7c3d0110f4be7159bca0ff16" }
+craft-dialogs = { git = "https://github.com/storytold/craft-libs", rev = "915fc544587fb9ce7c3d0110f4be7159bca0ff16" }
+craft-quit = { git = "https://github.com/storytold/craft-libs", rev = "915fc544587fb9ce7c3d0110f4be7159bca0ff16", features = ["egui"] }
+craft-menu = { git = "https://github.com/storytold/craft-libs", rev = "915fc544587fb9ce7c3d0110f4be7159bca0ff16" }
+# Human: The shared AI data model; Pencraft uses its secret type, which can't be printed or saved by accident.
+craft-ai-core = { git = "https://github.com/storytold/craft-libs", rev = "915fc544587fb9ce7c3d0110f4be7159bca0ff16" }
+
+# Human: The window and UI, on the storytold egui fork (patched below) like every Craft app.
+egui = { version = "0.37", default-features = false, features = ["default_fonts"] }
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "wgpu", "accesskit"] }
+
+# Human: Reading and writing `.pen` JSON. `preserve_order` keeps unknown keys in the order the file had them.
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = { version = "=1.0.154", features = ["preserve_order", "float_roundtrip"] }
+# Human: Filling SVG paths with holes (icons, arrows) correctly; egui only fills convex shapes.
+lyon_tessellation = "=1.0.23"
+# Human: The Lucide icon set (ISC licence) as SVG text, for `icon` and `icon_font` nodes.
+lucide-static-svg = { version = "=1.72.0", default-features = false, features = ["svg"] }
+# Human: Reads the pictures of image fills (PNG, JPEG, WebP, GIF) from the user's disk.
+image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
+# Human: Writes the `--screenshot` picture.
+png = "=0.18.1"
+log = "=0.4.34"
+# Human: Keeps API keys in the operating system's keychain (macOS Keychain, Windows Credential Manager, Linux
+# Secret Service) instead of a file.
+keyring = "=4.2.0"
+# Human: blocking HTTPS for the chat's calls to a provider's API: rustls and bundled root certificates, no
+# async runtime, no OpenSSL. The same client the Craft libraries use.
+ureq = { version = "=3.5.0", default-features = false, features = ["rustls", "gzip"] }
+# Human: Only for the macOS start-up hook that keeps a `--screenshot` run from taking focus; the same fork eframe uses.
+winit = { version = "=0.30.13", default-features = false }
+# Human: Runs shader effects on the GPU. The same wgpu eframe draws with (one copy in Cargo.lock); named here
+# only to switch on its GLSL reader, since shader files are WebGL fragment shaders. That adds one crate, pp-rs.
+# Agent: MUST stay the exact version eframe resolves to, or two wgpu copies would be built and their types differ.
+wgpu = { version = "=30.0.2", default-features = false, features = ["glsl"] }
+env_logger = { version = "=0.11.11", default-features = false, features = ["auto-color"] }
+
+# Human: The code-quality gate from the user's Rust projects (rust-quality.md). `cargo clippy --all-targets -- -D
+# warnings` turns every warning into a failure; dead code and `allow` attributes are denied outright.
+# Agent: no unsafe; no #[allow(..)] (narrow #[expect(lint, reason = "..")] on one item only); dead_code never silenced.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+dead_code = "deny"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+# Human: No panics in production paths; tests may still unwrap (clippy.toml allows it in tests).
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+
+[package]
+name = "pencraft"
+description = "Canvas design editor for .pen files"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+pen-doc.workspace = true
+craft-atomic.workspace = true
+craft-settings.workspace = true
+craft-dialogs.workspace = true
+craft-quit.workspace = true
+craft-menu.workspace = true
+craft-ai-core.workspace = true
+keyring.workspace = true
+ureq.workspace = true
+egui.workspace = true
+eframe.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+lyon_tessellation.workspace = true
+lucide-static-svg.workspace = true
+image.workspace = true
+png.workspace = true
+log.workspace = true
+wgpu.workspace = true
+env_logger.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+winit.workspace = true
+
+[lints]
+workspace = true
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+
+# Human: Keep the complete egui family and winit on the storytold fork commits the Craft apps use.
+[patch.crates-io]
+ecolor = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+emath = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+epaint = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+epaint_default_fonts = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+egui = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+egui-winit = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+egui-wgpu = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+eframe = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }

@@ -1,0 +1,1431 @@
+{
+  "version": "2.22",
+  "children": [
+    {
+      "type": "frame",
+      "id": "page",
+      "x": 0,
+      "y": 0,
+      "name": "Tidewater Coffee — Landing",
+      "width": 1440,
+      "layout": "vertical",
+      "fill": "$bg",
+      "children": [
+        {
+          "type": "frame",
+          "id": "nav",
+          "name": "Nav",
+          "width": "fill_container",
+          "padding": [
+            24,
+            80
+          ],
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "stroke": "$line",
+          "strokeWidth": {
+            "top": 0,
+            "right": 0,
+            "bottom": 1,
+            "left": 0
+          },
+          "strokeAlignment": "inner",
+          "children": [
+            {
+              "type": "frame",
+              "id": "8cEqQ",
+              "name": "Wordmark",
+              "gap": 4,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "95SKK",
+                  "fill": "$ink",
+                  "content": "Tidewater",
+                  "fontFamily": "$font",
+                  "fontSize": 28,
+                  "fontWeight": "700",
+                  "letterSpacing": -0.5
+                },
+                {
+                  "type": "text",
+                  "id": "Bicoq",
+                  "fill": "$ink",
+                  "content": "Coffee Roasters",
+                  "fontFamily": "$font",
+                  "fontSize": 28,
+                  "fontWeight": "300",
+                  "letterSpacing": -0.5
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "Q7AYp",
+              "name": "Links",
+              "gap": 48,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "TxrVe",
+                  "fill": "$ink",
+                  "content": "Coffees",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "400"
+                },
+                {
+                  "type": "text",
+                  "id": "NRcFx",
+                  "fill": "$ink",
+                  "content": "Subscriptions",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "j3Iib",
+                  "fill": "$ink",
+                  "content": "Wholesale",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "400"
+                },
+                {
+                  "type": "text",
+                  "id": "izD9z",
+                  "fill": "$ink",
+                  "content": "The roastery in Yachats",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "400"
+                },
+                {
+                  "type": "text",
+                  "id": "PTa8r",
+                  "fill": "$muted",
+                  "content": "Log in",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "400"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "hero",
+          "name": "Hero",
+          "width": "fill_container",
+          "height": "fit_content",
+          "children": [
+            {
+              "type": "frame",
+              "id": "heroText",
+              "name": "Hero text",
+              "width": "fill_container",
+              "height": "fit_content",
+              "layout": "vertical",
+              "gap": 48,
+              "padding": [
+                96,
+                80,
+                64,
+                80
+              ],
+              "justifyContent": "start",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "gTV0X",
+                  "layout": "vertical",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "headline",
+                      "name": "Headline (optical)",
+                      "width": 640,
+                      "height": 246,
+                      "layout": "none",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "headline",
+                          "x": -4,
+                          "y": 0,
+                          "width": 644,
+                          "fill": "$ink",
+                          "content": "Roasted Tuesday. On your porch by Friday.",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "$font",
+                          "fontSize": 80,
+                          "fontWeight": "700",
+                          "letterSpacing": -2.5,
+                          "lineHeight": 1.02
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "x4m76",
+                      "width": 540,
+                      "fill": "$muted",
+                      "content": "We roast in 12-kilo batches in Yachats, Oregon, every Tuesday morning and ship the same afternoon. Subscribe once and a fresh bag keeps arriving, never more than four days off the roaster.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 20,
+                      "fontWeight": "300",
+                      "lineHeight": 1.5
+                    },
+                    {
+                      "type": "frame",
+                      "id": "V3JHy",
+                      "gap": 32,
+                      "padding": [
+                        16,
+                        0,
+                        0,
+                        0
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "Ph4EQ",
+                          "name": "Primary button",
+                          "padding": [
+                            16,
+                            32
+                          ],
+                          "fill": "$buoy",
+                          "cornerRadius": "$radius",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "W7MWa",
+                              "fill": "#FFFFFF",
+                              "content": "Start a subscription",
+                              "fontFamily": "$font",
+                              "fontSize": 20,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "HzXFu",
+                          "name": "Text link",
+                          "gap": 8,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "7iJCA",
+                              "fill": "$ink",
+                              "content": "Read this week's roast notes",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "400"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "Tk0BN",
+                              "name": "Arrow",
+                              "padding": [
+                                0,
+                                0,
+                                4,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "icon",
+                                  "id": "Tk0BN",
+                                  "width": 16,
+                                  "height": 16,
+                                  "fill": "$ink",
+                                  "library": "lucide",
+                                  "icon": "arrow-right"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "7jJHv",
+                  "name": "Facts",
+                  "width": "fill_container",
+                  "gap": 32,
+                  "padding": [
+                    18,
+                    0,
+                    0,
+                    0
+                  ],
+                  "stroke": "$line",
+                  "strokeWidth": {
+                    "top": 1,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                  },
+                  "strokeAlignment": "inner",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Bwyjz",
+                      "fill": "$muted",
+                      "content": "Free shipping in the US",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "fontWeight": "400"
+                    },
+                    {
+                      "type": "text",
+                      "id": "AZJGX",
+                      "fill": "$muted",
+                      "content": "Skip or pause any week",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "fontWeight": "400"
+                    },
+                    {
+                      "type": "text",
+                      "id": "nkw3M",
+                      "fill": "$ink",
+                      "content": "Next roast: Tue 17 Nov",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "fontWeight": "700"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "heroArt",
+              "name": "Hero picture",
+              "width": 640,
+              "height": "fill_container",
+              "clip": true,
+              "layout": "none",
+              "fill": "$spruce",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "id": "wVO3r",
+                  "x": 0,
+                  "y": 540,
+                  "name": "Sea",
+                  "width": 640,
+                  "height": 220,
+                  "fill": "$spruceDeep"
+                },
+                {
+                  "type": "path",
+                  "id": "qIc2Z",
+                  "x": 160,
+                  "y": 176,
+                  "name": "Bag body",
+                  "width": 320,
+                  "height": 424,
+                  "fill": "$kraft",
+                  "geometry": "M10 0 H310 L320 424 H0 Z",
+                  "viewBox": [
+                    0.0,
+                    0.0,
+                    320.0,
+                    424.0
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "UotAx",
+                  "x": 170,
+                  "y": 132,
+                  "name": "Bag seal",
+                  "width": 300,
+                  "height": 52,
+                  "fill": "$kraftDark",
+                  "cornerRadius": 2
+                },
+                {
+                  "type": "rectangle",
+                  "id": "ch1iW",
+                  "x": 170,
+                  "y": 196,
+                  "name": "Tear line",
+                  "width": 300,
+                  "height": 2,
+                  "fill": "#00000014"
+                },
+                {
+                  "type": "path",
+                  "id": "pPMvH",
+                  "x": 160,
+                  "y": 560,
+                  "name": "Bag gusset",
+                  "width": 320,
+                  "height": 40,
+                  "fill": "#0000001A",
+                  "geometry": "M2 0 H318 L320 40 H0 Z",
+                  "viewBox": [
+                    0.0,
+                    0.0,
+                    320.0,
+                    40.0
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "label",
+                  "x": 188,
+                  "y": 236,
+                  "name": "Bag label",
+                  "width": 264,
+                  "layout": "vertical",
+                  "gap": 12,
+                  "padding": [
+                    24,
+                    24
+                  ],
+                  "fill": "#FFFFFF",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "G1Zbt",
+                      "fill": "$ink",
+                      "content": "Tidewater",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "BTd5J",
+                      "layout": "vertical",
+                      "gap": 4,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "YVDXt",
+                          "fill": "$ink",
+                          "content": "Huila, Colombia",
+                          "fontFamily": "$font",
+                          "fontSize": 20,
+                          "fontWeight": "700",
+                          "letterSpacing": -0.3
+                        },
+                        {
+                          "type": "text",
+                          "id": "lmYWj",
+                          "fill": "$muted",
+                          "content": "Washed · medium roast",
+                          "fontFamily": "$font",
+                          "fontSize": 14,
+                          "fontWeight": "300"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "nVCtd",
+                      "width": "fill_container",
+                      "fill": "$ink",
+                      "content": "Blood orange, cocoa, molasses",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "fontWeight": "300"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ax22Y",
+                      "width": "fill_container",
+                      "padding": [
+                        12,
+                        0,
+                        0,
+                        0
+                      ],
+                      "justifyContent": "space_between",
+                      "stroke": "$ink",
+                      "strokeWidth": {
+                        "top": 1,
+                        "right": 0,
+                        "bottom": 0,
+                        "left": 0
+                      },
+                      "strokeAlignment": "inner",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "zN1X0",
+                          "fill": "$ink",
+                          "content": "Batch 214",
+                          "fontFamily": "$font",
+                          "fontSize": 14,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "6oYlG",
+                          "fill": "$ink",
+                          "content": "Roasted Tue 10 Nov",
+                          "fontFamily": "$font",
+                          "fontSize": 14,
+                          "fontWeight": "400"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "Q4uE3",
+                      "fill": "$muted",
+                      "content": "340 g · whole bean",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "fontWeight": "400"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "sticker",
+                  "x": 400,
+                  "y": 212,
+                  "name": "Roast-day sticker",
+                  "rotation": 12,
+                  "width": 104,
+                  "height": 104,
+                  "layout": "vertical",
+                  "gap": 4,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "fill": "$buoy",
+                  "cornerRadius": 52,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "RTbVb",
+                      "fill": "#FFFFFF",
+                      "content": "Roasted",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "fontWeight": "300",
+                      "lineHeight": 1.2
+                    },
+                    {
+                      "type": "text",
+                      "id": "8YrOV",
+                      "fill": "#FFFFFF",
+                      "content": "Tue",
+                      "fontFamily": "$font",
+                      "fontSize": 28,
+                      "fontWeight": "700",
+                      "lineHeight": 1.1
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "175SZ",
+                  "x": 160,
+                  "y": 672,
+                  "name": "Caption",
+                  "width": 400,
+                  "fill": "$onSpruceMuted",
+                  "content": "This week: Huila, Colombia. 412 bags roasted Tue 10 Nov.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "$font",
+                  "fontSize": 14,
+                  "fontWeight": "300",
+                  "lineHeight": 1.4
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "plans",
+          "name": "Plans",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 40,
+          "padding": [
+            96,
+            80,
+            64,
+            80
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "zh8Ys",
+              "name": "Plans header",
+              "width": "fill_container",
+              "padding": [
+                0,
+                0,
+                24,
+                0
+              ],
+              "justifyContent": "space_between",
+              "alignItems": "start",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "aR7Nr",
+                  "name": "Plans heading (optical)",
+                  "width": 660,
+                  "height": 119,
+                  "layout": "none",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "aR7Nr",
+                      "x": -2,
+                      "y": 0,
+                      "width": 662,
+                      "fill": "$ink",
+                      "content": "Choose how much arrives, and how often.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 56,
+                      "fontWeight": "700",
+                      "letterSpacing": -1.5,
+                      "lineHeight": 1.05
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "plHks",
+                  "width": 460,
+                  "fill": "$muted",
+                  "content": "Every plan ships from the Tuesday roast. Change the size, swap the coffee or pause from your account, any week, no fee.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "$font",
+                  "fontSize": 20,
+                  "fontWeight": "300",
+                  "lineHeight": 1.5
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "planRow",
+              "name": "Plan columns",
+              "width": "fill_container",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "p1",
+                  "name": "Plan: One Bag",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 32,
+                  "padding": 48,
+                  "stroke": "$ink",
+                  "strokeWidth": {
+                    "top": 2,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                  },
+                  "strokeAlignment": "inner",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "188XM",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "wMkeM",
+                          "fill": "$ink",
+                          "content": "One Bag",
+                          "fontFamily": "$font",
+                          "fontSize": 28,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "D8bKA",
+                          "fill": "$muted",
+                          "content": "Enough for one cup every morning.",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "300"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Yqx0H",
+                      "gap": 12,
+                      "alignItems": "end",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "bggfx",
+                          "fill": "$ink",
+                          "content": "$19",
+                          "fontFamily": "$font",
+                          "fontSize": 72,
+                          "fontWeight": "700",
+                          "letterSpacing": -2,
+                          "lineHeight": 1
+                        },
+                        {
+                          "type": "frame",
+                          "id": "2iupE",
+                          "padding": [
+                            0,
+                            0,
+                            10,
+                            0
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "n0gzX",
+                              "fill": "$muted",
+                              "content": "per delivery",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "300"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "7XZ2x",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "padding": 0,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "ZMRrW",
+                          "width": "fill_container",
+                          "padding": [
+                            12,
+                            0
+                          ],
+                          "justifyContent": "space_between",
+                          "stroke": "$line",
+                          "strokeWidth": {
+                            "top": 1,
+                            "right": 0,
+                            "bottom": 0,
+                            "left": 0
+                          },
+                          "strokeAlignment": "inner",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "xeMoA",
+                              "fill": "$muted",
+                              "content": "Bags",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "300"
+                            },
+                            {
+                              "type": "text",
+                              "id": "8fN1I",
+                              "fill": "$ink",
+                              "content": "1 × 340 g",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "uVPar",
+                          "width": "fill_container",
+                          "padding": [
+                            12,
+                            0
+                          ],
+                          "justifyContent": "space_between",
+                          "stroke": "$line",
+                          "strokeWidth": {
+                            "top": 1,
+                            "right": 0,
+                            "bottom": 0,
+                            "left": 0
+                          },
+                          "strokeAlignment": "inner",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "LfjvM",
+                              "fill": "$muted",
+                              "content": "Arrives",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "300"
+                            },
+                            {
+                              "type": "text",
+                              "id": "1hL8L",
+                              "fill": "$ink",
+                              "content": "Every 4 weeks",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "96BYk",
+                          "width": "fill_container",
+                          "padding": [
+                            12,
+                            0
+                          ],
+                          "justifyContent": "space_between",
+                          "stroke": "$line",
+                          "strokeWidth": {
+                            "top": 1,
+                            "right": 0,
+                            "bottom": 1,
+                            "left": 0
+                          },
+                          "strokeAlignment": "inner",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "pHk3k",
+                              "fill": "$muted",
+                              "content": "Per bag",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "300"
+                            },
+                            {
+                              "type": "text",
+                              "id": "N6RQs",
+                              "fill": "$ink",
+                              "content": "$19.00",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "6W1iP",
+                      "width": "fill_container",
+                      "padding": [
+                        16,
+                        24
+                      ],
+                      "justifyContent": "center",
+                      "stroke": "$ink",
+                      "strokeWidth": 1.5,
+                      "strokeAlignment": "inner",
+                      "cornerRadius": "$radius",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "wS2Oz",
+                          "fill": "$ink",
+                          "content": "Choose One Bag",
+                          "fontFamily": "$font",
+                          "fontSize": 20,
+                          "fontWeight": "700"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "p2",
+                  "name": "Plan: Two Bags (featured)",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 32,
+                  "padding": 48,
+                  "fill": "$spruce",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "wqoVl",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "0ldck",
+                          "width": "fill_container",
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "8lxMl",
+                              "fill": "$onSpruce",
+                              "content": "Two Bags",
+                              "fontFamily": "$font",
+                              "fontSize": 28,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "3wqDn",
+                              "padding": [
+                                4,
+                                8
+                              ],
+                              "fill": "$buoy",
+                              "cornerRadius": "$radius",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "vXHtb",
+                                  "fill": "#FFFFFF",
+                                  "content": "Most chosen",
+                                  "fontFamily": "$font",
+                                  "fontSize": 14,
+                                  "fontWeight": "700",
+                                  "lineHeight": 1
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "DF8OS",
+                          "fill": "$onSpruceMuted",
+                          "content": "For a household of two, or one serious habit.",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "300"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "e2Fx8",
+                      "gap": 12,
+                      "alignItems": "end",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "b1c1I",
+                          "fill": "$onSpruce",
+                          "content": "$34",
+                          "fontFamily": "$font",
+                          "fontSize": 72,
+                          "fontWeight": "700",
+                          "letterSpacing": -2,
+                          "lineHeight": 1
+                        },
+                        {
+                          "type": "frame",
+                          "id": "kqdhc",
+                          "padding": [
+                            0,
+                            0,
+                            10,
+                            0
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "3cy7j",
+                              "fill": "$onSpruceMuted",
+                              "content": "per delivery",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "300"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "zyIf1",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "padding": 0,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "LVQtA",
+                          "width": "fill_container",
+                          "padding": [
+                            12,
+                            0
+                          ],
+                          "justifyContent": "space_between",
+                          "stroke": "$onSpruceLine",
+                          "strokeWidth": {
+                            "top": 1,
+                            "right": 0,
+                            "bottom": 0,
+                            "left": 0
+                          },
+                          "strokeAlignment": "inner",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "l6cwC",
+                              "fill": "$onSpruceMuted",
+                              "content": "Bags",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "300"
+                            },
+                            {
+                              "type": "text",
+                              "id": "ZyNVq",
+                              "fill": "$onSpruce",
+                              "content": "2 × 340 g",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "LvKSq",
+                          "width": "fill_container",
+                          "padding": [
+                            12,
+                            0
+                          ],
+                          "justifyContent": "space_between",
+                          "stroke": "$onSpruceLine",
+                          "strokeWidth": {
+                            "top": 1,
+                            "right": 0,
+                            "bottom": 0,
+                            "left": 0
+                          },
+                          "strokeAlignment": "inner",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "t2dzj",
+                              "fill": "$onSpruceMuted",
+                              "content": "Arrives",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "300"
+                            },
+                            {
+                              "type": "text",
+                              "id": "ns6KL",
+                              "fill": "$onSpruce",
+                              "content": "Every 2 weeks",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "oBP1e",
+                          "width": "fill_container",
+                          "padding": [
+                            12,
+                            0
+                          ],
+                          "justifyContent": "space_between",
+                          "stroke": "$onSpruceLine",
+                          "strokeWidth": {
+                            "top": 1,
+                            "right": 0,
+                            "bottom": 1,
+                            "left": 0
+                          },
+                          "strokeAlignment": "inner",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "KpCfD",
+                              "fill": "$onSpruceMuted",
+                              "content": "Per bag",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "300"
+                            },
+                            {
+                              "type": "text",
+                              "id": "5HjKw",
+                              "fill": "$onSpruce",
+                              "content": "$17.00",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "2RMPV",
+                      "width": "fill_container",
+                      "padding": [
+                        16,
+                        24
+                      ],
+                      "justifyContent": "center",
+                      "fill": "$buoy",
+                      "cornerRadius": "$radius",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "zFgyy",
+                          "fill": "#FFFFFF",
+                          "content": "Choose Two Bags",
+                          "fontFamily": "$font",
+                          "fontSize": 20,
+                          "fontWeight": "700"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "p3",
+                  "name": "Plan: The Crate",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 32,
+                  "padding": 48,
+                  "stroke": "$ink",
+                  "strokeWidth": {
+                    "top": 2,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                  },
+                  "strokeAlignment": "inner",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "xsrRu",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "RvaKq",
+                          "fill": "$ink",
+                          "content": "The Crate",
+                          "fontFamily": "$font",
+                          "fontSize": 28,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "D5Z5C",
+                          "fill": "$muted",
+                          "content": "For an office, a shop counter or a big family.",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "300"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "YJDUy",
+                      "gap": 12,
+                      "alignItems": "end",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "LzTdL",
+                          "fill": "$ink",
+                          "content": "$78",
+                          "fontFamily": "$font",
+                          "fontSize": 72,
+                          "fontWeight": "700",
+                          "letterSpacing": -2,
+                          "lineHeight": 1
+                        },
+                        {
+                          "type": "frame",
+                          "id": "tlG3i",
+                          "padding": [
+                            0,
+                            0,
+                            10,
+                            0
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "56BOP",
+                              "fill": "$muted",
+                              "content": "per delivery",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "300"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "EVJdj",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "padding": 0,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "JBWa0",
+                          "width": "fill_container",
+                          "padding": [
+                            12,
+                            0
+                          ],
+                          "justifyContent": "space_between",
+                          "stroke": "$line",
+                          "strokeWidth": {
+                            "top": 1,
+                            "right": 0,
+                            "bottom": 0,
+                            "left": 0
+                          },
+                          "strokeAlignment": "inner",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Lm7bo",
+                              "fill": "$muted",
+                              "content": "Bags",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "300"
+                            },
+                            {
+                              "type": "text",
+                              "id": "3lAVw",
+                              "fill": "$ink",
+                              "content": "5 × 340 g",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "QNZUH",
+                          "width": "fill_container",
+                          "padding": [
+                            12,
+                            0
+                          ],
+                          "justifyContent": "space_between",
+                          "stroke": "$line",
+                          "strokeWidth": {
+                            "top": 1,
+                            "right": 0,
+                            "bottom": 0,
+                            "left": 0
+                          },
+                          "strokeAlignment": "inner",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "NwC0W",
+                              "fill": "$muted",
+                              "content": "Arrives",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "300"
+                            },
+                            {
+                              "type": "text",
+                              "id": "igoPo",
+                              "fill": "$ink",
+                              "content": "Every week",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ceTQF",
+                          "width": "fill_container",
+                          "padding": [
+                            12,
+                            0
+                          ],
+                          "justifyContent": "space_between",
+                          "stroke": "$line",
+                          "strokeWidth": {
+                            "top": 1,
+                            "right": 0,
+                            "bottom": 1,
+                            "left": 0
+                          },
+                          "strokeAlignment": "inner",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "3vsRP",
+                              "fill": "$muted",
+                              "content": "Per bag",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "300"
+                            },
+                            {
+                              "type": "text",
+                              "id": "dH2lA",
+                              "fill": "$ink",
+                              "content": "$15.60",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "slqvl",
+                      "width": "fill_container",
+                      "padding": [
+                        16,
+                        24
+                      ],
+                      "justifyContent": "center",
+                      "stroke": "$ink",
+                      "strokeWidth": 1.5,
+                      "strokeAlignment": "inner",
+                      "cornerRadius": "$radius",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "mcvFw",
+                          "fill": "$ink",
+                          "content": "Choose The Crate",
+                          "fontFamily": "$font",
+                          "fontSize": 20,
+                          "fontWeight": "700"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "id": "GbJmy",
+              "fill": "$muted",
+              "content": "Prices in USD, shipping included in the US. Your first bag goes out with the next Tuesday roast.",
+              "fontFamily": "$font",
+              "fontSize": 14,
+              "fontWeight": "300"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "bg": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "ink": {
+      "type": "color",
+      "value": "#14211D"
+    },
+    "muted": {
+      "type": "color",
+      "value": "#566661"
+    },
+    "line": {
+      "type": "color",
+      "value": "#D5DDDA"
+    },
+    "spruce": {
+      "type": "color",
+      "value": "#1D4A3C"
+    },
+    "spruceDeep": {
+      "type": "color",
+      "value": "#153A2F"
+    },
+    "buoy": {
+      "type": "color",
+      "value": "#C8431D"
+    },
+    "kraft": {
+      "type": "color",
+      "value": "#C9A273"
+    },
+    "kraftDark": {
+      "type": "color",
+      "value": "#A9824F"
+    },
+    "onSpruce": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "onSpruceMuted": {
+      "type": "color",
+      "value": "#FFFFFFBF"
+    },
+    "onSpruceLine": {
+      "type": "color",
+      "value": "#FFFFFF33"
+    },
+    "font": {
+      "type": "string",
+      "value": "Bahnschrift"
+    },
+    "radius": {
+      "type": "number",
+      "value": 4
+    }
+  }
+}

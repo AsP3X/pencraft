@@ -1,0 +1,337 @@
+{
+  "version": "2.22",
+  "children": [
+    {
+      "type": "frame",
+      "id": "player",
+      "x": 0,
+      "y": 0,
+      "name": "Now playing",
+      "width": 393,
+      "height": 852,
+      "clip": true,
+      "layout": "none",
+      "fill": "#1a1a1a",
+      "children": [
+        {
+          "type": "rectangle",
+          "id": "artwork",
+          "x": 0,
+          "y": 0,
+          "name": "Artwork",
+          "width": 393,
+          "height": 852,
+          "fill": {
+            "type": "image",
+            "url": "docs/liquid-glass/tests/photos/bright-artwork.jpg",
+            "mode": "cover"
+          }
+        },
+        {
+          "type": "rectangle",
+          "id": "dim",
+          "x": 0,
+          "y": 0,
+          "name": "Dimming",
+          "width": 393,
+          "height": 852,
+          "fill": "#00000059"
+        },
+        {
+          "type": "rectangle",
+          "id": "scrim",
+          "x": 0,
+          "y": 432,
+          "name": "Scrim",
+          "width": 393,
+          "height": 420,
+          "fill": {
+            "type": "gradient",
+            "gradientType": "linear",
+            "rotation": 0,
+            "colors": [
+              {
+                "color": "#00000099",
+                "position": 0
+              },
+              {
+                "color": "#00000000",
+                "position": 1
+              }
+            ]
+          }
+        },
+        {
+          "type": "rectangle",
+          "id": "scrim-top",
+          "x": 0,
+          "y": 0,
+          "name": "Scrim top",
+          "width": 393,
+          "height": 180,
+          "fill": {
+            "type": "gradient",
+            "gradientType": "linear",
+            "rotation": 180,
+            "colors": [
+              {
+                "color": "#00000066",
+                "position": 0
+              },
+              {
+                "color": "#00000000",
+                "position": 1
+              }
+            ]
+          }
+        },
+        {
+          "type": "text",
+          "id": "title",
+          "x": 24,
+          "y": 572,
+          "fill": "#ffffff",
+          "content": "Paper Suns",
+          "fontFamily": "Century Gothic",
+          "fontSize": 34,
+          "fontWeight": "700",
+          "letterSpacing": -0.5,
+          "lineHeight": 1.1
+        },
+        {
+          "type": "text",
+          "id": "artist",
+          "x": 24,
+          "y": 616,
+          "fill": "#ffffff",
+          "content": "Odile Marchetti — Cut Paper Summer",
+          "fontFamily": "Century Gothic",
+          "fontSize": 17,
+          "fontWeight": "400"
+        },
+        {
+          "type": "rectangle",
+          "id": "track",
+          "x": 24,
+          "y": 668,
+          "name": "Scrubber track",
+          "width": 345,
+          "height": 4,
+          "fill": "#ffffff4d",
+          "cornerRadius": 2
+        },
+        {
+          "type": "rectangle",
+          "id": "track-fill",
+          "x": 24,
+          "y": 668,
+          "name": "Scrubber fill",
+          "width": 128,
+          "height": 4,
+          "fill": "#ffffff",
+          "cornerRadius": 2
+        },
+        {
+          "type": "text",
+          "id": "t-now",
+          "x": 24,
+          "y": 684,
+          "fill": "$text-quiet",
+          "content": "1:23",
+          "fontFamily": "Century Gothic",
+          "fontSize": 13,
+          "fontWeight": "400"
+        },
+        {
+          "type": "text",
+          "id": "t-left",
+          "x": 309,
+          "y": 684,
+          "width": 60,
+          "fill": "$text-quiet",
+          "content": "-2:21",
+          "textGrowth": "fixed-width",
+          "fontFamily": "Century Gothic",
+          "fontSize": 13,
+          "fontWeight": "400",
+          "textAlign": "right"
+        },
+        {
+          "type": "frame",
+          "id": "close",
+          "x": 16,
+          "y": 58,
+          "name": "Close",
+          "width": 44,
+          "height": 44,
+          "justifyContent": "center",
+          "alignItems": "center",
+          "material": {
+            "type": "liquid_glass",
+            "variant": "clear"
+          },
+          "cornerRadius": 22,
+          "children": [
+            {
+              "type": "icon",
+              "id": "oKkni",
+              "width": 22,
+              "height": 22,
+              "fill": "$on-glass",
+              "library": "lucide",
+              "icon": "chevron-down"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "more",
+          "x": 333,
+          "y": 58,
+          "name": "More",
+          "width": 44,
+          "height": 44,
+          "justifyContent": "center",
+          "alignItems": "center",
+          "material": {
+            "type": "liquid_glass",
+            "variant": "clear"
+          },
+          "cornerRadius": 22,
+          "children": [
+            {
+              "type": "icon",
+              "id": "NplZH",
+              "width": 22,
+              "height": 22,
+              "fill": "$on-glass",
+              "library": "lucide",
+              "icon": "ellipsis"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "transport",
+          "x": 36,
+          "y": 736,
+          "name": "Transport",
+          "layout": "horizontal",
+          "gap": 16,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "repeat",
+              "name": "Repeat",
+              "width": 48,
+              "height": 48,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "material": {
+                "type": "liquid_glass",
+                "variant": "clear",
+                "depth": "bar"
+              },
+              "cornerRadius": 24,
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "OiwlY",
+                  "width": 20,
+                  "height": 20,
+                  "fill": "$on-glass",
+                  "library": "lucide",
+                  "icon": "repeat"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "play",
+              "name": "Play",
+              "width": 193,
+              "height": 72,
+              "layout": "horizontal",
+              "gap": 32,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "material": {
+                "type": "liquid_glass",
+                "variant": "clear",
+                "depth": "bar"
+              },
+              "cornerRadius": 36,
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "GMNIr",
+                  "width": 26,
+                  "height": 26,
+                  "fill": "$on-glass",
+                  "library": "lucide",
+                  "icon": "skip-back"
+                },
+                {
+                  "type": "icon",
+                  "id": "5nJDZ",
+                  "width": 30,
+                  "height": 30,
+                  "fill": "$on-glass",
+                  "library": "lucide",
+                  "icon": "pause"
+                },
+                {
+                  "type": "icon",
+                  "id": "IhaPi",
+                  "width": 26,
+                  "height": 26,
+                  "fill": "$on-glass",
+                  "library": "lucide",
+                  "icon": "skip-forward"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "shuffle",
+              "name": "Shuffle",
+              "width": 48,
+              "height": 48,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "material": {
+                "type": "liquid_glass",
+                "variant": "clear",
+                "depth": "bar"
+              },
+              "cornerRadius": 24,
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "wmhYW",
+                  "width": 20,
+                  "height": 20,
+                  "fill": "$on-glass",
+                  "library": "lucide",
+                  "icon": "shuffle"
+                }
+              ]
+            }
+          ],
+          "glassGroup": 16
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "on-glass": {
+      "type": "color",
+      "value": "#ffffff"
+    },
+    "text-quiet": {
+      "type": "color",
+      "value": "#ffffffcc"
+    }
+  }
+}

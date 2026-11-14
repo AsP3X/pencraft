@@ -1,0 +1,780 @@
+{
+  "version": "2.22",
+  "children": [
+    {
+      "type": "frame",
+      "id": "glass-board",
+      "x": -600,
+      "y": 0,
+      "name": "Glass components",
+      "layout": "vertical",
+      "gap": 40,
+      "padding": 40,
+      "fill": "#8a93a3",
+      "children": [
+        {
+          "type": "frame",
+          "id": "glass-tab-bar",
+          "name": "Tab bar",
+          "reusable": true,
+          "layout": "horizontal",
+          "gap": 10,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "glass-tabs",
+              "name": "Tabs",
+              "width": 279,
+              "height": 62,
+              "layout": "horizontal",
+              "padding": 4,
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "stroke": "$glass-outline",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "material": {
+                "type": "liquid_glass",
+                "depth": "bar"
+              },
+              "cornerRadius": 31,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "glass-tab-1",
+                  "width": 88,
+                  "height": 54,
+                  "layout": "vertical",
+                  "gap": 2,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "fill": "$selection-on-light",
+                  "cornerRadius": 27,
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "glass-tab-1-icon",
+                      "width": 22,
+                      "height": 22,
+                      "fill": "$accent",
+                      "library": "lucide",
+                      "icon": "book-open"
+                    },
+                    {
+                      "type": "text",
+                      "id": "glass-tab-1-label",
+                      "fill": "$accent",
+                      "content": "Journal",
+                      "fontFamily": "Segoe UI Variable",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "glass-tab-2",
+                  "width": 88,
+                  "height": 54,
+                  "layout": "vertical",
+                  "gap": 2,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "cornerRadius": 27,
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "glass-tab-2-icon",
+                      "width": 22,
+                      "height": 22,
+                      "fill": "$on-light-glass",
+                      "library": "lucide",
+                      "icon": "map-pin"
+                    },
+                    {
+                      "type": "text",
+                      "id": "glass-tab-2-label",
+                      "fill": "$on-light-glass",
+                      "content": "Places",
+                      "fontFamily": "Segoe UI Variable",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "glass-tab-3",
+                  "width": 88,
+                  "height": 54,
+                  "layout": "vertical",
+                  "gap": 2,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "cornerRadius": 27,
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "glass-tab-3-icon",
+                      "width": 22,
+                      "height": 22,
+                      "fill": "$on-light-glass",
+                      "library": "lucide",
+                      "icon": "images"
+                    },
+                    {
+                      "type": "text",
+                      "id": "glass-tab-3-label",
+                      "fill": "$on-light-glass",
+                      "content": "Albums",
+                      "fontFamily": "Segoe UI Variable",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "glass-tab-search",
+              "name": "Search tab",
+              "width": 62,
+              "height": 62,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "stroke": "$glass-outline",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "material": {
+                "type": "liquid_glass",
+                "depth": "bar"
+              },
+              "cornerRadius": 31,
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "glass-tab-search-icon",
+                  "width": 24,
+                  "height": 24,
+                  "fill": "$on-light-glass",
+                  "library": "lucide",
+                  "icon": "search"
+                }
+              ]
+            }
+          ],
+          "glassGroup": 10
+        },
+        {
+          "type": "frame",
+          "id": "glass-toolbar",
+          "name": "Toolbar",
+          "reusable": true,
+          "width": 361,
+          "layout": "horizontal",
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "glass-toolbar-back",
+              "name": "Calendar",
+              "width": 44,
+              "height": 44,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "stroke": "$glass-outline",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "material": "liquid_glass",
+              "cornerRadius": 22,
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "glass-toolbar-back-icon",
+                  "width": 22,
+                  "height": 22,
+                  "fill": "$on-light-glass",
+                  "library": "lucide",
+                  "icon": "calendar-days"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "glass-toolbar-trailing",
+              "layout": "horizontal",
+              "gap": 10,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "glass-toolbar-actions",
+                  "name": "Actions",
+                  "height": 44,
+                  "layout": "horizontal",
+                  "gap": 18,
+                  "padding": [
+                    0,
+                    14
+                  ],
+                  "alignItems": "center",
+                  "stroke": "$glass-outline",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
+                  "material": "liquid_glass",
+                  "cornerRadius": 22,
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "glass-toolbar-action-1",
+                      "width": 22,
+                      "height": 22,
+                      "fill": "$on-light-glass",
+                      "library": "lucide",
+                      "icon": "map"
+                    },
+                    {
+                      "type": "icon",
+                      "id": "glass-toolbar-action-2",
+                      "width": 22,
+                      "height": 22,
+                      "fill": "$on-light-glass",
+                      "library": "lucide",
+                      "icon": "sliders-horizontal"
+                    },
+                    {
+                      "type": "icon",
+                      "id": "glass-toolbar-action-3",
+                      "width": 22,
+                      "height": 22,
+                      "fill": "$on-light-glass",
+                      "library": "lucide",
+                      "icon": "ellipsis"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "glass-toolbar-primary",
+                  "name": "New entry",
+                  "width": 44,
+                  "height": 44,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "material": {
+                    "type": "liquid_glass",
+                    "tint": "$accent"
+                  },
+                  "cornerRadius": 22,
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "glass-toolbar-primary-icon",
+                      "width": 22,
+                      "height": 22,
+                      "fill": "#ffffff",
+                      "library": "lucide",
+                      "icon": "plus"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "screen",
+      "x": 0,
+      "y": 0,
+      "name": "Journal",
+      "width": 393,
+      "height": 852,
+      "clip": true,
+      "layout": "none",
+      "fill": "$bg",
+      "children": [
+        {
+          "type": "frame",
+          "id": "hero",
+          "x": 0,
+          "y": 0,
+          "name": "Today's entry",
+          "width": 393,
+          "height": 408,
+          "layout": "none",
+          "fill": [
+            {
+              "type": "image",
+              "url": "docs/liquid-glass/tests/photos/dusk-harbour.jpg",
+              "mode": "cover"
+            },
+            {
+              "type": "gradient",
+              "gradientType": "linear",
+              "rotation": 0,
+              "colors": [
+                {
+                  "color": "#0a0f1fb3",
+                  "position": 0
+                },
+                {
+                  "color": "#0a0f1f00",
+                  "position": 0.5
+                }
+              ]
+            }
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "status",
+              "x": 0,
+              "y": 16,
+              "name": "Status bar",
+              "width": 393,
+              "height": 24,
+              "layout": "horizontal",
+              "padding": [
+                0,
+                32
+              ],
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "status-time",
+                  "fill": "#ffffff",
+                  "content": "9:41",
+                  "fontFamily": "Segoe UI Variable",
+                  "fontSize": 15,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "frame",
+                  "id": "N3yyv",
+                  "layout": "horizontal",
+                  "gap": 8,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "OPqRv",
+                      "width": 16,
+                      "height": 16,
+                      "fill": "#ffffff",
+                      "library": "lucide",
+                      "icon": "signal"
+                    },
+                    {
+                      "type": "icon",
+                      "id": "Oy0ZV",
+                      "width": 16,
+                      "height": 16,
+                      "fill": "#ffffff",
+                      "library": "lucide",
+                      "icon": "wifi"
+                    },
+                    {
+                      "type": "icon",
+                      "id": "4pJlD",
+                      "width": 20,
+                      "height": 20,
+                      "fill": "#ffffff",
+                      "library": "lucide",
+                      "icon": "battery-full"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "hero-text",
+              "x": 0,
+              "y": 0,
+              "width": 393,
+              "height": 408,
+              "layout": "vertical",
+              "gap": 8,
+              "padding": [
+                0,
+                16,
+                16,
+                16
+              ],
+              "justifyContent": "end",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "hero-title",
+                  "fill": "#ffffff",
+                  "content": "Dusk at the harbour",
+                  "fontFamily": "Bahnschrift",
+                  "fontSize": 34,
+                  "fontWeight": "600",
+                  "letterSpacing": -0.5,
+                  "lineHeight": 1.1
+                },
+                {
+                  "type": "frame",
+                  "id": "hero-meta",
+                  "width": "fill_container",
+                  "layout": "horizontal",
+                  "justifyContent": "space_between",
+                  "alignItems": "end",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "hero-meta-text",
+                      "fill": "#ffffffd9",
+                      "content": "Saturday 14 November, Hvar. 12 photos",
+                      "fontFamily": "Segoe UI Variable",
+                      "fontSize": 15,
+                      "fontWeight": "400"
+                    },
+                    {
+                      "type": "text",
+                      "id": "hero-stamp",
+                      "fill": "$stamp",
+                      "content": "'26 11 14",
+                      "fontFamily": "Bahnschrift",
+                      "fontSize": 15,
+                      "fontWeight": "600",
+                      "letterSpacing": 1
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "feed",
+          "x": 16,
+          "y": 432,
+          "name": "Earlier entries",
+          "width": 361,
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "feed-heading",
+              "fill": "$ink",
+              "content": "Earlier this week",
+              "fontFamily": "Bahnschrift",
+              "fontSize": 20,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "feed-row",
+              "width": "fill_container",
+              "layout": "horizontal",
+              "gap": 8,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "card-1",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "id": "card-1-photo",
+                      "width": "fill_container",
+                      "height": 216,
+                      "fill": {
+                        "type": "image",
+                        "url": "docs/liquid-glass/tests/photos/market-colours.jpg",
+                        "mode": "cover"
+                      },
+                      "cornerRadius": 20
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Armwa",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "4IoSE",
+                          "fill": "$ink",
+                          "content": "Market colours",
+                          "fontFamily": "Segoe UI Variable",
+                          "fontSize": 15,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "uUzwv",
+                          "fill": "$ink-quiet",
+                          "content": "Thu 12 Nov, Split. 23 photos",
+                          "fontFamily": "Segoe UI Variable",
+                          "fontSize": 13,
+                          "fontWeight": "400"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "card-2",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "id": "card-2-photo",
+                      "width": "fill_container",
+                      "height": 216,
+                      "fill": {
+                        "type": "image",
+                        "url": "docs/liquid-glass/tests/photos/forest-light.jpg",
+                        "mode": "cover"
+                      },
+                      "cornerRadius": 20
+                    },
+                    {
+                      "type": "frame",
+                      "id": "iwJvj",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "s9rCy",
+                          "fill": "$ink",
+                          "content": "Light through the pines",
+                          "fontFamily": "Segoe UI Variable",
+                          "fontSize": 15,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "yYWPh",
+                          "fill": "$ink-quiet",
+                          "content": "Tue 10 Nov, Marjan. 7 photos",
+                          "fontFamily": "Segoe UI Variable",
+                          "fontSize": 13,
+                          "fontWeight": "400"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "rectangle",
+              "id": "card-3-photo",
+              "name": "Night ferry",
+              "width": "fill_container",
+              "height": 240,
+              "fill": {
+                "type": "image",
+                "url": "docs/liquid-glass/tests/photos/night-ferry.jpg",
+                "mode": "cover"
+              },
+              "cornerRadius": 20
+            }
+          ]
+        },
+        {
+          "type": "ref",
+          "id": "toolbar",
+          "x": 16,
+          "y": 58,
+          "ref": "glass-toolbar",
+          "descendants": {
+            "glass-toolbar-back-icon": {
+              "fill": "$on-dark-glass"
+            },
+            "glass-toolbar-action-1": {
+              "fill": "$on-dark-glass"
+            },
+            "glass-toolbar-action-2": {
+              "fill": "$on-dark-glass"
+            },
+            "glass-toolbar-action-3": {
+              "fill": "$on-dark-glass"
+            }
+          }
+        },
+        {
+          "type": "ref",
+          "id": "tabbar",
+          "x": 21,
+          "y": 769,
+          "ref": "glass-tab-bar",
+          "descendants": {
+            "glass-tab-1": {
+              "fill": "$selection-on-dark"
+            },
+            "glass-tab-1-icon": {
+              "fill": "$on-dark-glass"
+            },
+            "glass-tab-1-label": {
+              "fill": "$on-dark-glass"
+            },
+            "glass-tab-2-icon": {
+              "fill": "$on-dark-glass"
+            },
+            "glass-tab-2-label": {
+              "fill": "$on-dark-glass"
+            },
+            "glass-tab-3-icon": {
+              "fill": "$on-dark-glass"
+            },
+            "glass-tab-3-label": {
+              "fill": "$on-dark-glass"
+            },
+            "glass-tab-search-icon": {
+              "fill": "$on-dark-glass"
+            },
+            "glass-tabs": {
+              "material": {
+                "type": "liquid_glass",
+                "depth": "bar",
+                "advanced": {
+                  "tintOpacity": 0.7
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "themes": {
+    "Glass": [
+      "Clear",
+      "Tinted",
+      "Reduced transparency",
+      "Increased contrast"
+    ]
+  },
+  "variables": {
+    "on-light-glass": {
+      "type": "color",
+      "value": "#000000"
+    },
+    "on-dark-glass": {
+      "type": "color",
+      "value": "#ffffff"
+    },
+    "selection-on-light": {
+      "type": "color",
+      "value": "#0000001f"
+    },
+    "selection-on-dark": {
+      "type": "color",
+      "value": "#ffffff33"
+    },
+    "accent": {
+      "type": "color",
+      "value": "#b5400f"
+    },
+    "bg": {
+      "type": "color",
+      "value": "#e8edf1"
+    },
+    "ink": {
+      "type": "color",
+      "value": "#121a26"
+    },
+    "ink-quiet": {
+      "type": "color",
+      "value": "#4d5a6b"
+    },
+    "stamp": {
+      "type": "color",
+      "value": "#ffb454"
+    },
+    "glass-outline": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#00000000"
+        },
+        {
+          "value": "#000000",
+          "theme": {
+            "Glass": "Increased contrast"
+          }
+        }
+      ]
+    },
+    "glass-regular-tint-opacity": {
+      "type": "number",
+      "value": [
+        {
+          "value": 0.6,
+          "theme": {
+            "Glass": "Tinted"
+          }
+        },
+        {
+          "value": 0.9,
+          "theme": {
+            "Glass": "Reduced transparency"
+          }
+        },
+        {
+          "value": 1,
+          "theme": {
+            "Glass": "Increased contrast"
+          }
+        }
+      ]
+    },
+    "glass-regular-blur": {
+      "type": "number",
+      "value": [
+        {
+          "value": 40,
+          "theme": {
+            "Glass": "Reduced transparency"
+          }
+        },
+        {
+          "value": 40,
+          "theme": {
+            "Glass": "Increased contrast"
+          }
+        }
+      ]
+    },
+    "glass-regular-refraction": {
+      "type": "number",
+      "value": [
+        {
+          "value": 0.4,
+          "theme": {
+            "Glass": "Reduced transparency"
+          }
+        },
+        {
+          "value": 0,
+          "theme": {
+            "Glass": "Increased contrast"
+          }
+        }
+      ]
+    }
+  }
+}

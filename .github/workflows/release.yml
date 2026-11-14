@@ -1,0 +1,147 @@
+name: Release
+
+# Pushing a tag like v1.2.3 builds Pencraft for Windows and macOS and
+# publishes the files as a GitHub release. Installed copies of Pencraft find
+# the release on their own. See docs/RELEASING.md.
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  TAG: ${{ github.ref_name }}
+
+jobs:
+  prepare:
+    name: Check the version and take the notes
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check that the tag is the version in app/Cargo.toml
+        id: version
+        run: |
+          version=$(sed -n 's/^version *= *"\(.*\)"/\1/p' app/Cargo.toml | head -n 1)
+          if [ "v$version" != "$TAG" ]; then
+            echo "The tag is $TAG but app/Cargo.toml says $version." >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Take the release notes from the changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # The section headed "## [1.2.3]", up to the next section or the links at the end.
+          awk -v version="$VERSION" '
+            index($0, "## [" version "]") == 1 { found = 1; next }
+            found && (/^## \[/ || /^\[[^]]+\]: /) { exit }
+            found { print }
+          ' CHANGELOG.md | sed -e '/./,$!d' > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "CHANGELOG.md has no section for $VERSION." >&2
+            exit 1
+          fi
+          cat release-notes.md
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-notes
+          path: release-notes.md
+          if-no-files-found: error
+
+  windows:
+    name: Build for Windows
+    needs: prepare
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the Rust toolchain
+        working-directory: app
+        run: rustup toolchain install
+
+      - name: Test
+        working-directory: app
+        run: cargo test --workspace --locked
+
+      - name: Install the WiX Toolset
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          "$env:USERPROFILE\.dotnet\tools" >> $env:GITHUB_PATH
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build the program and the installers
+        shell: pwsh
+        run: ./installer/build.ps1
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: app/target/installer/*
+          if-no-files-found: error
+
+  macos:
+    name: Build for macOS
+    needs: prepare
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the Rust toolchain
+        working-directory: app
+        run: rustup toolchain install
+
+      - name: Test
+        working-directory: app
+        run: cargo test --workspace --locked
+
+      - name: Build the app and the disk image
+        run: ./installer/build-macos.sh
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos
+          path: app/target/installer/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish the release
+    needs: [prepare, windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Gather the files and write their checksums
+        run: |
+          mkdir release
+          cp artifacts/windows/* artifacts/macos/* release/
+          cd release
+          # One "<sha256>  <name>" line per file, as sha256sum writes and checks them.
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Pencraft $VERSION" \
+            --notes-file artifacts/release-notes/release-notes.md \
+            --verify-tag

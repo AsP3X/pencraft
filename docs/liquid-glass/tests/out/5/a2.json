@@ -1,0 +1,8 @@
+{"description":"Let the tab bar follow each look; white outline on dark glass in Increased contrast","operations":[
+{"op":"update","id":"8kViy/glass-tabs","properties":{"material":{"type":"liquid_glass","depth":"bar","advanced":{"tintOpacity":0.8}}}},
+{"op":"update","id":"nh4Ta/glass-tabs","properties":{"material":{"type":"liquid_glass","depth":"bar"}}},
+{"op":"update","id":"gTeX9/glass-tabs","properties":{"material":{"type":"liquid_glass","depth":"bar"},"stroke":"$on-dark-glass"}},
+{"op":"update","id":"gTeX9/glass-tab-search","properties":{"stroke":"$on-dark-glass"}},
+{"op":"update","id":"FKZez/glass-toolbar-back","properties":{"stroke":"$on-dark-glass"}},
+{"op":"update","id":"FKZez/glass-toolbar-actions","properties":{"stroke":"$on-dark-glass"}}
+]}

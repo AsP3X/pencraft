@@ -1,0 +1,29 @@
+{"description":"Labels for dark glass, status bar inside the hero, spacing on the scale","operations":[
+{"op":"delete","id":"status"},
+{"op":"replace","id":"hero","node":{"type":"frame","id":"hero","name":"Today's entry","x":0,"y":0,"width":393,"height":408,"layout":"none",
+  "fill":[{"type":"image","url":"docs/liquid-glass/tests/photos/dusk-harbour.jpg","mode":"cover"},{"type":"gradient","gradientType":"linear","rotation":0,"colors":[{"color":"#0a0f1fb3","position":0},{"color":"#0a0f1f00","position":0.5}]}],
+  "children":[
+   {"type":"frame","id":"status","name":"Status bar","x":0,"y":16,"width":393,"height":24,"layout":"horizontal","justifyContent":"space_between","alignItems":"center","padding":[0,32],"children":[
+     {"type":"text","id":"status-time","content":"9:41","fontFamily":"Segoe UI Variable","fontSize":15,"fontWeight":"600","fill":"#ffffff"},
+     {"type":"frame","layout":"horizontal","gap":8,"alignItems":"center","children":[
+       {"type":"icon","library":"lucide","icon":"signal","width":16,"height":16,"fill":"#ffffff"},
+       {"type":"icon","library":"lucide","icon":"wifi","width":16,"height":16,"fill":"#ffffff"},
+       {"type":"icon","library":"lucide","icon":"battery-full","width":20,"height":20,"fill":"#ffffff"}]}]},
+   {"type":"frame","id":"hero-text","x":0,"y":0,"width":393,"height":408,"layout":"vertical","justifyContent":"end","padding":[0,16,16,16],"gap":8,"children":[
+     {"type":"text","id":"hero-title","content":"Dusk at the harbour","fontFamily":"Bahnschrift","fontSize":34,"fontWeight":"600","lineHeight":1.1,"letterSpacing":-0.5,"fill":"#ffffff"},
+     {"type":"frame","id":"hero-meta","width":"fill_container","layout":"horizontal","justifyContent":"space_between","alignItems":"end","children":[
+       {"type":"text","id":"hero-meta-text","content":"Saturday 14 November, Hvar. 12 photos","fontFamily":"Segoe UI Variable","fontSize":15,"fontWeight":"400","fill":"#ffffffd9"},
+       {"type":"text","id":"hero-stamp","content":"'26 11 14","fontFamily":"Bahnschrift","fontSize":15,"fontWeight":"600","letterSpacing":1,"fill":"$stamp"}]}]}]}},
+{"op":"update","id":"toolbar/glass-toolbar-back-icon","properties":{"fill":"$on-dark-glass"}},
+{"op":"update","id":"toolbar/glass-toolbar-action-1","properties":{"fill":"$on-dark-glass"}},
+{"op":"update","id":"toolbar/glass-toolbar-action-2","properties":{"fill":"$on-dark-glass"}},
+{"op":"update","id":"toolbar/glass-toolbar-action-3","properties":{"fill":"$on-dark-glass"}},
+{"op":"update","id":"tabbar/glass-tab-1","properties":{"fill":"$selection-on-dark"}},
+{"op":"update","id":"tabbar/glass-tab-1-icon","properties":{"fill":"$on-dark-glass"}},
+{"op":"update","id":"tabbar/glass-tab-1-label","properties":{"fill":"$on-dark-glass"}},
+{"op":"update","id":"tabbar/glass-tab-2-icon","properties":{"fill":"$on-dark-glass"}},
+{"op":"update","id":"tabbar/glass-tab-2-label","properties":{"fill":"$on-dark-glass"}},
+{"op":"update","id":"tabbar/glass-tab-3-icon","properties":{"fill":"$on-dark-glass"}},
+{"op":"update","id":"tabbar/glass-tab-3-label","properties":{"fill":"$on-dark-glass"}},
+{"op":"update","id":"tabbar/glass-tab-search-icon","properties":{"fill":"$on-dark-glass"}}
+]}

@@ -1,0 +1,57 @@
+{"description":"Tokens and photo journal screen","operations":[
+{"op":"set_variables",
+ "themes":{"Mode":["Light","Dark"],"Glass":["Clear","Tinted","Reduced transparency","Increased contrast"]},
+ "variables":{
+  "on-glass":{"type":"color","value":[{"value":"#000000"},{"value":"#ffffff","theme":{"Mode":"Dark"}}]},
+  "selection-on-glass":{"type":"color","value":[{"value":"#0000001f"},{"value":"#ffffff24","theme":{"Mode":"Dark"}}]},
+  "on-light-glass":{"type":"color","value":"#000000"},
+  "on-dark-glass":{"type":"color","value":"#ffffff"},
+  "accent":{"type":"color","value":"#0060df"},
+  "glass-outline":{"type":"color","value":[{"value":"#00000000"},{"value":"#000000","theme":{"Glass":"Increased contrast"}}]},
+  "bg":{"type":"color","value":"#101518"},
+  "text":{"type":"color","value":"#f3f0e8"},
+  "text-quiet":{"type":"color","value":"#f3f0e8a6"}}},
+{"op":"insert","node":{"type":"frame","id":"screen","name":"Journal","x":0,"y":0,"width":393,"height":852,"layout":"none","clip":true,"fill":"$bg","theme":{"Mode":"Dark"},"children":[
+ {"type":"frame","id":"feed","name":"Feed","x":0,"y":0,"width":393,"layout":"vertical","gap":24,"children":[
+  {"type":"frame","id":"hero","name":"Entry: harbour","width":393,"height":408,"layout":"none","fill":{"type":"image","url":"docs/liquid-glass/tests/photos/dusk-harbour.jpg","mode":"cover"},"children":[
+   {"type":"rectangle","id":"hero-scrim","x":0,"y":228,"width":393,"height":180,"fill":{"type":"gradient","gradientType":"linear","rotation":0,"colors":[{"color":"#000000a6","position":0},{"color":"#00000000","position":1}]}},
+   {"type":"frame","id":"hero-text","x":16,"y":316,"width":361,"layout":"vertical","gap":4,"children":[
+    {"type":"text","content":"Friday 14 November, 12 photos","fontFamily":"Segoe UI Variable","fontSize":13,"fontWeight":"600","fill":"#ffffff"},
+    {"type":"text","content":"Last light at the harbour","fontFamily":"Sitka","fontSize":28,"fontWeight":"700","lineHeight":1.15,"letterSpacing":-0.4,"fill":"#ffffff"}]}]},
+  {"type":"frame","id":"entry2","name":"Entry: market and forest","width":393,"layout":"vertical","gap":12,"padding":[0,16],"children":[
+   {"type":"frame","width":"fill_container","layout":"horizontal","justifyContent":"space_between","alignItems":"end","children":[
+    {"type":"text","content":"Saturday market, then the woods","fontFamily":"Sitka","fontSize":20,"fontWeight":"700","fill":"$text"},
+    {"type":"text","content":"8 Nov","fontFamily":"Segoe UI Variable","fontSize":13,"fontWeight":"400","fill":"$text-quiet"}]},
+   {"type":"frame","width":"fill_container","layout":"horizontal","gap":8,"children":[
+    {"type":"rectangle","name":"Market","width":212,"height":188,"cornerRadius":20,"fill":{"type":"image","url":"docs/liquid-glass/tests/photos/market-colours.jpg","mode":"cover"}},
+    {"type":"rectangle","name":"Forest","width":"fill_container","height":188,"cornerRadius":20,"fill":{"type":"image","url":"docs/liquid-glass/tests/photos/forest-light.jpg","mode":"cover"}}]}]},
+  {"type":"frame","id":"entry3","name":"Entry: ferry","width":393,"layout":"vertical","gap":12,"padding":[0,16],"children":[
+   {"type":"frame","width":"fill_container","layout":"horizontal","justifyContent":"space_between","alignItems":"end","children":[
+    {"type":"text","content":"Night ferry to the island","fontFamily":"Sitka","fontSize":20,"fontWeight":"700","fill":"$text"},
+    {"type":"text","content":"2 Nov","fontFamily":"Segoe UI Variable","fontSize":13,"fontWeight":"400","fill":"$text-quiet"}]},
+   {"type":"rectangle","name":"Ferry","width":"fill_container","height":280,"cornerRadius":20,"fill":{"type":"image","url":"docs/liquid-glass/tests/photos/night-ferry.jpg","mode":"cover"}}]}]},
+ {"type":"frame","id":"toolbar","name":"Toolbar","x":16,"y":58,"width":361,"layout":"horizontal","justifyContent":"space_between","alignItems":"center","children":[
+  {"type":"frame","id":"tb-calendar","name":"Calendar","width":44,"height":44,"cornerRadius":22,"justifyContent":"center","alignItems":"center","material":"liquid_glass","stroke":"$glass-outline","strokeWidth":1,"strokeAlignment":"inner","children":[
+   {"type":"icon","id":"tb-calendar-icon","library":"lucide","icon":"calendar-days","width":22,"height":22,"fill":"$on-glass"}]},
+  {"type":"frame","id":"tb-trailing","layout":"horizontal","gap":8,"alignItems":"center","children":[
+   {"type":"frame","id":"tb-actions","name":"Actions","height":44,"cornerRadius":22,"padding":[0,16],"gap":16,"layout":"horizontal","alignItems":"center","material":"liquid_glass","stroke":"$glass-outline","strokeWidth":1,"strokeAlignment":"inner","children":[
+    {"type":"icon","id":"tb-a1","library":"lucide","icon":"map","width":22,"height":22,"fill":"$on-glass"},
+    {"type":"icon","id":"tb-a2","library":"lucide","icon":"share","width":22,"height":22,"fill":"$on-glass"},
+    {"type":"icon","id":"tb-a3","library":"lucide","icon":"ellipsis","width":22,"height":22,"fill":"$on-glass"}]},
+   {"type":"frame","id":"tb-primary","name":"New entry","width":44,"height":44,"cornerRadius":22,"justifyContent":"center","alignItems":"center","material":{"type":"liquid_glass","tint":"$accent"},"children":[
+    {"type":"icon","id":"tb-primary-icon","library":"lucide","icon":"plus","width":22,"height":22,"fill":"#ffffff"}]}]}]},
+ {"type":"frame","id":"tabbar","name":"Tab bar","x":21,"y":769,"layout":"horizontal","gap":8,"alignItems":"center","glassGroup":8,"children":[
+  {"type":"frame","id":"tabs","name":"Tabs","width":281,"height":62,"cornerRadius":31,"padding":4,"layout":"horizontal","justifyContent":"space_between","alignItems":"center","material":{"type":"liquid_glass","depth":"bar"},"stroke":"$glass-outline","strokeWidth":1,"strokeAlignment":"inner","children":[
+   {"type":"frame","id":"tab-1","width":88,"height":54,"cornerRadius":27,"layout":"vertical","gap":4,"justifyContent":"center","alignItems":"center","fill":"$selection-on-glass","children":[
+    {"type":"icon","id":"tab-1-icon","library":"lucide","icon":"book-open","width":20,"height":20,"fill":"$on-glass"},
+    {"type":"text","id":"tab-1-label","content":"Journal","fontFamily":"Segoe UI Variable","fontSize":11,"fontWeight":"600","fill":"$on-glass"}]},
+   {"type":"frame","id":"tab-2","width":88,"height":54,"cornerRadius":27,"layout":"vertical","gap":4,"justifyContent":"center","alignItems":"center","children":[
+    {"type":"icon","id":"tab-2-icon","library":"lucide","icon":"map-pin","width":20,"height":20,"fill":"$on-glass"},
+    {"type":"text","id":"tab-2-label","content":"Places","fontFamily":"Segoe UI Variable","fontSize":11,"fontWeight":"600","fill":"$on-glass"}]},
+   {"type":"frame","id":"tab-3","width":88,"height":54,"cornerRadius":27,"layout":"vertical","gap":4,"justifyContent":"center","alignItems":"center","children":[
+    {"type":"icon","id":"tab-3-icon","library":"lucide","icon":"images","width":20,"height":20,"fill":"$on-glass"},
+    {"type":"text","id":"tab-3-label","content":"Albums","fontFamily":"Segoe UI Variable","fontSize":11,"fontWeight":"600","fill":"$on-glass"}]}]},
+  {"type":"frame","id":"tab-search","name":"Search tab","width":62,"height":62,"cornerRadius":31,"justifyContent":"center","alignItems":"center","material":{"type":"liquid_glass","depth":"bar"},"stroke":"$glass-outline","strokeWidth":1,"strokeAlignment":"inner","children":[
+   {"type":"icon","id":"tab-search-icon","library":"lucide","icon":"search","width":24,"height":24,"fill":"$on-glass"}]}]}
+]}}
+]}

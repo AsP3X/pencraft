@@ -1,0 +1,23 @@
+# Text files are stored with LF and checked out in the system's convention.
+* text=auto
+
+*.rs    text
+*.toml  text
+*.md    text
+*.yml   text
+*.json  text
+*.sh    text eol=lf
+*.ps1   text eol=crlf
+*.iss   text eol=crlf
+*.wxs   text
+*.plist text eol=lf
+# A design file is the same bytes on every system.
+*.pen   text eol=lf
+
+*.png   binary
+
+app/Cargo.lock linguist-generated=true
+
+# The skills are read by models on every system, and the pictures tests compare against are bytes.
+app/skills/** text eol=lf
+app/golden/** binary

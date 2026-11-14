@@ -1,0 +1,25 @@
+{"description":"Set up tokens for the photo journal","operations":[
+{"op":"set_variables",
+ "themes":{"Glass":["Clear","Tinted","Reduced transparency","Increased contrast"]},
+ "variables":{
+  "on-light-glass":{"type":"color","value":"#000000"},
+  "on-dark-glass":{"type":"color","value":"#ffffff"},
+  "selection-on-light":{"type":"color","value":"#0000001f"},
+  "selection-on-dark":{"type":"color","value":"#ffffff33"},
+  "accent":{"type":"color","value":"#b5400f"},
+  "bg":{"type":"color","value":"#e8edf1"},
+  "ink":{"type":"color","value":"#121a26"},
+  "ink-quiet":{"type":"color","value":"#4d5a6b"},
+  "stamp":{"type":"color","value":"#ffb454"},
+  "glass-outline":{"type":"color","value":[{"value":"#00000000"},{"value":"#000000","theme":{"Glass":"Increased contrast"}}]},
+  "glass-regular-tint-opacity":{"type":"number","value":[
+    {"value":0.6,"theme":{"Glass":"Tinted"}},
+    {"value":0.9,"theme":{"Glass":"Reduced transparency"}},
+    {"value":1,"theme":{"Glass":"Increased contrast"}}]},
+  "glass-regular-blur":{"type":"number","value":[
+    {"value":40,"theme":{"Glass":"Reduced transparency"}},
+    {"value":40,"theme":{"Glass":"Increased contrast"}}]},
+  "glass-regular-refraction":{"type":"number","value":[
+    {"value":0.4,"theme":{"Glass":"Reduced transparency"}},
+    {"value":0,"theme":{"Glass":"Increased contrast"}}]}}}
+]}

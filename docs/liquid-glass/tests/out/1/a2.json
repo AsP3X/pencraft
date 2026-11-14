@@ -1,0 +1,27 @@
+{"description":"Glass components board: tab bar and toolbar","operations":[
+{"op":"insert","node":{"type":"frame","id":"glass-board","name":"Glass components","x":-600,"y":0,"layout":"vertical","gap":40,"padding":40,"fill":"#8a93a3","children":[
+{"type":"frame","id":"glass-tab-bar","name":"Tab bar","reusable":true,"layout":"horizontal","gap":10,"alignItems":"center","glassGroup":10,"children":[
+  {"type":"frame","id":"glass-tabs","name":"Tabs","width":279,"height":62,"cornerRadius":31,"padding":4,"layout":"horizontal","justifyContent":"space_between","alignItems":"center","material":{"type":"liquid_glass","depth":"bar"},"stroke":"$glass-outline","strokeWidth":1,"strokeAlignment":"inner","children":[
+    {"type":"frame","id":"glass-tab-1","width":88,"height":54,"cornerRadius":27,"layout":"vertical","gap":2,"justifyContent":"center","alignItems":"center","fill":"$selection-on-light","children":[
+      {"type":"icon","id":"glass-tab-1-icon","library":"lucide","icon":"book-open","width":22,"height":22,"fill":"$accent"},
+      {"type":"text","id":"glass-tab-1-label","content":"Journal","fontFamily":"Segoe UI Variable","fontSize":11,"fontWeight":"600","fill":"$accent"}]},
+    {"type":"frame","id":"glass-tab-2","width":88,"height":54,"cornerRadius":27,"layout":"vertical","gap":2,"justifyContent":"center","alignItems":"center","children":[
+      {"type":"icon","id":"glass-tab-2-icon","library":"lucide","icon":"map-pin","width":22,"height":22,"fill":"$on-light-glass"},
+      {"type":"text","id":"glass-tab-2-label","content":"Places","fontFamily":"Segoe UI Variable","fontSize":11,"fontWeight":"600","fill":"$on-light-glass"}]},
+    {"type":"frame","id":"glass-tab-3","width":88,"height":54,"cornerRadius":27,"layout":"vertical","gap":2,"justifyContent":"center","alignItems":"center","children":[
+      {"type":"icon","id":"glass-tab-3-icon","library":"lucide","icon":"images","width":22,"height":22,"fill":"$on-light-glass"},
+      {"type":"text","id":"glass-tab-3-label","content":"Albums","fontFamily":"Segoe UI Variable","fontSize":11,"fontWeight":"600","fill":"$on-light-glass"}]}]},
+  {"type":"frame","id":"glass-tab-search","name":"Search tab","width":62,"height":62,"cornerRadius":31,"justifyContent":"center","alignItems":"center","material":{"type":"liquid_glass","depth":"bar"},"stroke":"$glass-outline","strokeWidth":1,"strokeAlignment":"inner","children":[
+    {"type":"icon","id":"glass-tab-search-icon","library":"lucide","icon":"search","width":24,"height":24,"fill":"$on-light-glass"}]}]},
+{"type":"frame","id":"glass-toolbar","name":"Toolbar","reusable":true,"width":361,"layout":"horizontal","justifyContent":"space_between","alignItems":"center","children":[
+  {"type":"frame","id":"glass-toolbar-back","name":"Calendar","width":44,"height":44,"cornerRadius":22,"justifyContent":"center","alignItems":"center","material":"liquid_glass","stroke":"$glass-outline","strokeWidth":1,"strokeAlignment":"inner","children":[
+    {"type":"icon","id":"glass-toolbar-back-icon","library":"lucide","icon":"calendar-days","width":22,"height":22,"fill":"$on-light-glass"}]},
+  {"type":"frame","id":"glass-toolbar-trailing","layout":"horizontal","gap":10,"alignItems":"center","children":[
+    {"type":"frame","id":"glass-toolbar-actions","name":"Actions","height":44,"cornerRadius":22,"padding":[0,14],"gap":18,"layout":"horizontal","alignItems":"center","material":"liquid_glass","stroke":"$glass-outline","strokeWidth":1,"strokeAlignment":"inner","children":[
+      {"type":"icon","id":"glass-toolbar-action-1","library":"lucide","icon":"map","width":22,"height":22,"fill":"$on-light-glass"},
+      {"type":"icon","id":"glass-toolbar-action-2","library":"lucide","icon":"sliders-horizontal","width":22,"height":22,"fill":"$on-light-glass"},
+      {"type":"icon","id":"glass-toolbar-action-3","library":"lucide","icon":"ellipsis","width":22,"height":22,"fill":"$on-light-glass"}]},
+    {"type":"frame","id":"glass-toolbar-primary","name":"New entry","width":44,"height":44,"cornerRadius":22,"justifyContent":"center","alignItems":"center","material":{"type":"liquid_glass","tint":"$accent"},"children":[
+      {"type":"icon","id":"glass-toolbar-primary-icon","library":"lucide","icon":"plus","width":22,"height":22,"fill":"#ffffff"}]}]}]}
+]}}
+]}

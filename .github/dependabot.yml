@@ -1,0 +1,10 @@
+# Only the workflows' actions are kept up to date by a robot. The Rust
+# dependencies are pinned exactly and upgraded by hand (app/AGENTS.md):
+# several must move together, like wgpu with eframe and the craft-libs
+# crates from one commit.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

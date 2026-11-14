@@ -1,0 +1,2193 @@
+{
+  "version": "2.22",
+  "children": [
+    {
+      "type": "frame",
+      "id": "glass-board",
+      "x": -600,
+      "y": 0,
+      "name": "Glass components",
+      "layout": "vertical",
+      "gap": 40,
+      "padding": 40,
+      "fill": "#8a93a3",
+      "children": [
+        {
+          "type": "frame",
+          "id": "glass-tab-bar",
+          "name": "Tab bar",
+          "reusable": true,
+          "layout": "horizontal",
+          "gap": 10,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "glass-tabs",
+              "name": "Tabs",
+              "width": 279,
+              "height": 62,
+              "layout": "horizontal",
+              "padding": 4,
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "stroke": "$glass-outline",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "material": {
+                "type": "liquid_glass",
+                "depth": "bar"
+              },
+              "cornerRadius": 31,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "glass-tab-1",
+                  "width": 88,
+                  "height": 54,
+                  "layout": "vertical",
+                  "gap": 2,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "fill": "$selection-on-light",
+                  "cornerRadius": 27,
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "glass-tab-1-icon",
+                      "width": 22,
+                      "height": 22,
+                      "fill": "$accent",
+                      "icon": "newspaper"
+                    },
+                    {
+                      "type": "text",
+                      "id": "glass-tab-1-label",
+                      "fill": "$accent",
+                      "content": "Today",
+                      "fontFamily": "Segoe UI Variable",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "glass-tab-2",
+                  "width": 88,
+                  "height": 54,
+                  "layout": "vertical",
+                  "gap": 2,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "cornerRadius": 27,
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "glass-tab-2-icon",
+                      "width": 22,
+                      "height": 22,
+                      "fill": "$on-light-glass",
+                      "icon": "library"
+                    },
+                    {
+                      "type": "text",
+                      "id": "glass-tab-2-label",
+                      "fill": "$on-light-glass",
+                      "content": "Library",
+                      "fontFamily": "Segoe UI Variable",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "glass-tab-3",
+                  "width": 88,
+                  "height": 54,
+                  "layout": "vertical",
+                  "gap": 2,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "cornerRadius": 27,
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "glass-tab-3-icon",
+                      "width": 22,
+                      "height": 22,
+                      "fill": "$on-light-glass",
+                      "icon": "bookmark"
+                    },
+                    {
+                      "type": "text",
+                      "id": "glass-tab-3-label",
+                      "fill": "$on-light-glass",
+                      "content": "Saved",
+                      "fontFamily": "Segoe UI Variable",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "glass-tab-search",
+              "name": "Search tab",
+              "width": 62,
+              "height": 62,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "stroke": "$glass-outline",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "material": {
+                "type": "liquid_glass",
+                "depth": "bar"
+              },
+              "cornerRadius": 31,
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "glass-tab-search-icon",
+                  "width": 24,
+                  "height": 24,
+                  "fill": "$on-light-glass",
+                  "icon": "search"
+                }
+              ]
+            }
+          ],
+          "glassGroup": 10
+        },
+        {
+          "type": "frame",
+          "id": "glass-toolbar",
+          "name": "Toolbar",
+          "reusable": true,
+          "width": 361,
+          "layout": "horizontal",
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "glass-toolbar-back",
+              "name": "Back",
+              "width": 44,
+              "height": 44,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "stroke": "$glass-outline",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "material": "liquid_glass",
+              "cornerRadius": 22,
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "glass-toolbar-back-icon",
+                  "width": 22,
+                  "height": 22,
+                  "fill": "$on-light-glass",
+                  "icon": "chevron-left"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "glass-toolbar-trailing",
+              "layout": "horizontal",
+              "gap": 10,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "glass-toolbar-actions",
+                  "name": "Actions",
+                  "height": 44,
+                  "layout": "horizontal",
+                  "gap": 18,
+                  "padding": [
+                    0,
+                    14
+                  ],
+                  "alignItems": "center",
+                  "stroke": "$glass-outline",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
+                  "material": "liquid_glass",
+                  "cornerRadius": 22,
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "glass-toolbar-action-1",
+                      "width": 22,
+                      "height": 22,
+                      "fill": "$on-light-glass",
+                      "icon": "a-large-small"
+                    },
+                    {
+                      "type": "icon",
+                      "id": "glass-toolbar-action-2",
+                      "width": 22,
+                      "height": 22,
+                      "fill": "$on-light-glass",
+                      "icon": "list-filter"
+                    },
+                    {
+                      "type": "icon",
+                      "id": "glass-toolbar-action-3",
+                      "width": 22,
+                      "height": 22,
+                      "fill": "$on-light-glass",
+                      "icon": "ellipsis"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "glass-toolbar-primary",
+                  "name": "Listen",
+                  "width": 44,
+                  "height": 44,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "material": {
+                    "type": "liquid_glass",
+                    "tint": "$accent",
+                    "appearance": "dark"
+                  },
+                  "cornerRadius": 22,
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "glass-toolbar-primary-icon",
+                      "width": 22,
+                      "height": 22,
+                      "fill": "#ffffff",
+                      "icon": "headphones"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "light",
+      "x": 0,
+      "y": 0,
+      "name": "Reader, light",
+      "width": 393,
+      "height": 852,
+      "clip": true,
+      "layout": "none",
+      "fill": "$bg",
+      "children": [
+        {
+          "type": "frame",
+          "id": "light-feed",
+          "x": 0,
+          "y": -212,
+          "name": "Feed",
+          "width": 393,
+          "layout": "vertical",
+          "padding": [
+            0,
+            20
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "light-art-0",
+              "name": "The harbour pilots who s",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 12,
+              "padding": [
+                20,
+                0
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "qKrtC",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "nx5gX",
+                      "width": "fill_container",
+                      "layout": "horizontal",
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "faAOP",
+                          "fill": "$accent-text",
+                          "content": "Tideline Review",
+                          "fontFamily": "Segoe UI Variable",
+                          "fontSize": 13,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "RaUT5",
+                          "fill": "$quiet",
+                          "content": "18 min",
+                          "fontFamily": "Segoe UI Variable",
+                          "fontSize": 13,
+                          "fontWeight": "400"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "T6c8j",
+                      "width": "fill_container",
+                      "fill": "$text",
+                      "content": "The harbour pilots who still navigate by memory",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "Sitka",
+                      "fontSize": 22,
+                      "fontWeight": "700",
+                      "letterSpacing": -0.2,
+                      "lineHeight": 1.15
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "okWFT",
+                  "width": "fill_container",
+                  "fill": "$quiet",
+                  "content": "Before the radar screens, before the dredged channel, there were forty-one marks a pilot had to carry in his head. Three men on the estuary still do, and none of them has an apprentice.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "Segoe UI Variable",
+                  "fontSize": 15,
+                  "fontWeight": "400",
+                  "lineHeight": 1.45
+                }
+              ]
+            },
+            {
+              "type": "rectangle",
+              "id": "s6XPD",
+              "width": "fill_container",
+              "height": 1,
+              "fill": "$line"
+            },
+            {
+              "type": "frame",
+              "id": "light-art-1",
+              "name": "What a beech wood does w",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 12,
+              "padding": [
+                20,
+                0
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "PNLsq",
+                  "width": "fill_container",
+                  "layout": "horizontal",
+                  "gap": 16,
+                  "alignItems": "start",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "ll5Me",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "t5ddj",
+                          "width": "fill_container",
+                          "layout": "horizontal",
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "O3x0A",
+                              "fill": "$accent-text",
+                              "content": "Field Notes",
+                              "fontFamily": "Segoe UI Variable",
+                              "fontSize": 13,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "text",
+                              "id": "Rwi4F",
+                              "fill": "$quiet",
+                              "content": "9 min",
+                              "fontFamily": "Segoe UI Variable",
+                              "fontSize": 13,
+                              "fontWeight": "400"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "A3802",
+                          "width": "fill_container",
+                          "fill": "$text",
+                          "content": "What a beech wood does with the first hour of light",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "Sitka",
+                          "fontSize": 22,
+                          "fontWeight": "700",
+                          "letterSpacing": -0.2,
+                          "lineHeight": 1.15
+                        }
+                      ]
+                    },
+                    {
+                      "type": "rectangle",
+                      "id": "lPcxX",
+                      "name": "Picture",
+                      "width": 84,
+                      "height": 84,
+                      "fill": {
+                        "type": "image",
+                        "url": "docs/liquid-glass/tests/photos/forest-light.jpg",
+                        "mode": "cover"
+                      },
+                      "cornerRadius": 8
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "dXNr2",
+                  "width": "fill_container",
+                  "fill": "$quiet",
+                  "content": "Foresters call it the green hour. For roughly fifty minutes after sunrise the canopy passes on only a sliver of the spectrum, and nearly everything living below has arranged its day around it.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "Segoe UI Variable",
+                  "fontSize": 15,
+                  "fontWeight": "400",
+                  "lineHeight": 1.45
+                }
+              ]
+            },
+            {
+              "type": "rectangle",
+              "id": "1hJMD",
+              "width": "fill_container",
+              "height": 1,
+              "fill": "$line"
+            },
+            {
+              "type": "frame",
+              "id": "light-art-2",
+              "name": "A short history of the m",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 12,
+              "padding": [
+                20,
+                0
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "X03b5",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "CygoV",
+                      "width": "fill_container",
+                      "layout": "horizontal",
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "vkKhU",
+                          "fill": "$accent-text",
+                          "content": "The Ledger",
+                          "fontFamily": "Segoe UI Variable",
+                          "fontSize": 13,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "UlOOy",
+                          "fill": "$quiet",
+                          "content": "24 min",
+                          "fontFamily": "Segoe UI Variable",
+                          "fontSize": 13,
+                          "fontWeight": "400"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "r37LF",
+                      "width": "fill_container",
+                      "fill": "$text",
+                      "content": "A short history of the market stall, told through its awnings",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "Sitka",
+                      "fontSize": 22,
+                      "fontWeight": "700",
+                      "letterSpacing": -0.2,
+                      "lineHeight": 1.15
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "SYRXp",
+                  "width": "fill_container",
+                  "fill": "$quiet",
+                  "content": "Stripes meant fish, plain canvas meant cloth, and a trader who changed colour without asking the guild could expect a visit before noon.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "Segoe UI Variable",
+                  "fontSize": 15,
+                  "fontWeight": "400",
+                  "lineHeight": 1.45
+                }
+              ]
+            },
+            {
+              "type": "rectangle",
+              "id": "vDjKy",
+              "width": "fill_container",
+              "height": 1,
+              "fill": "$line"
+            },
+            {
+              "type": "frame",
+              "id": "light-art-3",
+              "name": "Last crossing: a winter ",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 12,
+              "padding": [
+                20,
+                0
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "TJF3s",
+                  "width": "fill_container",
+                  "layout": "horizontal",
+                  "gap": 16,
+                  "alignItems": "start",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "RNfvm",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "J36vg",
+                          "width": "fill_container",
+                          "layout": "horizontal",
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Gajz5",
+                              "fill": "$accent-text",
+                              "content": "Night Desk",
+                              "fontFamily": "Segoe UI Variable",
+                              "fontSize": 13,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "text",
+                              "id": "kc5wX",
+                              "fill": "$quiet",
+                              "content": "12 min",
+                              "fontFamily": "Segoe UI Variable",
+                              "fontSize": 13,
+                              "fontWeight": "400"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "kvkkl",
+                          "width": "fill_container",
+                          "fill": "$text",
+                          "content": "Last crossing: a winter on the 23:40 ferry",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "Sitka",
+                          "fontSize": 22,
+                          "fontWeight": "700",
+                          "letterSpacing": -0.2,
+                          "lineHeight": 1.15
+                        }
+                      ]
+                    },
+                    {
+                      "type": "rectangle",
+                      "id": "KoWxT",
+                      "name": "Picture",
+                      "width": 84,
+                      "height": 84,
+                      "fill": {
+                        "type": "image",
+                        "url": "docs/liquid-glass/tests/photos/night-ferry.jpg",
+                        "mode": "cover"
+                      },
+                      "cornerRadius": 8
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "LHR4K",
+                  "width": "fill_container",
+                  "fill": "$quiet",
+                  "content": "The same nineteen passengers, a kettle that has outlived two captains, and a timetable nobody has needed to read since 1998.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "Segoe UI Variable",
+                  "fontSize": 15,
+                  "fontWeight": "400",
+                  "lineHeight": 1.45
+                }
+              ]
+            },
+            {
+              "type": "rectangle",
+              "id": "JjaPm",
+              "width": "fill_container",
+              "height": 1,
+              "fill": "$line"
+            },
+            {
+              "type": "frame",
+              "id": "light-art-4",
+              "name": "Why we underline: notes ",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 12,
+              "padding": [
+                20,
+                0
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "CAEMX",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "d10bj",
+                      "width": "fill_container",
+                      "layout": "horizontal",
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "ZYhlM",
+                          "fill": "$accent-text",
+                          "content": "Marginalia",
+                          "fontFamily": "Segoe UI Variable",
+                          "fontSize": 13,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "MmSTM",
+                          "fill": "$quiet",
+                          "content": "7 min",
+                          "fontFamily": "Segoe UI Variable",
+                          "fontSize": 13,
+                          "fontWeight": "400"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "3Ig0O",
+                      "width": "fill_container",
+                      "fill": "$text",
+                      "content": "Why we underline: notes on reading with a pencil",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "Sitka",
+                      "fontSize": 22,
+                      "fontWeight": "700",
+                      "letterSpacing": -0.2,
+                      "lineHeight": 1.15
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "Rd6DE",
+                  "width": "fill_container",
+                  "fill": "$quiet",
+                  "content": "A marked page is a conversation you can come back to. An unmarked one, the argument goes, is only a page you once looked at.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "Segoe UI Variable",
+                  "fontSize": 15,
+                  "fontWeight": "400",
+                  "lineHeight": 1.45
+                }
+              ]
+            },
+            {
+              "type": "rectangle",
+              "id": "J9kGB",
+              "width": "fill_container",
+              "height": 1,
+              "fill": "$line"
+            },
+            {
+              "type": "frame",
+              "id": "light-art-5",
+              "name": "The cartographer of thin",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 12,
+              "padding": [
+                20,
+                0
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Fa4wY",
+                  "width": "fill_container",
+                  "layout": "horizontal",
+                  "gap": 16,
+                  "alignItems": "start",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "SmlXm",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "3G3GT",
+                          "width": "fill_container",
+                          "layout": "horizontal",
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Dn7NH",
+                              "fill": "$accent-text",
+                              "content": "Tideline Review",
+                              "fontFamily": "Segoe UI Variable",
+                              "fontSize": 13,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "text",
+                              "id": "7gdEz",
+                              "fill": "$quiet",
+                              "content": "31 min",
+                              "fontFamily": "Segoe UI Variable",
+                              "fontSize": 13,
+                              "fontWeight": "400"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "uxCB3",
+                          "width": "fill_container",
+                          "fill": "$text",
+                          "content": "The cartographer of things that are no longer there",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "Sitka",
+                          "fontSize": 22,
+                          "fontWeight": "700",
+                          "letterSpacing": -0.2,
+                          "lineHeight": 1.15
+                        }
+                      ]
+                    },
+                    {
+                      "type": "rectangle",
+                      "id": "iL58m",
+                      "name": "Picture",
+                      "width": 84,
+                      "height": 84,
+                      "fill": {
+                        "type": "image",
+                        "url": "docs/liquid-glass/tests/photos/dusk-harbour.jpg",
+                        "mode": "cover"
+                      },
+                      "cornerRadius": 8
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "ux55O",
+                  "width": "fill_container",
+                  "fill": "$quiet",
+                  "content": "She has mapped 212 demolished piers, each drawn at the scale of the one that replaced it, and keeps the sheets in the order the tide took them.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "Segoe UI Variable",
+                  "fontSize": 15,
+                  "fontWeight": "400",
+                  "lineHeight": 1.45
+                }
+              ]
+            },
+            {
+              "type": "rectangle",
+              "id": "kN9Og",
+              "width": "fill_container",
+              "height": 1,
+              "fill": "$line"
+            },
+            {
+              "type": "frame",
+              "id": "light-art-6",
+              "name": "Colour words a dyer need",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 12,
+              "padding": [
+                20,
+                0
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "OQgDT",
+                  "width": "fill_container",
+                  "layout": "horizontal",
+                  "gap": 16,
+                  "alignItems": "start",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "UveSv",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "m4Eb1",
+                          "width": "fill_container",
+                          "layout": "horizontal",
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "93Zag",
+                              "fill": "$accent-text",
+                              "content": "Field Notes",
+                              "fontFamily": "Segoe UI Variable",
+                              "fontSize": 13,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "text",
+                              "id": "5KtT7",
+                              "fill": "$quiet",
+                              "content": "11 min",
+                              "fontFamily": "Segoe UI Variable",
+                              "fontSize": 13,
+                              "fontWeight": "400"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "A1YkH",
+                          "width": "fill_container",
+                          "fill": "$text",
+                          "content": "Colour words a dyer needs and a painter does not",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "Sitka",
+                          "fontSize": 22,
+                          "fontWeight": "700",
+                          "letterSpacing": -0.2,
+                          "lineHeight": 1.15
+                        }
+                      ]
+                    },
+                    {
+                      "type": "rectangle",
+                      "id": "nQEZV",
+                      "name": "Picture",
+                      "width": 84,
+                      "height": 84,
+                      "fill": {
+                        "type": "image",
+                        "url": "docs/liquid-glass/tests/photos/market-colours.jpg",
+                        "mode": "cover"
+                      },
+                      "cornerRadius": 8
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "SH6ae",
+                  "width": "fill_container",
+                  "fill": "$quiet",
+                  "content": "Madder has nine named reds in the old Norwich pattern books. Six of them describe the cloth while it is still wet.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "Segoe UI Variable",
+                  "fontSize": 15,
+                  "fontWeight": "400",
+                  "lineHeight": 1.45
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "rectangle",
+          "id": "light-top",
+          "x": 0,
+          "y": 0,
+          "name": "Scroll edge top",
+          "width": 393,
+          "height": 120,
+          "fill": {
+            "type": "gradient",
+            "gradientType": "linear",
+            "rotation": 0,
+            "colors": [
+              {
+                "color": "$bg-clear",
+                "position": 0
+              },
+              {
+                "color": "$bg-fade",
+                "position": 0.55
+              },
+              {
+                "color": "$bg-solid",
+                "position": 0.8
+              }
+            ]
+          }
+        },
+        {
+          "type": "rectangle",
+          "id": "light-bottom",
+          "x": 0,
+          "y": 732,
+          "name": "Scroll edge bottom",
+          "width": 393,
+          "height": 120,
+          "fill": {
+            "type": "gradient",
+            "gradientType": "linear",
+            "rotation": 180,
+            "colors": [
+              {
+                "color": "$bg-clear",
+                "position": 0
+              },
+              {
+                "color": "$bg-fade",
+                "position": 0.55
+              },
+              {
+                "color": "$bg-solid",
+                "position": 1
+              }
+            ]
+          }
+        },
+        {
+          "type": "frame",
+          "id": "light-status",
+          "x": 0,
+          "y": 14,
+          "name": "Status bar",
+          "width": 393,
+          "height": 24,
+          "layout": "horizontal",
+          "padding": [
+            0,
+            32
+          ],
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "dWNsV",
+              "fill": "$text",
+              "content": "9:41",
+              "fontFamily": "Segoe UI Variable",
+              "fontSize": 16,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "Ithtn",
+              "layout": "horizontal",
+              "gap": 8,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "F2ttJ",
+                  "width": 16,
+                  "height": 16,
+                  "fill": "$text",
+                  "icon": "signal"
+                },
+                {
+                  "type": "icon",
+                  "id": "ccI8A",
+                  "width": 16,
+                  "height": 16,
+                  "fill": "$text",
+                  "icon": "wifi"
+                },
+                {
+                  "type": "icon",
+                  "id": "X8xqn",
+                  "width": 22,
+                  "height": 22,
+                  "fill": "$text",
+                  "icon": "battery-medium"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "ref",
+          "id": "light-toolbar",
+          "x": 16,
+          "y": 58,
+          "ref": "glass-toolbar"
+        },
+        {
+          "type": "ref",
+          "id": "light-tabbar",
+          "x": 21,
+          "y": 769,
+          "ref": "glass-tab-bar"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "dark",
+      "x": 433,
+      "y": 0,
+      "name": "Reader, dark",
+      "theme": {
+        "Mode": "Dark"
+      },
+      "width": 393,
+      "height": 852,
+      "clip": true,
+      "layout": "none",
+      "fill": "$bg",
+      "children": [
+        {
+          "type": "frame",
+          "id": "dark-feed",
+          "x": 0,
+          "y": -212,
+          "name": "Feed",
+          "width": 393,
+          "layout": "vertical",
+          "padding": [
+            0,
+            20
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "dark-art-0",
+              "name": "The harbour pilots who s",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 12,
+              "padding": [
+                20,
+                0
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "sVE45",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "ZIRok",
+                      "width": "fill_container",
+                      "layout": "horizontal",
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "TWf8I",
+                          "fill": "$accent-text",
+                          "content": "Tideline Review",
+                          "fontFamily": "Segoe UI Variable",
+                          "fontSize": 13,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "NNIOS",
+                          "fill": "$quiet",
+                          "content": "18 min",
+                          "fontFamily": "Segoe UI Variable",
+                          "fontSize": 13,
+                          "fontWeight": "400"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "C8xxL",
+                      "width": "fill_container",
+                      "fill": "$text",
+                      "content": "The harbour pilots who still navigate by memory",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "Sitka",
+                      "fontSize": 22,
+                      "fontWeight": "700",
+                      "letterSpacing": -0.2,
+                      "lineHeight": 1.15
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "8FIPo",
+                  "width": "fill_container",
+                  "fill": "$quiet",
+                  "content": "Before the radar screens, before the dredged channel, there were forty-one marks a pilot had to carry in his head. Three men on the estuary still do, and none of them has an apprentice.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "Segoe UI Variable",
+                  "fontSize": 15,
+                  "fontWeight": "400",
+                  "lineHeight": 1.45
+                }
+              ]
+            },
+            {
+              "type": "rectangle",
+              "id": "7L7JO",
+              "width": "fill_container",
+              "height": 1,
+              "fill": "$line"
+            },
+            {
+              "type": "frame",
+              "id": "dark-art-1",
+              "name": "What a beech wood does w",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 12,
+              "padding": [
+                20,
+                0
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "OxqFj",
+                  "width": "fill_container",
+                  "layout": "horizontal",
+                  "gap": 16,
+                  "alignItems": "start",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "LGul4",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "ALmEc",
+                          "width": "fill_container",
+                          "layout": "horizontal",
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "LeLkE",
+                              "fill": "$accent-text",
+                              "content": "Field Notes",
+                              "fontFamily": "Segoe UI Variable",
+                              "fontSize": 13,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "text",
+                              "id": "UQSve",
+                              "fill": "$quiet",
+                              "content": "9 min",
+                              "fontFamily": "Segoe UI Variable",
+                              "fontSize": 13,
+                              "fontWeight": "400"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "7LG39",
+                          "width": "fill_container",
+                          "fill": "$text",
+                          "content": "What a beech wood does with the first hour of light",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "Sitka",
+                          "fontSize": 22,
+                          "fontWeight": "700",
+                          "letterSpacing": -0.2,
+                          "lineHeight": 1.15
+                        }
+                      ]
+                    },
+                    {
+                      "type": "rectangle",
+                      "id": "fUw4w",
+                      "name": "Picture",
+                      "width": 84,
+                      "height": 84,
+                      "fill": {
+                        "type": "image",
+                        "url": "docs/liquid-glass/tests/photos/forest-light.jpg",
+                        "mode": "cover"
+                      },
+                      "cornerRadius": 8
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "peOZP",
+                  "width": "fill_container",
+                  "fill": "$quiet",
+                  "content": "Foresters call it the green hour. For roughly fifty minutes after sunrise the canopy passes on only a sliver of the spectrum, and nearly everything living below has arranged its day around it.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "Segoe UI Variable",
+                  "fontSize": 15,
+                  "fontWeight": "400",
+                  "lineHeight": 1.45
+                }
+              ]
+            },
+            {
+              "type": "rectangle",
+              "id": "wjj5u",
+              "width": "fill_container",
+              "height": 1,
+              "fill": "$line"
+            },
+            {
+              "type": "frame",
+              "id": "dark-art-2",
+              "name": "A short history of the m",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 12,
+              "padding": [
+                20,
+                0
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "T2yfh",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "2aPtS",
+                      "width": "fill_container",
+                      "layout": "horizontal",
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "S2ELF",
+                          "fill": "$accent-text",
+                          "content": "The Ledger",
+                          "fontFamily": "Segoe UI Variable",
+                          "fontSize": 13,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "ZLVeW",
+                          "fill": "$quiet",
+                          "content": "24 min",
+                          "fontFamily": "Segoe UI Variable",
+                          "fontSize": 13,
+                          "fontWeight": "400"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "Y3qR9",
+                      "width": "fill_container",
+                      "fill": "$text",
+                      "content": "A short history of the market stall, told through its awnings",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "Sitka",
+                      "fontSize": 22,
+                      "fontWeight": "700",
+                      "letterSpacing": -0.2,
+                      "lineHeight": 1.15
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "Bbqyt",
+                  "width": "fill_container",
+                  "fill": "$quiet",
+                  "content": "Stripes meant fish, plain canvas meant cloth, and a trader who changed colour without asking the guild could expect a visit before noon.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "Segoe UI Variable",
+                  "fontSize": 15,
+                  "fontWeight": "400",
+                  "lineHeight": 1.45
+                }
+              ]
+            },
+            {
+              "type": "rectangle",
+              "id": "QCMPJ",
+              "width": "fill_container",
+              "height": 1,
+              "fill": "$line"
+            },
+            {
+              "type": "frame",
+              "id": "dark-art-3",
+              "name": "Last crossing: a winter ",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 12,
+              "padding": [
+                20,
+                0
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "qIGVX",
+                  "width": "fill_container",
+                  "layout": "horizontal",
+                  "gap": 16,
+                  "alignItems": "start",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "tEFxD",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "nT7kM",
+                          "width": "fill_container",
+                          "layout": "horizontal",
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "8yv36",
+                              "fill": "$accent-text",
+                              "content": "Night Desk",
+                              "fontFamily": "Segoe UI Variable",
+                              "fontSize": 13,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "text",
+                              "id": "nh6Mh",
+                              "fill": "$quiet",
+                              "content": "12 min",
+                              "fontFamily": "Segoe UI Variable",
+                              "fontSize": 13,
+                              "fontWeight": "400"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "4JFuF",
+                          "width": "fill_container",
+                          "fill": "$text",
+                          "content": "Last crossing: a winter on the 23:40 ferry",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "Sitka",
+                          "fontSize": 22,
+                          "fontWeight": "700",
+                          "letterSpacing": -0.2,
+                          "lineHeight": 1.15
+                        }
+                      ]
+                    },
+                    {
+                      "type": "rectangle",
+                      "id": "xn3rP",
+                      "name": "Picture",
+                      "width": 84,
+                      "height": 84,
+                      "fill": {
+                        "type": "image",
+                        "url": "docs/liquid-glass/tests/photos/night-ferry.jpg",
+                        "mode": "cover"
+                      },
+                      "cornerRadius": 8
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "z5fvS",
+                  "width": "fill_container",
+                  "fill": "$quiet",
+                  "content": "The same nineteen passengers, a kettle that has outlived two captains, and a timetable nobody has needed to read since 1998.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "Segoe UI Variable",
+                  "fontSize": 15,
+                  "fontWeight": "400",
+                  "lineHeight": 1.45
+                }
+              ]
+            },
+            {
+              "type": "rectangle",
+              "id": "NvHaF",
+              "width": "fill_container",
+              "height": 1,
+              "fill": "$line"
+            },
+            {
+              "type": "frame",
+              "id": "dark-art-4",
+              "name": "Why we underline: notes ",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 12,
+              "padding": [
+                20,
+                0
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "gIbBA",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "7ozGM",
+                      "width": "fill_container",
+                      "layout": "horizontal",
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "Y3IOG",
+                          "fill": "$accent-text",
+                          "content": "Marginalia",
+                          "fontFamily": "Segoe UI Variable",
+                          "fontSize": 13,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "DxVVu",
+                          "fill": "$quiet",
+                          "content": "7 min",
+                          "fontFamily": "Segoe UI Variable",
+                          "fontSize": 13,
+                          "fontWeight": "400"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "GhqhD",
+                      "width": "fill_container",
+                      "fill": "$text",
+                      "content": "Why we underline: notes on reading with a pencil",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "Sitka",
+                      "fontSize": 22,
+                      "fontWeight": "700",
+                      "letterSpacing": -0.2,
+                      "lineHeight": 1.15
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "cmcGe",
+                  "width": "fill_container",
+                  "fill": "$quiet",
+                  "content": "A marked page is a conversation you can come back to. An unmarked one, the argument goes, is only a page you once looked at.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "Segoe UI Variable",
+                  "fontSize": 15,
+                  "fontWeight": "400",
+                  "lineHeight": 1.45
+                }
+              ]
+            },
+            {
+              "type": "rectangle",
+              "id": "ZjpuJ",
+              "width": "fill_container",
+              "height": 1,
+              "fill": "$line"
+            },
+            {
+              "type": "frame",
+              "id": "dark-art-5",
+              "name": "The cartographer of thin",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 12,
+              "padding": [
+                20,
+                0
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "TKT14",
+                  "width": "fill_container",
+                  "layout": "horizontal",
+                  "gap": 16,
+                  "alignItems": "start",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "w4D3B",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "61SVl",
+                          "width": "fill_container",
+                          "layout": "horizontal",
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "n3Og3",
+                              "fill": "$accent-text",
+                              "content": "Tideline Review",
+                              "fontFamily": "Segoe UI Variable",
+                              "fontSize": 13,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "text",
+                              "id": "NDz7m",
+                              "fill": "$quiet",
+                              "content": "31 min",
+                              "fontFamily": "Segoe UI Variable",
+                              "fontSize": 13,
+                              "fontWeight": "400"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "6JzXC",
+                          "width": "fill_container",
+                          "fill": "$text",
+                          "content": "The cartographer of things that are no longer there",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "Sitka",
+                          "fontSize": 22,
+                          "fontWeight": "700",
+                          "letterSpacing": -0.2,
+                          "lineHeight": 1.15
+                        }
+                      ]
+                    },
+                    {
+                      "type": "rectangle",
+                      "id": "AsVaq",
+                      "name": "Picture",
+                      "width": 84,
+                      "height": 84,
+                      "fill": {
+                        "type": "image",
+                        "url": "docs/liquid-glass/tests/photos/dusk-harbour.jpg",
+                        "mode": "cover"
+                      },
+                      "cornerRadius": 8
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "i2yt1",
+                  "width": "fill_container",
+                  "fill": "$quiet",
+                  "content": "She has mapped 212 demolished piers, each drawn at the scale of the one that replaced it, and keeps the sheets in the order the tide took them.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "Segoe UI Variable",
+                  "fontSize": 15,
+                  "fontWeight": "400",
+                  "lineHeight": 1.45
+                }
+              ]
+            },
+            {
+              "type": "rectangle",
+              "id": "5qDR3",
+              "width": "fill_container",
+              "height": 1,
+              "fill": "$line"
+            },
+            {
+              "type": "frame",
+              "id": "dark-art-6",
+              "name": "Colour words a dyer need",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 12,
+              "padding": [
+                20,
+                0
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "IQgwk",
+                  "width": "fill_container",
+                  "layout": "horizontal",
+                  "gap": 16,
+                  "alignItems": "start",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "r6jHB",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "8IAk9",
+                          "width": "fill_container",
+                          "layout": "horizontal",
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "5cVNp",
+                              "fill": "$accent-text",
+                              "content": "Field Notes",
+                              "fontFamily": "Segoe UI Variable",
+                              "fontSize": 13,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "text",
+                              "id": "VV54B",
+                              "fill": "$quiet",
+                              "content": "11 min",
+                              "fontFamily": "Segoe UI Variable",
+                              "fontSize": 13,
+                              "fontWeight": "400"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "eAO9l",
+                          "width": "fill_container",
+                          "fill": "$text",
+                          "content": "Colour words a dyer needs and a painter does not",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "Sitka",
+                          "fontSize": 22,
+                          "fontWeight": "700",
+                          "letterSpacing": -0.2,
+                          "lineHeight": 1.15
+                        }
+                      ]
+                    },
+                    {
+                      "type": "rectangle",
+                      "id": "pFrPO",
+                      "name": "Picture",
+                      "width": 84,
+                      "height": 84,
+                      "fill": {
+                        "type": "image",
+                        "url": "docs/liquid-glass/tests/photos/market-colours.jpg",
+                        "mode": "cover"
+                      },
+                      "cornerRadius": 8
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "OwkVJ",
+                  "width": "fill_container",
+                  "fill": "$quiet",
+                  "content": "Madder has nine named reds in the old Norwich pattern books. Six of them describe the cloth while it is still wet.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "Segoe UI Variable",
+                  "fontSize": 15,
+                  "fontWeight": "400",
+                  "lineHeight": 1.45
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "rectangle",
+          "id": "dark-top",
+          "x": 0,
+          "y": 0,
+          "name": "Scroll edge top",
+          "width": 393,
+          "height": 120,
+          "fill": {
+            "type": "gradient",
+            "gradientType": "linear",
+            "rotation": 0,
+            "colors": [
+              {
+                "color": "$bg-clear",
+                "position": 0
+              },
+              {
+                "color": "$bg-fade",
+                "position": 0.55
+              },
+              {
+                "color": "$bg-solid",
+                "position": 0.8
+              }
+            ]
+          }
+        },
+        {
+          "type": "rectangle",
+          "id": "dark-bottom",
+          "x": 0,
+          "y": 732,
+          "name": "Scroll edge bottom",
+          "width": 393,
+          "height": 120,
+          "fill": {
+            "type": "gradient",
+            "gradientType": "linear",
+            "rotation": 180,
+            "colors": [
+              {
+                "color": "$bg-clear",
+                "position": 0
+              },
+              {
+                "color": "$bg-fade",
+                "position": 0.55
+              },
+              {
+                "color": "$bg-solid",
+                "position": 1
+              }
+            ]
+          }
+        },
+        {
+          "type": "frame",
+          "id": "dark-status",
+          "x": 0,
+          "y": 14,
+          "name": "Status bar",
+          "width": 393,
+          "height": 24,
+          "layout": "horizontal",
+          "padding": [
+            0,
+            32
+          ],
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "vY1DW",
+              "fill": "$text",
+              "content": "9:41",
+              "fontFamily": "Segoe UI Variable",
+              "fontSize": 16,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "GNN7G",
+              "layout": "horizontal",
+              "gap": 8,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "I2tgW",
+                  "width": 16,
+                  "height": 16,
+                  "fill": "$text",
+                  "icon": "signal"
+                },
+                {
+                  "type": "icon",
+                  "id": "eU0Yz",
+                  "width": 16,
+                  "height": 16,
+                  "fill": "$text",
+                  "icon": "wifi"
+                },
+                {
+                  "type": "icon",
+                  "id": "a66V3",
+                  "width": 22,
+                  "height": 22,
+                  "fill": "$text",
+                  "icon": "battery-medium"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "ref",
+          "id": "dark-toolbar",
+          "x": 16,
+          "y": 58,
+          "ref": "glass-toolbar",
+          "descendants": {
+            "glass-toolbar-back-icon": {
+              "fill": "$on-dark-glass"
+            },
+            "glass-toolbar-action-1": {
+              "fill": "$on-dark-glass"
+            },
+            "glass-toolbar-action-2": {
+              "fill": "$on-dark-glass"
+            },
+            "glass-toolbar-action-3": {
+              "fill": "$on-dark-glass"
+            }
+          }
+        },
+        {
+          "type": "ref",
+          "id": "dark-tabbar",
+          "x": 21,
+          "y": 769,
+          "ref": "glass-tab-bar",
+          "descendants": {
+            "glass-tab-1-icon": {
+              "fill": "$on-dark-glass"
+            },
+            "glass-tab-1-label": {
+              "fill": "$on-dark-glass"
+            },
+            "glass-tab-2-icon": {
+              "fill": "$on-dark-glass"
+            },
+            "glass-tab-2-label": {
+              "fill": "$on-dark-glass"
+            },
+            "glass-tab-3-icon": {
+              "fill": "$on-dark-glass"
+            },
+            "glass-tab-3-label": {
+              "fill": "$on-dark-glass"
+            },
+            "glass-tab-search-icon": {
+              "fill": "$on-dark-glass"
+            },
+            "glass-tab-1": {
+              "fill": "$selection-on-dark"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "themes": {
+    "Mode": [
+      "Light",
+      "Dark"
+    ],
+    "Glass": [
+      "Clear",
+      "Tinted",
+      "Reduced transparency",
+      "Increased contrast"
+    ]
+  },
+  "variables": {
+    "bg": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f2f4ef"
+        },
+        {
+          "value": "#101614",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "bg-fade": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f2f4ef99"
+        },
+        {
+          "value": "#10161499",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "bg-clear": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f2f4ef00"
+        },
+        {
+          "value": "#10161400",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "text": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#16201c"
+        },
+        {
+          "value": "#e8eee9",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "quiet": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#56635d"
+        },
+        {
+          "value": "#9daaa3",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "line": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#d3d9d2"
+        },
+        {
+          "value": "#27322e",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "accent-text": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#0a6b55"
+        },
+        {
+          "value": "#62d1b1",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "on-light-glass": {
+      "type": "color",
+      "value": "#000000"
+    },
+    "on-dark-glass": {
+      "type": "color",
+      "value": "#ffffff"
+    },
+    "selection-on-light": {
+      "type": "color",
+      "value": "#0000001f"
+    },
+    "selection-on-dark": {
+      "type": "color",
+      "value": "#ffffff33"
+    },
+    "accent": {
+      "type": "color",
+      "value": "#085a47"
+    },
+    "glass-outline": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#00000000"
+        },
+        {
+          "value": "#000000",
+          "theme": {
+            "Glass": "Increased contrast"
+          }
+        }
+      ]
+    },
+    "glass-regular-tint-opacity": {
+      "type": "number",
+      "value": [
+        {
+          "value": 0.6,
+          "theme": {
+            "Glass": "Tinted"
+          }
+        },
+        {
+          "value": 0.9,
+          "theme": {
+            "Glass": "Reduced transparency"
+          }
+        },
+        {
+          "value": 1,
+          "theme": {
+            "Glass": "Increased contrast"
+          }
+        }
+      ]
+    },
+    "glass-regular-blur": {
+      "type": "number",
+      "value": [
+        {
+          "value": 40,
+          "theme": {
+            "Glass": "Reduced transparency"
+          }
+        },
+        {
+          "value": 40,
+          "theme": {
+            "Glass": "Increased contrast"
+          }
+        }
+      ]
+    },
+    "glass-regular-refraction": {
+      "type": "number",
+      "value": [
+        {
+          "value": 0.4,
+          "theme": {
+            "Glass": "Reduced transparency"
+          }
+        },
+        {
+          "value": 0,
+          "theme": {
+            "Glass": "Increased contrast"
+          }
+        }
+      ]
+    },
+    "bg-solid": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f2f4eff2"
+        },
+        {
+          "value": "#101614f2",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    }
+  }
+}

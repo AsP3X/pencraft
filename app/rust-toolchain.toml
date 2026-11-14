@@ -1,0 +1,5 @@
+# Human: The exact Rust toolchain, as in the user's other Rust projects; `rust-version` in Cargo.toml mirrors it.
+# Agent: changing this is an upgrade (dependency-safety.md).
+[toolchain]
+channel = "1.99.0"
+components = ["rustfmt", "clippy"]

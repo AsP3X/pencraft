@@ -1,0 +1,4 @@
+{"description":"Fix photo paths","operations":[
+{"op":"update","id":"oJrMF","properties":{"fill":{"type":"image","url":"docs/liquid-glass/tests/photos/forest-light.jpg","mode":"cover"}}},
+{"op":"update","id":"cGVen","properties":{"fill":{"type":"image","url":"docs/liquid-glass/tests/photos/bright-artwork.jpg","mode":"cover"}}}
+]}

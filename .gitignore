@@ -1,0 +1,16 @@
+.DS_Store
+
+# Scratch of the fresh-agent tests (homes of the private test instances, logs, working files).
+docs/liquid-glass/tests/out/*/home/
+docs/liquid-glass/tests/out/*/app.log
+
+# Working files of the tools that build Pencraft; they stay on the machine.
+/agent-session.jsonl
+/build-activity.log
+/feed.json
+/usage.json
+/craft.json
+/inbox/
+/pinned/
+/investigation.cany/
+/capture/

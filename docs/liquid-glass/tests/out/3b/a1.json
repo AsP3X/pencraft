@@ -1,0 +1,26 @@
+{"description":"Media player screen with clear glass controls","operations":[
+{"op":"set_variables","variables":{"on-glass":{"type":"color","value":"#ffffff"},"text-quiet":{"type":"color","value":"#ffffffcc"}}},
+{"op":"insert","node":{"type":"frame","id":"player","name":"Now playing","x":0,"y":0,"width":393,"height":852,"layout":"none","clip":true,"fill":"#1a1a1a","children":[
+ {"type":"rectangle","id":"artwork","name":"Artwork","x":0,"y":0,"width":393,"height":852,"fill":{"type":"image","url":"docs/liquid-glass/tests/photos/bright-artwork.jpg","mode":"cover"}},
+ {"type":"rectangle","id":"dim","name":"Dimming","x":0,"y":0,"width":393,"height":852,"fill":"#00000059"},
+ {"type":"rectangle","id":"scrim","name":"Scrim","x":0,"y":472,"width":393,"height":380,"fill":{"type":"gradient","gradientType":"linear","rotation":0,"colors":[{"color":"#00000099","position":0},{"color":"#00000000","position":1}]}},
+ {"type":"text","id":"title","x":24,"y":572,"content":"Paper Suns","fontFamily":"Century Gothic","fontSize":34,"fontWeight":"700","letterSpacing":-0.5,"lineHeight":1.1,"fill":"#ffffff"},
+ {"type":"text","id":"artist","x":24,"y":616,"content":"Odile Marchetti \u2014 Cut Paper Summer","fontFamily":"Century Gothic","fontSize":17,"fontWeight":"400","fill":"$text-quiet"},
+ {"type":"rectangle","id":"track","name":"Scrubber track","x":24,"y":668,"width":345,"height":4,"cornerRadius":2,"fill":"#ffffff4d"},
+ {"type":"rectangle","id":"track-fill","name":"Scrubber fill","x":24,"y":668,"width":128,"height":4,"cornerRadius":2,"fill":"#ffffff"},
+ {"type":"text","id":"t-now","x":24,"y":684,"content":"1:23","fontFamily":"Century Gothic","fontSize":13,"fontWeight":"400","fill":"$text-quiet"},
+ {"type":"text","id":"t-left","x":309,"y":684,"width":60,"textGrowth":"fixed-width","textAlign":"right","content":"-2:21","fontFamily":"Century Gothic","fontSize":13,"fontWeight":"400","fill":"$text-quiet"},
+ {"type":"frame","id":"close","name":"Close","x":16,"y":58,"width":44,"height":44,"cornerRadius":22,"justifyContent":"center","alignItems":"center","material":{"type":"liquid_glass","variant":"clear"},"children":[
+   {"type":"icon","library":"lucide","icon":"chevron-down","width":22,"height":22,"fill":"$on-glass"}]},
+ {"type":"frame","id":"more","name":"More","x":333,"y":58,"width":44,"height":44,"cornerRadius":22,"justifyContent":"center","alignItems":"center","material":{"type":"liquid_glass","variant":"clear"},"children":[
+   {"type":"icon","library":"lucide","icon":"ellipsis","width":22,"height":22,"fill":"$on-glass"}]},
+ {"type":"frame","id":"transport","name":"Transport","x":36,"y":736,"layout":"horizontal","gap":16,"alignItems":"center","glassGroup":16,"children":[
+   {"type":"frame","id":"repeat","name":"Repeat","width":48,"height":48,"cornerRadius":24,"justifyContent":"center","alignItems":"center","material":{"type":"liquid_glass","variant":"clear","depth":"bar"},"children":[
+     {"type":"icon","library":"lucide","icon":"repeat","width":20,"height":20,"fill":"$on-glass"}]},
+   {"type":"frame","id":"play","name":"Play","width":193,"height":72,"cornerRadius":36,"gap":32,"layout":"horizontal","justifyContent":"center","alignItems":"center","material":{"type":"liquid_glass","variant":"clear","depth":"bar"},"children":[
+     {"type":"icon","library":"lucide","icon":"skip-back","width":26,"height":26,"fill":"$on-glass"},
+     {"type":"icon","library":"lucide","icon":"pause","width":30,"height":30,"fill":"$on-glass"},
+     {"type":"icon","library":"lucide","icon":"skip-forward","width":26,"height":26,"fill":"$on-glass"}]},
+   {"type":"frame","id":"shuffle","name":"Shuffle","width":48,"height":48,"cornerRadius":24,"justifyContent":"center","alignItems":"center","material":{"type":"liquid_glass","variant":"clear","depth":"bar"},"children":[
+     {"type":"icon","library":"lucide","icon":"shuffle","width":20,"height":20,"fill":"$on-glass"}]}]}
+]}}]}

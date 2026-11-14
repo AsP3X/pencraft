@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem
+    url: https://github.com/AsP3X/pencraft/security/advisories/new
+    about: Please report vulnerabilities privately, not in a public issue.
+  - name: How do I connect an AI model?
+    url: https://github.com/AsP3X/pencraft/blob/master/app/AI.md
+    about: The chat in the app, providers and keys, and pencraft mcp for other clients.

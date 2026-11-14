@@ -1,0 +1,150 @@
+; Setup wizard for Pencraft. Built with Inno Setup 6.3 or newer:
+;
+;   ISCC /DAppVersion=0.2.0 /DExePath=..\app\target\release\pencraft.exe installer\pencraft.iss
+;
+; installer\build.ps1 does this with the version from app\Cargo.toml.
+;
+; The wizard asks whether to install for this user only (no administrator
+; rights needed) or for everyone. It adds a Start menu entry, optionally a
+; desktop icon, optionally opens .pen files with Pencraft, and optionally
+; puts the folder on PATH so AI clients can run `pencraft mcp`.
+; The AppId must never change: it is how an update finds the old install.
+
+#define AppName "Pencraft"
+#define AppExe "pencraft.exe"
+#define Publisher "Pencraft"
+#ifndef AppVersion
+  #define AppVersion "0.0.0"
+#endif
+#ifndef ExePath
+  #define ExePath "..\app\target\release\pencraft.exe"
+#endif
+
+[Setup]
+AppId={{CB9CA395-8DE1-4D17-BAC5-AFF90EBE0DC9}
+AppName={#AppName}
+AppVersion={#AppVersion}
+AppVerName={#AppName} {#AppVersion}
+AppPublisher={#Publisher}
+DefaultDirName={autopf}\{#AppName}
+DisableProgramGroupPage=yes
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+OutputDir=..\app\target\installer
+OutputBaseFilename=pencraft-{#AppVersion}-setup
+Compression=lzma2
+SolidCompression=yes
+WizardStyle=modern
+ChangesEnvironment=yes
+ChangesAssociations=yes
+; A running Pencraft is closed before its file is replaced, and started again.
+CloseApplications=yes
+UninstallDisplayName={#AppName}
+UninstallDisplayIcon={app}\{#AppExe}
+
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[Tasks]
+Name: "associate"; Description: "Open .pen files with {#AppName}"
+Name: "addtopath"; Description: "Add to PATH, so AI clients can run pencraft mcp"
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
+
+[Files]
+Source: "{#ExePath}"; DestDir: "{app}"; DestName: "{#AppExe}"; Flags: ignoreversion
+
+[Icons]
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; Comment: "Canvas design editor for .pen files"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
+
+[Registry]
+; HKA is the machine's registry for an install for everyone, the user's own otherwise.
+Root: HKA; Subkey: "Software\Classes\.pen\OpenWithProgids"; ValueType: string; ValueName: "Pencraft.Design"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\Pencraft.Design"; ValueType: string; ValueName: ""; ValueData: "Pencraft design"; Flags: uninsdeletekey; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\Pencraft.Design\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#AppExe},0"; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\Pencraft.Design\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""; Tasks: associate
+
+[Run]
+Filename: "{app}\{#AppExe}"; Description: "Start {#AppName}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+// PATH lives in the machine environment for an install for everyone, and
+// in the user's own environment otherwise.
+
+function PathRoot: Integer;
+begin
+  if IsAdminInstallMode then
+    Result := HKEY_LOCAL_MACHINE
+  else
+    Result := HKEY_CURRENT_USER;
+end;
+
+function PathKey: String;
+begin
+#ifdef TestPathKey
+  // Test builds edit a value under this key instead of the real PATH.
+  Result := '{#TestPathKey}';
+#else
+  if IsAdminInstallMode then
+    Result := 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment'
+  else
+    Result := 'Environment';
+#endif
+end;
+
+// Position of Dir as a whole entry of the semicolon-separated Paths, or 0.
+function PathPos(Paths, Dir: String): Integer;
+begin
+  Result := Pos(';' + Uppercase(Dir) + ';', ';' + Uppercase(Paths) + ';');
+end;
+
+procedure AddToPath(Dir: String);
+var
+  Paths: String;
+begin
+  if not RegQueryStringValue(PathRoot, PathKey, 'Path', Paths) then
+  begin
+    // A PATH that exists but cannot be read is left alone: writing now
+    // would replace it with this one folder.
+    if RegValueExists(PathRoot, PathKey, 'Path') then
+      exit;
+    Paths := '';
+  end;
+  if PathPos(Paths, Dir) > 0 then
+    exit;
+  if (Paths <> '') and (Paths[Length(Paths)] <> ';') then
+    Paths := Paths + ';';
+  RegWriteExpandStringValue(PathRoot, PathKey, 'Path', Paths + Dir);
+end;
+
+procedure RemoveFromPath(Dir: String);
+var
+  Paths: String;
+  P: Integer;
+begin
+  if not RegQueryStringValue(PathRoot, PathKey, 'Path', Paths) then
+    exit;
+  P := PathPos(Paths, Dir);
+  if P = 0 then
+    exit;
+  // P counts in the string with a ';' put in front, so it is where the
+  // entry starts in Paths itself. Take the entry and one separator out.
+  Delete(Paths, P, Length(Dir) + 1);
+  if (Paths <> '') and (Paths[Length(Paths)] = ';') then
+    Delete(Paths, Length(Paths), 1);
+  RegWriteExpandStringValue(PathRoot, PathKey, 'Path', Paths);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if (CurStep = ssPostInstall) and WizardIsTaskSelected('addtopath') then
+    AddToPath(ExpandConstant('{app}'));
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usPostUninstall then
+    RemoveFromPath(ExpandConstant('{app}'));
+end;

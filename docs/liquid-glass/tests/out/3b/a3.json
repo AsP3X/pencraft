@@ -1,0 +1,6 @@
+{"description":"Back to Century Gothic","operations":[
+{"op":"update","id":"title","properties":{"fontFamily":"Century Gothic"}},
+{"op":"update","id":"artist","properties":{"fontFamily":"Century Gothic"}},
+{"op":"update","id":"t-now","properties":{"fontFamily":"Century Gothic"}},
+{"op":"update","id":"t-left","properties":{"fontFamily":"Century Gothic"}}
+]}

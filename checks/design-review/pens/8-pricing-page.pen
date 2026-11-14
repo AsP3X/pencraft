@@ -1,0 +1,1767 @@
+{
+  "version": "2.22",
+  "children": [
+    {
+      "type": "frame",
+      "id": "page",
+      "x": 0,
+      "y": 0,
+      "name": "Parla pricing",
+      "width": 1440,
+      "layout": "vertical",
+      "fill": "$cobalt",
+      "children": [
+        {
+          "type": "frame",
+          "id": "nav",
+          "name": "Nav",
+          "width": "fill_container",
+          "padding": [
+            24,
+            96
+          ],
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "leBCS",
+              "fill": "#FFFFFF",
+              "content": "parla",
+              "fontFamily": "$display",
+              "fontSize": 28,
+              "fontWeight": "700",
+              "letterSpacing": -0.5
+            },
+            {
+              "type": "frame",
+              "id": "2TBAt",
+              "gap": 32,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "8KbzK",
+                  "fill": "$onCobaltSoft",
+                  "content": "Lessons",
+                  "fontFamily": "$body",
+                  "fontSize": 16
+                },
+                {
+                  "type": "text",
+                  "id": "PTaSp",
+                  "fill": "$onCobaltSoft",
+                  "content": "Languages",
+                  "fontFamily": "$body",
+                  "fontSize": 16
+                },
+                {
+                  "type": "text",
+                  "id": "0v6ro",
+                  "fill": "$onCobaltSoft",
+                  "content": "For schools",
+                  "fontFamily": "$body",
+                  "fontSize": 16
+                },
+                {
+                  "type": "text",
+                  "id": "l9gso",
+                  "fill": "#FFFFFF",
+                  "content": "Pricing",
+                  "fontFamily": "$body",
+                  "fontSize": 16,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "5hfMB",
+                  "fill": "$onCobaltSoft",
+                  "content": "Log in",
+                  "fontFamily": "$body",
+                  "fontSize": 16
+                },
+                {
+                  "type": "frame",
+                  "id": "TmFX5",
+                  "height": 44,
+                  "padding": [
+                    4,
+                    24,
+                    0,
+                    24
+                  ],
+                  "alignItems": "center",
+                  "fill": "$yolk",
+                  "cornerRadius": "$radiusControl",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "PrOTO",
+                      "fill": "$ink",
+                      "content": "Start free",
+                      "fontFamily": "$body",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "hero",
+          "name": "Hero",
+          "width": "fill_container",
+          "gap": 64,
+          "padding": [
+            64,
+            96,
+            64,
+            96
+          ],
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "heroLeft",
+              "width": 700,
+              "layout": "vertical",
+              "gap": 32,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "cURId",
+                  "width": 700,
+                  "fill": "#FFFFFF",
+                  "content": "Start free. Pay when you want to keep talking.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "$display",
+                  "fontSize": 88,
+                  "fontWeight": "700",
+                  "letterSpacing": -3,
+                  "lineHeight": 1.04
+                },
+                {
+                  "type": "text",
+                  "id": "SZBFG",
+                  "width": 560,
+                  "fill": "$onCobaltSoft",
+                  "content": "Every plan covers all nine languages. Paying adds every lesson, spoken practice with real-life scenes, and offline packs for the commute.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "$body",
+                  "fontSize": 20,
+                  "lineHeight": 1.45
+                },
+                {
+                  "type": "frame",
+                  "id": "toggle",
+                  "padding": 4,
+                  "alignItems": "center",
+                  "stroke": "$onCobaltLine",
+                  "strokeWidth": 1,
+                  "cornerRadius": "$radiusControl",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "sCoGe",
+                      "padding": [
+                        12,
+                        24
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "0WkNH",
+                          "fill": "$onCobaltSoft",
+                          "content": "Monthly",
+                          "fontFamily": "$body",
+                          "fontSize": 16
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "DbeMA",
+                      "gap": 8,
+                      "padding": [
+                        12,
+                        24
+                      ],
+                      "alignItems": "center",
+                      "fill": "#FFFFFF",
+                      "cornerRadius": "$radiusControl",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "Eunsb",
+                          "fill": "$ink",
+                          "content": "Yearly",
+                          "fontFamily": "$body",
+                          "fontSize": 16,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "w2Nvq",
+                          "fill": "$cobalt",
+                          "content": "two months free",
+                          "fontFamily": "$body",
+                          "fontSize": 14,
+                          "fontWeight": "700"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "conj",
+              "name": "Conjugation",
+              "width": 420,
+              "layout": "vertical",
+              "gap": 0,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "JL5fJ",
+                  "width": "fill_container",
+                  "gap": 24,
+                  "alignItems": "end",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "pjuUV",
+                      "width": 72,
+                      "padding": 0,
+                      "fill": "$onCobaltSoft",
+                      "content": "io",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$body",
+                      "fontSize": 20,
+                      "textAlign": "right"
+                    },
+                    {
+                      "type": "text",
+                      "id": "MxAGP",
+                      "width": "fill_container",
+                      "fill": "$onCobaltFaint",
+                      "content": "parlo",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$display",
+                      "fontSize": 48,
+                      "fontWeight": "700",
+                      "lineHeight": 1.2
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "iskSy",
+                  "width": "fill_container",
+                  "gap": 24,
+                  "alignItems": "end",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "GPTym",
+                      "width": 72,
+                      "fill": "$onCobaltSoft",
+                      "content": "tu",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$body",
+                      "fontSize": 20,
+                      "textAlign": "right"
+                    },
+                    {
+                      "type": "text",
+                      "id": "WchIs",
+                      "width": "fill_container",
+                      "fill": "$onCobaltFaint",
+                      "content": "parli",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$display",
+                      "fontSize": 48,
+                      "fontWeight": "700",
+                      "lineHeight": 1.2
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "waBEL",
+                  "width": "fill_container",
+                  "gap": 24,
+                  "alignItems": "end",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "HZjTb",
+                      "width": 72,
+                      "fill": "$yolk",
+                      "content": "lei",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$body",
+                      "fontSize": 20,
+                      "textAlign": "right"
+                    },
+                    {
+                      "type": "text",
+                      "id": "TD1y5",
+                      "width": "fill_container",
+                      "fill": "$yolk",
+                      "content": "parla",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$display",
+                      "fontSize": 88,
+                      "fontWeight": "700",
+                      "letterSpacing": -3,
+                      "lineHeight": 1.1
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ZPgET",
+                  "width": "fill_container",
+                  "gap": 24,
+                  "alignItems": "end",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "hpcTg",
+                      "width": 72,
+                      "fill": "$onCobaltSoft",
+                      "content": "noi",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$body",
+                      "fontSize": 20,
+                      "textAlign": "right"
+                    },
+                    {
+                      "type": "text",
+                      "id": "xpRNI",
+                      "width": "fill_container",
+                      "fill": "$onCobaltFaint",
+                      "content": "parliamo",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$display",
+                      "fontSize": 48,
+                      "fontWeight": "700",
+                      "lineHeight": 1.2
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "Pt51m",
+                  "width": "fill_container",
+                  "gap": 24,
+                  "alignItems": "end",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "z2P74",
+                      "width": 72,
+                      "fill": "$onCobaltSoft",
+                      "content": "voi",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$body",
+                      "fontSize": 20,
+                      "textAlign": "right"
+                    },
+                    {
+                      "type": "text",
+                      "id": "kKx3s",
+                      "width": "fill_container",
+                      "fill": "$onCobaltFaint",
+                      "content": "parlate",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$display",
+                      "fontSize": 48,
+                      "fontWeight": "700",
+                      "lineHeight": 1.2
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "fP5bz",
+                  "width": "fill_container",
+                  "gap": 24,
+                  "alignItems": "end",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "kexPb",
+                      "width": 72,
+                      "fill": "$onCobaltSoft",
+                      "content": "loro",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$body",
+                      "fontSize": 20,
+                      "textAlign": "right"
+                    },
+                    {
+                      "type": "text",
+                      "id": "rxbAU",
+                      "width": "fill_container",
+                      "fill": "$onCobaltFaint",
+                      "content": "parlano",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$display",
+                      "fontSize": 48,
+                      "fontWeight": "700",
+                      "lineHeight": 1.2
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "plans",
+          "name": "Plans",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 32,
+          "padding": [
+            32,
+            96,
+            96,
+            96
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "planRow",
+              "width": "fill_container",
+              "gap": 24,
+              "alignItems": "start",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "cardPrimo",
+                  "name": "Primo",
+                  "width": 360,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 24,
+                  "padding": 32,
+                  "fill": "$paper",
+                  "cornerRadius": "$radiusCard",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "qiuJC",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "njbJ8",
+                          "layout": "vertical",
+                          "gap": 0,
+                          "alignItems": "start",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "E4Xya",
+                              "fill": "$ink",
+                              "content": "Primo",
+                              "fontFamily": "$display",
+                              "fontSize": 48,
+                              "fontWeight": "700",
+                              "letterSpacing": -1.5,
+                              "lineHeight": 1.1
+                            },
+                            {
+                              "type": "text",
+                              "id": "rO4h2",
+                              "fill": "$inkSoft",
+                              "content": "/ˈpri.mo/  adj.",
+                              "fontFamily": "$body",
+                              "fontSize": 16,
+                              "fontStyle": "italic",
+                              "lineHeight": 1.8
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "QLkZ6",
+                          "width": "fill_container",
+                          "height": 48,
+                          "fill": "$inkSoft",
+                          "content": "first. The opening lessons of any language, yours to keep.",
+                          "textGrowth": "fixed-width-height",
+                          "fontFamily": "$body",
+                          "fontSize": 16,
+                          "lineHeight": 1.5
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "fqKt4",
+                      "layout": "vertical",
+                      "gap": 0,
+                      "alignItems": "start",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "ldBZ5",
+                          "fill": "$ink",
+                          "content": "€0",
+                          "fontFamily": "$display",
+                          "fontSize": 48,
+                          "fontWeight": "700",
+                          "letterSpacing": -1.5
+                        },
+                        {
+                          "type": "text",
+                          "id": "Svyc7",
+                          "fill": "$inkSoft",
+                          "content": "for as long as you like",
+                          "fontFamily": "$body",
+                          "fontSize": 16,
+                          "lineHeight": 1.4
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "mw4gD",
+                      "width": "fill_container",
+                      "padding": [
+                        16,
+                        24
+                      ],
+                      "justifyContent": "center",
+                      "stroke": "$ink",
+                      "strokeWidth": 1.5,
+                      "cornerRadius": "$radiusControl",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "LY6be",
+                          "fill": "$ink",
+                          "content": "Start 14 free lessons",
+                          "fontFamily": "$body",
+                          "fontSize": 16,
+                          "fontWeight": "700"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "SgSWq",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 12,
+                      "padding": [
+                        24,
+                        0,
+                        0,
+                        0
+                      ],
+                      "stroke": "$line",
+                      "strokeWidth": {
+                        "top": 1,
+                        "right": 0,
+                        "bottom": 0,
+                        "left": 0
+                      },
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "PTzIQ",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "pjQTX",
+                              "width": 20,
+                              "height": 20,
+                              "fill": "$cobalt",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "2gB3K",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "14 lessons in each of the 9 languages",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$body",
+                              "fontSize": 16,
+                              "lineHeight": 1.3
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "aO5lw",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "9TtAG",
+                              "width": 20,
+                              "height": 20,
+                              "fill": "$cobalt",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "jVMyo",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "Daily five-minute review",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$body",
+                              "fontSize": 16,
+                              "lineHeight": 1.3
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "1Um15",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "Z89zZ",
+                              "width": 20,
+                              "height": 20,
+                              "fill": "$cobalt",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "7Dudd",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "Pronunciation check on the first 200 words",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$body",
+                              "fontSize": 16,
+                              "lineHeight": 1.3
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "4NWoV",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "x0OFI",
+                              "width": 20,
+                              "height": 20,
+                              "fill": "$cobalt",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "UQnhS",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "Phone, tablet and web, with progress synced",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$body",
+                              "fontSize": 16,
+                              "lineHeight": 1.3
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "0koFr",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "e72qa",
+                              "width": 20,
+                              "height": 20,
+                              "fill": "$inkSoft",
+                              "library": "lucide",
+                              "icon": "minus"
+                            },
+                            {
+                              "type": "text",
+                              "id": "0Mahf",
+                              "width": "fill_container",
+                              "fill": "$inkSoft",
+                              "content": "A short ad between lessons",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$body",
+                              "fontSize": 16,
+                              "lineHeight": 1.3
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "cardFluente",
+                  "name": "Fluente",
+                  "width": "fill_container",
+                  "height": "fit_content",
+                  "layout": "vertical",
+                  "gap": 24,
+                  "padding": 32,
+                  "fill": "$yolk",
+                  "cornerRadius": "$radiusCard",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "0kaGa",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "7umLl",
+                          "width": "fill_container",
+                          "justifyContent": "space_between",
+                          "alignItems": "end",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "wauHu",
+                              "layout": "vertical",
+                              "gap": 0,
+                              "alignItems": "start",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "3zvt9",
+                                  "fill": "$ink",
+                                  "content": "Fluente",
+                                  "fontFamily": "$display",
+                                  "fontSize": 48,
+                                  "fontWeight": "700",
+                                  "letterSpacing": -1.5,
+                                  "lineHeight": 1.1
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "uWCbL",
+                                  "fill": "$ink",
+                                  "content": "/fluˈɛn.te/  adj.",
+                                  "fontFamily": "$body",
+                                  "fontSize": 16,
+                                  "fontStyle": "italic",
+                                  "lineHeight": 1.8
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "BVzLq",
+                          "width": "fill_container",
+                          "height": 48,
+                          "fill": "$ink",
+                          "content": "fluent; flowing. Every lesson, out loud, wherever you are.",
+                          "textGrowth": "fixed-width-height",
+                          "fontFamily": "$body",
+                          "fontSize": 16,
+                          "lineHeight": 1.5
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "dcig7",
+                      "layout": "vertical",
+                      "gap": 0,
+                      "alignItems": "start",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "I7DUO",
+                          "fill": "$ink",
+                          "content": "€8.25",
+                          "fontFamily": "$display",
+                          "fontSize": 48,
+                          "fontWeight": "700",
+                          "letterSpacing": -1.5
+                        },
+                        {
+                          "type": "text",
+                          "id": "dWPBW",
+                          "fill": "$ink",
+                          "content": "a month, billed €99 a year",
+                          "fontFamily": "$body",
+                          "fontSize": 16,
+                          "lineHeight": 1.4
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "xT7tr",
+                      "width": "fill_container",
+                      "padding": [
+                        16,
+                        24
+                      ],
+                      "justifyContent": "center",
+                      "fill": "$cobalt",
+                      "cornerRadius": "$radiusControl",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "lKr3z",
+                          "fill": "#FFFFFF",
+                          "content": "Try Fluente free for 7 days",
+                          "fontFamily": "$body",
+                          "fontSize": 16,
+                          "fontWeight": "700"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Z0oo4",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 12,
+                      "padding": [
+                        24,
+                        0,
+                        0,
+                        0
+                      ],
+                      "stroke": "#0F184633",
+                      "strokeWidth": {
+                        "top": 1,
+                        "right": 0,
+                        "bottom": 0,
+                        "left": 0
+                      },
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "GhCDF",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "xrqWZ",
+                              "width": 20,
+                              "height": 20,
+                              "fill": "$cobalt",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "WwiEn",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "Every lesson in all 9 languages, from A1 to B2",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$body",
+                              "fontSize": 16,
+                              "lineHeight": 1.3
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "2NSpn",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "TKz2N",
+                              "width": 20,
+                              "height": 20,
+                              "fill": "$cobalt",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "REdqh",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "Spoken practice in 46 real-life scenes, from the pharmacy to a job interview",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$body",
+                              "fontSize": 16,
+                              "lineHeight": 1.3
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "0Kq6z",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "qu1Dt",
+                              "width": 20,
+                              "height": 20,
+                              "fill": "$cobalt",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "Bsrti",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "Pronunciation check on every word",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$body",
+                              "fontSize": 16,
+                              "lineHeight": 1.3
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "fX9HE",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "NRBE1",
+                              "width": 20,
+                              "height": 20,
+                              "fill": "$cobalt",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "SJsih",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "Offline packs for three languages at once",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$body",
+                              "fontSize": 16,
+                              "lineHeight": 1.3
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "JYy0p",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "XeSnK",
+                              "width": 20,
+                              "height": 20,
+                              "fill": "$cobalt",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "JwaB3",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "Two streak freezes a month",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$body",
+                              "fontSize": 16,
+                              "lineHeight": 1.3
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "JLxbY",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "w1Bs9",
+                              "width": 20,
+                              "height": 20,
+                              "fill": "$cobalt",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "cFFV4",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "No ads, ever",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$body",
+                              "fontSize": 16,
+                              "lineHeight": 1.3
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "TgRrL",
+                      "fill": "$ink",
+                      "content": "Chosen by 7 in 10 people who pay for Parla. Cancel any time in two taps.",
+                      "fontFamily": "$body",
+                      "fontSize": 14,
+                      "lineHeight": 1.4
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "cardInsieme",
+                  "name": "Insieme",
+                  "width": 360,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 24,
+                  "padding": 32,
+                  "fill": "$paper",
+                  "cornerRadius": "$radiusCard",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "MZeuA",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "1ogIU",
+                          "layout": "vertical",
+                          "gap": 0,
+                          "alignItems": "start",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "8CT0n",
+                              "fill": "$ink",
+                              "content": "Insieme",
+                              "fontFamily": "$display",
+                              "fontSize": 48,
+                              "fontWeight": "700",
+                              "letterSpacing": -1.5,
+                              "lineHeight": 1.1
+                            },
+                            {
+                              "type": "text",
+                              "id": "IZvd9",
+                              "fill": "$inkSoft",
+                              "content": "/inˈsjɛ.me/  adv.",
+                              "fontFamily": "$body",
+                              "fontSize": 16,
+                              "fontStyle": "italic",
+                              "lineHeight": 1.8
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "v1ZUG",
+                          "width": "fill_container",
+                          "height": 48,
+                          "fill": "$inkSoft",
+                          "content": "together. Fluente for up to six people under one roof.",
+                          "textGrowth": "fixed-width-height",
+                          "fontFamily": "$body",
+                          "fontSize": 16,
+                          "lineHeight": 1.5
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "kfkWV",
+                      "layout": "vertical",
+                      "gap": 0,
+                      "alignItems": "start",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "ax7NM",
+                          "fill": "$ink",
+                          "content": "€14.92",
+                          "fontFamily": "$display",
+                          "fontSize": 48,
+                          "fontWeight": "700",
+                          "letterSpacing": -1.5
+                        },
+                        {
+                          "type": "text",
+                          "id": "TXC0R",
+                          "fill": "$inkSoft",
+                          "content": "a month, billed €179 a year",
+                          "fontFamily": "$body",
+                          "fontSize": 16,
+                          "lineHeight": 1.4
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Qyq6B",
+                      "width": "fill_container",
+                      "padding": [
+                        16,
+                        24
+                      ],
+                      "justifyContent": "center",
+                      "stroke": "$ink",
+                      "strokeWidth": 1.5,
+                      "cornerRadius": "$radiusControl",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "lKkfv",
+                          "fill": "$ink",
+                          "content": "Set up a family plan",
+                          "fontFamily": "$body",
+                          "fontSize": 16,
+                          "fontWeight": "700"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "xyj6a",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 12,
+                      "padding": [
+                        24,
+                        0,
+                        0,
+                        0
+                      ],
+                      "stroke": "$line",
+                      "strokeWidth": {
+                        "top": 1,
+                        "right": 0,
+                        "bottom": 0,
+                        "left": 0
+                      },
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "uoRqR",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "vSMDA",
+                              "width": 20,
+                              "height": 20,
+                              "fill": "$cobalt",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "IBPQc",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "Everything in Fluente, per person",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$body",
+                              "fontSize": 16,
+                              "lineHeight": 1.3
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "8daKt",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "Cwdpy",
+                              "width": 20,
+                              "height": 20,
+                              "fill": "$cobalt",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "oW2Mn",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "Six accounts with their own streaks and progress",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$body",
+                              "fontSize": 16,
+                              "lineHeight": 1.3
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "hoMMR",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "4h6Cm",
+                              "width": 20,
+                              "height": 20,
+                              "fill": "$cobalt",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "JaQUI",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "Shared word lists for trips and dinners",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$body",
+                              "fontSize": 16,
+                              "lineHeight": 1.3
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "loYwB",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "592OG",
+                              "width": 20,
+                              "height": 20,
+                              "fill": "$cobalt",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "w0TaN",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "Kids' mode for ages 6 to 12",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$body",
+                              "fontSize": 16,
+                              "lineHeight": 1.3
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "mEgNl",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "uAV97",
+                              "width": 20,
+                              "height": 20,
+                              "fill": "$cobalt",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "yiBJx",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "One bill, paid by one person",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$body",
+                              "fontSize": 16,
+                              "lineHeight": 1.3
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "u15xO",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "pgLbj",
+                              "width": 20,
+                              "height": 20,
+                              "fill": "$cobalt",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "j3ril",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "Swap a member once a month",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$body",
+                              "fontSize": 16,
+                              "lineHeight": 1.3
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "id": "67FLP",
+              "fill": "$onCobaltSoft",
+              "content": "Prices include VAT. Students get 40% off Fluente with a university email address.",
+              "fontFamily": "$body",
+              "fontSize": 16
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "faq",
+          "name": "Questions",
+          "width": "fill_container",
+          "gap": 96,
+          "padding": [
+            96,
+            96,
+            96,
+            96
+          ],
+          "fill": "$paper",
+          "children": [
+            {
+              "type": "frame",
+              "id": "UXbab",
+              "width": 400,
+              "layout": "vertical",
+              "gap": 24,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "sEn1i",
+                  "width": "fill_container",
+                  "fill": "$ink",
+                  "content": "Before you pay",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "$display",
+                  "fontSize": 48,
+                  "fontWeight": "700",
+                  "letterSpacing": -1.5,
+                  "lineHeight": 1.1
+                },
+                {
+                  "type": "text",
+                  "id": "HTIA2",
+                  "width": "fill_container",
+                  "fill": "$inkSoft",
+                  "content": "Something we haven't answered? Write to help@parla.app and a person on our Berlin team replies within a working day.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "$body",
+                  "fontSize": 18,
+                  "lineHeight": 1.5
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "faqList",
+              "width": "fill_container",
+              "layout": "vertical",
+              "stroke": "$line",
+              "strokeWidth": {
+                "top": 0,
+                "right": 0,
+                "bottom": 1,
+                "left": 0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "0osrN",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [
+                    32,
+                    0
+                  ],
+                  "stroke": "$line",
+                  "strokeWidth": {
+                    "top": 1,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "SCPAQ",
+                      "fill": "$ink",
+                      "content": "What happens when the 7-day trial ends?",
+                      "fontFamily": "$display",
+                      "fontSize": 20,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "LrNvD",
+                      "width": 640,
+                      "fill": "$inkSoft",
+                      "content": "We email you two days before. If you do nothing, your yearly plan starts at €99. Cancel in Settings before then and you pay nothing at all.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$body",
+                      "fontSize": 16,
+                      "lineHeight": 1.5
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "lnQX0",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [
+                    32,
+                    0
+                  ],
+                  "stroke": "$line",
+                  "strokeWidth": {
+                    "top": 1,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "hSVLp",
+                      "fill": "$ink",
+                      "content": "Can I get my money back?",
+                      "fontFamily": "$display",
+                      "fontSize": 20,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "UZrGH",
+                      "width": 640,
+                      "fill": "$inkSoft",
+                      "content": "Yes, within 14 days of any payment, in full and without a form to fill in. After that your plan simply runs to the end of the period you paid for.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$body",
+                      "fontSize": 16,
+                      "lineHeight": 1.5
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "KOjoq",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [
+                    32,
+                    0
+                  ],
+                  "stroke": "$line",
+                  "strokeWidth": {
+                    "top": 1,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "DuR9d",
+                      "fill": "$ink",
+                      "content": "Can I switch languages on Fluente?",
+                      "fontFamily": "$display",
+                      "fontSize": 20,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "g2GLy",
+                      "width": 640,
+                      "fill": "$inkSoft",
+                      "content": "As often as you like. Progress is kept for each language, so you can do Spanish on the way to work and pick Japanese up where you left it.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$body",
+                      "fontSize": 16,
+                      "lineHeight": 1.5
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ZYRLu",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [
+                    32,
+                    0
+                  ],
+                  "stroke": "$line",
+                  "strokeWidth": {
+                    "top": 1,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "kDWdD",
+                      "fill": "$ink",
+                      "content": "Does Primo stay free?",
+                      "fontFamily": "$display",
+                      "fontSize": 20,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "hZgAO",
+                      "width": 640,
+                      "fill": "$inkSoft",
+                      "content": "It does. No card on file and no time limit.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$body",
+                      "fontSize": 16,
+                      "lineHeight": 1.5
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "5dpCh",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [
+                    32,
+                    0
+                  ],
+                  "stroke": "$line",
+                  "strokeWidth": {
+                    "top": 1,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "liFoG",
+                      "fill": "$ink",
+                      "content": "How does the family plan work?",
+                      "fontFamily": "$display",
+                      "fontSize": 20,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "2XrLV",
+                      "width": 640,
+                      "fill": "$inkSoft",
+                      "content": "Whoever pays invites up to five people by email. Everyone gets their own account, streak and progress; only the bill is shared, and you can swap someone out once a month.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$body",
+                      "fontSize": 16,
+                      "lineHeight": 1.5
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "4pfAw",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [
+                    32,
+                    0
+                  ],
+                  "stroke": "$line",
+                  "strokeWidth": {
+                    "top": 1,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "TBcGs",
+                      "fill": "$ink",
+                      "content": "Which languages are there?",
+                      "fontFamily": "$display",
+                      "fontSize": 20,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "P0bVL",
+                      "width": 640,
+                      "fill": "$inkSoft",
+                      "content": "Italian, Spanish, French, German, Portuguese, Japanese, Korean, Dutch and Swedish. Greek arrives in spring 2027, for every plan.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$body",
+                      "fontSize": 16,
+                      "lineHeight": 1.5
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "footer",
+          "name": "Footer",
+          "width": "fill_container",
+          "padding": [
+            32,
+            96
+          ],
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "fill": "$cobaltDeep",
+          "children": [
+            {
+              "type": "text",
+              "id": "7iFc7",
+              "fill": "#FFFFFF",
+              "content": "parla",
+              "fontFamily": "$display",
+              "fontSize": 20,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "GAXuV",
+              "fill": "$onCobaltSoft",
+              "content": "Parla Learning GmbH, Berlin  ·  Terms  ·  Privacy  ·  Imprint",
+              "fontFamily": "$body",
+              "fontSize": 14
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "cobalt": {
+      "type": "color",
+      "value": "#1D3BC4"
+    },
+    "cobaltDeep": {
+      "type": "color",
+      "value": "#142A8C"
+    },
+    "yolk": {
+      "type": "color",
+      "value": "#FFD23F"
+    },
+    "paper": {
+      "type": "color",
+      "value": "#F2F4FB"
+    },
+    "ink": {
+      "type": "color",
+      "value": "#0F1846"
+    },
+    "inkSoft": {
+      "type": "color",
+      "value": "#4A5487"
+    },
+    "line": {
+      "type": "color",
+      "value": "#C9D0EC"
+    },
+    "onCobaltSoft": {
+      "type": "color",
+      "value": "#FFFFFFD1"
+    },
+    "onCobaltFaint": {
+      "type": "color",
+      "value": "#FFFFFF8C"
+    },
+    "onCobaltLine": {
+      "type": "color",
+      "value": "#FFFFFF33"
+    },
+    "display": {
+      "type": "string",
+      "value": "Century Gothic"
+    },
+    "body": {
+      "type": "string",
+      "value": "Corbel"
+    },
+    "radiusCard": {
+      "type": "number",
+      "value": 16
+    },
+    "radiusControl": {
+      "type": "number",
+      "value": 999
+    }
+  }
+}

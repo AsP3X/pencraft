@@ -1,0 +1,5 @@
+{"description":"Top scrim, brighter artist line","operations":[
+{"op":"insert","parent":"player","index":3,"node":{"type":"rectangle","id":"scrim-top","name":"Scrim top","x":0,"y":0,"width":393,"height":180,"fill":{"type":"gradient","gradientType":"linear","rotation":180,"colors":[{"color":"#00000066","position":0},{"color":"#00000000","position":1}]}}},
+{"op":"update","id":"artist","properties":{"fill":"#ffffff"}},
+{"op":"update","id":"scrim","properties":{"y":432,"height":420}}
+]}

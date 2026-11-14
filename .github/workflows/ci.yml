@@ -1,0 +1,71 @@
+name: CI
+
+# The quality gate from app/AGENTS.md, on the two systems Pencraft is released
+# for. It is what app/scripts/check.sh and check.ps1 run by hand.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  check:
+    name: Format, lint and test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+          - name: macOS
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # The version and the components are named in app/rust-toolchain.toml.
+      - name: Install the Rust toolchain
+        run: rustup toolchain install
+
+      - name: Cache the build
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            app/target
+          key: ci-${{ runner.os }}-${{ hashFiles('app/Cargo.lock', 'app/rust-toolchain.toml') }}
+          restore-keys: ci-${{ runner.os }}-
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Lint
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --locked
+
+      - name: Dead code is never silenced
+        shell: bash
+        run: |
+          if grep -rnE '(allow|expect)\((.*,\s*)?dead_code' src crates; then
+            echo "dead_code must not be silenced" >&2
+            exit 1
+          fi

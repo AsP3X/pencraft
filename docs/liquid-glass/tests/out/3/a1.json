@@ -1,0 +1,59 @@
+{"description":"Glass tokens and the media player screen","operations":[
+{"op":"set_variables",
+ "themes":{"Glass":["Clear","Tinted","Reduced transparency","Increased contrast"]},
+ "variables":{
+  "on-light-glass":{"type":"color","value":"#000000"},
+  "on-dark-glass":{"type":"color","value":"#ffffff"},
+  "selection-on-light":{"type":"color","value":"#0000001f"},
+  "selection-on-dark":{"type":"color","value":"#ffffff33"},
+  "accent":{"type":"color","value":"#0060df"},
+  "on-art":{"type":"color","value":"#ffffff"},
+  "on-art-quiet":{"type":"color","value":"#ffffffcc"},
+  "track":{"type":"color","value":"#ffffff59"},
+  "glass-outline":{"type":"color","value":[{"value":"#00000000"},{"value":"#000000","theme":{"Glass":"Increased contrast"}}]},
+  "glass-regular-tint-opacity":{"type":"number","value":[
+    {"value":0.6,"theme":{"Glass":"Tinted"}},
+    {"value":0.9,"theme":{"Glass":"Reduced transparency"}},
+    {"value":1,"theme":{"Glass":"Increased contrast"}}]},
+  "glass-regular-blur":{"type":"number","value":[
+    {"value":40,"theme":{"Glass":"Reduced transparency"}},
+    {"value":40,"theme":{"Glass":"Increased contrast"}}]},
+  "glass-regular-refraction":{"type":"number","value":[
+    {"value":0.4,"theme":{"Glass":"Reduced transparency"}},
+    {"value":0,"theme":{"Glass":"Increased contrast"}}]}}},
+{"op":"insert","node":
+ {"type":"frame","id":"player","name":"Now playing","x":0,"y":0,"width":393,"height":852,"layout":"none","clip":true,"fill":"#000000","children":[
+  {"type":"rectangle","id":"artwork","name":"Artwork","x":0,"y":0,"width":393,"height":852,"fill":{"type":"image","url":"docs/liquid-glass/tests/photos/bright-artwork.jpg","mode":"cover"}},
+  {"type":"rectangle","id":"dim","name":"Dimming","x":0,"y":0,"width":393,"height":852,"fill":"#00000059"},
+  {"type":"rectangle","id":"scrim","name":"Bottom scrim","x":0,"y":420,"width":393,"height":432,"fill":{"type":"gradient","gradientType":"linear","rotation":180,"colors":[{"color":"#00000000","position":0},{"color":"#00000099","position":1}]}},
+  {"type":"frame","id":"btn-close","name":"Close player","x":16,"y":58,"width":44,"height":44,"cornerRadius":22,"justifyContent":"center","alignItems":"center","material":{"type":"liquid_glass","variant":"clear"},"stroke":"$glass-outline","strokeWidth":1,"strokeAlignment":"inner","children":[
+    {"type":"icon","library":"lucide","icon":"chevron-down","width":24,"height":24,"fill":"$on-dark-glass"}]},
+  {"type":"frame","id":"btn-more","name":"More","x":333,"y":58,"width":44,"height":44,"cornerRadius":22,"justifyContent":"center","alignItems":"center","material":{"type":"liquid_glass","variant":"clear"},"stroke":"$glass-outline","strokeWidth":1,"strokeAlignment":"inner","children":[
+    {"type":"icon","library":"lucide","icon":"ellipsis","width":24,"height":24,"fill":"$on-dark-glass"}]},
+  {"type":"frame","id":"info","name":"Track","x":24,"y":530,"width":345,"layout":"horizontal","alignItems":"center","gap":16,"children":[
+    {"type":"frame","layout":"vertical","gap":4,"width":"fill_container","children":[
+      {"type":"text","id":"title","content":"Tangerine Weather","fontFamily":"Bahnschrift","fontSize":34,"fontWeight":"700","letterSpacing":-0.5,"lineHeight":1.1,"fill":"$on-art"},
+      {"type":"text","id":"artist","content":"Marta Okafor, Paper Lanterns","fontFamily":"Segoe UI Variable","fontSize":17,"fontWeight":"500","fill":"$on-art-quiet"}]},
+    {"type":"frame","id":"btn-like","name":"Favourite","width":44,"height":44,"cornerRadius":22,"justifyContent":"center","alignItems":"center","material":{"type":"liquid_glass","variant":"clear"},"stroke":"$glass-outline","strokeWidth":1,"strokeAlignment":"inner","children":[
+      {"type":"icon","library":"lucide","icon":"heart","width":22,"height":22,"fill":"$on-dark-glass"}]}]},
+  {"type":"frame","id":"scrubber","name":"Scrubber","x":24,"y":616,"width":345,"height":40,"layout":"none","children":[
+    {"type":"rectangle","x":0,"y":4,"width":345,"height":4,"cornerRadius":2,"fill":"$track"},
+    {"type":"rectangle","x":0,"y":4,"width":158,"height":4,"cornerRadius":2,"fill":"$on-art"},
+    {"type":"ellipse","x":152,"y":0,"width":12,"height":12,"fill":"$on-art"},
+    {"type":"text","x":0,"y":20,"content":"1:47","fontFamily":"Segoe UI Variable","fontSize":13,"fontWeight":"600","fill":"$on-art-quiet"},
+    {"type":"text","x":295,"y":20,"width":50,"textGrowth":"fixed-width","textAlign":"right","content":"-2:06","fontFamily":"Segoe UI Variable","fontSize":13,"fontWeight":"600","fill":"$on-art-quiet"}]},
+  {"type":"frame","id":"transport","name":"Transport","x":24,"y":688,"width":345,"layout":"horizontal","gap":18,"alignItems":"center","glassGroup":18,"children":[
+    {"type":"frame","id":"btn-shuffle","name":"Shuffle","width":48,"height":48,"cornerRadius":24,"justifyContent":"center","alignItems":"center","material":{"type":"liquid_glass","variant":"clear"},"stroke":"$glass-outline","strokeWidth":1,"strokeAlignment":"inner","children":[
+      {"type":"icon","library":"lucide","icon":"shuffle","width":22,"height":22,"fill":"$on-dark-glass"}]},
+    {"type":"frame","id":"playback","name":"Playback","width":213,"height":72,"cornerRadius":36,"layout":"horizontal","justifyContent":"space_around","alignItems":"center","padding":[0,16],"material":{"type":"liquid_glass","variant":"clear"},"stroke":"$glass-outline","strokeWidth":1,"strokeAlignment":"inner","children":[
+      {"type":"icon","library":"lucide","icon":"skip-back","width":28,"height":28,"fill":"$on-dark-glass"},
+      {"type":"icon","library":"lucide","icon":"pause","width":36,"height":36,"fill":"$on-dark-glass"},
+      {"type":"icon","library":"lucide","icon":"skip-forward","width":28,"height":28,"fill":"$on-dark-glass"}]},
+    {"type":"frame","id":"btn-repeat","name":"Repeat","width":48,"height":48,"cornerRadius":24,"justifyContent":"center","alignItems":"center","material":{"type":"liquid_glass","variant":"clear"},"stroke":"$glass-outline","strokeWidth":1,"strokeAlignment":"inner","children":[
+      {"type":"icon","library":"lucide","icon":"repeat","width":22,"height":22,"fill":"$on-dark-glass"}]}]},
+  {"type":"frame","id":"utilities","name":"Output, lyrics, queue","x":115,"y":786,"width":163,"height":44,"cornerRadius":22,"layout":"horizontal","justifyContent":"space_around","alignItems":"center","padding":[0,12],"material":{"type":"liquid_glass","variant":"clear"},"stroke":"$glass-outline","strokeWidth":1,"strokeAlignment":"inner","children":[
+    {"type":"icon","library":"lucide","icon":"airplay","width":22,"height":22,"fill":"$on-dark-glass"},
+    {"type":"icon","library":"lucide","icon":"mic-vocal","width":22,"height":22,"fill":"$on-dark-glass"},
+    {"type":"icon","library":"lucide","icon":"list-music","width":22,"height":22,"fill":"$on-dark-glass"}]}
+ ]}}
+]}

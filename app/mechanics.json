@@ -1,0 +1,767 @@
+{
+ "version": 1,
+ "values": [
+  {
+   "name": "schema version for new files",
+   "group": "file",
+   "value": "2.22"
+  },
+  {
+   "name": "frame layout when unset",
+   "group": "layout",
+   "value": "horizontal"
+  },
+  {
+   "name": "frame sizing default",
+   "group": "layout",
+   "value": "fit_content"
+  },
+  {
+   "name": "default gap",
+   "group": "layout",
+   "value": 0,
+   "unit": "units"
+  },
+  {
+   "name": "fill children excluded from fit content",
+   "group": "layout",
+   "value": true
+  },
+  {
+   "name": "min fill size",
+   "group": "layout",
+   "value": 1,
+   "unit": "units"
+  },
+  {
+   "name": "free space clamped",
+   "group": "layout",
+   "value": false
+  },
+  {
+   "name": "gap ignored with space_between/around",
+   "group": "layout",
+   "value": true
+  },
+  {
+   "name": "layout footprint",
+   "group": "layout",
+   "value": "rotated bounding box"
+  },
+  {
+   "name": "flip origin",
+   "group": "layout",
+   "value": "node origin"
+  },
+  {
+   "name": "default font size",
+   "group": "text",
+   "value": 14
+  },
+  {
+   "name": "default font family",
+   "group": "text",
+   "value": "Inter"
+  },
+  {
+   "name": "auto text width rounding",
+   "group": "text",
+   "value": "ceil"
+  },
+  {
+   "name": "line height formula",
+   "group": "text",
+   "value": "round(lineHeight * fontSize)"
+  },
+  {
+   "name": "paragraph x offset",
+   "group": "text",
+   "value": "-letterSpacing/2"
+  },
+  {
+   "name": "stroke alignment default",
+   "group": "render",
+   "value": "center"
+  },
+  {
+   "name": "browser corner radius",
+   "group": "render",
+   "value": 16,
+   "unit": "units"
+  },
+  {
+   "name": "missing component size",
+   "group": "render",
+   "value": "120x90"
+  },
+  {
+   "name": "note color",
+   "group": "note",
+   "value": "#FEE484"
+  },
+  {
+   "name": "note min width",
+   "group": "note",
+   "value": 250,
+   "unit": "units"
+  },
+  {
+   "name": "note min height",
+   "group": "note",
+   "value": 219,
+   "unit": "units"
+  },
+  {
+   "name": "note padding",
+   "group": "note",
+   "value": 24,
+   "unit": "units"
+  },
+  {
+   "name": "note corner radius",
+   "group": "note",
+   "value": 24,
+   "unit": "units"
+  },
+  {
+   "name": "note font size",
+   "group": "note",
+   "value": 15,
+   "unit": "units"
+  },
+  {
+   "name": "note white-text contrast threshold",
+   "group": "note",
+   "value": 4.6
+  },
+  {
+   "name": "new shape fill",
+   "group": "tools",
+   "value": "#CCCCCC"
+  },
+  {
+   "name": "new frame fill",
+   "group": "tools",
+   "value": "#FFFFFF"
+  },
+  {
+   "name": "new frame clips",
+   "group": "tools",
+   "value": true
+  },
+  {
+   "name": "click without drag creates shape",
+   "group": "tools",
+   "value": false
+  },
+  {
+   "name": "text tool font size",
+   "group": "tools",
+   "value": 16
+  },
+  {
+   "name": "text box drag minimum",
+   "group": "tools",
+   "value": "30x10",
+   "unit": "pt"
+  },
+  {
+   "name": "snap to pixel grid",
+   "group": "tools",
+   "value": true
+  },
+  {
+   "name": "nudge",
+   "group": "editing",
+   "value": 1,
+   "unit": "units"
+  },
+  {
+   "name": "big nudge",
+   "group": "editing",
+   "value": 10,
+   "unit": "units"
+  },
+  {
+   "name": "duplicate offset",
+   "group": "editing",
+   "value": 0,
+   "unit": "units"
+  },
+  {
+   "name": "duplicated board gap",
+   "group": "editing",
+   "value": 40,
+   "unit": "units"
+  },
+  {
+   "name": "flex default gap and padding",
+   "group": "editing",
+   "value": 10,
+   "unit": "units"
+  },
+  {
+   "name": "flex size tolerance",
+   "group": "editing",
+   "value": 0.5,
+   "unit": "units"
+  },
+  {
+   "name": "min zoom",
+   "group": "canvas",
+   "value": 0.02
+  },
+  {
+   "name": "max zoom",
+   "group": "canvas",
+   "value": 256
+  },
+  {
+   "name": "zoom step",
+   "group": "canvas",
+   "value": "next power of two"
+  },
+  {
+   "name": "fit padding",
+   "group": "canvas",
+   "value": 40,
+   "unit": "pt"
+  },
+  {
+   "name": "fit max zoom on open",
+   "group": "canvas",
+   "value": 1
+  },
+  {
+   "name": "wheel zoom per point",
+   "group": "canvas",
+   "value": 0.012
+  },
+  {
+   "name": "wheel zoom clamp with cmd",
+   "group": "canvas",
+   "value": 15
+  },
+  {
+   "name": "wheel zoom clamp with ctrl",
+   "group": "canvas",
+   "value": 30
+  },
+  {
+   "name": "wheel pan speed",
+   "group": "canvas",
+   "value": 1.5
+  },
+  {
+   "name": "wheel pan step cap",
+   "group": "canvas",
+   "value": 120,
+   "unit": "pt"
+  },
+  {
+   "name": "wheel line size",
+   "group": "canvas",
+   "value": 40,
+   "unit": "pt",
+   "estimated": true
+  },
+  {
+   "name": "window width",
+   "group": "window",
+   "value": 1352,
+   "unit": "pt"
+  },
+  {
+   "name": "window height",
+   "group": "window",
+   "value": 878,
+   "unit": "pt"
+  },
+  {
+   "name": "min window width",
+   "group": "window",
+   "value": 560,
+   "unit": "pt"
+  },
+  {
+   "name": "min window height",
+   "group": "window",
+   "value": 400,
+   "unit": "pt"
+  },
+  {
+   "name": "tab bar height",
+   "group": "window",
+   "value": 50,
+   "unit": "pt"
+  },
+  {
+   "name": "selection color",
+   "group": "theme",
+   "value": "#3b82f6"
+  },
+  {
+   "name": "add flex layout shortcut",
+   "group": "controls",
+   "value": "Shift+A"
+  },
+  {
+   "name": "zoom to fit shortcut",
+   "group": "controls",
+   "value": "Shift+1"
+  },
+  {
+   "name": "save shortcut",
+   "group": "controls",
+   "value": "Cmd+S"
+  },
+  {
+   "name": "paste offset",
+   "group": "editing",
+   "value": 0,
+   "unit": "units"
+  },
+  {
+   "name": "paste with original off screen",
+   "group": "editing",
+   "value": "centre of view"
+  },
+  {
+   "name": "paste with container selected",
+   "group": "editing",
+   "value": "centred in container"
+  },
+  {
+   "name": "pasted plain text font size",
+   "group": "editing",
+   "value": 12
+  },
+  {
+   "name": "pasted plain text fill",
+   "group": "editing",
+   "value": "#000000"
+  },
+  {
+   "name": "undo steps kept",
+   "group": "editing",
+   "value": 100,
+   "source": "Pencraft's own limit"
+  },
+  {
+   "name": "shadow sigma",
+   "group": "render",
+   "value": "blur / 2"
+  },
+  {
+   "name": "shadow default color",
+   "group": "render",
+   "value": "#000000"
+  },
+  {
+   "name": "shadow spread used",
+   "group": "render",
+   "value": false
+  },
+  {
+   "name": "blur sigma",
+   "group": "render",
+   "value": "radius / 2"
+  },
+  {
+   "name": "shadow cut out of see-through shapes",
+   "group": "render",
+   "value": true
+  },
+  {
+   "name": "new shadow color",
+   "group": "effects",
+   "value": "#00000040"
+  },
+  {
+   "name": "new shadow offset",
+   "group": "effects",
+   "value": "0, 4"
+  },
+  {
+   "name": "new shadow blur",
+   "group": "effects",
+   "value": 4
+  },
+  {
+   "name": "new blur radius",
+   "group": "effects",
+   "value": 4
+  },
+  {
+   "name": "layer blurs and background blurs per layer",
+   "group": "effects",
+   "value": 1
+  },
+  {
+   "name": "effect picture pixel budget",
+   "group": "render",
+   "value": 1000000,
+   "source": "Pencraft's own limit (src/render/bake.rs MAX_PIXELS)"
+  },
+  {
+   "name": "shader effect order",
+   "group": "effects",
+   "value": "after the layer's other effects, chained in list order"
+  },
+  {
+   "name": "shader texture coordinates",
+   "group": "effects",
+   "value": "0-1 over the node's box, v = 0 at the bottom"
+  },
+  {
+   "name": "shader coordinate unit",
+   "group": "effects",
+   "value": "node units",
+   "source": "assumption"
+  },
+  {
+   "name": "override key",
+   "group": "components",
+   "value": "node id anywhere in the component, or unique name; nestedInstanceId/innerId"
+  },
+  {
+   "name": "copy of a component",
+   "group": "components",
+   "value": "an instance"
+  },
+  {
+   "name": "delete inside an instance",
+   "group": "components",
+   "value": "enabled: false override"
+  },
+  {
+   "name": "go to component zoom",
+   "group": "components",
+   "value": "40 margin, max 100 %"
+  },
+  {
+   "name": "slot hatch spacing",
+   "group": "components",
+   "value": 8,
+   "source": "estimated"
+  },
+  {
+   "name": "slot content",
+   "group": "components",
+   "value": "children override on the slot frame of the instance"
+  },
+  {
+   "name": "components offered for a slot",
+   "group": "components",
+   "value": 12,
+   "source": "Pencraft's own limit (src/panels.rs slot_info)"
+  },
+  {
+   "name": "new polygon corners",
+   "group": "tools",
+   "value": 3
+  },
+  {
+   "name": "icon tool size",
+   "group": "tools",
+   "value": 24
+  },
+  {
+   "name": "icon tool icon",
+   "group": "tools",
+   "value": "lucide heart"
+  },
+  {
+   "name": "scale factor range",
+   "group": "tools",
+   "value": "0.01 - 100"
+  },
+  {
+   "name": "action search shortcut",
+   "group": "window",
+   "value": "cmd+P"
+  },
+  {
+   "name": "action search list height",
+   "group": "window",
+   "value": 400
+  },
+  {
+   "name": "imported picture room",
+   "group": "tools",
+   "value": "80 % of the view",
+   "source": "Pencraft's own rule (src/ops.rs IMPORT_ROOM)"
+  },
+  {
+   "name": "polygon corner radius limit",
+   "group": "render",
+   "value": "half the shortest side"
+  },
+  {
+   "name": "corner-radius handle inset",
+   "group": "editing",
+   "value": 12,
+   "source": "estimated"
+  },
+  {
+   "name": "corner-radius handles need a side of",
+   "group": "editing",
+   "value": 56,
+   "source": "estimated"
+  },
+  {
+   "name": "rotation snap with shift",
+   "group": "editing",
+   "value": "15 degrees"
+  },
+  {
+   "name": "rotate zone reach",
+   "group": "editing",
+   "value": 22,
+   "source": "Pencraft's own rule (theme ROTATE_REACH)"
+  },
+  {
+   "name": "export formats",
+   "group": "export",
+   "value": "PNG, JPEG, WEBP, PDF, SVG"
+  },
+  {
+   "name": "export scales",
+   "group": "export",
+   "value": "1x, 2x, 3x"
+  },
+  {
+   "name": "JPEG quality high / medium / low",
+   "group": "export",
+   "value": "95 / 75 / 50"
+  },
+  {
+   "name": "PDF page picture scale",
+   "group": "export",
+   "value": 2,
+   "source": "Pencraft's own rule (src/export.rs PDF_SCALE)"
+  },
+  {
+   "name": "most pixels of an exported picture",
+   "group": "export",
+   "value": 64000000,
+   "source": "Pencraft's own limit (src/render/bake.rs)"
+  },
+  {
+   "name": "AI flash colour",
+   "group": "ai",
+   "value": "rgb(96, 125, 255)"
+  },
+  {
+   "name": "AI flash time, ms",
+   "group": "ai",
+   "value": 1200,
+   "source": "estimated"
+  },
+  {
+   "name": "AI flash outline start distance, points",
+   "group": "ai",
+   "value": 12,
+   "source": "estimated"
+  },
+  {
+   "name": "AI flash stroke width",
+   "group": "ai",
+   "value": 2
+  },
+  {
+   "name": "AI cursor travel time, ms",
+   "group": "ai",
+   "value": 450,
+   "source": "estimated"
+  },
+  {
+   "name": "AI cursor stay after last call, s",
+   "group": "ai",
+   "value": 8,
+   "source": "estimated"
+  },
+  {
+   "name": "AI cursor fade time, ms",
+   "group": "ai",
+   "value": 500,
+   "source": "estimated"
+  },
+  {
+   "name": "AI cursor size factors (small, medium, large)",
+   "group": "ai",
+   "value": [
+    1,
+    1.35,
+    1.7
+   ],
+   "source": "estimated"
+  },
+  {
+   "name": "longest side of a screenshot given to a model, px",
+   "group": "ai",
+   "value": 2000,
+   "source": "Pencraft's own limit (src/app/tools.rs)"
+  },
+  {
+   "name": "wait for the user's drag before a change is refused, s",
+   "group": "ai",
+   "value": 10,
+   "source": "Pencraft's own rule (src/app/tools.rs)"
+  },
+  {
+   "name": "wait for the app to answer a tool call, s",
+   "group": "ai",
+   "value": 120,
+   "source": "Pencraft's own rule (src/link.rs)"
+  },
+  {
+   "name": "wait for the app to start from pencraft mcp, s",
+   "group": "ai",
+   "value": 20,
+   "source": "Pencraft's own rule (src/link.rs)"
+  },
+  {
+   "name": "largest message the local server takes, bytes",
+   "group": "ai",
+   "value": 33554432,
+   "source": "Pencraft's own limit (src/link.rs)"
+  },
+  {
+   "name": "chat: most output tokens of one answer",
+   "group": "chat",
+   "value": 64000,
+   "source": "Anthropic guidance for streamed requests (src/chat/api.rs)"
+  },
+  {
+   "name": "chat: effort sent to Anthropic's API",
+   "group": "chat",
+   "value": "medium",
+   "source": "Pencraft's own rule"
+  },
+  {
+   "name": "chat: API version",
+   "group": "chat",
+   "value": "2026-10-21",
+   "source": "Anthropic Messages API"
+  },
+  {
+   "name": "chat: most requests one message may take",
+   "group": "chat",
+   "value": 80,
+   "source": "Pencraft's own limit"
+  },
+  {
+   "name": "chat: retries of a request the provider couldn't take",
+   "group": "chat",
+   "value": 2,
+   "source": "Pencraft's own rule"
+  },
+  {
+   "name": "chat: wait for a tool's answer, s",
+   "group": "chat",
+   "value": 130,
+   "source": "Pencraft's own rule"
+  },
+  {
+   "name": "chat: earlier messages retold to a new assistant",
+   "group": "chat",
+   "value": 24,
+   "source": "Pencraft's own rule"
+  },
+  {
+   "name": "chat: widest share of the panel for the user's bubble",
+   "group": "chat",
+   "value": 0.86,
+   "source": "Pencraft's own rule (src/theme.rs)"
+  },
+  {
+   "name": "chat: assistant menu width",
+   "group": "chat",
+   "value": 240,
+   "source": "Pencraft's own rule (src/theme.rs)"
+  },
+  {
+   "name": "chat: problem colour",
+   "group": "chat",
+   "value": "#dc2626",
+   "source": "Pencraft's own rule (src/theme.rs)"
+  },
+  {
+   "name": "chat chip: corner radius",
+   "group": "chat",
+   "value": 4
+  },
+  {
+   "name": "chat chip: icon size",
+   "group": "chat",
+   "value": 12
+  },
+  {
+   "name": "chat chip: most characters of a name",
+   "group": "chat",
+   "value": 18,
+   "source": "estimated"
+  },
+  {
+   "name": "pen point dot",
+   "group": "canvas",
+   "value": 8,
+   "unit": "pt"
+  },
+  {
+   "name": "pen handle square",
+   "group": "canvas",
+   "value": 9,
+   "unit": "pt"
+  },
+  {
+   "name": "pen close reach",
+   "group": "canvas",
+   "value": 8,
+   "unit": "pt"
+  },
+  {
+   "name": "pen angle step with shift",
+   "group": "canvas",
+   "value": 45,
+   "unit": "deg"
+  },
+  {
+   "name": "new path stroke width",
+   "group": "canvas",
+   "value": 1,
+   "unit": "pt"
+  },
+  {
+   "name": "path line reach",
+   "group": "canvas",
+   "value": 10,
+   "unit": "pt"
+  },
+  {
+   "name": "smooth point handle length, share of the way to the neighbour",
+   "group": "canvas",
+   "value": 0.3333,
+   "source": "estimated"
+  },
+  {
+   "name": "find layers line height",
+   "group": "controls",
+   "value": 32,
+   "unit": "pt"
+  },
+  {
+   "name": "find layers lines before scrolling",
+   "group": "controls",
+   "value": 10
+  },
+  {
+   "name": "find layers width",
+   "group": "controls",
+   "value": 300,
+   "unit": "pt",
+   "source": "estimated"
+  }
+ ]
+}

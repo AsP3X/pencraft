@@ -1,0 +1,3 @@
+{"description":"Top scrim so the top buttons read over the blue","operations":[
+{"op":"insert","parent":"player","index":3,"node":{"type":"rectangle","id":"scrim-top","name":"Top scrim","x":0,"y":0,"width":393,"height":180,"fill":{"type":"gradient","gradientType":"linear","rotation":0,"colors":[{"color":"#00000000","position":0},{"color":"#00000052","position":1}]}}}
+]}

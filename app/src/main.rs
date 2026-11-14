@@ -1,0 +1,238 @@
+//! Pencraft: a canvas design editor for `.pen` files, written in Rust as a Craft app.
+//!
+//! `pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--activity] [--update-prompt] [--export FILE]]`
+//! `pencraft [--background] [--private] [--no-update-check] [--assistant ID] [--ask MESSAGE] [FILE.pen]...` opens the window behind what the user is doing.
+//! `pencraft mcp` connects an AI client to the running app (Model Context Protocol over standard input and output).
+
+// Human: on Windows a shipped (release) build is a window app: started from the Start menu or the Explorer it
+// opens no black terminal window beside its own. `pencraft mcp` still talks through the pipes its client
+// gives it. A development build stays a terminal program, so its messages show where it was started.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
+mod activity;
+mod advice;
+mod agent;
+mod app;
+mod canvas;
+mod chat;
+mod chips;
+mod conversation;
+mod craft;
+mod editor;
+mod effects;
+mod export;
+mod faces;
+mod find;
+mod fonts;
+mod glass_check;
+mod gpu;
+mod icons;
+mod images;
+mod keys;
+mod link;
+mod material;
+mod menus;
+mod ops;
+mod palette;
+mod panels;
+mod path_edit;
+mod pen;
+mod prefs;
+mod raster;
+mod render;
+mod review;
+mod samples;
+mod screenshot;
+mod secrets;
+mod settings;
+mod shader;
+mod sidebar;
+mod skills;
+mod theme;
+mod tool_icons;
+mod update;
+
+use std::path::PathBuf;
+use std::process::ExitCode;
+
+/// Default window size.
+const WINDOW_SIZE: [f32; 2] = [1352.0, 878.0];
+/// Smallest window.
+const MIN_WINDOW_SIZE: [f32; 2] = [560.0, 400.0];
+
+/// How many samples a pixel the window is drawn with (multisample anti-aliasing).
+const SAMPLES: u16 = 4;
+const USAGE: &str = "usage: pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--activity] [--update-prompt] [--export FILE]]\n       pencraft [--background] [--private] [--no-update-check] [--assistant ID] [--ask MESSAGE] [FILE.pen]...\n       pencraft mcp
+       pencraft skills [show NAME [FILE] | install [--project DIR | --dir DIR]]";
+
+fn main() -> ExitCode {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
+    // Human: `pencraft mcp` is not the app but the door to it for an AI client: it passes the client's messages
+    // to the running app (and starts it when it isn't running).
+    if std::env::args().nth(1).as_deref() == Some("mcp") {
+        return link::bridge();
+    }
+    // Human: `pencraft skills` lists the skills and writes them where AI clients look for skills; no window.
+    if std::env::args().nth(1).as_deref() == Some("skills") {
+        return skills::command(&std::env::args().skip(2).collect::<Vec<_>>());
+    }
+    let launch = match parse_args(std::env::args().skip(1)) {
+        Ok(launch) => launch,
+        Err(message) => {
+            complain(&format!("{message}\n{USAGE}"));
+            return ExitCode::from(2);
+        }
+    };
+    // A check, or an app an AI client started, must never take focus from what the person is doing.
+    // Human: an AI client asks for the app in the background; when a Pencraft is already running there is
+    // nothing to start, and no second window opens.
+    if launch.background && launch.ask.is_none() && link::serving() {
+        return ExitCode::SUCCESS;
+    }
+    let shooting = launch.screenshot.is_some() || launch.background;
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title("Pencraft")
+        .with_app_id("dev.pencraft.desktop")
+        .with_inner_size(WINDOW_SIZE)
+        .with_min_inner_size(MIN_WINDOW_SIZE)
+        .with_drag_and_drop(true);
+    if cfg!(target_os = "macos") {
+        // Human: the tab strip is the title bar, with the window buttons inset at its start.
+        viewport = viewport.with_fullsize_content_view(true).with_titlebar_shown(false).with_title_shown(false);
+    }
+    if launch.screenshot.is_some() {
+        // Human: a run that only takes a picture keeps its window under every other window, and moves it to
+        // where no screen is once it exists (see `screenshot::Job`), so nothing flashes up in front of the person.
+        viewport = viewport.with_window_level(egui::WindowLevel::AlwaysOnBottom);
+    }
+    if shooting {
+        viewport = viewport.with_active(false);
+    }
+    // Human: the canvas draws shapes, paths and icons as plain triangles, which have hard, stepped edges unless
+    // the GPU smooths them: four samples a pixel, the level every GPU has.
+    let options = eframe::NativeOptions { viewport, renderer: eframe::Renderer::Wgpu, multisampling: SAMPLES, ..Default::default() };
+    #[cfg(target_os = "macos")]
+    let options = {
+        let mut options = options;
+        if shooting {
+            use winit::platform::macos::EventLoopBuilderExtMacOS as _;
+            let picture_only = launch.screenshot.is_some();
+            options.event_loop_builder = Some(Box::new(move |builder| {
+                builder.with_activate_ignoring_other_apps(false);
+                // Human: a run that only takes a picture shows no Dock icon either.
+                if picture_only {
+                    builder.with_activation_policy(winit::platform::macos::ActivationPolicy::Accessory);
+                }
+            }));
+        }
+        options
+    };
+    let result = eframe::run_native(
+        "Pencraft",
+        options,
+        Box::new(move |cc| {
+            // winit's own Quit (⌘Q) ends the app without asking about unsaved work; this menu's Quit asks first.
+            #[cfg(target_os = "macos")]
+            if let Err(e) = craft_menu::mac::install_app_menu(&cc.egui_ctx, "Pencraft") {
+                log::warn!("app menu: kept winit's Quit, which ends the app without asking: {e}");
+            }
+            Ok(Box::new(app::App::new(cc, launch)))
+        }),
+    );
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            complain(&format!("Pencraft couldn't open its window: {e}"));
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn parse_args(args: impl Iterator<Item = String>) -> Result<app::Launch, String> {
+    let mut launch = app::Launch {
+        files: Vec::new(),
+        screenshot: None,
+        dark: false,
+        sidebar: None,
+        settings: None,
+        select: None,
+        actions: false,
+        export: None,
+        background: false,
+        activity: false,
+        points: false,
+        find: None,
+        attach: Vec::new(),
+        ask: None,
+        assistant: None,
+        private: false,
+        no_update_check: false,
+        update_prompt: false,
+    };
+    let mut args = args.peekable();
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--screenshot" => {
+                let path = args.next().ok_or("--screenshot needs a file name")?;
+                launch.screenshot = Some(PathBuf::from(path));
+            }
+            "--dark" => launch.dark = true,
+            "--sidebar" => launch.sidebar = Some(args.next().ok_or("--sidebar needs a view: history, chat, layers or hidden")?),
+            "--settings" => launch.settings = Some(args.next().ok_or("--settings needs a page: general, agents or provider")?),
+            "--actions" => launch.actions = true,
+            "--background" => launch.background = true,
+            "--activity" => launch.activity = true,
+            "--points" => launch.points = true,
+            "--attach" => launch.attach.push(args.next().ok_or("--attach needs a file")?.into()),
+            "--find" => launch.find = Some(args.next().ok_or("--find needs the text to look for")?),
+            "--private" => launch.private = true,
+            "--no-update-check" => launch.no_update_check = true,
+            "--update-prompt" => launch.update_prompt = true,
+            "--ask" => launch.ask = Some(args.next().ok_or("--ask needs a message")?),
+            "--assistant" => launch.assistant = Some(args.next().ok_or("--assistant needs an id, like code/claude-opus-5-5")?),
+            "--export" => launch.export = Some(PathBuf::from(args.next().ok_or("--export needs a file name")?)),
+            "--select" => launch.select = Some(args.next().ok_or("--select needs a layer's id")?),
+            "--help" | "-h" => return Err("Pencraft".to_owned()),
+            flag if flag.starts_with("--") => return Err(format!("unknown option {flag}")),
+            file => launch.files.push(PathBuf::from(file)),
+        }
+    }
+    Ok(launch)
+}
+
+#[expect(clippy::print_stderr, reason = "start-up errors go to the terminal that started the app")]
+fn complain(message: &str) {
+    eprintln!("{message}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn arguments() {
+        let parse = |a: &[&str]| parse_args(a.iter().map(|s| (*s).to_owned()));
+        let l = parse(&["a.pen", "--screenshot", "shot.png"]).unwrap();
+        assert_eq!(l.files, vec![PathBuf::from("a.pen")]);
+        assert_eq!(l.screenshot, Some(PathBuf::from("shot.png")));
+        let l = parse(&["--screenshot", "shot.png", "--dark", "--sidebar", "history"]).unwrap();
+        assert!(l.dark);
+        assert_eq!(l.sidebar.as_deref(), Some("history"));
+        assert!(parse(&["--sidebar"]).is_err());
+        assert!(parse(&["--screenshot"]).is_err());
+        assert!(parse(&["--bogus"]).is_err());
+    }
+
+    #[test]
+    fn only_an_ordinary_run_looks_for_updates() {
+        let parse = |a: &[&str]| parse_args(a.iter().map(|s| (*s).to_owned())).unwrap();
+        assert!(parse(&[]).looks_for_updates());
+        assert!(parse(&["a.pen", "--ask", "Draw a card"]).looks_for_updates());
+        assert!(!parse(&["--no-update-check"]).looks_for_updates());
+        assert!(!parse(&["--private"]).looks_for_updates());
+        assert!(!parse(&["--background"]).looks_for_updates());
+        assert!(!parse(&["--screenshot", "shot.png"]).looks_for_updates());
+        assert!(!parse(&["--screenshot", "shot.png", "--export", "out.svg"]).looks_for_updates());
+        assert!(parse(&["--screenshot", "shot.png", "--update-prompt"]).update_prompt);
+    }
+}

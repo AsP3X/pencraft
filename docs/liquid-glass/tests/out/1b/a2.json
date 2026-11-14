@@ -1,0 +1,6 @@
+{"description":"Shorter title, three-photo mosaic","operations":[
+{"op":"update","id":"vGa87","properties":{"content":"Market, then the woods"}},
+{"op":"replace","id":"JWL3U","node":{"type":"frame","name":"Side photos","width":"fill_container","height":188,"layout":"vertical","gap":8,"children":[
+ {"type":"rectangle","name":"Forest","width":"fill_container","height":90,"cornerRadius":20,"fill":{"type":"image","url":"docs/liquid-glass/tests/photos/forest-light.jpg","mode":"cover"}},
+ {"type":"rectangle","name":"Artwork","width":"fill_container","height":90,"cornerRadius":20,"fill":{"type":"image","url":"docs/liquid-glass/tests/photos/bright-artwork.jpg","mode":"cover"}}]}}
+]}
