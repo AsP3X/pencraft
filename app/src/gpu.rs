@@ -37,6 +37,8 @@ struct Gpu {
     vertex: wgpu::ShaderModule,
     /// A shader's pipeline and the layout of its inputs, by a hash of its source.
     pipelines: Mutex<HashMap<u64, Arc<Built>>>,
+    /// Held while one picture is drawn and read back.
+    busy: Mutex<()>,
 }
 
 struct Built {
@@ -53,7 +55,7 @@ pub fn install(device: wgpu::Device, queue: wgpu::Queue) {
         source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(VERTEX)),
     });
     // A second call would only find the same device already kept.
-    let _ = GPU.set(Gpu { device, queue, vertex, pipelines: Mutex::default() });
+    let _ = GPU.set(Gpu { device, queue, vertex, pipelines: Mutex::default(), busy: Mutex::default() });
 }
 
 /// Whether there is a GPU device to run shaders on.
@@ -124,6 +126,9 @@ pub fn run(program: &Program, size: (u32, u32), block: &[u8], inputs: &[Input<'_
     }
     // Human: without this scope a shader the GPU refuses would end the app; with it the refusal comes back
     // as an error and the layer is drawn unshaded.
+    // Human: one picture at a time. Two threads waiting on the same device could each end the other's wait
+    // before its own picture had come back, and the layer was then drawn without its shader.
+    let _one_at_a_time = lock(&gpu.busy);
     let scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
     let drawn = gpu.draw(program, size, block, inputs);
     match at_once(scope.pop()) {
@@ -303,7 +308,7 @@ impl Gpu {
             let _ = sent.send(result);
         });
         self.device.poll(wgpu::PollType::Wait { submission_index: None, timeout: Some(PATIENCE) }).map_err(|e| e.to_string())?;
-        mapped.try_recv().map_err(|_| "the GPU didn't hand the picture back")?.map_err(|e| e.to_string())?;
+        mapped.recv_timeout(PATIENCE).map_err(|_| "the GPU didn't hand the picture back")?.map_err(|e| e.to_string())?;
         let data = readback.get_mapped_range(..).map_err(|e| e.to_string())?;
         let (row, width) = (usize::try_from(row).map_err(|e| e.to_string())?, usize::try_from(size.0 * 4).map_err(|e| e.to_string())?);
         Ok(data.chunks(row).flat_map(|line| line.get(..width).unwrap_or(&[]).iter().copied()).collect())
