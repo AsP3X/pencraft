@@ -656,6 +656,33 @@ pub fn base64(bytes: &[u8]) -> String {
     out
 }
 
+/// The bytes base64 text stands for, or `None` when it isn't base64. White space and missing `=` are fine.
+#[must_use]
+pub fn unbase64(text: &str) -> Option<Vec<u8>> {
+    let value = |letter: u8| match letter {
+        b'A'..=b'Z' => Some(u32::from(letter - b'A')),
+        b'a'..=b'z' => Some(u32::from(letter - b'a') + 26),
+        b'0'..=b'9' => Some(u32::from(letter - b'0') + 52),
+        b'+' | b'-' => Some(62),
+        b'/' | b'_' => Some(63),
+        _ => None,
+    };
+    let letters: Vec<u32> =
+        text.bytes().filter(|letter| !letter.is_ascii_whitespace() && *letter != b'=').map(value).collect::<Option<_>>()?;
+    let mut out = Vec::with_capacity(letters.len() / 4 * 3 + 2);
+    for group in letters.chunks(4) {
+        // Human: four letters carry three bytes; a last group of three carries two, of two carries one, and a
+        // single letter carries nothing whole, so it is refused.
+        if group.len() == 1 {
+            return None;
+        }
+        let bits = group.iter().fold(0_u32, |bits, letter| (bits << 6) | letter) << (6 * (4 - group.len()));
+        let bytes = bits.to_be_bytes();
+        out.extend_from_slice(&bytes[1..group.len()]);
+    }
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -853,5 +880,17 @@ mod tests {
             (base64(b""), base64(b"f"), base64(b"fo"), base64(b"foo"), base64(b"foobar")),
             (String::new(), "Zg==".to_owned(), "Zm8=".to_owned(), "Zm9v".to_owned(), "Zm9vYmFy".to_owned())
         );
+    }
+
+    #[test]
+    fn unbase64_reads_what_base64_writes_and_refuses_what_is_not() {
+        for bytes in [&b""[..], b"f", b"fo", b"foo", b"foob", &[0, 255, 16, 128, 7]] {
+            assert_eq!(unbase64(&base64(bytes)).as_deref(), Some(bytes));
+        }
+        // Line breaks and missing padding are fine; providers send both.
+        assert_eq!(unbase64("Zm9v\nYmFy").as_deref(), Some(&b"foobar"[..]));
+        assert_eq!(unbase64("Zm8").as_deref(), Some(&b"fo"[..]));
+        assert_eq!(unbase64("Zm9v!"), None);
+        assert_eq!(unbase64("Z"), None);
     }
 }
