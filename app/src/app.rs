@@ -16,10 +16,10 @@ use crate::palette::Command;
 use crate::prefs::Prefs;
 use crate::settings::Settings;
 use crate::sidebar::Ask;
-use crate::sidebar::{Look, Sidebar, icon_button, text_button};
+use crate::sidebar::{Sidebar, icon_button, text_button};
 use crate::theme::{
     self, ACCENT, AGENT_CURSOR_LARGE, AGENT_CURSOR_MEDIUM, ICON_SIZE, ISLAND_GAP, ISLAND_RADIUS, MESSAGE_BAR_HEIGHT, PROPERTIES_WIDTH, RAIL_WIDTH,
-    SIDEBAR_TEXT_SIZE, TAB_BAR_HEIGHT, TAB_HEIGHT, TITLE_BUTTON, TITLE_ISLAND_HEIGHT, TITLE_ISLAND_TOP, TITLE_SIZE, TRAFFIC_LIGHT_LEFT,
+    SIDEBAR_TEXT_SIZE, TAB_BAR_HEIGHT, TAB_HEIGHT, TAB_WORK_DOT, TITLE_BUTTON, TITLE_ISLAND_HEIGHT, TITLE_ISLAND_TOP, TITLE_SIZE, TRAFFIC_LIGHT_LEFT,
     TRAFFIC_LIGHT_SPACE, ZOOM_ISLAND,
 };
 use crate::{fonts, samples, screenshot};
@@ -136,21 +136,23 @@ pub struct App {
     /// end they are sent into.
     tool_calls: std::sync::mpsc::Receiver<crate::link::Call>,
     tool_send: std::sync::mpsc::Sender<crate::link::Call>,
-    /// The chat with an AI model.
-    chat: crate::chat::Chat,
+    /// The chats with an AI model: one for each open document that has been talked in, and the home screen's.
+    talks: Vec<talk::Talk>,
+    /// How many chats this run has started; the next one's number follows from it.
+    talks_made: u64,
+    /// The number of the chat the sidebar shows, whose message is being written there; 0 before it has shown one.
+    shown: u64,
     /// The assistants the chat can talk to, looked up when the app starts and when the assistant menu opens.
     assistants: Vec<crate::chat::Choice>,
     /// The assistant asked for on the command line, which goes before the one in the settings.
     assistant_asked: Option<String>,
     /// Nothing of this run is remembered (`--private`, or a picture).
     private: bool,
-    /// How many lines of the chat have been written to the log.
-    chat_logged: usize,
     /// Tool calls that wait for the user to finish a drag, each with when it came in.
     waiting: Vec<(crate::link::Call, Instant)>,
-    /// The top-level layers models have changed since a reviewer last looked, each with its tab and how many
-    /// layers were written in it.
-    pub(crate) designed: Vec<(usize, String, usize)>,
+    /// The top-level layers models have changed since a reviewer last looked, each with its document's id and
+    /// how many layers were written in it.
+    pub(crate) designed: Vec<(u64, String, usize)>,
     /// What is known about a newer version of the app, and the card that offers it.
     updates: crate::update::Updates,
 }
@@ -200,11 +202,12 @@ impl App {
             link: None,
             tool_calls,
             tool_send,
-            chat: crate::chat::Chat::default(),
+            talks: Vec::new(),
+            talks_made: 0,
+            shown: 0,
             assistants: Vec::new(),
             assistant_asked: launch.assistant.clone(),
             private: launch.private || launch.screenshot.is_some(),
-            chat_logged: 0,
             waiting: Vec::new(),
             designed: Vec::new(),
             updates: crate::update::Updates::new(launch.looks_for_updates(), launch.update_prompt),
@@ -212,8 +215,6 @@ impl App {
         app.find_assistants();
         if launch.screenshot.is_none() {
             app.start_link(&cc.egui_ctx);
-        }
-        if launch.screenshot.is_none() {
             app.install_menus(&cc.egui_ctx);
         }
         if let Some(path) = launch.screenshot {
@@ -292,7 +293,7 @@ impl App {
     /// exchange in it.
     fn pose_sidebar(&mut self, name: &str) {
         if name == "conversation" {
-            self.chat.entries = crate::chat::sample();
+            self.front_talk().chat.entries = crate::chat::sample();
         }
         self.sidebar.pose(if name == "conversation" { "chat" } else { name });
     }
@@ -480,7 +481,8 @@ impl App {
         if tab >= self.tabs.len() {
             return;
         }
-        self.tabs.remove(tab);
+        let closed = self.tabs.remove(tab);
+        self.close_talk(closed.id);
         self.active = match self.active {
             Some(a) if a == tab => (!self.tabs.is_empty()).then(|| tab.min(self.tabs.len() - 1)),
             Some(a) if a > tab => Some(a - 1),
@@ -992,7 +994,8 @@ impl App {
                 for i in 0..self.tabs.len() {
                     // Human: a saved file's tab shows its whole name, ending included.
                     let (title, dirty) = (self.tabs[i].tab_name(), self.tabs[i].dirty);
-                    let (response, closed) = tab_button(ui, &title, self.active == Some(i), dirty, palette);
+                    let look = TabLook { active: self.active == Some(i), dirty, at_work: self.chat_at_work(i) };
+                    let (response, closed) = tab_button(ui, &title, look, palette);
                     if closed || response.middle_clicked() {
                         close = Some(i);
                     } else if response.clicked() {
@@ -1221,11 +1224,10 @@ impl App {
                 let selected = !editor.selection.is_empty();
                 let beside = if selected { PROPERTIES_WIDTH + ISLAND_GAP } else { 0.0 };
                 let under_bar = egui::Rect::from_min_max(egui::pos2(ui.ctx().content_rect().left(), rect.top()), rect.max - egui::vec2(beside, 0.0));
-                let wanted = self.assistant_asked.as_deref().unwrap_or(&self.prefs.get().agents.chat_model);
-                let assistant = crate::chat::chosen(&self.assistants, wanted).map_or("No assistant", |choice| choice.label.as_str());
-                let animate = self.prefs.get().appearance.animations;
-                let look = Look { dark, ideas: self.prefs.get().agents.ideas, chat: &self.chat, assistants: &self.assistants, assistant, animate };
-                notice = notice.or(self.sidebar.show(ui.ctx(), under_bar, open, editor, look));
+                if let Some(talk) = self.talks.iter().find(|talk| talk.id == self.shown) {
+                    let look = talk::look(talk, self.prefs.get(), &self.assistants, self.assistant_asked.as_deref());
+                    notice = notice.or(self.sidebar.show(ui.ctx(), under_bar, open, editor, look));
+                }
                 // Human: the properties island floats over the canvas's right edge, only while something is
                 // selected, as in the design; the canvas keeps its size, so nothing jumps when it appears.
                 if selected {
@@ -1437,10 +1439,10 @@ impl eframe::App for App {
             job.frame(ctx);
         }
         self.serve_tools(ctx);
-        if self.chat.poll() {
+        if self.poll_chats() {
             ctx.request_repaint();
         }
-        self.log_chat();
+        self.log_chats();
         // Last, so it sees the app's CancelClose.
         craft_quit::on_close_request(ctx);
     }
@@ -1470,6 +1472,7 @@ impl eframe::App for App {
         // Human: the macOS window buttons sit inside the title island, centred on its height.
         frame.set_traffic_lights_position(&ctx, egui::Rangef::new(TITLE_ISLAND_TOP, TITLE_ISLAND_TOP + TITLE_ISLAND_HEIGHT), TRAFFIC_LIGHT_LEFT);
         if self.active.is_some() {
+            self.bring_chat();
             self.editor_view(ui);
         } else {
             egui::CentralPanel::default().frame(egui::Frame::new().fill(palette.background)).show(ui, |ui| self.home(ui));
@@ -1606,7 +1609,21 @@ fn menu_item(ui: &mut egui::Ui, line: &str) -> bool {
     ui.add(egui::Button::new(name).shortcut_text(crate::keys::text(keys).into_owned())).clicked()
 }
 
-fn tab_button(ui: &mut egui::Ui, title: &str, active: bool, dirty: bool, palette: theme::Palette) -> (egui::Response, bool) {
+/// How a tab shows.
+#[derive(Clone, Copy)]
+struct TabLook {
+    /// It is the one in front.
+    active: bool,
+    /// Its document has changes that are not saved.
+    dirty: bool,
+    /// Its chat's assistant is at work.
+    at_work: bool,
+}
+
+// Human: each document has its own chat, and one can work while another document is in front. A dot in the
+// assistant's colour in place of the tab's icon says that this document's assistant is at work.
+fn tab_button(ui: &mut egui::Ui, title: &str, look: TabLook, palette: theme::Palette) -> (egui::Response, bool) {
+    let TabLook { active, dirty, at_work } = look;
     let text = if dirty { format!("{title} •") } else { title.to_owned() };
     let color = if active { palette.foreground } else { palette.muted };
     let galley = ui.painter().layout_no_wrap(text, egui::FontId::proportional(SIDEBAR_TEXT_SIZE), color);
@@ -1617,11 +1634,15 @@ fn tab_button(ui: &mut egui::Ui, title: &str, active: bool, dirty: bool, palette
         ui.painter().rect_filled(rect, TAB_HEIGHT / 2.0, if active { palette.hover } else { palette.hover.gamma_multiply(0.5) });
     }
     let slot = egui::Rect::from_min_size(egui::pos2(rect.left() + 13.0, rect.center().y - icon / 2.0), egui::Vec2::splat(icon));
-    crate::icons::paint(ui.painter(), slot, if hovered { "x" } else { "folder" }, color);
+    if at_work && !hovered {
+        ui.painter().circle_filled(slot.center(), TAB_WORK_DOT / 2.0, theme::AGENT);
+    } else {
+        crate::icons::paint(ui.painter(), slot, if hovered { "x" } else { "folder" }, color);
+    }
     ui.painter().galley(egui::pos2(slot.right() + 6.0, rect.center().y - galley.size().y / 2.0), galley, color);
     let on_cross = response.interact_pointer_pos().is_some_and(|p| slot.expand(5.0).contains(p));
     let closed = response.clicked() && on_cross;
-    (response.on_hover_text(title), closed)
+    (response.on_hover_text(if at_work { format!("{title}: the assistant is working") } else { title.to_owned() }), closed)
 }
 
 fn starter_card(ui: &mut egui::Ui, title: &str, subtitle: &str, palette: theme::Palette, accent: Option<Color32>) -> egui::Response {

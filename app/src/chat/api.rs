@@ -58,6 +58,8 @@ pub struct Job<'a> {
     pub tools: &'a Sender<Call>,
     /// Gets the app's attention after a tool call is sent.
     pub wake: &'a (dyn Fn() + Send + Sync),
+    /// The chat's id in the app, which its tool calls carry.
+    pub chat: u64,
 }
 
 /// The key for `source`.
@@ -290,7 +292,7 @@ pub fn once(endpoint: &str, source: &KeySource, model: &str, system: &str, conte
 /// Runs one tool on the main thread and gives its result as the API takes it.
 fn use_tool(job: &Job<'_>, id: &str, name: &str, input: &Value) -> Value {
     let (reply, answered) = channel();
-    let call = Call { tool: name.to_owned(), arguments: input.clone(), client: CURSOR_NAME.to_owned(), reply };
+    let call = Call { tool: name.to_owned(), arguments: input.clone(), client: CURSOR_NAME.to_owned(), chat: Some(job.chat), reply };
     let result = if job.tools.send(call).is_ok() {
         (job.wake)();
         answered.recv_timeout(TOOL_PATIENCE).unwrap_or_else(|_| Err("Pencraft didn't answer in time.".to_owned()))
@@ -441,6 +443,7 @@ mod tests {
             history: Vec::new(),
             tools: &tools,
             wake: &|| {},
+            chat: 1,
         };
         let history = [json!({ "role": "user", "content": "hi" })];
         let own = request(&job(true, "claude-opus-5-5"), &history);

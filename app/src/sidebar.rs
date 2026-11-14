@@ -97,8 +97,10 @@ pub struct Look<'a> {
     pub dark: bool,
     /// Show the row of ideas under the message bar while nothing is typed.
     pub ideas: bool,
-    /// The chat the panel shows.
+    /// The chat the panel shows: the one of the document in front.
     pub chat: &'a Chat,
+    /// That chat's id, by which what moves in its conversation is remembered.
+    pub chat_id: u64,
     /// The assistants the user can pick from.
     pub assistants: &'a [Choice],
     /// The name of the assistant the chat talks to.
@@ -131,6 +133,24 @@ pub struct Sidebar {
     /// Whether the assistant was at work the last time the sidebar was drawn, and when it last finished (in
     /// egui's time), for the status line over the message bar.
     chat_ended: (bool, Option<f64>),
+}
+
+/// What is being written in one chat, and what its status line remembers: the part of the sidebar that belongs
+/// to a chat. The app keeps it for a chat while another one is in front.
+#[derive(Debug, Default, PartialEq)]
+pub struct Writing {
+    draft: String,
+    attached: Vec<PathBuf>,
+    chips: Vec<Chip>,
+    chat_ended: (bool, Option<f64>),
+}
+
+impl Writing {
+    /// Whether nothing is written or attached.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.draft.is_empty() && self.attached.is_empty()
+    }
 }
 
 /// Something the user asked of the chat.
@@ -452,10 +472,10 @@ impl Sidebar {
                 // Human: no chats are kept yet, so the list is empty, as in the design.
                 View::History => {}
                 View::Chat if look.chat.entries.is_empty() => {
-                    crate::conversation::forget(ui.ctx());
+                    crate::conversation::forget(ui.ctx(), look.chat_id);
                     self.start_of_chat(ui, palette);
                 }
-                View::Chat => crate::conversation::show(ui, look.chat, palette, look.animate),
+                View::Chat => crate::conversation::show(ui, look.chat, look.chat_id, palette, look.animate),
                 View::Layers => {
                     ui.add_space(8.0);
                     crate::panels::layers(ui, editor, dark);
@@ -726,6 +746,16 @@ impl Sidebar {
         self.chips.clear();
         self.draft.clear();
         self.view = View::Chat;
+    }
+
+    /// Trades what is being written in the sidebar for `other`: the chat in front has changed.
+    // Human: every open document has a chat of its own. A message half written in one is not sent to another
+    // by switching tabs; it waits where it was written.
+    pub fn trade_writing(&mut self, other: &mut Writing) {
+        std::mem::swap(&mut self.draft, &mut other.draft);
+        std::mem::swap(&mut self.attached, &mut other.attached);
+        std::mem::swap(&mut self.chips, &mut other.chips);
+        std::mem::swap(&mut self.chat_ended, &mut other.chat_ended);
     }
 
     /// Adds files to the message being written; one that is there already, or beyond the most a message
@@ -1145,6 +1175,24 @@ fn components(ui: &mut Ui, editor: &mut Editor, palette: Palette) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn what_is_being_written_stays_with_its_chat() {
+        let mut sidebar = Sidebar { draft: "Make it blue".to_owned(), ..Sidebar::default() };
+        sidebar.attach([PathBuf::from("/a.png")]);
+        // Another chat comes to the front: the message box is empty for it, and the first chat keeps its own.
+        let mut first = Writing::default();
+        assert!(first.is_empty());
+        sidebar.trade_writing(&mut first);
+        assert!(sidebar.draft.is_empty() && sidebar.attached.is_empty() && !first.is_empty());
+        sidebar.draft = "A footer".to_owned();
+        // Back to the first: its message is there again, and the second chat's waits in turn.
+        let mut second = Writing::default();
+        sidebar.trade_writing(&mut second);
+        sidebar.trade_writing(&mut first);
+        assert_eq!((sidebar.draft.as_str(), sidebar.attached.len(), second.draft.as_str()), ("Make it blue", 1, "A footer"));
+        assert!(first.is_empty());
+    }
+
     /// Draws the sidebar for one frame with `events`; `open` or folded away.
     fn frame(sidebar: &mut Sidebar, ctx: &egui::Context, editor: &mut Editor, open: bool, events: Vec<egui::Event>) {
         let area = Rect::from_min_size(pos2(0.0, 40.0), vec2(1352.0, 838.0));
@@ -1156,7 +1204,7 @@ mod tests {
         };
         let chat = Chat::default();
         let mut drawn = ctx.run_ui(input, |ui| {
-            let look = Look { dark: false, ideas: false, chat: &chat, assistants: &[], assistant: "Test", animate: false };
+            let look = Look { dark: false, ideas: false, chat: &chat, chat_id: 1, assistants: &[], assistant: "Test", animate: false };
             sidebar.show(ui.ctx(), area, if open { 1.0 } else { 0.0 }, editor, look);
         });
         // The font picture this frame made is for a screen; there is none here.

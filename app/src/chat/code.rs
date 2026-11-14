@@ -34,13 +34,15 @@ pub struct Job<'a> {
     pub session: Option<&'a str>,
     /// The app's local server: its port and secret.
     pub server: Option<&'a (u16, String)>,
+    /// The chat's id in the app, which the address of the tool server carries.
+    pub chat: u64,
 }
 
 /// The command that answers `job`.
 // Human: the program gets no tools but Pencraft's (no shell, no files, no web): in the chat panel it is a
 // designer, not a coding agent, and nothing it does needs asking the user for permission.
 fn command(job: &Job<'_>, port: u16, secret: &str) -> Command {
-    let servers = json!({ "mcpServers": { SERVER: { "type": "http", "url": format!("http://127.0.0.1:{port}/mcp"), "headers": { "Authorization": format!("Bearer {secret}") } } } });
+    let servers = json!({ "mcpServers": { SERVER: { "type": "http", "url": crate::link::address(port, job.chat), "headers": { "Authorization": format!("Bearer {secret}") } } } });
     let mut command = Command::new(job.program);
     command
         .args(["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages"])
@@ -266,8 +268,15 @@ mod tests {
 
     #[test]
     fn the_program_gets_only_pencrafts_tools_and_continues_its_session() {
-        let job =
-            Job { program: Path::new("/bin/claude"), model: "claude-opus-5-5", prompt: "hi", pictures: &[], session: Some("abc"), server: None };
+        let job = Job {
+            program: Path::new("/bin/claude"),
+            model: "claude-opus-5-5",
+            prompt: "hi",
+            pictures: &[],
+            session: Some("abc"),
+            server: None,
+            chat: 3,
+        };
         let command = command(&job, 4242, "s3cret");
         let args: Vec<String> = command.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
         let after = |flag: &str| args.iter().position(|a| a == flag).and_then(|at| args.get(at + 1)).cloned();
@@ -288,7 +297,7 @@ mod tests {
             (&json!("user"), &picture[0], &json!("hi"))
         );
         let servers: Value = serde_json::from_str(&after("--mcp-config").unwrap()).unwrap();
-        assert_eq!(servers["mcpServers"]["pencraft"]["url"], "http://127.0.0.1:4242/mcp");
+        assert_eq!(servers["mcpServers"]["pencraft"]["url"], "http://127.0.0.1:4242/mcp?chat=3");
         assert_eq!(servers["mcpServers"]["pencraft"]["headers"]["Authorization"], "Bearer s3cret");
     }
 }

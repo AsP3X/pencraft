@@ -17,6 +17,8 @@ pub const TRAFFIC_LIGHT_LEFT: f32 = 21.0;
 pub const TITLE_SIZE: f32 = 17.0;
 /// Height of a tab in the title island; its ends are half circles.
 pub const TAB_HEIGHT: f32 = 27.0;
+/// How wide the dot is that a tab shows while its chat's assistant is at work.
+pub const TAB_WORK_DOT: f32 = 7.0;
 /// Side of the icon buttons in the title island.
 pub const TITLE_BUTTON: f32 = 26.0;
 /// Width of the sidebar island on the left (the user's sidebar design: 377 pt).

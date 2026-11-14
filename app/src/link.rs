@@ -42,6 +42,9 @@ pub struct Call {
     pub arguments: Value,
     /// The client's name, as it introduced itself ("Claude Code", "Cursor"), for the cursor on the canvas.
     pub client: String,
+    /// The chat inside Pencraft the call comes from, which decides the document it works on; `None` for a
+    /// client outside the app, which works on the document in front.
+    pub chat: Option<u64>,
     /// Where the answer goes: the content of the tool's result, or what went wrong.
     pub reply: Sender<Result<Vec<Value>, String>>,
 }
@@ -232,7 +235,7 @@ fn serve(stream: TcpStream, shared: &Shared) {
         } else {
             match serde_json::from_slice::<Value>(&request.body) {
                 Err(error) => respond(&mut out, "200 OK", Some(&failure(&Value::Null, -32700, &format!("not JSON: {error}")))),
-                Ok(message) => match answer(&message, shared) {
+                Ok(message) => match answer(&message, chat_of(&request.path), shared) {
                     Some(reply) => respond(&mut out, "200 OK", Some(&reply)),
                     None => respond(&mut out, "202 Accepted", None),
                 },
@@ -249,8 +252,22 @@ fn failure(id: &Value, code: i32, message: &str) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
 }
 
-/// The answer to one JSON-RPC message; `None` for a notification, which gets none.
-fn answer(message: &Value, shared: &Shared) -> Option<Value> {
+/// The address the chat `chat` inside Pencraft reaches the server at.
+#[must_use]
+pub fn address(port: u16, chat: u64) -> String {
+    format!("http://127.0.0.1:{port}/mcp?chat={chat}")
+}
+
+/// The chat a request's `path` names (`/mcp?chat=3`), if it names one.
+// Human: the app's own chats run side by side, one per open document. Each is given an address of its own, so
+// the app knows which document a call is for even while another one is in front.
+fn chat_of(path: &str) -> Option<u64> {
+    let (_, query) = path.split_once('?')?;
+    query.split('&').find_map(|pair| pair.strip_prefix("chat=")).and_then(|id| id.parse().ok())
+}
+
+/// The answer to one JSON-RPC message that came in for `chat`; `None` for a notification, which gets none.
+fn answer(message: &Value, chat: Option<u64>, shared: &Shared) -> Option<Value> {
     let id = message.get("id").filter(|id| !id.is_null())?;
     let params = message.get("params").cloned().unwrap_or(Value::Null);
     let result = match message.get("method").and_then(Value::as_str) {
@@ -275,6 +292,7 @@ fn answer(message: &Value, shared: &Shared) -> Option<Value> {
                 tool: tool.to_owned(),
                 arguments: params.get("arguments").cloned().unwrap_or_else(|| json!({})),
                 client: lock(&shared.client).clone(),
+                chat,
                 reply,
             };
             if lock(&shared.send).send(call).is_err() {
@@ -443,13 +461,13 @@ mod tests {
     #[test]
     fn a_client_is_greeted_and_told_the_tools() {
         let (shared, _calls) = shared();
-        let hello = answer(&json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2024-11-05", "clientInfo": { "name": "Some Agent" } } }), &shared).unwrap();
+        let hello = answer(&json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2024-11-05", "clientInfo": { "name": "Some Agent" } } }), None, &shared).unwrap();
         assert_eq!((&hello["result"]["protocolVersion"], &hello["result"]["serverInfo"]["name"]), (&json!("2024-11-05"), &json!("pencraft")));
         assert_eq!(*lock(&shared.client), "Some Agent");
-        assert!(answer(&json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }), &shared).is_none());
-        let list = answer(&json!({ "jsonrpc": "2.0", "id": "a", "method": "tools/list" }), &shared).unwrap();
+        assert!(answer(&json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }), None, &shared).is_none());
+        let list = answer(&json!({ "jsonrpc": "2.0", "id": "a", "method": "tools/list" }), None, &shared).unwrap();
         assert!(list["result"]["tools"].as_array().is_some_and(|tools| tools.len() >= 9) && list["id"] == "a");
-        assert_eq!(answer(&json!({ "jsonrpc": "2.0", "id": 2, "method": "nope" }), &shared).unwrap()["error"]["code"], -32601);
+        assert_eq!(answer(&json!({ "jsonrpc": "2.0", "id": 2, "method": "nope" }), None, &shared).unwrap()["error"]["code"], -32601);
     }
 
     #[test]
@@ -457,7 +475,7 @@ mod tests {
         let (shared, calls) = shared();
         let app = std::thread::spawn(move || {
             let call = calls.recv().unwrap();
-            assert_eq!((call.tool.as_str(), &call.arguments["ids"][0]), ("read_layers", &json!("a")));
+            assert_eq!((call.tool.as_str(), &call.arguments["ids"][0], call.chat), ("read_layers", &json!("a"), Some(7)));
             call.reply.send(Ok(vec![json!({ "type": "text", "text": "done" })])).unwrap();
             let failing = calls.recv().unwrap();
             failing.reply.send(Err("no such layer".to_owned())).unwrap();
@@ -465,6 +483,7 @@ mod tests {
         let call = |arguments: Value| {
             answer(
                 &json!({ "jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": { "name": "read_layers", "arguments": arguments } }),
+                Some(7),
                 &shared,
             )
             .unwrap()
@@ -502,6 +521,15 @@ mod tests {
         let mut status = String::new();
         BufReader::new(page).read_line(&mut status).unwrap();
         assert!(status.starts_with("HTTP/1.1 403"), "{status}");
+    }
+
+    #[test]
+    fn a_chats_address_names_it() {
+        assert_eq!(address(4242, 3), "http://127.0.0.1:4242/mcp?chat=3");
+        assert_eq!(chat_of("/mcp?chat=3"), Some(3));
+        assert_eq!(chat_of("/mcp?session=a&chat=12"), Some(12));
+        // An outside client names none; a name that is no number is none either.
+        assert_eq!((chat_of("/mcp"), chat_of("/mcp?chat=x"), chat_of("/mcp?")), (None, None, None));
     }
 
     #[test]

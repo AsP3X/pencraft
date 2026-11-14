@@ -30,22 +30,24 @@ struct Motion {
     states: Vec<(Option<State>, f64)>,
 }
 
-fn motion_id() -> egui::Id {
-    egui::Id::unique("conversation-motion")
+/// Where the motion of the chat `key` is kept: each chat has its own, so one that is brought back to the
+/// front goes on where it was.
+fn motion_id(key: u64) -> egui::Id {
+    egui::Id::unique(("conversation-motion", key))
 }
 
-/// Forgets what moved: the conversation is empty, and the next one starts fresh.
-pub fn forget(ctx: &egui::Context) {
-    ctx.data_mut(|data| data.remove::<Motion>(motion_id()));
+/// Forgets what moved in the chat `key`: the conversation is empty, and the next one starts fresh.
+pub fn forget(ctx: &egui::Context, key: u64) {
+    ctx.data_mut(|data| data.remove::<Motion>(motion_id(key)));
 }
 
-/// Draws the conversation. `animate` is the user's "Animations & effects" setting.
+/// Draws the conversation of the chat `key`. `animate` is the user's "Animations & effects" setting.
 // Human: the newest line stays in view while the assistant writes, unless the user has scrolled up to read.
 // Agent: MAIN-THREAD; asks for another frame while something moves or the assistant is at work.
-pub fn show(ui: &mut Ui, chat: &Chat, palette: Palette, animate: bool) {
+pub fn show(ui: &mut Ui, chat: &Chat, key: u64, palette: Palette, animate: bool) {
     let now = ui.input(|input| input.time);
     let step = ui.input(|input| input.stable_dt).min(0.1);
-    let mut motion: Motion = ui.data(|data| data.get_temp(motion_id())).unwrap_or_default();
+    let mut motion: Motion = ui.data(|data| data.get_temp(motion_id(key))).unwrap_or_default();
     // Human: a conversation that is already there when the panel first shows it doesn't move in; only what
     // is added while one watches does.
     let known = motion.born.is_empty() && chat.entries.len() > 1;
@@ -64,7 +66,7 @@ pub fn show(ui: &mut Ui, chat: &Chat, palette: Palette, animate: bool) {
         }
     }
     let mut moving = false;
-    egui::ScrollArea::vertical().id_salt("conversation").auto_shrink([false, false]).stick_to_bottom(true).show(ui, |ui| {
+    egui::ScrollArea::vertical().id_salt(("conversation", key)).auto_shrink([false, false]).stick_to_bottom(true).show(ui, |ui| {
         ui.add_space(12.0);
         ui.spacing_mut().item_spacing.y = 0.0;
         let last = chat.entries.len().saturating_sub(1);
@@ -107,7 +109,7 @@ pub fn show(ui: &mut Ui, chat: &Chat, palette: Palette, animate: bool) {
     if animate && (moving || chat.running()) {
         ui.request_repaint();
     }
-    ui.data_mut(|data| data.insert_temp(motion_id(), motion));
+    ui.data_mut(|data| data.insert_temp(motion_id(key), motion));
 }
 
 /// How far a line born at `born` has come in: 0 just born, 1 in place; it slows down as it gets there.

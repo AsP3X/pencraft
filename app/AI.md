@@ -6,7 +6,7 @@ the documents open in Pencraft: Claude Code, Claude Desktop, Cursor, Codex, Gemi
 ## The chat inside Pencraft
 
 Type in the message box and press Return. The assistant answers in the chat panel and works on the document
-in front; what you have selected is what "this" means. The menu beside the send button picks who answers:
+its chat belongs to (the one in front when you send); what you have selected is what "this" means. The menu beside the send button picks who answers:
 
 - **Claude Code** (when the `claude` program is installed): uses your Claude sign-in, no key needed. If it
   fails to answer, run `claude` once in a terminal to check that it is signed in.
@@ -27,6 +27,11 @@ A few words mean something definite to the assistant when you ask it to change a
 that changes nothing). In each case it leaves alone what you did not name.
 
 The send button turns into a stop button while the assistant works. "New" starts a new chat.
+
+Every open design has a chat of its own: switching tabs switches the chat, and a message half written in one
+waits there. The chats work side by side. An assistant at work in one design keeps to that design while you
+look at another and talk to its chat, and it doesn't bring its design to the front; its tab shows a dot while
+it works. A chat that opens or starts another design goes on in that design. Closing a design ends its chat.
 
 The rest of this page is about AI clients outside Pencraft.
 

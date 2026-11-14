@@ -54,12 +54,12 @@ Go through every enlarged part, edge by edge and line by line, and look for slip
 Answer in plain text without Markdown. The first line is the one word PASS when you find nothing, otherwise the one word REVISE. After REVISE, list up to ten slips, the most visible first, one sentence each: where it is (name the part and the text) and exactly what to set instead.";
 
 /// A picture of what the assistant designed since the last review, with what the app counted in it, as the
-/// content of a message. `None` when it changed nothing worth a review.
+/// content of a message; `chat` is the chat whose design it is. `None` when it changed nothing worth a review.
 // Agent: BLOCKS until the app's main thread has drawn the picture.
 #[must_use]
-pub fn picture(tools: &Sender<Call>, wake: &(dyn Fn() + Send + Sync), again: bool) -> Option<Vec<Value>> {
+pub fn picture(tools: &Sender<Call>, wake: &(dyn Fn() + Send + Sync), chat: u64, again: bool) -> Option<Vec<Value>> {
     let (reply, answered) = channel();
-    tools.send(Call { tool: TOOL.to_owned(), arguments: json!({ "again": again }), client: CURSOR_NAME.to_owned(), reply }).ok()?;
+    tools.send(Call { tool: TOOL.to_owned(), arguments: json!({ "again": again }), client: CURSOR_NAME.to_owned(), chat: Some(chat), reply }).ok()?;
     wake();
     let content = answered.recv_timeout(PATIENCE).ok()?.ok()?;
     let blocks: Vec<Value> = content
@@ -139,17 +139,17 @@ Drop the icons."
         let (tools, calls) = channel::<Call>();
         let app = std::thread::spawn(move || {
             let call = calls.recv().unwrap();
-            assert_eq!(call.tool, TOOL);
+            assert_eq!((call.tool.as_str(), call.chat), (TOOL, Some(4)));
             call.reply
                 .send(Ok(vec![json!({ "type": "image", "data": "QQ==", "mimeType": "image/png" }), json!({ "type": "text", "text": "review" })]))
                 .unwrap();
             // A run that changed nothing gets no picture, and so no review.
             calls.recv().unwrap().reply.send(Ok(Vec::new())).unwrap();
         });
-        let content = picture(&tools, &|| {}, false).unwrap();
+        let content = picture(&tools, &|| {}, 4, false).unwrap();
         assert_eq!(content[0]["source"]["data"], "QQ==");
         assert_eq!(content[1]["text"], "review");
-        assert_eq!(picture(&tools, &|| {}, true), None);
+        assert_eq!(picture(&tools, &|| {}, 4, true), None);
         app.join().unwrap();
     }
 }

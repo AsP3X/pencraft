@@ -10,6 +10,7 @@ use pen_doc::scene::SceneNode;
 use pen_doc::vars::Vars;
 use serde_json::{Value, json};
 
+use super::talk::{Home, home};
 use super::{App, text_measure};
 use crate::agent;
 use crate::editor::Editor;
@@ -138,14 +139,40 @@ impl App {
 
     /// Whether the document a call is about has text in a face that is not ready yet. Asks for those faces.
     fn faces_coming(&mut self, call: &Call, ctx: &egui::Context) -> bool {
-        let Ok(tab) = self.document(&call.arguments) else { return false };
+        let Ok(tab) = self.document(call) else { return false };
         let Some(editor) = self.tabs.get_mut(tab) else { return false };
         editor.refresh(&text_measure(ctx));
         crate::fonts::pending()
     }
 
-    /// The tab a call is about: the one its `document` names (by path, file name or title), or the one in front.
-    fn document(&self, args: &Value) -> Result<usize, String> {
+    /// The tab a call works on when it names no document: the document of the chat it comes from, or the one
+    /// in front for a client outside the app.
+    // Human: the chats of several documents work at the same time. Each keeps to its own document, also while
+    // the user has another one in front; and when its document is closed it is told so, instead of going on in
+    // whichever document is in front then.
+    fn own(&self, call: &Call) -> Result<usize, String> {
+        match home(&self.talks, call.chat) {
+            Home::Front => {
+                self.active.or((!self.tabs.is_empty()).then_some(0)).ok_or_else(|| "No document is open. Open one with open_document.".to_owned())
+            }
+            Home::Doc(doc) => {
+                self.tabs.iter().position(|tab| tab.id == doc).ok_or_else(|| {
+                    "The document this chat belongs to was closed. get_state lists the open ones; name one with `document`.".to_owned()
+                })
+            }
+            Home::Gone => Err("This chat was closed with its document.".to_owned()),
+        }
+    }
+
+    /// Whether a call may change which document is in front: it comes from outside the app, or from the chat
+    /// the user is looking at.
+    fn leads(&self, call: &Call) -> bool {
+        call.chat.is_none_or(|id| self.talk(id).is_some_and(|talk| talk.doc == self.front_doc()))
+    }
+
+    /// The tab a call is about: the one its `document` names (by path, file name or title), or its own.
+    fn document(&self, call: &Call) -> Result<usize, String> {
+        let args = &call.arguments;
         if let Some(wanted) = args.get("document").and_then(Value::as_str).filter(|name| !name.is_empty()) {
             let path = Path::new(wanted);
             return self
@@ -159,7 +186,25 @@ impl App {
                 })
                 .ok_or_else(|| format!("No open document is called \"{wanted}\". get_state lists the open ones."));
         }
-        self.active.or((!self.tabs.is_empty()).then_some(0)).ok_or_else(|| "No document is open. Open one with open_document.".to_owned())
+        self.own(call)
+    }
+
+    /// `open_document`: opens the file `path`, or starts an empty document.
+    // Human: the chat that opens a document goes on in it. A chat the user is not looking at opens it behind
+    // the document in front, so the user is not pulled away from what they are doing.
+    fn open_tool(&mut self, call: &Call) -> Result<(), String> {
+        let (leads, before) = (self.leads(call), self.front_doc());
+        match full_path(&call.arguments, "path")? {
+            Some(path) => self.try_open(&path)?,
+            None => self.new_file(),
+        }
+        if let (Some(chat), Some(opened)) = (call.chat, self.front_doc()) {
+            self.follow(chat, opened);
+        }
+        if !leads {
+            self.active = before.and_then(|doc| self.tabs.iter().position(|tab| tab.id == doc));
+        }
+        Ok(())
     }
 
     /// The name shown beside the model's cursor, as the settings want it.
@@ -174,16 +219,13 @@ impl App {
             "get_guide" => Ok(vec![json!({ "type": "text", "text": crate::craft::guide() })]),
             "list_skills" => Ok(text(&crate::skills::list())),
             "read_skill" => Ok(vec![json!({ "type": "text", "text": crate::skills::read(args)? })]),
-            "get_state" => Ok(text(&self.state(ctx))),
+            "get_state" => Ok(text(&self.state(call, ctx))),
             "open_document" => {
-                match full_path(args, "path")? {
-                    Some(path) => self.try_open(&path)?,
-                    None => self.new_file(),
-                }
-                Ok(text(&self.state(ctx)))
+                self.open_tool(call)?;
+                Ok(text(&self.state(call, ctx)))
             }
             "save_document" => {
-                let tab = self.document(args)?;
+                let tab = self.document(call)?;
                 let path = full_path(args, "path")?;
                 let editor = self.tabs.get_mut(tab).ok_or("The document was closed.")?;
                 if let Some(path) = path {
@@ -209,7 +251,7 @@ impl App {
 
     /// The document a call is about, laid out, with its tab and the name for the model's cursor.
     fn laid_out(&mut self, call: &Call, ctx: &egui::Context) -> Result<(usize, &mut Editor, String), String> {
-        let tab = self.document(&call.arguments)?;
+        let tab = self.document(call)?;
         let label = self.cursor_label(&call.client);
         let editor = self.tabs.get_mut(tab).ok_or("The document was closed.")?;
         editor.refresh(&text_measure(ctx));
@@ -262,9 +304,9 @@ impl App {
                 continue;
             }
             let layers = crate::review::size(&written);
-            match self.designed.iter_mut().find(|(at, id, _)| *at == tab && *id == top.id) {
+            match self.designed.iter_mut().find(|(at, id, _)| *at == editor.id && *id == top.id) {
                 Some((_, _, count)) => *count += layers,
-                None => self.designed.push((tab, top.id.clone(), layers)),
+                None => self.designed.push((editor.id, top.id.clone(), layers)),
             }
         }
         let mut answer = json!({ "results": results, "layoutBoxes": agent::boxes(editor, &touched) });
@@ -277,12 +319,13 @@ impl App {
         if !advice.is_empty() {
             answer["advice"] = json!(advice);
         }
-        if editing.is_some_and(|id| editor.scene_node(&id).is_none()) {
+        // Human: the text being edited is in the document in front; a change to another document leaves it be.
+        if self.active == Some(tab) && editing.is_some_and(|id| editor.scene_node(&id).is_none()) {
             self.canvas.editing = None;
         }
-        // Human: while the chat's own assistant works, its note in the chat (and in the one line over the
-        // message bar) already says what a change is; a second message over it would only be in the way.
-        if let Some(said) = args.get("description").and_then(Value::as_str).filter(|said| !said.trim().is_empty() && !self.chat.running()) {
+        // Human: what a chat's own assistant changes, its note in the chat (and in the one line over the
+        // message bar) already says; a second message over it would only be in the way.
+        if let Some(said) = args.get("description").and_then(Value::as_str).filter(|said| !said.trim().is_empty() && call.chat.is_none()) {
             let said = format!("{}: {}", call.client, said.trim());
             self.say(said);
         }
@@ -311,8 +354,9 @@ impl App {
         // these layers, and what to ask of the picture before calling it done.
         // Human: while the chat's assistant works on a request that names what to follow (a library, plain
         // standard components), the review says nothing about what that reference calls for.
-        let follows = self.chat.running()
-            && self.chat.entries.iter().any(|entry| entry.role == crate::chat::Role::User && crate::craft::names_a_reference(&entry.text));
+        let follows = call.chat.and_then(|id| self.talk(id)).is_some_and(|talk| {
+            talk.chat.entries.iter().any(|entry| entry.role == crate::chat::Role::User && crate::craft::names_a_reference(&entry.text))
+        });
         let notes = crate::review::review(&layers, Vars::new(&editor.doc), &stands_in, follows);
         let mut answer =
             vec![json!({ "type": "image", "data": agent::base64(&png), "mimeType": "image/png" }), json!({ "type": "text", "text": note })];
@@ -343,17 +387,20 @@ impl App {
         Ok(text(&answer))
     }
 
-    /// The reviewer's picture: the top-level layers changed since it last looked, with what the app counted in
-    /// them. Nothing when little was written: a new headline or one more row is no design to review, and the
+    /// The reviewer's picture: the top-level layers changed in the chat's document since it last looked, with
+    /// what the app counted in them. Nothing when little was written: a new headline or one more row is no design to review, and the
     /// user who asked for it didn't ask for the page around it to be judged.
     fn review_tool(&mut self, call: &Call, ctx: &egui::Context) -> Result<Vec<Value>, String> {
-        let designed = std::mem::take(&mut self.designed);
-        let Some((tab, _, _)) = designed.last() else { return Ok(Vec::new()) };
-        let Some(editor) = self.tabs.get_mut(*tab) else { return Ok(Vec::new()) };
+        // Human: each chat's review is of its own document; what another chat changed elsewhere waits for
+        // that chat's review.
+        let own = call.chat.and_then(|id| self.talk(id)).and_then(|talk| talk.doc);
+        let Some(doc) = own.or_else(|| self.designed.last().map(|(doc, _, _)| *doc)) else { return Ok(Vec::new()) };
+        let (designed, others): (Vec<_>, Vec<_>) = std::mem::take(&mut self.designed).into_iter().partition(|(at, _, _)| *at == doc);
+        self.designed = others;
+        let Some(editor) = self.tabs.iter_mut().find(|tab| tab.id == doc) else { return Ok(Vec::new()) };
         editor.refresh(&text_measure(ctx));
-        let ids: Vec<String> =
-            designed.iter().filter(|(at, id, _)| at == tab && editor.scene_node(id).is_some()).map(|(_, id, _)| id.clone()).collect();
-        let written: usize = designed.iter().filter(|(at, _, _)| at == tab).map(|(_, _, count)| count).sum();
+        let ids: Vec<String> = designed.iter().filter(|(_, id, _)| editor.scene_node(id).is_some()).map(|(_, id, _)| id.clone()).collect();
+        let written: usize = designed.iter().map(|(_, _, count)| count).sum();
         // Human: a design that was reviewed and changed is looked at again however little was changed.
         let again = call.arguments.get("again").and_then(Value::as_bool) == Some(true);
         if ids.is_empty() || written < if again { 1 } else { WORTH_A_REVIEW } {
@@ -372,7 +419,7 @@ impl App {
         let parts: Vec<String> = parts.iter().take(MOST_PARTS).map(|part| part.id.clone()).collect();
         let picture = |arguments: Value| {
             let (reply, _) = std::sync::mpsc::channel();
-            Call { tool: "screenshot".to_owned(), arguments, client: call.client.clone(), reply }
+            Call { tool: "screenshot".to_owned(), arguments, client: call.client.clone(), chat: call.chat, reply }
         };
         let mut content = self.picture_tool(&picture(json!({ "ids": ids, "document": document })), ctx)?;
         for part in parts {
@@ -390,7 +437,10 @@ impl App {
         editor.selection.clone_from(&wanted);
         editor.focus = bounds;
         editor.activity.point(bounds, &label, Instant::now());
-        self.active = Some(tab);
+        // Human: a chat the user is not looking at selects in its document without bringing it to the front.
+        if self.leads(call) {
+            self.active = Some(tab);
+        }
         Ok(text(&json!({ "selection": wanted })))
     }
 
@@ -420,9 +470,10 @@ impl App {
         Ok(text(&json!({ "exported": target.display().to_string() })))
     }
 
-    /// What `get_state` answers: the open documents, and the one in front in detail.
-    fn state(&mut self, ctx: &egui::Context) -> Value {
-        let front = self.active.or((!self.tabs.is_empty()).then_some(0));
+    /// What `get_state` answers: the open documents, and in detail the one the call works on (for a chat its
+    /// own document, otherwise the one in front).
+    fn state(&mut self, call: &Call, ctx: &egui::Context) -> Value {
+        let front = self.own(call).ok();
         let measure = text_measure(ctx);
         if let Some(editor) = front.and_then(|tab| self.tabs.get_mut(tab)) {
             editor.refresh(&measure);

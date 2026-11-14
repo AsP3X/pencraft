@@ -77,8 +77,13 @@ impl Default for Camera {
     }
 }
 
+/// The number the next opened document gets.
+static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
 /// One open document.
 pub struct Editor {
+    /// A number of its own among the documents opened in this run; it stays the same however its tab moves.
+    pub id: u64,
     /// Where it is saved; `None` until first saved.
     pub path: Option<PathBuf>,
     /// The document as the user made it.
@@ -126,6 +131,7 @@ impl Editor {
     #[must_use]
     pub fn new(doc: Document, path: Option<PathBuf>, seed: u64) -> Editor {
         Editor {
+            id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             path,
             doc,
             scene: Vec::new(),

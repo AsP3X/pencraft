@@ -47,7 +47,7 @@ When the user names a library, a product or a style to follow, or asks for stand
 Before the first layer, note for yourself what the user named, piece by piece; before you answer, check each piece is there and that you added nothing that was not asked for, and say so if you left something out or added something. \
 Reuse the document's variables and components instead of making new ones for the same thing. Make what was asked for and nothing around it: a thing the user asks for (a dog, a logo, a button) gets no backdrop, board or coloured frame behind it unless the user asks for one or the thing itself is one, like a screen, a page or a card; keep its parts together in a group or a frame without a fill. \
 A layer id followed by its name in quotes and brackets inside a message, like card2 (\"Card\"), is a layer the user pasted into the message to point at it: work on exactly those layers. \
-Each message from the user starts with a note from the app in <pencraft_context> tags saying which document is in front and what is selected; \"this\" or \"the selection\" means those layers. \
+Each message from the user starts with a note from the app in <pencraft_context> tags saying which document this chat works on (your tools work on it unless a call names another) and what is selected; \"this\" or \"the selection\" means those layers. \
 Keep replies short and plain: a few sentences on what you made and what to look at, without lists of ids. The chat panel shows your words exactly as you write them, so use no Markdown of any kind: no asterisks for bold, no bullet or numbered lists, no headings, no backticks, no tables. \
 If a request is unclear in a way that changes the design, ask one short question instead of guessing.";
 
@@ -280,8 +280,10 @@ pub struct Ask {
     pub shown: String,
     /// The files attached to the message.
     pub files: Vec<files::Attachment>,
-    /// The app's note on the document in front and the selection.
+    /// The app's note on the chat's document and the selection.
     pub context: String,
+    /// The chat's id in the app: its tool calls carry it, so they work on its own document.
+    pub chat: u64,
     /// What answers.
     pub engine: Engine,
     /// Where tool calls go to be run on the main thread.
@@ -412,7 +414,7 @@ impl Chat {
                 match &ask.engine {
                     Engine::Code { program, model } => {
                         code::run(
-                            &code::Job { program, model, prompt, pictures, session: session.as_deref(), server: ask.server.as_ref() },
+                            &code::Job { program, model, prompt, pictures, session: session.as_deref(), server: ask.server.as_ref(), chat: ask.chat },
                             &flag,
                             &held,
                             &tell,
@@ -420,7 +422,18 @@ impl Chat {
                     }
                     Engine::Api { endpoint, official, model, key } => {
                         api::run(
-                            &api::Job { endpoint, official: *official, model, key, prompt, pictures, history, tools: &ask.tools, wake: &*ask.wake },
+                            &api::Job {
+                                endpoint,
+                                official: *official,
+                                model,
+                                key,
+                                prompt,
+                                pictures,
+                                history,
+                                tools: &ask.tools,
+                                wake: &*ask.wake,
+                                chat: ask.chat,
+                            },
                             &flag,
                             &tell,
                         );
@@ -436,7 +449,7 @@ impl Chat {
                 if flag.load(Ordering::Relaxed) {
                     break;
                 }
-                let Some(picture) = critic::picture(&ask.tools, &*ask.wake, round > 0) else { break };
+                let Some(picture) = critic::picture(&ask.tools, &*ask.wake, ask.chat, round > 0) else { break };
                 let id = format!("review-{round}");
                 tell(Event::Break);
                 tell(Event::Tool { id: id.clone(), name: critic::TOOL.to_owned() });

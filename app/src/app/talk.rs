@@ -1,5 +1,6 @@
-//! The chat panel's side of the app: finding the assistants there are, and sending the user's message with
-//! what the model needs to know about the document.
+//! The chat panel's side of the app: the chats there are (one for each open document, and one for the home
+//! screen), finding the assistants there are, and sending the user's message with what the model needs to know
+//! about the document.
 
 use std::sync::Arc;
 
@@ -8,13 +9,65 @@ use std::path::PathBuf;
 use craft_dialogs::FileDialog;
 
 use super::{App, Then};
-use crate::chat::{self, Ask, files};
-use crate::sidebar::ChatAsk;
+use crate::chat::{self, Ask, Chat, files};
+use crate::sidebar::{ChatAsk, Look, Writing};
+
+/// One conversation: the chat of one open document, or of the home screen.
+// Human: every open document has a chat of its own. They run side by side: an assistant at work in one document
+// keeps to that document while the user looks at another one and talks to its chat.
+#[derive(Default)]
+pub(super) struct Talk {
+    /// Its number among the chats of this run, which its tool calls carry ([`crate::link::Call::chat`]).
+    pub(super) id: u64,
+    /// The document it belongs to ([`crate::editor::Editor::id`]); `None` for the home screen's.
+    pub(super) doc: Option<u64>,
+    /// The conversation and its run.
+    pub(super) chat: Chat,
+    /// How many of its lines have been written to the log.
+    logged: usize,
+    /// What was being written in it when another chat came to the front.
+    kept: Writing,
+}
+
+/// The document a tool call works on when it names none.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum Home {
+    /// The one in front: the call comes from outside the app, or from the home screen's chat.
+    Front,
+    /// The document with this id: the one the call's chat belongs to.
+    Doc(u64),
+    /// None any more: the call's chat was closed with its document.
+    Gone,
+}
+
+/// Where a call from `chat` works, given the chats there are.
+pub(super) fn home(talks: &[Talk], chat: Option<u64>) -> Home {
+    let Some(id) = chat else { return Home::Front };
+    match talks.iter().find(|talk| talk.id == id) {
+        Some(talk) => talk.doc.map_or(Home::Front, Home::Doc),
+        None => Home::Gone,
+    }
+}
 
 /// What the user is told when there is nobody to answer.
 const NO_ASSISTANT: &str = "No assistant is set up. Install Claude Code and sign in (run `claude` in a terminal once), or add a provider with the \"Anthropic Messages\" API and a key in Settings → Agents, or start Pencraft with ANTHROPIC_API_KEY set.";
 /// What the user is told when the tools are turned off.
 const TOOLS_OFF: &str = "The assistant works on the document through Pencraft's AI tools, which are turned off. Turn on \"Let AI models work on documents\" in Settings → Agents.";
+
+/// How the sidebar shows the chat `talk`: as the settings `prefs` want it, with the `assistants` to pick from
+/// and the one `asked` for when the app was started.
+pub(super) fn look<'a>(talk: &'a Talk, prefs: &crate::prefs::Prefs, assistants: &'a [chat::Choice], asked: Option<&str>) -> Look<'a> {
+    let assistant = chat::chosen(assistants, asked.unwrap_or(&prefs.agents.chat_model)).map_or("No assistant", |choice| choice.label.as_str());
+    Look {
+        dark: prefs.appearance.dark,
+        ideas: prefs.agents.ideas,
+        chat: &talk.chat,
+        chat_id: talk.id,
+        assistants,
+        assistant,
+        animate: prefs.appearance.animations,
+    }
+}
 
 impl App {
     /// Looks up which assistants there are: Claude Code if it is installed, and the providers with a key.
@@ -29,12 +82,111 @@ impl App {
         chat::chosen(&self.assistants, self.assistant_asked.as_deref().unwrap_or(&self.prefs.get().agents.chat_model))
     }
 
+    /// The id of the document in front; `None` on the home screen.
+    pub(super) fn front_doc(&self) -> Option<u64> {
+        self.active.and_then(|tab| self.tabs.get(tab)).map(|editor| editor.id)
+    }
+
+    /// The chat with the number `id`.
+    pub(super) fn talk(&self, id: u64) -> Option<&Talk> {
+        self.talks.iter().find(|talk| talk.id == id)
+    }
+
+    /// The chat of the document in front (on the home screen, the home screen's), started now if it has none.
+    pub(super) fn front_talk(&mut self) -> &mut Talk {
+        let doc = self.front_doc();
+        let at = self.talks.iter().position(|talk| talk.doc == doc).unwrap_or_else(|| {
+            self.talks_made += 1;
+            self.talks.push(Talk { id: self.talks_made, doc, ..Talk::default() });
+            self.talks.len() - 1
+        });
+        &mut self.talks[at]
+    }
+
+    /// The chat the sidebar shows; before it has shown one, the chat of the document in front.
+    fn shown_talk(&mut self) -> &mut Talk {
+        match self.talks.iter().position(|talk| talk.id == self.shown) {
+            Some(at) => &mut self.talks[at],
+            None => self.front_talk(),
+        }
+    }
+
+    /// Makes the sidebar show the chat of the document in front: what was being written in the chat it showed
+    /// is kept for that chat, and what was being written in this one comes back.
+    pub(super) fn bring_chat(&mut self) {
+        let front = self.front_talk().id;
+        if front == self.shown {
+            return;
+        }
+        // Human: before the sidebar has shown any chat, what it holds (files attached when the app started)
+        // is meant for the first one.
+        if self.shown != 0 {
+            let mut writing = Writing::default();
+            self.sidebar.trade_writing(&mut writing);
+            // A chat that was closed with its document takes what was written in it along.
+            if let Some(left) = self.talks.iter_mut().find(|talk| talk.id == self.shown) {
+                left.kept = writing;
+            }
+            if let Some(talk) = self.talks.iter_mut().find(|talk| talk.id == front) {
+                self.sidebar.trade_writing(&mut talk.kept);
+            }
+        }
+        self.shown = front;
+    }
+
+    /// The document `doc` is closed: its chat ends with it.
+    pub(super) fn close_talk(&mut self, doc: u64) {
+        self.talks.retain_mut(|talk| {
+            let closed = talk.doc == Some(doc);
+            if closed {
+                talk.chat.clear();
+            }
+            !closed
+        });
+        self.designed.retain(|(at, _, _)| *at != doc);
+    }
+
+    /// The chat `id` has opened the document `doc`: the chat goes with it, when that document has no
+    /// conversation of its own.
+    // Human: a chat started on the home screen that starts a design is from then on that design's chat, and so
+    // is a chat that opens another file to work there. The document it came from starts a new chat.
+    pub(super) fn follow(&mut self, id: u64, doc: u64) {
+        if self.talk(id).is_none_or(|talk| talk.doc == Some(doc)) {
+            return;
+        }
+        if let Some(at) = self.talks.iter().position(|talk| talk.doc == Some(doc)) {
+            let there = &self.talks[at];
+            if !there.chat.entries.is_empty() || there.chat.running() || !there.kept.is_empty() || there.id == self.shown {
+                return;
+            }
+            self.talks.remove(at);
+        }
+        if let Some(talk) = self.talks.iter_mut().find(|talk| talk.id == id) {
+            talk.doc = Some(doc);
+        }
+    }
+
+    /// Whether the chat of the document at `tab` is answering a message.
+    pub(super) fn chat_at_work(&self, tab: usize) -> bool {
+        let doc = self.tabs.get(tab).map(|editor| editor.id);
+        doc.is_some() && self.talks.iter().any(|talk| talk.doc == doc && talk.chat.running())
+    }
+
+    /// Takes in what the chats' runs have said since the last time. Returns whether anything changed.
+    pub(super) fn poll_chats(&mut self) -> bool {
+        let mut changed = false;
+        for talk in &mut self.talks {
+            changed |= talk.chat.poll();
+        }
+        changed
+    }
+
     /// Does what the chat panel asked for this frame: stop, start over, another assistant, send.
     pub(super) fn chat_asks(&mut self, ctx: &egui::Context) {
         for ask in std::mem::take(&mut self.sidebar.chat_asks) {
             match ask {
-                ChatAsk::Stop => self.chat.stop(),
-                ChatAsk::New => self.chat.clear(),
+                ChatAsk::Stop => self.shown_talk().chat.stop(),
+                ChatAsk::New => self.shown_talk().chat.clear(),
                 ChatAsk::Looked => self.find_assistants(),
                 ChatAsk::Pick(id) => {
                     self.assistant_asked = None;
@@ -46,26 +198,34 @@ impl App {
         }
     }
 
-    /// Writes the chat's finished lines to the log (`RUST_LOG=info`), so a run can be followed from a terminal.
-    pub(super) fn log_chat(&mut self) {
-        // The last line is still being written while the assistant works.
-        let done = if self.chat.running() { self.chat.entries.len().saturating_sub(1) } else { self.chat.entries.len() };
-        for entry in self.chat.entries.iter().take(done).skip(self.chat_logged) {
-            log::info!("chat: {:?}: {}", entry.role, entry.text);
+    /// Writes the chats' finished lines to the log (`RUST_LOG=info`), so a run can be followed from a terminal.
+    pub(super) fn log_chats(&mut self) {
+        for talk in &mut self.talks {
+            let chat = &talk.chat;
+            // The last line is still being written while the assistant works.
+            let done = if chat.running() { chat.entries.len().saturating_sub(1) } else { chat.entries.len() };
+            for entry in chat.entries.iter().take(done).skip(talk.logged) {
+                log::info!("chat {}: {:?}: {}", talk.id, entry.role, entry.text);
+            }
+            talk.logged = done.max(talk.logged).min(chat.entries.len());
         }
-        self.chat_logged = done.max(self.chat_logged).min(self.chat.entries.len());
     }
 
-    /// The app's note to the model on what the user is looking at.
-    fn chat_context(&self) -> String {
-        let Some(editor) = self.active.and_then(|tab| self.tabs.get(tab)) else {
-            return "<pencraft_context>\nNo document is open; open_document starts one.\n</pencraft_context>".to_owned();
+    /// The app's note to the model on the document `doc` its chat belongs to (`None`: the home screen's chat).
+    fn chat_context(&self, doc: Option<u64>) -> String {
+        let Some(editor) = doc.and_then(|doc| self.tabs.iter().find(|editor| editor.id == doc)) else {
+            let open = if self.tabs.is_empty() {
+                "No document is open; open_document starts one."
+            } else {
+                "This chat has no document of its own yet. get_state lists the open ones; open_document opens or starts one."
+            };
+            return format!("<pencraft_context>\n{open}\n</pencraft_context>");
         };
         let file = editor.path.as_ref().map_or_else(|| "not saved to a file yet".to_owned(), |path| path.display().to_string());
         let selected: Vec<String> =
             editor.selection.iter().filter_map(|id| editor.scene_node(id).map(|scene| format!("\"{}\" ({id})", scene.node.display_name()))).collect();
         let selection = if selected.is_empty() { "Nothing is selected.".to_owned() } else { format!("Selected layers: {}.", selected.join(", ")) };
-        format!("<pencraft_context>\nDocument in front: \"{}\" ({file}).\n{selection}\n</pencraft_context>", editor.title())
+        format!("<pencraft_context>\nThis chat's document: \"{}\" ({file}).\n{selection}\n</pencraft_context>", editor.title())
     }
 
     /// Asks which files to attach to the message being written.
@@ -113,7 +273,7 @@ impl App {
         let attached = match attached {
             Ok(attached) => attached,
             Err(why) => {
-                self.chat.refuse(shown, &why);
+                self.shown_talk().chat.refuse(shown, &why);
                 return;
             }
         };
@@ -126,21 +286,41 @@ impl App {
             None
         };
         if let Some(why) = refusal {
-            self.chat.refuse(shown, why);
+            self.shown_talk().chat.refuse(shown, why);
             return;
         }
         let Some(engine) = self.assistant().map(|choice| choice.engine.clone()) else { return };
         let wake = ctx.clone();
-        self.chat.send(Ask {
+        let talk = self.shown_talk();
+        let (chat, doc) = (talk.id, talk.doc);
+        let ask = Ask {
             text,
             shown,
             files: attached,
-            context: self.chat_context(),
+            context: self.chat_context(doc),
+            chat,
             engine,
             tools: self.tool_send.clone(),
             wake: Arc::new(move || wake.request_repaint()),
             server: self.link.as_ref().map(|server| (server.port, server.token.clone())),
             review: self.prefs.get().agents.review,
-        });
+        };
+        self.shown_talk().chat.send(ask);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_call_works_on_its_chats_document() {
+        let talks = [Talk { id: 1, doc: None, ..Talk::default() }, Talk { id: 2, doc: Some(7), ..Talk::default() }];
+        // A client outside the app, and the home screen's chat, work on the document in front.
+        assert_eq!((home(&talks, None), home(&talks, Some(1))), (Home::Front, Home::Front));
+        // A document's chat works on that document, wherever its tab is.
+        assert_eq!(home(&talks, Some(2)), Home::Doc(7));
+        // A chat that was closed with its document works on nothing else.
+        assert_eq!(home(&talks, Some(3)), Home::Gone);
     }
 }
