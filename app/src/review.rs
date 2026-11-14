@@ -35,8 +35,19 @@ const SMALLEST_TEXT: f32 = 11.0;
 const MOST_SIZES: usize = 7;
 /// See [`MOST_SIZES`].
 const MOST_RADII: usize = 4;
+/// How many corner radii a design may have when every one of them is a variable: a scale somebody set.
+// Source: shadcn/ui derives five radii in use from one base value (0.6, 0.8, 1, 1.4 and 1.8 times it).
+const MOST_BOUND_RADII: usize = 5;
+/// The widest stroke that is still a hairline, and the most opaque one (of 255: 20%).
+// Source: shadcn/ui, Radix Themes and Beautiful UI all draw what floats (a menu, a popover, a dialog) with a
+// ring of 1 in the text colour at about 10% and a soft shadow; the two together are one way of lifting it.
+const HAIRLINE: f32 = 1.0;
+/// See [`HAIRLINE`].
+const HAIRLINE_ALPHA: u8 = 51;
 /// See [`MOST_SIZES`].
-const MOST_SPACINGS: usize = 8;
+// Source: the component libraries' own rhythm is eight steps inside components (2, 4, 6, 8, 10, 12, 16, 24;
+// shadcn/ui, Radix Themes), and a page adds its own two or three (32, 48, 64).
+const MOST_SPACINGS: usize = 10;
 /// The fewest text layers that make a layer a design with a hierarchy to speak of.
 const A_DESIGN: usize = 6;
 /// The most characters a line of running text should have.
@@ -120,12 +131,16 @@ struct Text {
 #[derive(Default)]
 struct Seen {
     texts: Vec<Text>,
+    /// How many texts have a family that no variable of the document set.
+    unbound_faces: usize,
     /// Every solid colour used, with whether it was written out as hex.
     colours: Vec<(Rgba, bool)>,
     /// The gradients' colours, each with the label of its layer.
     gradients: Vec<(String, Vec<Rgba>)>,
     spacings: Vec<f32>,
     radii: Vec<f32>,
+    /// Whether any of those radii was written out as a number instead of a variable.
+    raw_radii: bool,
     /// Layers that stick out of the frame that lays them out.
     spilling: Vec<String>,
     /// The deepest run of cards inside cards, and the innermost one.
@@ -301,6 +316,18 @@ fn build(scene: &SceneNode, out: &mut String) {
     }
 }
 
+/// Whether a layer's outline is a hairline: 1 wide at most and nearly see-through, the ring that goes with a
+/// soft shadow on what floats.
+fn hairline(scene: &SceneNode, vars: Vars<'_>) -> bool {
+    let thin = match &scene.node.stroke_width {
+        Some(StrokeWidth::All(width)) => vars.number(width, &scene.theme).is_some_and(|width| width <= HAIRLINE),
+        Some(StrokeWidth::Sides(sides)) => sides.values().all(|width| width.as_f64().is_none_or(|width| width <= f64::from(HAIRLINE))),
+        None => true,
+    };
+    let (solid, gradients) = paints(scene, scene.node.stroke.as_ref(), vars);
+    thin && gradients.is_empty() && !solid.is_empty() && solid.iter().all(|(colour, _)| colour.a <= HAIRLINE_ALPHA)
+}
+
 /// Notes the spacing, corners, effects and side strokes of one layer.
 fn measures(scene: &SceneNode, vars: Vars<'_>, seen: &mut Seen) {
     let node = &scene.node;
@@ -315,13 +342,15 @@ fn measures(scene: &SceneNode, vars: Vars<'_>, seen: &mut Seen) {
     }
     if let Some(Corners::All(radius)) = &node.corner_radius {
         // A radius of half the height or more is a pill, whatever its number.
-        seen.radii.extend(vars.number(radius, &scene.theme).filter(|radius| *radius > 0.0 && *radius < scene.local.h.min(scene.local.w) / 2.0));
+        let counted = vars.number(radius, &scene.theme).filter(|radius| *radius > 0.0 && *radius < scene.local.h.min(scene.local.w) / 2.0);
+        seen.raw_radii |= counted.is_some() && matches!(radius, Num::Value(_));
+        seen.radii.extend(counted);
     }
     if has_effect(scene, "background_blur") {
         seen.blurs += 1;
     }
     shadows(scene, vars, seen);
-    if node.stroke.is_some() && has_effect(scene, "shadow") && node.kind == Kind::Frame {
+    if node.stroke.is_some() && has_effect(scene, "shadow") && node.kind == Kind::Frame && !hairline(scene, vars) {
         seen.doubled.push(label(scene));
     }
     if let Some(StrokeWidth::Sides(sides)) = &node.stroke_width {
@@ -339,6 +368,8 @@ fn text(scene: &SceneNode, parent: Option<&SceneNode>, behind: Option<Rgba>, var
     let (solid, gradients) = paints(scene, node.fill.as_ref(), vars);
     let in_centred_column =
         parent.is_some_and(|parent| parent.node.layout.as_deref() == Some("vertical") && parent.node.align_items.as_deref() == Some("center"));
+    // A family written out, or none at all: no variable of the document chose this text's face.
+    seen.unbound_faces += usize::from(!node.font_family.as_deref().is_some_and(|family| family.starts_with('$')));
     seen.texts.push(Text {
         label: label(scene),
         family: style.family.clone(),
@@ -410,11 +441,19 @@ fn look(scene: &SceneNode, parent: Option<&SceneNode>, behind: Option<Rgba>, car
     eyebrows(scene, vars, seen);
     // Human: what is behind a layer is the nearest frame around it with a covering fill; a frame filled with a
     // gradient has no single colour, and nothing is said about the contrast of what lies on it.
-    let under = match (&node.kind, fill) {
+    // Human: a frame's fills lie over each other and over what is behind the frame: a tint over white, a
+    // half see-through halo over the page. Each is laid on the colour under it; a see-through fill over
+    // something unknown stays unknown, except that one that mostly covers is taken for its own colour.
+    let laid = fills.iter().fold(behind, |under, (colour, _)| match under {
+        _ if colour.a == 255 => Some(*colour),
+        Some(under) => Some(blend(*colour, under)),
+        None => (colour.a >= 128).then_some(Rgba { a: 255, ..*colour }),
+    });
+    let under = match &node.kind {
         // What lies on a material is measured on a picture (`check_glass`), not against a colour.
         _ if node.material.is_some() => None,
-        (Kind::Frame, Some(colour)) => Some(colour),
-        (Kind::Frame, None) if !fill_gradients.is_empty() => None,
+        Kind::Frame if !fill_gradients.is_empty() => None,
+        Kind::Frame => laid,
         _ => behind,
     };
     for child in &scene.children {
@@ -905,7 +944,7 @@ fn near_misses(texts: &[Text], out: &mut Vec<String>) {
 }
 
 /// Notes on the type: the family nobody chose, a scale that isn't one, a hierarchy that is flat.
-fn type_notes(seen: &Seen, out: &mut Vec<String>) {
+fn type_notes(seen: &Seen, follows: bool, out: &mut Vec<String>) {
     let texts = &seen.texts;
     if texts.len() < A_DESIGN {
         return;
@@ -914,7 +953,9 @@ fn type_notes(seen: &Seen, out: &mut Vec<String>) {
     let mut families: Vec<String> = texts.iter().map(|text| text.family.to_lowercase()).filter(|family| !family.contains("mono")).collect();
     families.sort_unstable();
     families.dedup();
-    if families.len() == 1 && DEFAULT_FAMILIES.contains(&families[0].as_str()) {
+    // Human: a face set through the document's variables, or the face of a library the user named, was chosen.
+    let chosen = follows || seen.unbound_faces == 0;
+    if families.len() == 1 && DEFAULT_FAMILIES.contains(&families[0].as_str()) && !chosen {
         out.push(format!(
             "All text is set in {}, the face a model uses when it chooses none. Unless the document's own type system says so, pick a typeface for this subject from the installed ones: a display face with character for the headlines, a quiet one for reading.",
             texts[0].family
@@ -1101,7 +1142,7 @@ fn build_notes(seen: &Seen, out: &mut Vec<String>) {
         ));
     }
     let radii = distinct(&seen.radii);
-    if radii.len() > MOST_RADII {
+    if radii.len() > if seen.raw_radii { MOST_RADII } else { MOST_BOUND_RADII } {
         out.push(format!("{} different corner radii ({}). Keep one rule: one radius for controls, one for cards, and an inner corner smaller than the one around it.", radii.len(), listed(&radii)));
     }
     copy_notes(seen, out);
@@ -1133,9 +1174,10 @@ fn copy_notes(seen: &Seen, out: &mut Vec<String>) {
 }
 
 /// What a look at `layers` finds, most important first; empty when there is nothing to say. `stands_in` gives,
-/// for a font family that isn't installed, the family drawn in its place.
+/// for a font family that isn't installed, the family drawn in its place. `follows` says that the user named a
+/// library or the ordinary look of things to follow: what that reference calls for is then not remarked on.
 #[must_use]
-pub fn review(layers: &[&SceneNode], vars: Vars<'_>, stands_in: &dyn Fn(&str) -> Option<String>) -> Vec<String> {
+pub fn review(layers: &[&SceneNode], vars: Vars<'_>, stands_in: &dyn Fn(&str) -> Option<String>, follows: bool) -> Vec<String> {
     let mut seen = Seen::default();
     for layer in layers {
         look(layer, None, None, 0, vars, &mut seen);
@@ -1145,7 +1187,7 @@ pub fn review(layers: &[&SceneNode], vars: Vars<'_>, stands_in: &dyn Fn(&str) ->
     mistakes(&seen, stands_in, &mut out);
     colour_notes(&seen, &mut out);
     build_notes(&seen, &mut out);
-    type_notes(&seen, &mut out);
+    type_notes(&seen, follows, &mut out);
     out.truncate(MOST_NOTES);
     out
 }
@@ -1183,7 +1225,7 @@ mod tests {
         let mut editor = Editor::new(pen_doc::read(json).unwrap(), None, 1);
         editor.refresh(&|style| (style.size * 0.5 * 10.0, style.size * 1.2));
         let layers: Vec<&SceneNode> = editor.scene.iter().collect();
-        review(&layers, Vars::new(&editor.doc), &|family| missing.contains(&family).then(|| "Segoe UI".to_owned()))
+        review(&layers, Vars::new(&editor.doc), &|family| missing.contains(&family).then(|| "Segoe UI".to_owned()), false)
     }
 
     #[test]
@@ -1241,6 +1283,64 @@ mod tests {
         let said = notes(&plain, &[]);
         assert!(said.iter().any(|note| note.contains("the face a model uses when it chooses none")), "{said:#?}");
         assert!(said.iter().any(|note| note.contains("no hierarchy")), "{said:#?}");
+    }
+
+    #[test]
+    fn text_is_measured_against_all_the_fills_under_it_laid_over_each_other() {
+        // A red label on a 10% red tint over white, inside a half see-through grey halo: readable, and not
+        // to be measured against the halo's grey taken as solid.
+        let json = r##"{"version":"2.22","children":[{"type":"frame","id":"page","x":0,"y":0,"padding":40,"fill":"#ffffff","children":[
+          {"type":"frame","id":"halo","padding":3,"fill":"#a1a1a180","children":[
+            {"type":"frame","id":"button","height":36,"padding":[0,10],"alignItems":"center","fill":["#ffffff","#c40d1f1a"],"children":[
+              {"type":"text","id":"label","content":"Delete project","fontSize":14,"fill":"#c40d1f"}]}]}]}]}"##;
+        assert_eq!(notes(json, &[]), Vec::<String>::new());
+        // The same label straight on the halo is too faint, and is measured against the halo over white.
+        let said = notes(&json.replace("\"fill\":[\"#ffffff\",\"#c40d1f1a\"]", "\"cornerRadius\":8"), &[]);
+        assert!(said.iter().any(|note| note.contains("too faint") && note.contains("(label) 4.0:1")), "{said:#?}");
+    }
+
+    #[test]
+    fn what_a_named_library_calls_for_is_not_remarked_on() {
+        // Two floating panels with a hairline ring and a soft shadow, five radii from variables, one stock face.
+        let panel = |id: &str, stroke: &str| {
+            format!(
+                r##"{{"type":"frame","id":"{id}","name":"Menu","layout":"vertical","width":240,"gap":8,"padding":16,"cornerRadius":"$r3","fill":"#ffffff","stroke":"{stroke}","strokeWidth":1,"effect":{{"type":"shadow","offset":{{"x":0,"y":4}},"blur":12,"color":"#0000001a"}},"children":[
+                  {{"type":"text","id":"{id}a","content":"Rename","fontFamily":"Inter","fontSize":14,"fill":"#18181b"}},
+                  {{"type":"text","id":"{id}b","content":"Duplicate","fontFamily":"Inter","fontSize":14,"fill":"#18181b"}},
+                  {{"type":"text","id":"{id}c","content":"Move to archive","fontFamily":"Inter","fontSize":14,"fontWeight":"600","fill":"#18181b"}}]}}"##
+            )
+        };
+        let page = |stroke: &str| {
+            format!(
+                r##"{{"version":"2.22","variables":{{"r1":{{"type":"number","value":6}},"r2":{{"type":"number","value":8}},"r3":{{"type":"number","value":10}},"r4":{{"type":"number","value":14}},"r5":{{"type":"number","value":18}}}},"children":[
+                  {{"type":"frame","id":"page","x":0,"y":0,"width":1200,"gap":24,"padding":48,"fill":"#f4f4f5","children":[{},{},
+                    {{"type":"rectangle","id":"s1","width":80,"height":80,"cornerRadius":"$r1","fill":"#18181b"}},
+                    {{"type":"rectangle","id":"s2","width":80,"height":80,"cornerRadius":"$r2","fill":"#18181b"}},
+                    {{"type":"rectangle","id":"s4","width":80,"height":80,"cornerRadius":"$r4","fill":"#18181b"}},
+                    {{"type":"rectangle","id":"s5","width":80,"height":80,"cornerRadius":"$r5","fill":"#18181b"}}]}}]}}"##,
+                panel("m", stroke),
+                panel("n", stroke)
+            )
+        };
+        let said = notes(&page("#18181b1a"), &[]);
+        assert!(!said.iter().any(|note| note.contains("outline and a shadow") || note.contains("corner radii")), "{said:#?}");
+        assert!(said.iter().any(|note| note.contains("the face a model uses when it chooses none")), "{said:#?}");
+        // An opaque outline with a shadow is still two ways at once, and a radius written out is no scale.
+        let opaque = notes(&page("#d4d4d8").replace("\"cornerRadius\":\"$r5\"", "\"cornerRadius\":18"), &[]);
+        assert!(opaque.iter().any(|note| note.contains("outline and a shadow")), "{opaque:#?}");
+        assert!(opaque.iter().any(|note| note.contains("5 different corner radii")), "{opaque:#?}");
+        // The face of a library the user named, or one set through a variable, was chosen.
+        let followed = |json: &str, follows: bool| {
+            let mut editor = Editor::new(pen_doc::read(json).unwrap(), None, 1);
+            editor.refresh(&|style| (style.size * 0.5 * 10.0, style.size * 1.2));
+            let layers: Vec<&SceneNode> = editor.scene.iter().collect();
+            review(&layers, Vars::new(&editor.doc), &|_| None, follows)
+        };
+        assert_eq!(followed(&page("#18181b1a"), true), Vec::<String>::new());
+        let bound = page("#18181b1a")
+            .replace("\"fontFamily\":\"Inter\"", "\"fontFamily\":\"$face\"")
+            .replace("\"variables\":{", "\"variables\":{\"face\":{\"type\":\"string\",\"value\":\"Inter\"},");
+        assert_eq!(followed(&bound, false), Vec::<String>::new());
     }
 
     #[test]

@@ -309,7 +309,11 @@ impl App {
         let png = picture.encode(crate::export::Format::Png, 100)?;
         // Human: the moment the model looks at its work is the moment to tell it what the app counted in
         // these layers, and what to ask of the picture before calling it done.
-        let notes = crate::review::review(&layers, Vars::new(&editor.doc), &stands_in);
+        // Human: while the chat's assistant works on a request that names what to follow (a library, plain
+        // standard components), the review says nothing about what that reference calls for.
+        let follows = self.chat.running()
+            && self.chat.entries.iter().any(|entry| entry.role == crate::chat::Role::User && crate::craft::names_a_reference(&entry.text));
+        let notes = crate::review::review(&layers, Vars::new(&editor.doc), &stands_in, follows);
         let mut answer =
             vec![json!({ "type": "image", "data": agent::base64(&png), "mimeType": "image/png" }), json!({ "type": "text", "text": note })];
         answer.extend(crate::craft::with_picture(&notes, crate::review::size(&layers)).map(|said| json!({ "type": "text", "text": said })));

@@ -1,0 +1,1643 @@
+{
+  "version": "2.22",
+  "children": [
+    {
+      "type": "frame",
+      "id": "ui-components",
+      "x": -360,
+      "y": 0,
+      "name": "UI components",
+      "layout": "vertical",
+      "gap": 32,
+      "padding": 32,
+      "fill": "#e5e5e5",
+      "children": [
+        {
+          "type": "frame",
+          "id": "ui-button",
+          "name": "Button",
+          "reusable": true,
+          "height": 36,
+          "gap": 6,
+          "padding": [
+            0,
+            10
+          ],
+          "justifyContent": "center",
+          "alignItems": "center",
+          "fill": "$primary",
+          "cornerRadius": "$radius-md",
+          "children": [
+            {
+              "type": "text",
+              "id": "ui-button-label",
+              "name": "Label",
+              "fill": "$primary-foreground",
+              "content": "Save changes",
+              "fontFamily": "$font",
+              "fontSize": 14,
+              "fontWeight": "500"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "ui-button-icon-leading",
+          "name": "Button, leading icon",
+          "reusable": true,
+          "height": 36,
+          "gap": 6,
+          "padding": [
+            0,
+            10,
+            0,
+            8
+          ],
+          "justifyContent": "center",
+          "alignItems": "center",
+          "fill": "$primary",
+          "cornerRadius": "$radius-md",
+          "children": [
+            {
+              "type": "icon",
+              "id": "ui-button-icon-leading-icon",
+              "name": "Icon",
+              "width": 16,
+              "height": 16,
+              "fill": "$primary-foreground",
+              "library": "lucide",
+              "icon": "plus"
+            },
+            {
+              "type": "text",
+              "id": "ui-button-icon-leading-label",
+              "name": "Label",
+              "fill": "$primary-foreground",
+              "content": "New project",
+              "fontFamily": "$font",
+              "fontSize": 14,
+              "fontWeight": "500"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "bs-light",
+      "x": 0,
+      "y": 0,
+      "name": "Button states",
+      "layout": "horizontal",
+      "gap": 24,
+      "padding": 32,
+      "fill": "$background",
+      "children": [
+        {
+          "type": "frame",
+          "id": "bs-col-rest",
+          "name": "Rest",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "bs-col-rest-label",
+              "name": "Column label",
+              "fill": "$muted-foreground",
+              "content": "Rest",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "ref",
+              "id": "bs-primary-rest",
+              "name": "Button / primary / rest",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Save changes",
+                  "fill": "$primary-foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "bs-secondary-rest",
+              "name": "Button / secondary / rest",
+              "fill": "$secondary",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Duplicate",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "bs-outline-rest",
+              "name": "Button / outline / rest",
+              "fill": "$control",
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Cancel",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "bs-ghost-rest",
+              "name": "Button / ghost / rest",
+              "fill": "#00000000",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Skip for now",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "bs-destructive-rest",
+              "name": "Button / destructive / rest",
+              "fill": "$destructive-tint",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Delete project",
+                  "fill": "$destructive"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "bs-col-hover",
+          "name": "Hover",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "bs-col-hover-label",
+              "name": "Column label",
+              "fill": "$muted-foreground",
+              "content": "Hover",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "ref",
+              "id": "bs-primary-hover",
+              "name": "Button / primary / hover",
+              "fill": "$primary-hover",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Save changes",
+                  "fill": "$primary-foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "bs-secondary-hover",
+              "name": "Button / secondary / hover",
+              "fill": "$secondary-hover",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Duplicate",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "bs-outline-hover",
+              "name": "Button / outline / hover",
+              "fill": "$muted",
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Cancel",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "bs-ghost-hover",
+              "name": "Button / ghost / hover",
+              "fill": "$muted",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Skip for now",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "bs-destructive-hover",
+              "name": "Button / destructive / hover",
+              "fill": "$destructive-tint-hover",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Delete project",
+                  "fill": "$destructive"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "bs-col-focus",
+          "name": "Focus",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "bs-col-focus-label",
+              "name": "Column label",
+              "fill": "$muted-foreground",
+              "content": "Focus",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "frame",
+              "id": "bs-primary-focus",
+              "name": "Button / primary / focus",
+              "width": 105,
+              "height": 36,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-primary-focus-ring",
+                  "x": -3,
+                  "y": -3,
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-primary-focus-control",
+                      "name": "Button",
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Save changes",
+                          "fill": "$primary-foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-secondary-focus",
+              "name": "Button / secondary / focus",
+              "width": 80,
+              "height": 36,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-secondary-focus-ring",
+                  "x": -3,
+                  "y": -3,
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-secondary-focus-control",
+                      "name": "Button",
+                      "fill": "$secondary",
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Duplicate",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-outline-focus",
+              "name": "Button / outline / focus",
+              "width": 62,
+              "height": 36,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-outline-focus-ring",
+                  "x": -3,
+                  "y": -3,
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-outline-focus-control",
+                      "name": "Button",
+                      "fill": "$background",
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Cancel",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-ghost-focus",
+              "name": "Button / ghost / focus",
+              "width": 99,
+              "height": 36,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-ghost-focus-ring",
+                  "x": -3,
+                  "y": -3,
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-ghost-focus-control",
+                      "name": "Button",
+                      "fill": "$background",
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Skip for now",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-destructive-focus",
+              "name": "Button / destructive / focus",
+              "width": 109,
+              "height": 36,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-destructive-focus-ring",
+                  "x": -3,
+                  "y": -3,
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "bs-destructive-focus-cover",
+                      "name": "Cover",
+                      "fill": "$background",
+                      "cornerRadius": "$radius-md",
+                      "children": [
+                        {
+                          "type": "ref",
+                          "id": "bs-destructive-focus-control",
+                          "name": "Button",
+                          "fill": "$destructive-tint",
+                          "stroke": "$ring",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "ref": "ui-button",
+                          "descendants": {
+                            "ui-button-label": {
+                              "content": "Delete project",
+                              "fill": "$destructive"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "bs-col-disabled",
+          "name": "Disabled",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "bs-col-disabled-label",
+              "name": "Column label",
+              "fill": "$muted-foreground",
+              "content": "Disabled",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "ref",
+              "id": "bs-primary-disabled",
+              "name": "Button / primary / disabled",
+              "opacity": 0.5,
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Save changes",
+                  "fill": "$primary-foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "bs-secondary-disabled",
+              "name": "Button / secondary / disabled",
+              "opacity": 0.5,
+              "fill": "$secondary",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Duplicate",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "bs-outline-disabled",
+              "name": "Button / outline / disabled",
+              "opacity": 0.5,
+              "fill": "$control",
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Cancel",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "bs-ghost-disabled",
+              "name": "Button / ghost / disabled",
+              "opacity": 0.5,
+              "fill": "#00000000",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Skip for now",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "bs-destructive-disabled",
+              "name": "Button / destructive / disabled",
+              "opacity": 0.5,
+              "fill": "$destructive-tint",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Delete project",
+                  "fill": "$destructive"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "bs-col-loading",
+          "name": "Loading",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "bs-col-loading-label",
+              "name": "Column label",
+              "fill": "$muted-foreground",
+              "content": "Loading",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "ref",
+              "id": "bs-primary-loading",
+              "name": "Button / primary / loading",
+              "opacity": 0.5,
+              "ref": "ui-button-icon-leading",
+              "descendants": {
+                "ui-button-icon-leading-icon": {
+                  "icon": "loader-circle",
+                  "fill": "$primary-foreground"
+                },
+                "ui-button-icon-leading-label": {
+                  "content": "Save changes",
+                  "fill": "$primary-foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "bs-secondary-loading",
+              "name": "Button / secondary / loading",
+              "opacity": 0.5,
+              "fill": "$secondary",
+              "ref": "ui-button-icon-leading",
+              "descendants": {
+                "ui-button-icon-leading-icon": {
+                  "icon": "loader-circle",
+                  "fill": "$foreground"
+                },
+                "ui-button-icon-leading-label": {
+                  "content": "Duplicate",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "bs-outline-loading",
+              "name": "Button / outline / loading",
+              "opacity": 0.5,
+              "fill": "$control",
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "ref": "ui-button-icon-leading",
+              "descendants": {
+                "ui-button-icon-leading-icon": {
+                  "icon": "loader-circle",
+                  "fill": "$foreground"
+                },
+                "ui-button-icon-leading-label": {
+                  "content": "Cancel",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "bs-ghost-loading",
+              "name": "Button / ghost / loading",
+              "opacity": 0.5,
+              "fill": "#00000000",
+              "ref": "ui-button-icon-leading",
+              "descendants": {
+                "ui-button-icon-leading-icon": {
+                  "icon": "loader-circle",
+                  "fill": "$foreground"
+                },
+                "ui-button-icon-leading-label": {
+                  "content": "Skip for now",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "bs-destructive-loading",
+              "name": "Button / destructive / loading",
+              "opacity": 0.5,
+              "fill": "$destructive-tint",
+              "ref": "ui-button-icon-leading",
+              "descendants": {
+                "ui-button-icon-leading-icon": {
+                  "icon": "loader-circle",
+                  "fill": "$destructive"
+                },
+                "ui-button-icon-leading-label": {
+                  "content": "Delete project",
+                  "fill": "$destructive"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "hbkIn",
+      "x": 773,
+      "y": 0,
+      "name": "Button states, dark",
+      "theme": {
+        "Mode": "Dark"
+      },
+      "layout": "horizontal",
+      "gap": 24,
+      "padding": 32,
+      "fill": "$background",
+      "children": [
+        {
+          "type": "frame",
+          "id": "d3E4x",
+          "name": "Rest",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "t0pMA",
+              "name": "Column label",
+              "fill": "$muted-foreground",
+              "content": "Rest",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "ref",
+              "id": "FaY96",
+              "name": "Button / primary / rest",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Save changes",
+                  "fill": "$primary-foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "o0GTA",
+              "name": "Button / secondary / rest",
+              "fill": "$secondary",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Duplicate",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "Zo9QV",
+              "name": "Button / outline / rest",
+              "fill": "$control",
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Cancel",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "Hfejh",
+              "name": "Button / ghost / rest",
+              "fill": "#00000000",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Skip for now",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "nKoCw",
+              "name": "Button / destructive / rest",
+              "fill": "$destructive-tint",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Delete project",
+                  "fill": "$destructive"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "9P3L2",
+          "name": "Hover",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "sjDds",
+              "name": "Column label",
+              "fill": "$muted-foreground",
+              "content": "Hover",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "ref",
+              "id": "Tx5MO",
+              "name": "Button / primary / hover",
+              "fill": "$primary-hover",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Save changes",
+                  "fill": "$primary-foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "qUYDc",
+              "name": "Button / secondary / hover",
+              "fill": "$secondary-hover",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Duplicate",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "0mqMj",
+              "name": "Button / outline / hover",
+              "fill": "$muted",
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Cancel",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "dPSQO",
+              "name": "Button / ghost / hover",
+              "fill": "$muted",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Skip for now",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "7VRFo",
+              "name": "Button / destructive / hover",
+              "fill": "$destructive-tint-hover",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Delete project",
+                  "fill": "$destructive"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "oZc2b",
+          "name": "Focus",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "1yMHn",
+              "name": "Column label",
+              "fill": "$muted-foreground",
+              "content": "Focus",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "frame",
+              "id": "SV8xW",
+              "name": "Button / primary / focus",
+              "width": 105,
+              "height": 36,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "gLJig",
+                  "x": -3,
+                  "y": -3,
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "QHwKO",
+                      "name": "Button",
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Save changes",
+                          "fill": "$primary-foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "ihqaV",
+              "name": "Button / secondary / focus",
+              "width": 80,
+              "height": 36,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "eISpZ",
+                  "x": -3,
+                  "y": -3,
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "kKYeF",
+                      "name": "Button",
+                      "fill": "$secondary",
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Duplicate",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "TYccW",
+              "name": "Button / outline / focus",
+              "width": 62,
+              "height": 36,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "uqG3x",
+                  "x": -3,
+                  "y": -3,
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "7icwX",
+                      "name": "Button",
+                      "fill": "$background",
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Cancel",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "CmzQ9",
+              "name": "Button / ghost / focus",
+              "width": 99,
+              "height": 36,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "jq1Ld",
+                  "x": -3,
+                  "y": -3,
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "ULEAH",
+                      "name": "Button",
+                      "fill": "$background",
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Skip for now",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "c6cYv",
+              "name": "Button / destructive / focus",
+              "width": 109,
+              "height": 36,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "kl2Ql",
+                  "x": -3,
+                  "y": -3,
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "cBn7m",
+                      "name": "Cover",
+                      "fill": "$background",
+                      "cornerRadius": "$radius-md",
+                      "children": [
+                        {
+                          "type": "ref",
+                          "id": "Zf64h",
+                          "name": "Button",
+                          "fill": "$destructive-tint",
+                          "stroke": "$ring",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "ref": "ui-button",
+                          "descendants": {
+                            "ui-button-label": {
+                              "content": "Delete project",
+                              "fill": "$destructive"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "9Qcv6",
+          "name": "Disabled",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "OR7vR",
+              "name": "Column label",
+              "fill": "$muted-foreground",
+              "content": "Disabled",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "ref",
+              "id": "23vTP",
+              "name": "Button / primary / disabled",
+              "opacity": 0.5,
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Save changes",
+                  "fill": "$primary-foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "1W742",
+              "name": "Button / secondary / disabled",
+              "opacity": 0.5,
+              "fill": "$secondary",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Duplicate",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "IlVVu",
+              "name": "Button / outline / disabled",
+              "opacity": 0.5,
+              "fill": "$control",
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Cancel",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "qlPP0",
+              "name": "Button / ghost / disabled",
+              "opacity": 0.5,
+              "fill": "#00000000",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Skip for now",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "VJl03",
+              "name": "Button / destructive / disabled",
+              "opacity": 0.5,
+              "fill": "$destructive-tint",
+              "ref": "ui-button",
+              "descendants": {
+                "ui-button-label": {
+                  "content": "Delete project",
+                  "fill": "$destructive"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "A5AfF",
+          "name": "Loading",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "1H0Dy",
+              "name": "Column label",
+              "fill": "$muted-foreground",
+              "content": "Loading",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "ref",
+              "id": "FXest",
+              "name": "Button / primary / loading",
+              "opacity": 0.5,
+              "ref": "ui-button-icon-leading",
+              "descendants": {
+                "ui-button-icon-leading-icon": {
+                  "icon": "loader-circle",
+                  "fill": "$primary-foreground"
+                },
+                "ui-button-icon-leading-label": {
+                  "content": "Save changes",
+                  "fill": "$primary-foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "c8RBM",
+              "name": "Button / secondary / loading",
+              "opacity": 0.5,
+              "fill": "$secondary",
+              "ref": "ui-button-icon-leading",
+              "descendants": {
+                "ui-button-icon-leading-icon": {
+                  "icon": "loader-circle",
+                  "fill": "$foreground"
+                },
+                "ui-button-icon-leading-label": {
+                  "content": "Duplicate",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "UVnlT",
+              "name": "Button / outline / loading",
+              "opacity": 0.5,
+              "fill": "$control",
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "ref": "ui-button-icon-leading",
+              "descendants": {
+                "ui-button-icon-leading-icon": {
+                  "icon": "loader-circle",
+                  "fill": "$foreground"
+                },
+                "ui-button-icon-leading-label": {
+                  "content": "Cancel",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "Ii1Ef",
+              "name": "Button / ghost / loading",
+              "opacity": 0.5,
+              "fill": "#00000000",
+              "ref": "ui-button-icon-leading",
+              "descendants": {
+                "ui-button-icon-leading-icon": {
+                  "icon": "loader-circle",
+                  "fill": "$foreground"
+                },
+                "ui-button-icon-leading-label": {
+                  "content": "Skip for now",
+                  "fill": "$foreground"
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "Mm11p",
+              "name": "Button / destructive / loading",
+              "opacity": 0.5,
+              "fill": "$destructive-tint",
+              "ref": "ui-button-icon-leading",
+              "descendants": {
+                "ui-button-icon-leading-icon": {
+                  "icon": "loader-circle",
+                  "fill": "$destructive"
+                },
+                "ui-button-icon-leading-label": {
+                  "content": "Delete project",
+                  "fill": "$destructive"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "themes": {
+    "Mode": [
+      "Light",
+      "Dark"
+    ]
+  },
+  "variables": {
+    "background": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#ffffff"
+        },
+        {
+          "value": "#0a0a0a",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#0a0a0a"
+        },
+        {
+          "value": "#fafafa",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "card": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#ffffff"
+        },
+        {
+          "value": "#171717",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "popover": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#ffffff"
+        },
+        {
+          "value": "#171717",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "primary": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#171717"
+        },
+        {
+          "value": "#e5e5e5",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "primary-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#fafafa"
+        },
+        {
+          "value": "#171717",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "primary-hover": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#171717cc"
+        },
+        {
+          "value": "#e5e5e5cc",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "secondary": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f5f5f5"
+        },
+        {
+          "value": "#262626",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "muted": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f5f5f5"
+        },
+        {
+          "value": "#262626",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "muted-half": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f5f5f580"
+        },
+        {
+          "value": "#26262680",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "muted-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#5c5c5c"
+        },
+        {
+          "value": "#a8a8a8",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "accent": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f5f5f5"
+        },
+        {
+          "value": "#262626",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "destructive": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#c40d1f"
+        },
+        {
+          "value": "#ff6467",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "destructive-tint": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#c40d1f1a"
+        },
+        {
+          "value": "#ff646733",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "border": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#e5e5e5"
+        },
+        {
+          "value": "#ffffff1a",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "input": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#d4d4d4"
+        },
+        {
+          "value": "#ffffff26",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "control": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#ffffff00"
+        },
+        {
+          "value": "#ffffff0b",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "hairline": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#0a0a0a1a"
+        },
+        {
+          "value": "#fafafa1a",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "ring": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#a1a1a1"
+        },
+        {
+          "value": "#737373",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "ring-soft": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#a1a1a180"
+        },
+        {
+          "value": "#73737380",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "scrim": {
+      "type": "color",
+      "value": "#00000033"
+    },
+    "radius-xs": {
+      "type": "number",
+      "value": 4
+    },
+    "radius-sm": {
+      "type": "number",
+      "value": 6
+    },
+    "radius-md": {
+      "type": "number",
+      "value": 8
+    },
+    "radius-lg": {
+      "type": "number",
+      "value": 10
+    },
+    "radius-xl": {
+      "type": "number",
+      "value": 14
+    },
+    "font": {
+      "type": "string",
+      "value": "Segoe UI Variable"
+    },
+    "secondary-hover": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#ebebeb"
+        },
+        {
+          "value": "#333333",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "destructive-tint-hover": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#c40d1f33"
+        },
+        {
+          "value": "#ff64674d",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    }
+  }
+}

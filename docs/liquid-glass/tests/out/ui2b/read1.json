@@ -1,0 +1,1611 @@
+{
+  "layers": [
+    {
+      "type": "frame",
+      "id": "button-states",
+      "x": 0,
+      "y": 0,
+      "name": "Button states",
+      "layout": "vertical",
+      "gap": 16,
+      "padding": 32,
+      "fill": "$background",
+      "layoutBox": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 952.0,
+        "height": 370.0
+      },
+      "children": [
+        {
+          "type": "frame",
+          "id": "bs-head",
+          "name": "States",
+          "gap": 24,
+          "layoutBox": {
+            "x": 32.0,
+            "y": 32.0,
+            "width": 888.0,
+            "height": 16.0
+          },
+          "children": [
+            {
+              "type": "frame",
+              "id": "bs-head-0",
+              "width": 88,
+              "height": 16,
+              "layoutBox": {
+                "x": 32.0,
+                "y": 32.0,
+                "width": 88.0,
+                "height": 16.0
+              }
+            },
+            {
+              "type": "text",
+              "id": "bs-head-1",
+              "width": 136,
+              "fill": "$muted-foreground",
+              "content": "Rest",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500",
+              "layoutBox": {
+                "x": 144.0,
+                "y": 32.0,
+                "width": 136.0,
+                "height": 16.0
+              }
+            },
+            {
+              "type": "text",
+              "id": "bs-head-2",
+              "width": 136,
+              "fill": "$muted-foreground",
+              "content": "Hover",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500",
+              "layoutBox": {
+                "x": 304.0,
+                "y": 32.0,
+                "width": 136.0,
+                "height": 16.0
+              }
+            },
+            {
+              "type": "text",
+              "id": "bs-head-3",
+              "width": 136,
+              "fill": "$muted-foreground",
+              "content": "Focus",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500",
+              "layoutBox": {
+                "x": 464.0,
+                "y": 32.0,
+                "width": 136.0,
+                "height": 16.0
+              }
+            },
+            {
+              "type": "text",
+              "id": "bs-head-4",
+              "width": 136,
+              "fill": "$muted-foreground",
+              "content": "Disabled",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500",
+              "layoutBox": {
+                "x": 624.0,
+                "y": 32.0,
+                "width": 136.0,
+                "height": 16.0
+              }
+            },
+            {
+              "type": "text",
+              "id": "bs-head-5",
+              "width": 136,
+              "fill": "$muted-foreground",
+              "content": "Loading",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500",
+              "layoutBox": {
+                "x": 784.0,
+                "y": 32.0,
+                "width": 136.0,
+                "height": 16.0
+              }
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "bs-row-primary",
+          "name": "Primary",
+          "gap": 24,
+          "alignItems": "center",
+          "layoutBox": {
+            "x": 32.0,
+            "y": 64.0,
+            "width": 888.0,
+            "height": 42.0
+          },
+          "children": [
+            {
+              "type": "text",
+              "id": "bs-row-primary-name",
+              "width": 88,
+              "fill": "$muted-foreground",
+              "content": "Primary",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500",
+              "layoutBox": {
+                "x": 32.0,
+                "y": 77.0,
+                "width": 88.0,
+                "height": 16.0
+              }
+            },
+            {
+              "type": "frame",
+              "id": "bs-primary-rest-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 144.0,
+                "y": 64.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-primary-rest-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "layoutBox": {
+                    "x": 144.0,
+                    "y": 64.0,
+                    "width": 111.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-primary-rest",
+                      "name": "Button / primary / rest",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Save changes"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 147.0,
+                        "y": 67.0,
+                        "width": 105.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-primary-rest/ui-button-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-primary-hover-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 304.0,
+                "y": 64.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-primary-hover-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "layoutBox": {
+                    "x": 304.0,
+                    "y": 64.0,
+                    "width": 111.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-primary-hover",
+                      "name": "Button / primary / hover",
+                      "fill": "$primary-hover",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Save changes"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 307.0,
+                        "y": 67.0,
+                        "width": 105.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-primary-hover/ui-button-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-primary-focus-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 464.0,
+                "y": 64.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-primary-focus-pad",
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "layoutBox": {
+                    "x": 464.0,
+                    "y": 64.0,
+                    "width": 111.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-primary-focus",
+                      "name": "Button / primary / focus",
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Save changes"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 467.0,
+                        "y": 67.0,
+                        "width": 105.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-primary-focus/ui-button-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-primary-disabled-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 624.0,
+                "y": 64.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-primary-disabled-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "layoutBox": {
+                    "x": 624.0,
+                    "y": 64.0,
+                    "width": 111.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-primary-disabled",
+                      "name": "Button / primary / disabled",
+                      "opacity": 0.5,
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Save changes"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 627.0,
+                        "y": 67.0,
+                        "width": 105.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-primary-disabled/ui-button-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-primary-loading-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 784.0,
+                "y": 64.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-primary-loading-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "layoutBox": {
+                    "x": 784.0,
+                    "y": 64.0,
+                    "width": 131.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-primary-loading",
+                      "name": "Button / primary / loading",
+                      "opacity": 0.5,
+                      "ref": "ui-button-icon-leading",
+                      "descendants": {
+                        "ui-button-icon-leading-icon": {
+                          "icon": "loader-circle",
+                          "fill": "$primary-foreground"
+                        },
+                        "ui-button-icon-leading-label": {
+                          "content": "Save changes",
+                          "fill": "$primary-foreground"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 787.0,
+                        "y": 67.0,
+                        "width": 125.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-primary-loading/ui-button-icon-leading-icon",
+                        "bs-primary-loading/ui-button-icon-leading-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "bs-row-secondary",
+          "name": "Secondary",
+          "gap": 24,
+          "alignItems": "center",
+          "layoutBox": {
+            "x": 32.0,
+            "y": 122.0,
+            "width": 888.0,
+            "height": 42.0
+          },
+          "children": [
+            {
+              "type": "text",
+              "id": "bs-row-secondary-name",
+              "width": 88,
+              "fill": "$muted-foreground",
+              "content": "Secondary",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500",
+              "layoutBox": {
+                "x": 32.0,
+                "y": 135.0,
+                "width": 88.0,
+                "height": 16.0
+              }
+            },
+            {
+              "type": "frame",
+              "id": "bs-secondary-rest-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 144.0,
+                "y": 122.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-secondary-rest-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "layoutBox": {
+                    "x": 144.0,
+                    "y": 122.0,
+                    "width": 96.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-secondary-rest",
+                      "name": "Button / secondary / rest",
+                      "fill": "$secondary",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Export CSV",
+                          "fill": "$foreground"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 147.0,
+                        "y": 125.0,
+                        "width": 90.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-secondary-rest/ui-button-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-secondary-hover-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 304.0,
+                "y": 122.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-secondary-hover-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "layoutBox": {
+                    "x": 304.0,
+                    "y": 122.0,
+                    "width": 96.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-secondary-hover",
+                      "name": "Button / secondary / hover",
+                      "fill": "$secondary-hover",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Export CSV",
+                          "fill": "$foreground"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 307.0,
+                        "y": 125.0,
+                        "width": 90.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-secondary-hover/ui-button-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-secondary-focus-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 464.0,
+                "y": 122.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-secondary-focus-pad",
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "layoutBox": {
+                    "x": 464.0,
+                    "y": 122.0,
+                    "width": 96.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-secondary-focus",
+                      "name": "Button / secondary / focus",
+                      "fill": "$secondary",
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Export CSV",
+                          "fill": "$foreground"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 467.0,
+                        "y": 125.0,
+                        "width": 90.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-secondary-focus/ui-button-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-secondary-disabled-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 624.0,
+                "y": 122.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-secondary-disabled-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "layoutBox": {
+                    "x": 624.0,
+                    "y": 122.0,
+                    "width": 96.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-secondary-disabled",
+                      "name": "Button / secondary / disabled",
+                      "opacity": 0.5,
+                      "fill": "$secondary",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Export CSV",
+                          "fill": "$foreground"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 627.0,
+                        "y": 125.0,
+                        "width": 90.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-secondary-disabled/ui-button-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-secondary-loading-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 784.0,
+                "y": 122.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-secondary-loading-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "layoutBox": {
+                    "x": 784.0,
+                    "y": 122.0,
+                    "width": 116.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-secondary-loading",
+                      "name": "Button / secondary / loading",
+                      "opacity": 0.5,
+                      "fill": "$secondary",
+                      "ref": "ui-button-icon-leading",
+                      "descendants": {
+                        "ui-button-icon-leading-icon": {
+                          "icon": "loader-circle",
+                          "fill": "$foreground"
+                        },
+                        "ui-button-icon-leading-label": {
+                          "content": "Export CSV",
+                          "fill": "$foreground"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 787.0,
+                        "y": 125.0,
+                        "width": 110.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-secondary-loading/ui-button-icon-leading-icon",
+                        "bs-secondary-loading/ui-button-icon-leading-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "bs-row-outline",
+          "name": "Outline",
+          "gap": 24,
+          "alignItems": "center",
+          "layoutBox": {
+            "x": 32.0,
+            "y": 180.0,
+            "width": 888.0,
+            "height": 42.0
+          },
+          "children": [
+            {
+              "type": "text",
+              "id": "bs-row-outline-name",
+              "width": 88,
+              "fill": "$muted-foreground",
+              "content": "Outline",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500",
+              "layoutBox": {
+                "x": 32.0,
+                "y": 193.0,
+                "width": 88.0,
+                "height": 16.0
+              }
+            },
+            {
+              "type": "frame",
+              "id": "bs-outline-rest-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 144.0,
+                "y": 180.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-outline-rest-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "layoutBox": {
+                    "x": 144.0,
+                    "y": 180.0,
+                    "width": 68.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-outline-rest",
+                      "name": "Button / outline / rest",
+                      "fill": "$control",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Cancel",
+                          "fill": "$foreground"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 147.0,
+                        "y": 183.0,
+                        "width": 62.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-outline-rest/ui-button-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-outline-hover-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 304.0,
+                "y": 180.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-outline-hover-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "layoutBox": {
+                    "x": 304.0,
+                    "y": 180.0,
+                    "width": 68.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-outline-hover",
+                      "name": "Button / outline / hover",
+                      "fill": "$muted",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Cancel",
+                          "fill": "$foreground"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 307.0,
+                        "y": 183.0,
+                        "width": 62.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-outline-hover/ui-button-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-outline-focus-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 464.0,
+                "y": 180.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-outline-focus-pad",
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "layoutBox": {
+                    "x": 464.0,
+                    "y": 180.0,
+                    "width": 68.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-outline-focus",
+                      "name": "Button / outline / focus",
+                      "fill": "$background",
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Cancel",
+                          "fill": "$foreground"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 467.0,
+                        "y": 183.0,
+                        "width": 62.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-outline-focus/ui-button-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-outline-disabled-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 624.0,
+                "y": 180.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-outline-disabled-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "layoutBox": {
+                    "x": 624.0,
+                    "y": 180.0,
+                    "width": 68.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-outline-disabled",
+                      "name": "Button / outline / disabled",
+                      "opacity": 0.5,
+                      "fill": "$control",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Cancel",
+                          "fill": "$foreground"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 627.0,
+                        "y": 183.0,
+                        "width": 62.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-outline-disabled/ui-button-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-outline-loading-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 784.0,
+                "y": 180.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-outline-loading-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "layoutBox": {
+                    "x": 784.0,
+                    "y": 180.0,
+                    "width": 88.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-outline-loading",
+                      "name": "Button / outline / loading",
+                      "opacity": 0.5,
+                      "fill": "$control",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button-icon-leading",
+                      "descendants": {
+                        "ui-button-icon-leading-icon": {
+                          "icon": "loader-circle",
+                          "fill": "$foreground"
+                        },
+                        "ui-button-icon-leading-label": {
+                          "content": "Cancel",
+                          "fill": "$foreground"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 787.0,
+                        "y": 183.0,
+                        "width": 82.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-outline-loading/ui-button-icon-leading-icon",
+                        "bs-outline-loading/ui-button-icon-leading-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "bs-row-ghost",
+          "name": "Ghost",
+          "gap": 24,
+          "alignItems": "center",
+          "layoutBox": {
+            "x": 32.0,
+            "y": 238.0,
+            "width": 888.0,
+            "height": 42.0
+          },
+          "children": [
+            {
+              "type": "text",
+              "id": "bs-row-ghost-name",
+              "width": 88,
+              "fill": "$muted-foreground",
+              "content": "Ghost",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500",
+              "layoutBox": {
+                "x": 32.0,
+                "y": 251.0,
+                "width": 88.0,
+                "height": 16.0
+              }
+            },
+            {
+              "type": "frame",
+              "id": "bs-ghost-rest-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 144.0,
+                "y": 238.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-ghost-rest-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "layoutBox": {
+                    "x": 144.0,
+                    "y": 238.0,
+                    "width": 105.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-ghost-rest",
+                      "name": "Button / ghost / rest",
+                      "fill": "#00000000",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Skip for now",
+                          "fill": "$foreground"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 147.0,
+                        "y": 241.0,
+                        "width": 99.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-ghost-rest/ui-button-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-ghost-hover-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 304.0,
+                "y": 238.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-ghost-hover-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "layoutBox": {
+                    "x": 304.0,
+                    "y": 238.0,
+                    "width": 105.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-ghost-hover",
+                      "name": "Button / ghost / hover",
+                      "fill": "$muted",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Skip for now",
+                          "fill": "$foreground"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 307.0,
+                        "y": 241.0,
+                        "width": 99.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-ghost-hover/ui-button-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-ghost-focus-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 464.0,
+                "y": 238.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-ghost-focus-pad",
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "layoutBox": {
+                    "x": 464.0,
+                    "y": 238.0,
+                    "width": 105.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-ghost-focus",
+                      "name": "Button / ghost / focus",
+                      "fill": "$background",
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Skip for now",
+                          "fill": "$foreground"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 467.0,
+                        "y": 241.0,
+                        "width": 99.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-ghost-focus/ui-button-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-ghost-disabled-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 624.0,
+                "y": 238.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-ghost-disabled-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "layoutBox": {
+                    "x": 624.0,
+                    "y": 238.0,
+                    "width": 105.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-ghost-disabled",
+                      "name": "Button / ghost / disabled",
+                      "opacity": 0.5,
+                      "fill": "#00000000",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Skip for now",
+                          "fill": "$foreground"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 627.0,
+                        "y": 241.0,
+                        "width": 99.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-ghost-disabled/ui-button-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-ghost-loading-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 784.0,
+                "y": 238.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-ghost-loading-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "layoutBox": {
+                    "x": 784.0,
+                    "y": 238.0,
+                    "width": 125.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-ghost-loading",
+                      "name": "Button / ghost / loading",
+                      "opacity": 0.5,
+                      "fill": "#00000000",
+                      "ref": "ui-button-icon-leading",
+                      "descendants": {
+                        "ui-button-icon-leading-icon": {
+                          "icon": "loader-circle",
+                          "fill": "$foreground"
+                        },
+                        "ui-button-icon-leading-label": {
+                          "content": "Skip for now",
+                          "fill": "$foreground"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 787.0,
+                        "y": 241.0,
+                        "width": 119.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-ghost-loading/ui-button-icon-leading-icon",
+                        "bs-ghost-loading/ui-button-icon-leading-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "bs-row-destructive",
+          "name": "Destructive",
+          "gap": 24,
+          "alignItems": "center",
+          "layoutBox": {
+            "x": 32.0,
+            "y": 296.0,
+            "width": 888.0,
+            "height": 42.0
+          },
+          "children": [
+            {
+              "type": "text",
+              "id": "bs-row-destructive-name",
+              "width": 88,
+              "fill": "$muted-foreground",
+              "content": "Destructive",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500",
+              "layoutBox": {
+                "x": 32.0,
+                "y": 309.0,
+                "width": 88.0,
+                "height": 16.0
+              }
+            },
+            {
+              "type": "frame",
+              "id": "bs-destructive-rest-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 144.0,
+                "y": 296.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-destructive-rest-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "layoutBox": {
+                    "x": 144.0,
+                    "y": 296.0,
+                    "width": 115.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-destructive-rest",
+                      "name": "Button / destructive / rest",
+                      "fill": "$destructive-tint",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Delete project",
+                          "fill": "$destructive"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 147.0,
+                        "y": 299.0,
+                        "width": 109.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-destructive-rest/ui-button-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-destructive-hover-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 304.0,
+                "y": 296.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-destructive-hover-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "layoutBox": {
+                    "x": 304.0,
+                    "y": 296.0,
+                    "width": 115.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-destructive-hover",
+                      "name": "Button / destructive / hover",
+                      "fill": "$destructive-tint-hover",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Delete project",
+                          "fill": "$destructive"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 307.0,
+                        "y": 299.0,
+                        "width": 109.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-destructive-hover/ui-button-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-destructive-focus-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 464.0,
+                "y": 296.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-destructive-focus-pad",
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "layoutBox": {
+                    "x": 464.0,
+                    "y": 296.0,
+                    "width": 115.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-destructive-focus",
+                      "name": "Button / destructive / focus",
+                      "fill": [
+                        "$background",
+                        "$destructive-tint"
+                      ],
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Delete project",
+                          "fill": "$destructive"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 467.0,
+                        "y": 299.0,
+                        "width": 109.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-destructive-focus/ui-button-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-destructive-disabled-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 624.0,
+                "y": 296.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-destructive-disabled-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "layoutBox": {
+                    "x": 624.0,
+                    "y": 296.0,
+                    "width": 115.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-destructive-disabled",
+                      "name": "Button / destructive / disabled",
+                      "opacity": 0.5,
+                      "fill": "$destructive-tint",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Delete project",
+                          "fill": "$destructive"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 627.0,
+                        "y": 299.0,
+                        "width": 109.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-destructive-disabled/ui-button-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-destructive-loading-cell",
+              "name": "Cell",
+              "width": 136,
+              "layoutBox": {
+                "x": 784.0,
+                "y": 296.0,
+                "width": 136.0,
+                "height": 42.0
+              },
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-destructive-loading-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "layoutBox": {
+                    "x": 784.0,
+                    "y": 296.0,
+                    "width": 135.0,
+                    "height": 42.0
+                  },
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-destructive-loading",
+                      "name": "Button / destructive / loading",
+                      "opacity": 0.5,
+                      "fill": "$destructive-tint",
+                      "ref": "ui-button-icon-leading",
+                      "descendants": {
+                        "ui-button-icon-leading-icon": {
+                          "icon": "loader-circle",
+                          "fill": "$destructive"
+                        },
+                        "ui-button-icon-leading-label": {
+                          "content": "Delete project",
+                          "fill": "$destructive"
+                        }
+                      },
+                      "layoutBox": {
+                        "x": 787.0,
+                        "y": 299.0,
+                        "width": 129.0,
+                        "height": 36.0
+                      },
+                      "childrenNotShown": [
+                        "bs-destructive-loading/ui-button-icon-leading-icon",
+                        "bs-destructive-loading/ui-button-icon-leading-label"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -28,15 +28,28 @@ pub struct Skill {
 }
 
 /// Every skill Pencraft has.
-pub const ALL: &[Skill] = &[Skill {
-    name: "liquid-glass",
-    files: &[
-        (MAIN, include_str!("../skills/liquid-glass/SKILL.md")),
-        ("references/components.md", include_str!("../skills/liquid-glass/references/components.md")),
-        ("references/tokens.md", include_str!("../skills/liquid-glass/references/tokens.md")),
-        ("references/design-language.md", include_str!("../skills/liquid-glass/references/design-language.md")),
-    ],
-}];
+pub const ALL: &[Skill] = &[
+    Skill {
+        name: "liquid-glass",
+        files: &[
+            (MAIN, include_str!("../skills/liquid-glass/SKILL.md")),
+            ("references/components.md", include_str!("../skills/liquid-glass/references/components.md")),
+            ("references/tokens.md", include_str!("../skills/liquid-glass/references/tokens.md")),
+            ("references/design-language.md", include_str!("../skills/liquid-glass/references/design-language.md")),
+        ],
+    },
+    Skill {
+        name: "ui-components",
+        files: &[
+            (MAIN, include_str!("../skills/ui-components/SKILL.md")),
+            ("references/tokens.md", include_str!("../skills/ui-components/references/tokens.md")),
+            ("references/controls.md", include_str!("../skills/ui-components/references/controls.md")),
+            ("references/overlays.md", include_str!("../skills/ui-components/references/overlays.md")),
+            ("references/data.md", include_str!("../skills/ui-components/references/data.md")),
+            ("references/styles.md", include_str!("../skills/ui-components/references/styles.md")),
+        ],
+    },
+];
 
 impl Skill {
     /// The value of `key` in the main file's front matter.
@@ -292,6 +305,65 @@ mod tests {
         assert!(layers > 50, "only {layers} layers were found in the skills' examples");
     }
 
+    /// One document holding the variables `tokens` sets and every layer the files of `skill` show, side by side.
+    fn document_of(skill: &Skill, tokens: &str) -> String {
+        let set: Value = blocks(skill.file(Some(tokens)).unwrap())
+            .into_iter()
+            .filter_map(|block| serde_json::from_str(block).ok())
+            .find(|value: &Value| value["op"] == "set_variables")
+            .unwrap();
+        let mut layers = Vec::new();
+        for (_, text) in skill.files {
+            for block in blocks(text) {
+                if block.contains("...") || block.contains('<') {
+                    continue;
+                }
+                let Ok(mut value) = serde_json::from_str::<Value>(block) else { continue };
+                if value.get("type").is_none() {
+                    continue;
+                }
+                give_ids(&mut value, &mut (layers.len() * 1000));
+                value["x"] = json!(layers.len() * 1500);
+                value["y"] = json!(0);
+                layers.push(value);
+            }
+        }
+        json!({ "version": "2.22", "themes": set["themes"], "variables": set["variables"], "children": layers }).to_string()
+    }
+
+    #[test]
+    fn the_standard_components_hold_up_under_the_apps_own_checks() {
+        use pen_doc::scene::SceneNode;
+        let skill = find("ui-components").unwrap();
+        let light = document_of(skill, "references/tokens.md");
+        // The first value of a theme axis is the one in force: once as written, once with Dark first.
+        let dark = light.replace(r#"["Light","Dark"]"#, r#"["Dark","Light"]"#);
+        assert_ne!(light, dark);
+        for json in [light, dark] {
+            let mut editor = crate::editor::Editor::new(pen_doc::read(&json).unwrap(), None, 1);
+            #[expect(clippy::cast_precision_loss, reason = "the letters of one line of sample copy")]
+            editor.refresh(&|style| {
+                let wide = style.size * 0.52 * style.content.chars().count() as f32;
+                // A text that wraps takes the width it is given and as many lines as it needs.
+                match style.wrap {
+                    Some(width) if width > 0.0 => (width, (wide / width).ceil().max(1.0) * style.line_px.unwrap_or(style.size * 1.2)),
+                    _ => (wide, style.size * 1.2),
+                }
+            });
+            let mut components = 0;
+            for top in &editor.scene {
+                top.walk(&mut |layer, _| assert!(layer.resolved, "{} refers to a component that isn't there", layer.id), 0);
+                components += usize::from(top.node.reusable == Some(true));
+                let wrong = crate::review::mistakes_in(&[top], pen_doc::vars::Vars::new(&editor.doc), &|_| None);
+                assert_eq!(wrong, Vec::<String>::new(), "{}", top.id);
+            }
+            assert!(components >= 20, "only {components} components");
+            let tops: Vec<&SceneNode> = editor.scene.iter().collect();
+            let ids: Vec<String> = tops.iter().map(|top| top.id.clone()).collect();
+            assert_eq!(crate::advice::advice(&editor, &ids), Vec::<String>::new());
+        }
+    }
+
     #[test]
     fn a_skill_is_listed_read_and_written_out_whole() {
         assert_eq!(list()["skills"][0]["name"], "liquid-glass");
@@ -304,7 +376,7 @@ mod tests {
 
         let root = std::env::temp_dir().join(format!("pencraft-skills-test-{}", std::process::id()));
         let written = install(&root).unwrap();
-        assert_eq!(written, [root.join("liquid-glass").join(MAIN)]);
+        assert_eq!(written, [root.join("liquid-glass").join(MAIN), root.join("ui-components").join(MAIN)]);
         for (path, text) in ALL[0].files {
             assert_eq!(std::fs::read_to_string(root.join("liquid-glass").join(path)).unwrap(), *text);
         }

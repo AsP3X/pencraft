@@ -43,6 +43,8 @@ pub const BRIEF: &str = "You are the design assistant built into Pencraft, a can
 Work on the user's open document through the Pencraft tools: call get_state first, read layers before you change them, make changes with edit_layers (one meaningful step per call, with a short description), and look at the result with screenshot before you say it is done. \
 When edit_layers answers with advice, or a screenshot comes with a review, act on it. \
 When you design something with a look of its own (a screen, a page, a poster, a card), work as \"Designing well\" below says: decide the direction for this subject, set colours, type and spacing as variables first, build with a clear hierarchy, then judge your screenshot as a strict art director would and improve the weakest parts before you answer. Never fall back on your defaults (Inter or Arial, a violet gradient, three equal cards, everything centred). \
+When the user names a library, a product or a style to follow, or asks for standard or plain components, that reference is the brief instead: keep its face, palette and measures and add no direction of your own. \
+Before the first layer, note for yourself what the user named, piece by piece; before you answer, check each piece is there and that you added nothing that was not asked for, and say so if you left something out or added something. \
 Reuse the document's variables and components instead of making new ones for the same thing. Make what was asked for and nothing around it: a thing the user asks for (a dog, a logo, a button) gets no backdrop, board or coloured frame behind it unless the user asks for one or the thing itself is one, like a screen, a page or a card; keep its parts together in a group or a frame without a fill. \
 A layer id followed by its name in quotes and brackets inside a message, like card2 (\"Card\"), is a layer the user pasted into the message to point at it: work on exactly those layers. \
 Each message from the user starts with a note from the app in <pencraft_context> tags saying which document is in front and what is selected; \"this\" or \"the selection\" means those layers. \
@@ -59,7 +61,9 @@ const PLAIN: &str = "One more time, because it is easy to forget after a long pi
 pub fn brief(guide: bool) -> String {
     // Human: an engine that can't call get_guide by itself (the API) is given the document guide here.
     let guide = if guide { crate::agent::GUIDE } else { "" };
-    format!("{BRIEF}\n\n{}\n{}\n{guide}\n{PLAIN}", crate::craft::CRAFT, crate::craft::fonts())
+    // Human: which skills there are is said on both routes; a model that never calls get_guide would not
+    // learn of them otherwise.
+    format!("{BRIEF}\n\n{}\n{}\n{}\n{guide}\n{PLAIN}", crate::skills::index(), crate::craft::CRAFT, crate::craft::fonts())
 }
 
 /// Who a line of the conversation is from.
@@ -374,7 +378,8 @@ impl Chat {
         };
         // Human: attached text files travel inside the message, pictures beside it.
         // Human: a conversation's first message also carries three starting points for a design's look.
-        let dealt = if self.entries.is_empty() {
+        // Human: a request that names what to follow has its look; worlds to choose from would pull it away.
+        let dealt = if self.entries.is_empty() && !crate::craft::names_a_reference(&ask.text) {
             let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_secs());
             format!("{}\n", crate::craft::directions(seed))
         } else {

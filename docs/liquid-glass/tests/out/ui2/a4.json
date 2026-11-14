@@ -1,0 +1,7 @@
+{"description":"Destructive focus on a covering layer, label face with a true 500, dark board again","operations":[
+ {"op":"set_variables","variables":{"font":{"type":"string","value":"Segoe UI Variable"}}},
+ {"op":"replace","id":"bs-destructive-focus-control","node":
+  {"type":"frame","id":"bs-destructive-focus-cover","name":"Cover","cornerRadius":"$radius-md","fill":"$background","children":[
+   {"type":"ref","id":"bs-destructive-focus-control","name":"Button","ref":"ui-button","fill":"$destructive-tint","stroke":"$ring","strokeWidth":1,"strokeAlignment":"inner","descendants":{"ui-button-label":{"content":"Delete project","fill":"$destructive"}}}]}},
+ {"op":"delete","id":"BhhSK"},
+ {"op":"copy","id":"bs-light","properties":{"name":"Button states, dark","theme":{"Mode":"Dark"},"x":763,"y":0}}]}

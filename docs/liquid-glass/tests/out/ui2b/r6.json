@@ -1,0 +1,81 @@
+{
+  "results": [
+    {
+      "deleted": "gdq7F"
+    },
+    {
+      "id": "ui-components"
+    },
+    {
+      "id": "bs-head-0"
+    },
+    {
+      "id": "bs-head-1"
+    },
+    {
+      "id": "bs-head-2"
+    },
+    {
+      "id": "bs-head-3"
+    },
+    {
+      "id": "bs-head-4"
+    },
+    {
+      "id": "bs-head-5"
+    },
+    {
+      "id": "dCFpV"
+    }
+  ],
+  "layoutBoxes": {
+    "ui-components": {
+      "x": -581.0,
+      "y": 0.0,
+      "width": 181.0,
+      "height": 168.0
+    },
+    "bs-head-0": {
+      "x": 32.0,
+      "y": 32.0,
+      "width": 88.0,
+      "height": 16.0
+    },
+    "bs-head-1": {
+      "x": 144.0,
+      "y": 32.0,
+      "width": 136.0,
+      "height": 16.0
+    },
+    "bs-head-2": {
+      "x": 304.0,
+      "y": 32.0,
+      "width": 136.0,
+      "height": 16.0
+    },
+    "bs-head-3": {
+      "x": 464.0,
+      "y": 32.0,
+      "width": 136.0,
+      "height": 16.0
+    },
+    "bs-head-4": {
+      "x": 624.0,
+      "y": 32.0,
+      "width": 136.0,
+      "height": 16.0
+    },
+    "bs-head-5": {
+      "x": 784.0,
+      "y": 32.0,
+      "width": 136.0,
+      "height": 16.0
+    },
+    "dCFpV": {
+      "x": 1000.0,
+      "y": 0.0,
+      "width": 952.0,
+      "height": 370.0
+    }
+  }
+}

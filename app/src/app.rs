@@ -420,7 +420,7 @@ impl App {
     }
 
     fn open_sample(&mut self) {
-        match pen_doc::read(samples::STARTER) {
+        match pen_doc::read(&samples::starter(&crate::faces::installed)) {
             Ok(doc) => {
                 let seed = self.next_seed();
                 self.add_tab(Editor::new(doc, None, seed));

@@ -1,0 +1,1008 @@
+{
+  "version": "2.22",
+  "children": [
+    {
+      "type": "frame",
+      "id": "moments",
+      "x": 0,
+      "y": 0,
+      "name": "Command palette, three moments",
+      "layout": "horizontal",
+      "gap": 48,
+      "alignItems": "start",
+      "children": [
+        {
+          "type": "frame",
+          "id": "ui-command",
+          "name": "Command palette / opened",
+          "reusable": true,
+          "width": 560,
+          "layout": "vertical",
+          "fill": "$popover",
+          "stroke": "$hairline",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
+          "effect": [
+            {
+              "type": "shadow",
+              "offset": {
+                "x": 0,
+                "y": 2
+              },
+              "blur": 6,
+              "color": "#0000000f"
+            },
+            {
+              "type": "shadow",
+              "offset": {
+                "x": 0,
+                "y": 16
+              },
+              "blur": 48,
+              "color": "#00000029"
+            }
+          ],
+          "cornerRadius": "$radius-xl",
+          "children": [
+            {
+              "type": "frame",
+              "id": "ui-command-input",
+              "name": "Input",
+              "width": "fill_container",
+              "height": 48,
+              "gap": 8,
+              "padding": [
+                0,
+                16
+              ],
+              "alignItems": "center",
+              "stroke": "$border",
+              "strokeWidth": {
+                "bottom": 1
+              },
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "ui-command-input-icon",
+                  "width": 16,
+                  "height": 16,
+                  "fill": "$muted-foreground",
+                  "library": "lucide",
+                  "icon": "search"
+                },
+                {
+                  "type": "text",
+                  "id": "ui-command-input-value",
+                  "name": "Value",
+                  "fill": "$muted-foreground",
+                  "content": "Type a command or search",
+                  "fontFamily": "$font",
+                  "fontSize": 14
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "ui-command-list",
+              "name": "List",
+              "width": "fill_container",
+              "layout": "vertical",
+              "padding": 8,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "ui-command-heading",
+                  "name": "Group heading",
+                  "width": "fill_container",
+                  "height": 28,
+                  "padding": [
+                    0,
+                    8
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "ui-command-heading-text",
+                      "fill": "$muted-foreground",
+                      "content": "Suggestions",
+                      "fontFamily": "$font",
+                      "fontSize": 12,
+                      "fontWeight": "500"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ui-command-item-1",
+                  "name": "Item, selected",
+                  "width": "fill_container",
+                  "height": 40,
+                  "gap": 8,
+                  "padding": [
+                    0,
+                    8
+                  ],
+                  "alignItems": "center",
+                  "fill": "$muted",
+                  "cornerRadius": "$radius-sm",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "ui-command-item-1-icon",
+                      "width": 16,
+                      "height": 16,
+                      "fill": "$muted-foreground",
+                      "library": "lucide",
+                      "icon": "calendar"
+                    },
+                    {
+                      "type": "text",
+                      "id": "ui-command-item-1-label",
+                      "width": "fill_container",
+                      "fill": "$foreground",
+                      "content": "Open this week's rota",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 14
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ui-command-item-1-kbd",
+                      "name": "Kbd",
+                      "width": 20,
+                      "height": 20,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "fill": "$control",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "cornerRadius": "$radius-xs",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "ui-command-item-1-kbd-text",
+                          "fill": "$foreground",
+                          "content": "R",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ui-command-item-2",
+                  "name": "Item",
+                  "width": "fill_container",
+                  "height": 40,
+                  "gap": 8,
+                  "padding": [
+                    0,
+                    8
+                  ],
+                  "alignItems": "center",
+                  "cornerRadius": "$radius-sm",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "ui-command-item-2-icon",
+                      "width": 16,
+                      "height": 16,
+                      "fill": "$muted-foreground",
+                      "library": "lucide",
+                      "icon": "arrow-left-right"
+                    },
+                    {
+                      "type": "text",
+                      "id": "ui-command-item-2-label",
+                      "width": "fill_container",
+                      "fill": "$foreground",
+                      "content": "Request a shift swap",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 14
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ui-command-item-2-kbd",
+                      "name": "Kbd",
+                      "width": 20,
+                      "height": 20,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "fill": "$control",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "cornerRadius": "$radius-xs",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "ui-command-item-2-kbd-text",
+                          "fill": "$foreground",
+                          "content": "S",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ui-command-item-3",
+                  "name": "Item",
+                  "width": "fill_container",
+                  "height": 40,
+                  "gap": 8,
+                  "padding": [
+                    0,
+                    8
+                  ],
+                  "alignItems": "center",
+                  "cornerRadius": "$radius-sm",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "ui-command-item-3-icon",
+                      "width": 16,
+                      "height": 16,
+                      "fill": "$muted-foreground",
+                      "library": "lucide",
+                      "icon": "plus"
+                    },
+                    {
+                      "type": "text",
+                      "id": "ui-command-item-3-label",
+                      "width": "fill_container",
+                      "fill": "$foreground",
+                      "content": "Add a shift",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 14
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ui-command-item-3-kbd",
+                      "name": "Kbd",
+                      "width": 20,
+                      "height": 20,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "fill": "$control",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "cornerRadius": "$radius-xs",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "ui-command-item-3-kbd-text",
+                          "fill": "$foreground",
+                          "content": "N",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ui-command-heading-2",
+                  "name": "Group heading",
+                  "width": "fill_container",
+                  "height": 28,
+                  "padding": [
+                    0,
+                    8
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "ui-command-heading-2-text",
+                      "fill": "$muted-foreground",
+                      "content": "Go to",
+                      "fontFamily": "$font",
+                      "fontSize": 12,
+                      "fontWeight": "500"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ui-command-item-4",
+                  "name": "Item",
+                  "width": "fill_container",
+                  "height": 40,
+                  "gap": 8,
+                  "padding": [
+                    0,
+                    8
+                  ],
+                  "alignItems": "center",
+                  "cornerRadius": "$radius-sm",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "ui-command-item-4-icon",
+                      "width": 16,
+                      "height": 16,
+                      "fill": "$muted-foreground",
+                      "library": "lucide",
+                      "icon": "users"
+                    },
+                    {
+                      "type": "text",
+                      "id": "ui-command-item-4-label",
+                      "width": "fill_container",
+                      "fill": "$foreground",
+                      "content": "Team availability",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 14
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ui-command-item-5",
+                  "name": "Item",
+                  "width": "fill_container",
+                  "height": 40,
+                  "gap": 8,
+                  "padding": [
+                    0,
+                    8
+                  ],
+                  "alignItems": "center",
+                  "cornerRadius": "$radius-sm",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "ui-command-item-5-icon",
+                      "width": 16,
+                      "height": 16,
+                      "fill": "$muted-foreground",
+                      "library": "lucide",
+                      "icon": "calendar-off"
+                    },
+                    {
+                      "type": "text",
+                      "id": "ui-command-item-5-label",
+                      "width": "fill_container",
+                      "fill": "$foreground",
+                      "content": "Time off requests",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 14
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ui-command-item-6",
+                  "name": "Item",
+                  "width": "fill_container",
+                  "height": 40,
+                  "gap": 8,
+                  "padding": [
+                    0,
+                    8
+                  ],
+                  "alignItems": "center",
+                  "cornerRadius": "$radius-sm",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "ui-command-item-6-icon",
+                      "width": 16,
+                      "height": 16,
+                      "fill": "$muted-foreground",
+                      "library": "lucide",
+                      "icon": "settings"
+                    },
+                    {
+                      "type": "text",
+                      "id": "ui-command-item-6-label",
+                      "width": "fill_container",
+                      "fill": "$foreground",
+                      "content": "Workspace settings",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 14
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "ref",
+          "id": "cmd-typed",
+          "name": "Command palette / typed 'swap'",
+          "ref": "ui-command",
+          "descendants": {
+            "ui-command-input-value": {
+              "content": "swap",
+              "fill": "$foreground"
+            },
+            "ui-command-list": {
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "typed-heading-1",
+                  "name": "Group heading",
+                  "width": "fill_container",
+                  "height": 28,
+                  "padding": [
+                    0,
+                    8
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "typed-heading-1-text",
+                      "content": "Commands",
+                      "fontFamily": "$font",
+                      "fontSize": 12,
+                      "fontWeight": "500",
+                      "fill": "$muted-foreground"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "typed-item-1",
+                  "name": "Item, selected",
+                  "width": "fill_container",
+                  "height": 40,
+                  "padding": [
+                    0,
+                    8
+                  ],
+                  "gap": 8,
+                  "alignItems": "center",
+                  "cornerRadius": "$radius-sm",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "typed-item-1-icon",
+                      "library": "lucide",
+                      "icon": "arrow-left-right",
+                      "width": 16,
+                      "height": 16,
+                      "fill": "$muted-foreground"
+                    },
+                    {
+                      "type": "text",
+                      "id": "typed-item-1-label",
+                      "content": "Request a shift swap",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "fill": "$foreground"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "typed-item-1-kbd",
+                      "name": "Kbd",
+                      "width": 20,
+                      "height": 20,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "cornerRadius": "$radius-xs",
+                      "fill": "$control",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "typed-item-1-kbd-text",
+                          "content": "S",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "500",
+                          "fill": "$foreground"
+                        }
+                      ]
+                    }
+                  ],
+                  "fill": "$muted"
+                },
+                {
+                  "type": "frame",
+                  "id": "typed-item-2",
+                  "name": "Item",
+                  "width": "fill_container",
+                  "height": 40,
+                  "padding": [
+                    0,
+                    8
+                  ],
+                  "gap": 8,
+                  "alignItems": "center",
+                  "cornerRadius": "$radius-sm",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "typed-item-2-icon",
+                      "library": "lucide",
+                      "icon": "circle-check",
+                      "width": 16,
+                      "height": 16,
+                      "fill": "$muted-foreground"
+                    },
+                    {
+                      "type": "text",
+                      "id": "typed-item-2-label",
+                      "content": "Approve swap requests",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "fill": "$foreground"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "typed-heading-2",
+                  "name": "Group heading",
+                  "width": "fill_container",
+                  "height": 28,
+                  "padding": [
+                    0,
+                    8
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "typed-heading-2-text",
+                      "content": "Open swaps",
+                      "fontFamily": "$font",
+                      "fontSize": 12,
+                      "fontWeight": "500",
+                      "fill": "$muted-foreground"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "typed-item-3",
+                  "name": "Item",
+                  "width": "fill_container",
+                  "height": 40,
+                  "padding": [
+                    0,
+                    8
+                  ],
+                  "gap": 8,
+                  "alignItems": "center",
+                  "cornerRadius": "$radius-sm",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "typed-item-3-icon",
+                      "library": "lucide",
+                      "icon": "user",
+                      "width": 16,
+                      "height": 16,
+                      "fill": "$muted-foreground"
+                    },
+                    {
+                      "type": "text",
+                      "id": "typed-item-3-label",
+                      "content": "Maren Okafor wants to swap Thursday's early shift",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "fill": "$foreground"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "typed-item-4",
+                  "name": "Item",
+                  "width": "fill_container",
+                  "height": 40,
+                  "padding": [
+                    0,
+                    8
+                  ],
+                  "gap": 8,
+                  "alignItems": "center",
+                  "cornerRadius": "$radius-sm",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "typed-item-4-icon",
+                      "library": "lucide",
+                      "icon": "user",
+                      "width": 16,
+                      "height": 16,
+                      "fill": "$muted-foreground"
+                    },
+                    {
+                      "type": "text",
+                      "id": "typed-item-4-label",
+                      "content": "Tobias Lindqvist offers Sat 21 Nov, 14:00 to 22:00",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "fill": "$foreground"
+                    }
+                  ]
+                }
+              ]
+            },
+            "typed-item-4-label": {
+              "content": "Tobias Lindqvist offers a swap for Sat 21 Nov, 14:00 to 22:00"
+            }
+          }
+        },
+        {
+          "type": "ref",
+          "id": "cmd-empty",
+          "name": "Command palette / no results",
+          "ref": "ui-command",
+          "descendants": {
+            "ui-command-input-value": {
+              "content": "holiday pay",
+              "fill": "$foreground"
+            },
+            "ui-command-list": {
+              "padding": [
+                24,
+                16
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "empty-text",
+                  "name": "Empty",
+                  "content": "No results for holiday pay",
+                  "fontFamily": "$font",
+                  "fontSize": 14,
+                  "fill": "$muted-foreground"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "themes": {
+    "Mode": [
+      "Light",
+      "Dark"
+    ]
+  },
+  "variables": {
+    "background": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#ffffff"
+        },
+        {
+          "value": "#0a0a0a",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#0a0a0a"
+        },
+        {
+          "value": "#fafafa",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "card": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#ffffff"
+        },
+        {
+          "value": "#171717",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "popover": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#ffffff"
+        },
+        {
+          "value": "#171717",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "primary": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#171717"
+        },
+        {
+          "value": "#e5e5e5",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "primary-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#fafafa"
+        },
+        {
+          "value": "#171717",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "primary-hover": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#171717cc"
+        },
+        {
+          "value": "#e5e5e5cc",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "secondary": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f5f5f5"
+        },
+        {
+          "value": "#262626",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "muted": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f5f5f5"
+        },
+        {
+          "value": "#262626",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "muted-half": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f5f5f580"
+        },
+        {
+          "value": "#26262680",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "muted-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#5c5c5c"
+        },
+        {
+          "value": "#a8a8a8",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "accent": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f5f5f5"
+        },
+        {
+          "value": "#262626",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "destructive": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#c40d1f"
+        },
+        {
+          "value": "#ff6467",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "destructive-tint": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#c40d1f1a"
+        },
+        {
+          "value": "#ff646733",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "border": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#e5e5e5"
+        },
+        {
+          "value": "#ffffff1a",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "input": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#d4d4d4"
+        },
+        {
+          "value": "#ffffff26",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "control": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#ffffff00"
+        },
+        {
+          "value": "#ffffff0b",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "hairline": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#0a0a0a1a"
+        },
+        {
+          "value": "#fafafa1a",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "ring": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#a1a1a1"
+        },
+        {
+          "value": "#737373",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "ring-soft": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#a1a1a180"
+        },
+        {
+          "value": "#73737380",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "scrim": {
+      "type": "color",
+      "value": "#00000033"
+    },
+    "radius-xs": {
+      "type": "number",
+      "value": 4
+    },
+    "radius-sm": {
+      "type": "number",
+      "value": 6
+    },
+    "radius-md": {
+      "type": "number",
+      "value": 8
+    },
+    "radius-lg": {
+      "type": "number",
+      "value": 10
+    },
+    "radius-xl": {
+      "type": "number",
+      "value": 14
+    },
+    "font": {
+      "type": "string",
+      "value": "Segoe UI"
+    }
+  }
+}

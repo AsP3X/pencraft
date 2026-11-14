@@ -34,14 +34,21 @@ Types:
   "center" | "end" | "space_between" | "space_around"), `alignItems` ("start" | "center" | "end"),
   `cornerRadius` (number or four numbers), `clip` (true cuts children off at its edge).
 - `group`: children without a box of its own.
-- `rectangle` (`cornerRadius`), `ellipse`, `polygon` (`polygonCount`, `cornerRadius`), `line`.
+- `rectangle` (`cornerRadius`), `ellipse` (`innerRadius` 0 to 1 makes it a ring; `startAngle` and
+  `sweepAngle` in degrees, counter-clockwise from the right, make it an arc: a spinner, a progress ring),
+  `polygon` (`polygonCount`, `cornerRadius`), `line`.
 - `path`: `geometry` (SVG path data), `viewBox` [x, y, width, height], `fillRule`.
 - `text`: `content`, `fontFamily` (a family installed on this computer, listed at the end of this guide; any
   other is drawn in a stand-in), `fontSize`, `fontWeight` ("100" to "900"; the family's nearest weight is
-  drawn), `fontStyle` ("italic"), `lineHeight` (a multiple of the font size), `letterSpacing`, `textAlign`,
-  `textGrowth` ("auto": one line that grows; "fixed-width": wraps at `width`; "fixed-width-height"). The text
-  colour is its `fill`.
+  drawn), `fontStyle` ("italic"), `underline` and `strikethrough` (true), `lineHeight` (a multiple of the
+  font size), `letterSpacing`, `textAlign`, `textAlignVertical` ("top" | "middle" | "bottom", in a text with
+  a height of its own), `textGrowth` ("auto": one line that grows; "fixed-width": wraps at `width`;
+  "fixed-width-height"). The text colour is its `fill`.
 - `icon`: `library` ("lucide"), `icon` (the icon's name), sized by `width` and `height`; coloured by `fill`.
+  Only the Lucide set is there, all of it, under its current names; among them `check`, `x`, `chevron-down`, `chevron-right`,
+  `chevron-up`, `ellipsis`, `search`, `loader-circle`, `panel-left`, `circle-check`, `info`,
+  `triangle-exclamation-point`, `octagon-x`, `plus`, `house`, `trash`. A name that doesn't exist is drawn as a small
+  empty box, and `edit_layers` answers with the nearest name.
 - `note`: a sticky note with `content` and `color`.
 - `ref`: an instance of a component (see below).
 
@@ -49,7 +56,9 @@ Types:
 `width` and `height` are numbers, or "fill_container" (take the room the parent's layout gives) or
 "fit_content" (a frame as large as its children; a frame's default). A layer inside a frame with a `layout` is
 placed by that layout: leave `x` and `y` out there. Anywhere else give both `x` and `y`. Prefer layouts over
-hand-placed positions; they keep spacing even.
+hand-placed positions; they keep spacing even. A child with `"layoutPosition": "absolute"` leaves its frame's
+layout and is placed by its own `x` and `y` inside the frame: a badge on an avatar's corner, a close button on
+a dialog, a menu drawn over its page.
 
 ## Fill and stroke
 A colour is `"#rrggbb"` or `"#rrggbbaa"`. `fill` and `stroke` take one paint or a list (first is at the back).

@@ -1,0 +1,26 @@
+{"description":"Add the button, input, select, switch and dialog components","operations":[
+{"op":"insert","node":{"type":"frame","id":"ui-board","name":"UI components","x":1400,"y":0,"layout":"vertical","gap":32,"padding":32,"fill":"#e5e5e5","children":[
+ {"type":"frame","id":"ui-button","name":"Button","reusable":true,"height":36,"padding":[0,10],"gap":6,"justifyContent":"center","alignItems":"center","cornerRadius":"$radius-md","fill":"$primary","children":[
+  {"type":"text","id":"ui-button-label","name":"Label","content":"Save changes","fontFamily":"$font","fontSize":14,"fontWeight":"500","fill":"$primary-foreground"}]},
+ {"type":"frame","id":"ui-input","name":"Input","reusable":true,"width":280,"height":36,"padding":[0,10],"alignItems":"center","cornerRadius":"$radius-md","fill":"$control","stroke":"$input","strokeWidth":1,"strokeAlignment":"inner","children":[
+  {"type":"text","id":"ui-input-value","name":"Value","content":"name@company.com","fontFamily":"$font","fontSize":14,"fill":"$muted-foreground"}]},
+ {"type":"frame","id":"ui-select","name":"Select","reusable":true,"width":280,"height":36,"padding":[0,8,0,10],"gap":6,"justifyContent":"space_between","alignItems":"center","cornerRadius":"$radius-md","fill":"$control","stroke":"$input","strokeWidth":1,"strokeAlignment":"inner","children":[
+  {"type":"text","id":"ui-select-value","name":"Value","content":"Editor","fontFamily":"$font","fontSize":14,"fill":"$foreground"},
+  {"type":"icon","id":"ui-select-icon","name":"Icon","library":"lucide","icon":"chevron-down","width":16,"height":16,"fill":"$muted-foreground"}]},
+ {"type":"frame","id":"ui-switch","name":"Switch","reusable":true,"gap":8,"alignItems":"center","children":[
+  {"type":"frame","id":"ui-switch-track","name":"Track","width":32,"height":18,"padding":2,"justifyContent":"end","alignItems":"center","cornerRadius":9,"fill":"$primary","children":[
+    {"type":"ellipse","id":"ui-switch-thumb","name":"Thumb","width":14,"height":14,"fill":"$background"}]},
+  {"type":"text","id":"ui-switch-label","name":"Label","content":"Email me a weekly summary","fontFamily":"$font","fontSize":14,"fill":"$foreground"}]},
+ {"type":"frame","id":"ui-dialog","name":"Dialog","reusable":true,"width":448,"layout":"vertical","gap":24,"padding":24,"cornerRadius":"$radius-xl","fill":"$popover","stroke":"$hairline","strokeWidth":1,"strokeAlignment":"inner","children":[
+  {"type":"frame","id":"ui-dialog-header","name":"Header","width":"fill_container","layout":"vertical","gap":8,"children":[
+    {"type":"frame","id":"ui-dialog-title-row","width":"fill_container","gap":16,"alignItems":"center","children":[
+      {"type":"text","id":"ui-dialog-title","name":"Title","content":"Invite a teammate","textGrowth":"fixed-width","width":"fill_container","fontFamily":"$font","fontSize":16,"fontWeight":"500","fill":"$foreground"},
+      {"type":"icon","id":"ui-dialog-close","name":"Close","library":"lucide","icon":"x","width":16,"height":16,"fill":"$muted-foreground"}]},
+    {"type":"text","id":"ui-dialog-description","name":"Description","content":"They can open the Harbour Rota workspace as soon as they accept.","textGrowth":"fixed-width","width":"fill_container","lineHeight":1.45,"fontFamily":"$font","fontSize":14,"fill":"$muted-foreground"}]},
+  {"type":"frame","id":"ui-dialog-body","name":"Body","width":"fill_container","layout":"vertical","gap":8,"children":[
+    {"type":"text","id":"ui-dialog-field-label","name":"Label","content":"Work email","fontFamily":"$font","fontSize":14,"fontWeight":"500","fill":"$foreground"},
+    {"type":"ref","id":"ui-dialog-field-control","ref":"ui-input","width":"fill_container"}]},
+  {"type":"frame","id":"ui-dialog-footer","name":"Footer","width":"fill_container","gap":8,"justifyContent":"end","children":[
+    {"type":"ref","id":"ui-dialog-cancel","ref":"ui-button","fill":"$control","stroke":"$border","strokeWidth":1,"strokeAlignment":"inner","descendants":{"ui-button-label":{"content":"Cancel","fill":"$foreground"}}},
+    {"type":"ref","id":"ui-dialog-confirm","ref":"ui-button","descendants":{"ui-button-label":{"content":"Send invite"}}}]}]}
+]}}]}

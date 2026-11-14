@@ -25,8 +25,21 @@ component set), work the way a designer does. For a small change to an existing 
 more row) skip this and match what is there. What the user asks for outright always comes first: if they want a
 violet gradient, they get one.
 
+A named reference is the brief. When the user names a library, a product or a style to follow (shadcn, Radix,
+Material, "like Linear"), or asks for standard, default, plain, conventional or typical components, they have
+chosen the look already: keep that reference's face, its neutral palette, its measures and its states as they
+are, and do not find a direction of your own for it. What sections 1 and 4 call a default (Inter on a neutral
+ground, a hairline with a soft shadow on a menu) is then what was asked for. If a skill covers the reference,
+read it first. Where a reference has several looks or changed over time, take its current documented default,
+say so in one line and offer the other; do not ask.
+
 ## 1. Decide before you draw
-First say what kind of thing this is, because it decides how far a look may reach:
+Before anything else, write the request down for yourself in three lines: what was named (each component,
+state, size and theme, in the user's words); which reference was named, if any; and what is left to you. Before
+you say it is done, go through the first line as a checklist: everything named is there, and nothing that
+changes what the user gets was added without being named. Say plainly what you left out and what you added.
+
+Then say what kind of thing this is, because it decides how far a look may reach:
 - Something that has to win a person over (a landing page, a poster, a cover, an invitation): the design is
   what they judge, so the look may own and order the whole. Its first view is a thesis, not a header: it shows
   the thing doing its job, at full scale. Ask what someone would describe an hour after one glance; if the
@@ -93,7 +106,9 @@ them. Otherwise, before the first layer, make variables with `set_variables` and
 - A heading beside a table or a list starts level with its first row, never centred beside it with a void
   above and below. A drawn object has to be believable as the thing (a string goes through its eyelet).
 - Set a surface apart in one way only: a line, or a shadow, or a tint. Not all three, and no card inside a
-  card. A shadow has an offset and a soft blur, in a dark shade of the ground.
+  card. A shadow has an offset and a soft blur, in a dark shade of the ground. What floats above the page (a
+  menu, a popover, a dialog, a toast) is the exception: a hairline of 1 in the text colour at 10% or less with
+  a soft shadow is one way of setting it apart, not two.
 - Write real copy: what this product would truly say, specific names, uneven numbers ("1,284", not "1,000"),
   rows of different lengths, buttons that name their action ("Send invoice", not "Submit"). A working screen
   shows real data with one state worth seeing (an overdue row, a warning, a very long name), never rows of the
@@ -126,8 +141,9 @@ Then rebuild that part, don't soften it.
 - A small label in spaced capitals over a headline: the headline carries itself, so delete the label. Sections
   numbered 01, 02, 03 when the order tells nothing. One coloured word in the headline; an icon in a rounded
   square over every heading; a coloured stripe down the side of a card.
-- Inter, Roboto or Arial because nothing was chosen; one size and weight for everything; a monospaced face to
-  look technical where there is no code, data or measurement.
+- Inter, Roboto or Arial because nothing was chosen (the face of a library the user named was chosen); one
+  size and weight for everything; a monospaced face to look technical where there is no code, data or
+  measurement.
 - The next defaults are no better. Faces: Fraunces, Playfair Display, Cormorant, Lora, Space Grotesk, Syne,
   DM Sans, Outfit, Plus Jakarta Sans, IBM Plex. Looks: cream with a serif headline and terracotta; near black
   with one neon accent and glowing edges; newspaper hairlines with an italic serif and small spaced mono
@@ -227,7 +243,7 @@ pub fn directions(seed: u64) -> String {
     let count = WORLDS.len() as u64;
     let at = |step: u64| WORLDS[usize::try_from((seed.wrapping_add(step * 7)) % count).unwrap_or(0)];
     format!(
-        "<pencraft_directions>\nIf this is a design with a look of its own and neither the user nor the document sets its look: before you decide, picture it in each of these three worlds, dealt at random for this conversation, and weigh them against the worlds you found in the subject itself, and take the one that the audience would recognise as theirs and that makes the subject clearest; a dealt world that loses still shows what yours lacks (a palette's full commitment, a grid's courage), so raise yours to match. Borrow a world's way of setting type, using colour and ordering a page, not its literal props; on a screen someone works in or a page someone reads it lends only type, palette, density and one signature move.\n1. {}\n2. {}\n3. {}\nName the first picture anyone would draw for this subject (for a coffee roaster by the sea: waves, a tide line): every other design for it has that picture, so it may be a detail of yours but not its main idea; find the second idea, in how the thing is made, used or kept. Two things are not yours to choose this time, because left to choose you would land on the same ground and the same face for every request of this kind: the design stands on {}, and in its type {}. Build your direction on these two (pick the installed family of that kind that suits the subject, and the colours that suit this ground); everything else is your decision. Only the user's own words or the document's existing variables overrule them.
+        "<pencraft_directions>\nIf this is a design with a look of its own and neither the user nor the document sets its look: before you decide, picture it in each of these three worlds, dealt at random for this conversation, and weigh them against the worlds you found in the subject itself, and take the one that the audience would recognise as theirs and that makes the subject clearest; a dealt world that loses still shows what yours lacks (a palette's full commitment, a grid's courage), so raise yours to match. Borrow a world's way of setting type, using colour and ordering a page, not its literal props; on a screen someone works in or a page someone reads it lends only type, palette, density and one signature move.\n1. {}\n2. {}\n3. {}\nName the first picture anyone would draw for this subject (for a coffee roaster by the sea: waves, a tide line): every other design for it has that picture, so it may be a detail of yours but not its main idea; find the second idea, in how the thing is made, used or kept. For something that has to win a person over, two things are not yours to choose this time, because left to choose you would land on the same ground and the same face for every request of this kind: the design stands on {}, and in its type {}. Build your direction on these two (pick the installed family of that kind that suits the subject, and the colours that suit this ground); everything else is your decision. Only the user's own words or the document's existing variables overrule them. For a screen someone works in, a page someone reads, or a component or a set of components, these two are a first suggestion only: drop them wherever they would get in the way of the job. None of this note applies when the user named a library, a product or a style to follow, or asked for standard or plain components.
 </pencraft_directions>",
         at(0),
         at(1),
@@ -235,6 +251,44 @@ pub fn directions(seed: u64) -> String {
         GROUNDS[usize::try_from(seed / 3 % GROUNDS.len() as u64).unwrap_or(0)],
         LEADS[usize::try_from(seed / 5 % LEADS.len() as u64).unwrap_or(0)]
     )
+}
+
+/// Words by which a request names a reference to follow: a library, or the ordinary look of things.
+const REFERENCES: [&str; 22] = [
+    "shadcn",
+    "radix",
+    "base ui",
+    "base-ui",
+    "material design",
+    "material ui",
+    "material 3",
+    "bootstrap",
+    "tailwind",
+    "ant design",
+    "fluent",
+    "carbon design",
+    "human interface",
+    "chakra",
+    "mantine",
+    "standard",
+    "default",
+    "conventional",
+    "typical",
+    "plain",
+    "ordinary",
+    "like everyone",
+];
+
+/// Whether what the user `asked` names a library or the ordinary look of things as what to follow.
+// Human: such a request has chosen its look; dealt worlds and the review's remarks on defaults would work
+// against it. A word match is coarse, and the cost of a wrong yes is small: one conversation without dealt
+// worlds, one review without a remark on the default face.
+#[must_use]
+pub fn names_a_reference(asked: &str) -> bool {
+    // Human: a word counts where it starts a word: "plain" in "a plain button", not in "explain".
+    let asked: String =
+        std::iter::once(' ').chain(asked.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c == '-' { c } else { ' ' })).collect();
+    REFERENCES.iter().any(|word| asked.contains(&format!(" {word}")))
 }
 
 /// The installed font families, as the model is told about them; empty when none were found.
@@ -265,8 +319,15 @@ pub fn with_picture(notes: &[String], layers: usize) -> Option<String> {
         return None;
     }
     let mut said = String::new();
-    if !notes.is_empty() {
-        said.push_str("review (counted in these layers; put each right unless the user asked for exactly that):\n");
+    if notes.is_empty() {
+        said.push_str(
+            "review: nothing counted in these layers.
+",
+        );
+    } else {
+        said.push_str(
+            "review (counted in these layers; put each right unless the user asked for exactly that, or a library or standard they named calls for it):\n",
+        );
         for note in notes {
             said.push_str("- ");
             said.push_str(note);
@@ -274,7 +335,7 @@ pub fn with_picture(notes: &[String], layers: usize) -> Option<String> {
         }
     }
     said.push_str(
-        "Before you call this done, judge the picture as a strict art director would judge someone else's work: is it one whole with a mood of its own; was each choice made for this subject, or could another product use it unchanged; is anything misaligned, cramped, cut off or without hierarchy; is what the user needs findable at once, with one main action? Name what is weak, fix all of it in one go, and look once more to confirm; a second look that finds nothing new is the end.",
+        "Before you call this done, judge the picture as a strict art director would judge someone else's work: is it one whole with a mood of its own; was each choice made for this subject, or could another product use it unchanged; is anything misaligned, cramped, cut off or without hierarchy; is what the user needs findable at once, with one main action? (For standard components, or a design that follows a library or style the user named, ask instead of the first two: is every piece that was named there and nothing else, is the same thing built the same way everywhere, and would someone who knows the reference take it for the real thing?) Name what is weak, fix all of it in one go, and look once more to confirm; a second look that finds nothing new is the end.",
     );
     Some(said)
 }
@@ -286,7 +347,10 @@ mod tests {
     #[test]
     fn a_small_drawing_gets_no_questions_and_a_design_gets_its_review() {
         assert_eq!(with_picture(&[], 3), None);
-        assert!(with_picture(&[], 40).is_some_and(|said| said.starts_with("Before you call this done")));
+        assert!(with_picture(&[], 40).is_some_and(|said| said.starts_with(
+            "review: nothing counted in these layers.
+Before you call this done"
+        )));
         let said = with_picture(&["Text too faint.".to_owned()], 3).unwrap();
         assert!(said.starts_with("review") && said.contains("- Text too faint.\n") && said.contains("art director"));
         assert!(guide().starts_with("# Working on a Pencraft document") && guide().contains("# Designing well"));
@@ -294,5 +358,13 @@ mod tests {
         let dealt = directions(5);
         assert!(dealt.contains(WORLDS[5]) && dealt.contains(WORLDS[12]) && dealt.contains(WORLDS[19]));
         assert_ne!(dealt, directions(6));
+    }
+
+    #[test]
+    fn a_request_that_names_what_to_follow_is_known() {
+        assert!(names_a_reference("A settings dialog in shadcn style"));
+        assert!(names_a_reference("Just a Standard button, nothing fancy"));
+        assert!(!names_a_reference("A poster for a jazz night in Leith"));
+        assert!(!names_a_reference("Explain what this frame is for"));
     }
 }

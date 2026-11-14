@@ -88,8 +88,47 @@ fn look<'a>(scene: &'a SceneNode, behind: Option<(&'a SceneNode, Rgba)>, changed
         (Kind::Frame, Fill::Mixed) => None,
         _ => behind,
     };
+    let mut under = under;
     for child in &scene.children {
         look(child, under, changed, touched, vars, found);
+        // Human: a layer that lies over the whole frame (a scrim under a dialog, a picture) is what the
+        // layers after it are seen against, and it has no single colour to compare with.
+        if veils(child, scene, vars) {
+            under = None;
+        }
+    }
+}
+
+/// Whether `layer` lies over all of `frame` with a fill of its own, however see-through.
+fn veils(layer: &SceneNode, frame: &SceneNode, vars: Vars<'_>) -> bool {
+    let shown = !matches!(&layer.node.enabled, Some(Flag::Value(false)));
+    let painted = layer.node.fill.as_ref().and_then(|paints| paints.as_slice().last()).is_some_and(|top| match top {
+        Paint::Solid(text) => vars.color(text, &layer.theme).is_some_and(|colour| colour.a > 0),
+        Paint::Object(_) => true,
+    });
+    shown && painted && layer.local.w >= frame.local.w - 1.0 && layer.local.h >= frame.local.h - 1.0
+}
+
+/// Collects the icon layers in the changed part of `scene` that name no bundled icon, each as its label, the
+/// name it asked for and the nearest bundled one.
+// Human: such a layer is drawn as a small rounded box, which reads as data that is fine and looks like a
+// mistake on the canvas.
+fn unknown_icons(scene: &SceneNode, changed: bool, touched: &[String], out: &mut Vec<String>) {
+    if matches!(&scene.node.enabled, Some(Flag::Value(false))) {
+        return;
+    }
+    let changed = changed || touched.contains(&scene.id);
+    if changed && matches!(scene.node.kind, Kind::Icon | Kind::IconFont) {
+        let old = |key: &str| scene.node.extra.get(key).and_then(|value| value.as_str());
+        let library = scene.node.library.as_deref().or_else(|| old("iconFontFamily")).unwrap_or("lucide");
+        let name = scene.node.icon.as_deref().or_else(|| old("iconFontName")).unwrap_or_default();
+        if crate::icons::outline(library, name).is_none() {
+            let instead = crate::icons::nearest(name).map_or_else(String::new, |near| format!(" (nearest: \"{near}\")"));
+            out.push(format!("\"{}\" ({}) asks for \"{name}\" from {library}{instead}", scene.node.display_name(), scene.id));
+        }
+    }
+    for child in &scene.children {
+        unknown_icons(child, changed, touched, out);
     }
 }
 
@@ -105,6 +144,17 @@ pub fn advice(editor: &Editor, touched: &[String]) -> Vec<String> {
         look(top, None, false, touched, Vars::new(&editor.doc), &mut found);
     }
     let mut out: Vec<String> = Vec::new();
+    let mut icons = Vec::new();
+    for top in &editor.scene {
+        unknown_icons(top, false, touched, &mut icons);
+    }
+    if !icons.is_empty() {
+        let more = if icons.len() > MOST_NAMED { format!(" and {} more", icons.len() - MOST_NAMED) } else { String::new() };
+        out.push(format!(
+            "Icons that don't exist are drawn as a small empty box: {}{more}. Only the Lucide set is bundled (library \"lucide\"); use an icon name from it.",
+            icons.iter().take(MOST_NAMED).map(String::as_str).collect::<Vec<_>>().join("; ")
+        ));
+    }
     for text in [false, true] {
         let mut backs: Vec<&(String, String, Rgba)> = Vec::new();
         for item in found.iter().filter(|f| f.text == text) {
@@ -174,5 +224,30 @@ mod tests {
         // Only what the change touched is looked at.
         assert_eq!(advice(&editor, &["alone".to_owned()]), Vec::<String>::new());
         assert_eq!(advice(&editor, &["card".to_owned()]).len(), 1);
+    }
+
+    #[test]
+    fn a_dialog_over_a_scrim_is_not_compared_with_the_page_under_it() {
+        let json = r##"{"version":"2.22","children":[{"type":"frame","id":"screen","x":0,"y":0,"width":400,"height":300,"layout":"none","fill":"#ffffff","children":[
+          {"type":"rectangle","id":"scrim","x":0,"y":0,"width":400,"height":300,"fill":"#00000033"},
+          {"type":"frame","id":"dialog","name":"Dialog","x":100,"y":100,"width":200,"height":100,"fill":"#ffffff"}]}]}"##;
+        assert_eq!(advice(&editor(json), &["screen".to_owned()]), Vec::<String>::new());
+        // Without the scrim the white dialog on the white screen is pointed out.
+        let bare = json.replace("\"fill\":\"#00000033\"", "\"fill\":\"#00000000\"");
+        assert_eq!(advice(&editor(&bare), &["screen".to_owned()]).len(), 1);
+    }
+
+    #[test]
+    fn an_icon_that_does_not_exist_is_named_with_the_nearest_one() {
+        let editor = editor(
+            r#"{"version":"2.22","children":[{"type":"frame","id":"bar","x":0,"y":0,"children":[
+              {"type":"icon","id":"ok","icon":"check","width":16,"height":16},
+              {"type":"icon","id":"old","icon":"home","width":16,"height":16},
+              {"type":"icon","id":"bad","name":"Spinner","icon":"loader-circl","width":16,"height":16}]}]}"#,
+        );
+        let named = advice(&editor, &["bar".to_owned()]);
+        assert_eq!(named.len(), 1, "{named:?}");
+        assert!(named[0].contains("\"Spinner\" (bad) asks for \"loader-circl\" from lucide (nearest: \"loader-circle\")"), "{}", named[0]);
+        assert!(!named[0].contains("(ok)") && !named[0].contains("(old)"));
     }
 }

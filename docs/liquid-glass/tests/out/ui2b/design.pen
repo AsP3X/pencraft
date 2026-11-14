@@ -1,0 +1,2531 @@
+{
+  "version": "2.22",
+  "children": [
+    {
+      "type": "frame",
+      "id": "ui-components",
+      "x": -581,
+      "y": 0,
+      "name": "UI components",
+      "layout": "vertical",
+      "gap": 32,
+      "padding": 32,
+      "fill": "#e5e5e5",
+      "children": [
+        {
+          "type": "frame",
+          "id": "ui-button",
+          "name": "Button",
+          "reusable": true,
+          "height": 36,
+          "gap": 6,
+          "padding": [
+            0,
+            10
+          ],
+          "justifyContent": "center",
+          "alignItems": "center",
+          "fill": "$primary",
+          "cornerRadius": "$radius-md",
+          "children": [
+            {
+              "type": "text",
+              "id": "ui-button-label",
+              "name": "Label",
+              "fill": "$primary-foreground",
+              "content": "Save changes",
+              "fontFamily": "$font",
+              "fontSize": 14,
+              "fontWeight": "500"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "ui-button-icon-leading",
+          "name": "Button, leading icon",
+          "reusable": true,
+          "height": 36,
+          "gap": 6,
+          "padding": [
+            0,
+            10,
+            0,
+            8
+          ],
+          "justifyContent": "center",
+          "alignItems": "center",
+          "fill": "$primary",
+          "cornerRadius": "$radius-md",
+          "children": [
+            {
+              "type": "icon",
+              "id": "ui-button-icon-leading-icon",
+              "name": "Icon",
+              "width": 16,
+              "height": 16,
+              "fill": "$primary-foreground",
+              "library": "lucide",
+              "icon": "plus"
+            },
+            {
+              "type": "text",
+              "id": "ui-button-icon-leading-label",
+              "name": "Label",
+              "fill": "$primary-foreground",
+              "content": "New project",
+              "fontFamily": "$font",
+              "fontSize": 14,
+              "fontWeight": "500"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "button-states",
+      "x": 0,
+      "y": 0,
+      "name": "Button states",
+      "layout": "vertical",
+      "gap": 16,
+      "padding": 32,
+      "fill": "$background",
+      "children": [
+        {
+          "type": "frame",
+          "id": "bs-head",
+          "name": "States",
+          "gap": 24,
+          "children": [
+            {
+              "type": "frame",
+              "id": "bs-head-0",
+              "width": 88,
+              "height": 16
+            },
+            {
+              "type": "frame",
+              "id": "bs-head-1",
+              "name": "Cell",
+              "width": 136,
+              "padding": [
+                0,
+                3
+              ],
+              "children": [
+                {
+                  "type": "text",
+                  "id": "bs-head-1-label",
+                  "fill": "$muted-foreground",
+                  "content": "Rest",
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "500"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-head-2",
+              "name": "Cell",
+              "width": 136,
+              "padding": [
+                0,
+                3
+              ],
+              "children": [
+                {
+                  "type": "text",
+                  "id": "bs-head-2-label",
+                  "fill": "$muted-foreground",
+                  "content": "Hover",
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "500"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-head-3",
+              "name": "Cell",
+              "width": 136,
+              "padding": [
+                0,
+                3
+              ],
+              "children": [
+                {
+                  "type": "text",
+                  "id": "bs-head-3-label",
+                  "fill": "$muted-foreground",
+                  "content": "Focus",
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "500"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-head-4",
+              "name": "Cell",
+              "width": 136,
+              "padding": [
+                0,
+                3
+              ],
+              "children": [
+                {
+                  "type": "text",
+                  "id": "bs-head-4-label",
+                  "fill": "$muted-foreground",
+                  "content": "Disabled",
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "500"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-head-5",
+              "name": "Cell",
+              "width": 136,
+              "padding": [
+                0,
+                3
+              ],
+              "children": [
+                {
+                  "type": "text",
+                  "id": "bs-head-5-label",
+                  "fill": "$muted-foreground",
+                  "content": "Loading",
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "500"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "bs-row-primary",
+          "name": "Primary",
+          "gap": 24,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "bs-row-primary-name",
+              "width": 88,
+              "fill": "$muted-foreground",
+              "content": "Primary",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "frame",
+              "id": "bs-primary-rest-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-primary-rest-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-primary-rest",
+                      "name": "Button / primary / rest",
+                      "width": 125,
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Save changes"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-primary-hover-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-primary-hover-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-primary-hover",
+                      "name": "Button / primary / hover",
+                      "width": 125,
+                      "fill": "$primary-hover",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Save changes"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-primary-focus-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-primary-focus-pad",
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-primary-focus",
+                      "name": "Button / primary / focus",
+                      "width": 125,
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Save changes"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-primary-disabled-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-primary-disabled-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-primary-disabled",
+                      "name": "Button / primary / disabled",
+                      "opacity": 0.5,
+                      "width": 125,
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Save changes"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-primary-loading-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-primary-loading-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-primary-loading",
+                      "name": "Button / primary / loading",
+                      "opacity": 0.5,
+                      "width": 125,
+                      "ref": "ui-button-icon-leading",
+                      "descendants": {
+                        "ui-button-icon-leading-icon": {
+                          "icon": "loader-circle",
+                          "fill": "$primary-foreground"
+                        },
+                        "ui-button-icon-leading-label": {
+                          "content": "Save changes",
+                          "fill": "$primary-foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "bs-row-secondary",
+          "name": "Secondary",
+          "gap": 24,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "bs-row-secondary-name",
+              "width": 88,
+              "fill": "$muted-foreground",
+              "content": "Secondary",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "frame",
+              "id": "bs-secondary-rest-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-secondary-rest-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-secondary-rest",
+                      "name": "Button / secondary / rest",
+                      "width": 110,
+                      "fill": "$secondary",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Export CSV",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-secondary-hover-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-secondary-hover-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-secondary-hover",
+                      "name": "Button / secondary / hover",
+                      "width": 110,
+                      "fill": "$secondary-hover",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Export CSV",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-secondary-focus-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-secondary-focus-pad",
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-secondary-focus",
+                      "name": "Button / secondary / focus",
+                      "width": 110,
+                      "fill": "$secondary",
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Export CSV",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-secondary-disabled-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-secondary-disabled-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-secondary-disabled",
+                      "name": "Button / secondary / disabled",
+                      "opacity": 0.5,
+                      "width": 110,
+                      "fill": "$secondary",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Export CSV",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-secondary-loading-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-secondary-loading-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-secondary-loading",
+                      "name": "Button / secondary / loading",
+                      "opacity": 0.5,
+                      "width": 110,
+                      "fill": "$secondary",
+                      "ref": "ui-button-icon-leading",
+                      "descendants": {
+                        "ui-button-icon-leading-icon": {
+                          "icon": "loader-circle",
+                          "fill": "$foreground"
+                        },
+                        "ui-button-icon-leading-label": {
+                          "content": "Export CSV",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "bs-row-outline",
+          "name": "Outline",
+          "gap": 24,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "bs-row-outline-name",
+              "width": 88,
+              "fill": "$muted-foreground",
+              "content": "Outline",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "frame",
+              "id": "bs-outline-rest-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-outline-rest-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-outline-rest",
+                      "name": "Button / outline / rest",
+                      "width": 82,
+                      "fill": "$control",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Cancel",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-outline-hover-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-outline-hover-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-outline-hover",
+                      "name": "Button / outline / hover",
+                      "width": 82,
+                      "fill": "$muted",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Cancel",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-outline-focus-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-outline-focus-pad",
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-outline-focus",
+                      "name": "Button / outline / focus",
+                      "width": 82,
+                      "fill": "$background",
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Cancel",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-outline-disabled-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-outline-disabled-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-outline-disabled",
+                      "name": "Button / outline / disabled",
+                      "opacity": 0.5,
+                      "width": 82,
+                      "fill": "$control",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Cancel",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-outline-loading-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-outline-loading-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-outline-loading",
+                      "name": "Button / outline / loading",
+                      "opacity": 0.5,
+                      "width": 82,
+                      "fill": "$control",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button-icon-leading",
+                      "descendants": {
+                        "ui-button-icon-leading-icon": {
+                          "icon": "loader-circle",
+                          "fill": "$foreground"
+                        },
+                        "ui-button-icon-leading-label": {
+                          "content": "Cancel",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "bs-row-ghost",
+          "name": "Ghost",
+          "gap": 24,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "bs-row-ghost-name",
+              "width": 88,
+              "fill": "$muted-foreground",
+              "content": "Ghost",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "frame",
+              "id": "bs-ghost-rest-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-ghost-rest-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-ghost-rest",
+                      "name": "Button / ghost / rest",
+                      "width": 119,
+                      "fill": "#00000000",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Skip for now",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-ghost-hover-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-ghost-hover-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-ghost-hover",
+                      "name": "Button / ghost / hover",
+                      "width": 119,
+                      "fill": "$muted",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Skip for now",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-ghost-focus-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-ghost-focus-pad",
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-ghost-focus",
+                      "name": "Button / ghost / focus",
+                      "width": 119,
+                      "fill": "$background",
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Skip for now",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-ghost-disabled-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-ghost-disabled-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-ghost-disabled",
+                      "name": "Button / ghost / disabled",
+                      "opacity": 0.5,
+                      "width": 119,
+                      "fill": "#00000000",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Skip for now",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-ghost-loading-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-ghost-loading-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-ghost-loading",
+                      "name": "Button / ghost / loading",
+                      "opacity": 0.5,
+                      "width": 119,
+                      "fill": "#00000000",
+                      "ref": "ui-button-icon-leading",
+                      "descendants": {
+                        "ui-button-icon-leading-icon": {
+                          "icon": "loader-circle",
+                          "fill": "$foreground"
+                        },
+                        "ui-button-icon-leading-label": {
+                          "content": "Skip for now",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "bs-row-destructive",
+          "name": "Destructive",
+          "gap": 24,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "bs-row-destructive-name",
+              "width": 88,
+              "fill": "$muted-foreground",
+              "content": "Destructive",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "frame",
+              "id": "bs-destructive-rest-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-destructive-rest-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-destructive-rest",
+                      "name": "Button / destructive / rest",
+                      "width": 129,
+                      "fill": "$destructive-tint",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Delete project",
+                          "fill": "$destructive"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-destructive-hover-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-destructive-hover-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-destructive-hover",
+                      "name": "Button / destructive / hover",
+                      "width": 129,
+                      "fill": "$destructive-tint-hover",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Delete project",
+                          "fill": "$destructive"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-destructive-focus-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-destructive-focus-pad",
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-destructive-focus",
+                      "name": "Button / destructive / focus",
+                      "width": 129,
+                      "fill": [
+                        "$background",
+                        "$destructive-tint"
+                      ],
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Delete project",
+                          "fill": "$destructive"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-destructive-disabled-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-destructive-disabled-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-destructive-disabled",
+                      "name": "Button / destructive / disabled",
+                      "opacity": 0.5,
+                      "width": 129,
+                      "fill": "$destructive-tint",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Delete project",
+                          "fill": "$destructive"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bs-destructive-loading-cell",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bs-destructive-loading-pad",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "bs-destructive-loading",
+                      "name": "Button / destructive / loading",
+                      "opacity": 0.5,
+                      "width": 129,
+                      "fill": "$destructive-tint",
+                      "ref": "ui-button-icon-leading",
+                      "descendants": {
+                        "ui-button-icon-leading-icon": {
+                          "icon": "loader-circle",
+                          "fill": "$destructive"
+                        },
+                        "ui-button-icon-leading-label": {
+                          "content": "Delete project",
+                          "fill": "$destructive"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "dCFpV",
+      "x": 1000,
+      "y": 0,
+      "name": "Button states / dark",
+      "theme": {
+        "Mode": "Dark"
+      },
+      "layout": "vertical",
+      "gap": 16,
+      "padding": 32,
+      "fill": "$background",
+      "children": [
+        {
+          "type": "frame",
+          "id": "HeY5t",
+          "name": "States",
+          "gap": 24,
+          "children": [
+            {
+              "type": "frame",
+              "id": "VE9Ib",
+              "width": 88,
+              "height": 16
+            },
+            {
+              "type": "frame",
+              "id": "Hf167",
+              "name": "Cell",
+              "width": 136,
+              "padding": [
+                0,
+                3
+              ],
+              "children": [
+                {
+                  "type": "text",
+                  "id": "0maK7",
+                  "fill": "$muted-foreground",
+                  "content": "Rest",
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "500"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "WDyF8",
+              "name": "Cell",
+              "width": 136,
+              "padding": [
+                0,
+                3
+              ],
+              "children": [
+                {
+                  "type": "text",
+                  "id": "fxJCA",
+                  "fill": "$muted-foreground",
+                  "content": "Hover",
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "500"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "yZdlp",
+              "name": "Cell",
+              "width": 136,
+              "padding": [
+                0,
+                3
+              ],
+              "children": [
+                {
+                  "type": "text",
+                  "id": "Jstsr",
+                  "fill": "$muted-foreground",
+                  "content": "Focus",
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "500"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "SEguY",
+              "name": "Cell",
+              "width": 136,
+              "padding": [
+                0,
+                3
+              ],
+              "children": [
+                {
+                  "type": "text",
+                  "id": "PPiRh",
+                  "fill": "$muted-foreground",
+                  "content": "Disabled",
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "500"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "Abpve",
+              "name": "Cell",
+              "width": 136,
+              "padding": [
+                0,
+                3
+              ],
+              "children": [
+                {
+                  "type": "text",
+                  "id": "yd7ej",
+                  "fill": "$muted-foreground",
+                  "content": "Loading",
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "500"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "dVlCd",
+          "name": "Primary",
+          "gap": 24,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "MZ8xW",
+              "width": 88,
+              "fill": "$muted-foreground",
+              "content": "Primary",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "frame",
+              "id": "LAW1d",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "1Twtf",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "XrqFd",
+                      "name": "Button / primary / rest",
+                      "width": 125,
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Save changes"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "LZIX1",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "JKiq1",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "g3O7u",
+                      "name": "Button / primary / hover",
+                      "width": 125,
+                      "fill": "$primary-hover",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Save changes"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "WG5OG",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "ANm6C",
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "UYLtv",
+                      "name": "Button / primary / focus",
+                      "width": 125,
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Save changes"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "jmdbq",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "3HKbT",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "YyQ9L",
+                      "name": "Button / primary / disabled",
+                      "opacity": 0.5,
+                      "width": 125,
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Save changes"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "2z12L",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Lj1J2",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "81VJz",
+                      "name": "Button / primary / loading",
+                      "opacity": 0.5,
+                      "width": 125,
+                      "ref": "ui-button-icon-leading",
+                      "descendants": {
+                        "ui-button-icon-leading-icon": {
+                          "icon": "loader-circle",
+                          "fill": "$primary-foreground"
+                        },
+                        "ui-button-icon-leading-label": {
+                          "content": "Save changes",
+                          "fill": "$primary-foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "Nb93K",
+          "name": "Secondary",
+          "gap": 24,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "Bj0yx",
+              "width": 88,
+              "fill": "$muted-foreground",
+              "content": "Secondary",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "frame",
+              "id": "SnA4D",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "2pUIS",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "DulHC",
+                      "name": "Button / secondary / rest",
+                      "width": 110,
+                      "fill": "$secondary",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Export CSV",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "zzWXK",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Z8A5s",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "55993",
+                      "name": "Button / secondary / hover",
+                      "width": 110,
+                      "fill": "$secondary-hover",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Export CSV",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "IPsDH",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "QrMWQ",
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "WyaI8",
+                      "name": "Button / secondary / focus",
+                      "width": 110,
+                      "fill": "$secondary",
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Export CSV",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "tyVWs",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "KGWGS",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "TypdN",
+                      "name": "Button / secondary / disabled",
+                      "opacity": 0.5,
+                      "width": 110,
+                      "fill": "$secondary",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Export CSV",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "mwOKR",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "zzEoS",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "Ta3G6",
+                      "name": "Button / secondary / loading",
+                      "opacity": 0.5,
+                      "width": 110,
+                      "fill": "$secondary",
+                      "ref": "ui-button-icon-leading",
+                      "descendants": {
+                        "ui-button-icon-leading-icon": {
+                          "icon": "loader-circle",
+                          "fill": "$foreground"
+                        },
+                        "ui-button-icon-leading-label": {
+                          "content": "Export CSV",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "DalGB",
+          "name": "Outline",
+          "gap": 24,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "8hgDR",
+              "width": 88,
+              "fill": "$muted-foreground",
+              "content": "Outline",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "frame",
+              "id": "Lr2kJ",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "pRxRW",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "JCcN0",
+                      "name": "Button / outline / rest",
+                      "width": 82,
+                      "fill": "$control",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Cancel",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bmWLd",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "uWb2H",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "0gvOz",
+                      "name": "Button / outline / hover",
+                      "width": 82,
+                      "fill": "$muted",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Cancel",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "XcZPg",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "rSb7V",
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "QOtwI",
+                      "name": "Button / outline / focus",
+                      "width": 82,
+                      "fill": "$background",
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Cancel",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "L4ZUz",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "0Ixvx",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "lg57z",
+                      "name": "Button / outline / disabled",
+                      "opacity": 0.5,
+                      "width": 82,
+                      "fill": "$control",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Cancel",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "6r8xr",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "XYKe6",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "6gg5u",
+                      "name": "Button / outline / loading",
+                      "opacity": 0.5,
+                      "width": 82,
+                      "fill": "$control",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button-icon-leading",
+                      "descendants": {
+                        "ui-button-icon-leading-icon": {
+                          "icon": "loader-circle",
+                          "fill": "$foreground"
+                        },
+                        "ui-button-icon-leading-label": {
+                          "content": "Cancel",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "lAWtb",
+          "name": "Ghost",
+          "gap": 24,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "PFHhO",
+              "width": 88,
+              "fill": "$muted-foreground",
+              "content": "Ghost",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "frame",
+              "id": "Y11QO",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "wt0mj",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "1QOyo",
+                      "name": "Button / ghost / rest",
+                      "width": 119,
+                      "fill": "#00000000",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Skip for now",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "mnWUE",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "wQPhd",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "0F1hE",
+                      "name": "Button / ghost / hover",
+                      "width": 119,
+                      "fill": "$muted",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Skip for now",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "XYXru",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "7ggjr",
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "fVmNp",
+                      "name": "Button / ghost / focus",
+                      "width": 119,
+                      "fill": "$background",
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Skip for now",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "MxSvV",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "yFHAD",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "PzYkW",
+                      "name": "Button / ghost / disabled",
+                      "opacity": 0.5,
+                      "width": 119,
+                      "fill": "#00000000",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Skip for now",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "uIIRn",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "UBKWI",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "XqkAn",
+                      "name": "Button / ghost / loading",
+                      "opacity": 0.5,
+                      "width": 119,
+                      "fill": "#00000000",
+                      "ref": "ui-button-icon-leading",
+                      "descendants": {
+                        "ui-button-icon-leading-icon": {
+                          "icon": "loader-circle",
+                          "fill": "$foreground"
+                        },
+                        "ui-button-icon-leading-label": {
+                          "content": "Skip for now",
+                          "fill": "$foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "K3ehn",
+          "name": "Destructive",
+          "gap": 24,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "qQ7uM",
+              "width": 88,
+              "fill": "$muted-foreground",
+              "content": "Destructive",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "frame",
+              "id": "5JFLT",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "I8arG",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "ToWg1",
+                      "name": "Button / destructive / rest",
+                      "width": 129,
+                      "fill": "$destructive-tint",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Delete project",
+                          "fill": "$destructive"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "w2uZA",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "LFjt4",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "I2iAc",
+                      "name": "Button / destructive / hover",
+                      "width": 129,
+                      "fill": "$destructive-tint-hover",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Delete project",
+                          "fill": "$destructive"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "9AbTi",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "X4Get",
+                  "name": "Ring",
+                  "padding": 3,
+                  "fill": "$ring-soft",
+                  "cornerRadius": "$radius-lg",
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "wpbzW",
+                      "name": "Button / destructive / focus",
+                      "width": 129,
+                      "fill": [
+                        "$background",
+                        "$destructive-tint"
+                      ],
+                      "stroke": "$ring",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Delete project",
+                          "fill": "$destructive"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "anVEE",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "AWNc7",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "Hdojr",
+                      "name": "Button / destructive / disabled",
+                      "opacity": 0.5,
+                      "width": 129,
+                      "fill": "$destructive-tint",
+                      "ref": "ui-button",
+                      "descendants": {
+                        "ui-button-label": {
+                          "content": "Delete project",
+                          "fill": "$destructive"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "jFvKa",
+              "name": "Cell",
+              "width": 136,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "FgAE4",
+                  "name": "Pad",
+                  "padding": 3,
+                  "children": [
+                    {
+                      "type": "ref",
+                      "id": "1Pjyz",
+                      "name": "Button / destructive / loading",
+                      "opacity": 0.5,
+                      "width": 129,
+                      "fill": "$destructive-tint",
+                      "ref": "ui-button-icon-leading",
+                      "descendants": {
+                        "ui-button-icon-leading-icon": {
+                          "icon": "loader-circle",
+                          "fill": "$destructive"
+                        },
+                        "ui-button-icon-leading-label": {
+                          "content": "Delete project",
+                          "fill": "$destructive"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "themes": {
+    "Mode": [
+      "Light",
+      "Dark"
+    ]
+  },
+  "variables": {
+    "background": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#ffffff"
+        },
+        {
+          "value": "#0a0a0a",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#0a0a0a"
+        },
+        {
+          "value": "#fafafa",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "card": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#ffffff"
+        },
+        {
+          "value": "#171717",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "popover": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#ffffff"
+        },
+        {
+          "value": "#171717",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "primary": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#171717"
+        },
+        {
+          "value": "#e5e5e5",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "primary-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#fafafa"
+        },
+        {
+          "value": "#171717",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "primary-hover": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#171717cc"
+        },
+        {
+          "value": "#e5e5e5cc",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "secondary": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f5f5f5"
+        },
+        {
+          "value": "#262626",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "secondary-hover": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#e8e8e8"
+        },
+        {
+          "value": "#333333",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "muted": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f5f5f5"
+        },
+        {
+          "value": "#262626",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "muted-half": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f5f5f580"
+        },
+        {
+          "value": "#26262680",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "muted-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#5c5c5c"
+        },
+        {
+          "value": "#a8a8a8",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "accent": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f5f5f5"
+        },
+        {
+          "value": "#262626",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "destructive": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#c40d1f"
+        },
+        {
+          "value": "#ff6467",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "destructive-tint": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#c40d1f1a"
+        },
+        {
+          "value": "#ff646733",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "destructive-tint-hover": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#c40d1f26"
+        },
+        {
+          "value": "#ff646740",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "border": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#e5e5e5"
+        },
+        {
+          "value": "#ffffff1a",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "input": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#d4d4d4"
+        },
+        {
+          "value": "#ffffff26",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "control": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#ffffff00"
+        },
+        {
+          "value": "#ffffff0b",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "hairline": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#0a0a0a1a"
+        },
+        {
+          "value": "#fafafa1a",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "ring": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#a1a1a1"
+        },
+        {
+          "value": "#737373",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "ring-soft": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#a1a1a180"
+        },
+        {
+          "value": "#73737380",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "scrim": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#00000033"
+        },
+        {
+          "value": "#00000099",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "radius-xs": {
+      "type": "number",
+      "value": 4
+    },
+    "radius-sm": {
+      "type": "number",
+      "value": 6
+    },
+    "radius-md": {
+      "type": "number",
+      "value": 8
+    },
+    "radius-lg": {
+      "type": "number",
+      "value": 10
+    },
+    "radius-xl": {
+      "type": "number",
+      "value": 14
+    },
+    "font": {
+      "type": "string",
+      "value": "Segoe UI Variable"
+    }
+  }
+}

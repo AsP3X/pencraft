@@ -1,0 +1,1119 @@
+{
+  "version": "2.22",
+  "children": [
+    {
+      "type": "frame",
+      "id": "ui-board",
+      "x": 470,
+      "y": 0,
+      "name": "UI components",
+      "layout": "vertical",
+      "gap": 32,
+      "padding": 32,
+      "fill": "#e5e5e5",
+      "children": [
+        {
+          "type": "frame",
+          "id": "ui-button",
+          "name": "Button",
+          "reusable": true,
+          "height": 36,
+          "gap": 6,
+          "padding": [
+            0,
+            10
+          ],
+          "justifyContent": "center",
+          "alignItems": "center",
+          "fill": "$primary",
+          "cornerRadius": "$radius-md",
+          "children": [
+            {
+              "type": "text",
+              "id": "ui-button-label",
+              "name": "Label",
+              "fill": "$primary-foreground",
+              "content": "Save changes",
+              "fontFamily": "$font",
+              "fontSize": 14,
+              "fontWeight": "500"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "ui-select",
+          "name": "Select",
+          "reusable": true,
+          "width": 280,
+          "height": 36,
+          "gap": 6,
+          "padding": [
+            0,
+            8,
+            0,
+            10
+          ],
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "fill": "$control",
+          "stroke": "$input",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
+          "cornerRadius": "$radius-md",
+          "children": [
+            {
+              "type": "text",
+              "id": "ui-select-value",
+              "name": "Value",
+              "fill": "$foreground",
+              "content": "Editor",
+              "fontFamily": "$font",
+              "fontSize": 14
+            },
+            {
+              "type": "icon",
+              "id": "ui-select-icon",
+              "name": "Icon",
+              "width": 16,
+              "height": 16,
+              "fill": "$muted-foreground",
+              "library": "lucide",
+              "icon": "chevron-down"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "ui-textarea",
+          "name": "Textarea",
+          "reusable": true,
+          "width": 280,
+          "height": 80,
+          "padding": [
+            8,
+            10
+          ],
+          "alignItems": "start",
+          "fill": "$control",
+          "stroke": "$input",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
+          "cornerRadius": "$radius-md",
+          "children": [
+            {
+              "type": "text",
+              "id": "ui-textarea-value",
+              "name": "Value",
+              "width": "fill_container",
+              "fill": "$muted-foreground",
+              "content": "Tell the team what changed and why.",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font",
+              "fontSize": 14,
+              "lineHeight": 1.45
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "ui-badge",
+          "name": "Badge",
+          "reusable": true,
+          "height": 20,
+          "gap": 4,
+          "padding": [
+            0,
+            8
+          ],
+          "justifyContent": "center",
+          "alignItems": "center",
+          "fill": "$secondary",
+          "cornerRadius": 10,
+          "children": [
+            {
+              "type": "text",
+              "id": "ui-badge-label",
+              "name": "Label",
+              "fill": "$foreground",
+              "content": "Draft",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "500"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "ui-drawer",
+          "name": "Drawer",
+          "reusable": true,
+          "width": 390,
+          "layout": "vertical",
+          "padding": [
+            16,
+            0,
+            0,
+            0
+          ],
+          "alignItems": "center",
+          "fill": "$popover",
+          "cornerRadius": [
+            14,
+            14,
+            0,
+            0
+          ],
+          "children": [
+            {
+              "type": "rectangle",
+              "id": "ui-drawer-handle",
+              "name": "Handle",
+              "width": 100,
+              "height": 6,
+              "fill": "$muted",
+              "cornerRadius": 3
+            },
+            {
+              "type": "frame",
+              "id": "ui-drawer-header",
+              "name": "Header",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 4,
+              "padding": 16,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "ui-drawer-title",
+                  "name": "Title",
+                  "fill": "$foreground",
+                  "content": "Move to another shift",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "500"
+                },
+                {
+                  "type": "text",
+                  "id": "ui-drawer-description",
+                  "name": "Description",
+                  "width": "fill_container",
+                  "fill": "$muted-foreground",
+                  "content": "Maren keeps her break at 12:30.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "$font",
+                  "fontSize": 14,
+                  "lineHeight": 1.45
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "ui-drawer-body",
+              "name": "Body",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 24,
+              "padding": [
+                8,
+                16
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "ui-drawer-footer",
+              "name": "Footer",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 8,
+              "padding": [
+                8,
+                16,
+                24,
+                16
+              ],
+              "children": [
+                {
+                  "type": "ref",
+                  "id": "ui-drawer-confirm",
+                  "width": "fill_container",
+                  "height": 44,
+                  "ref": "ui-button",
+                  "descendants": {
+                    "ui-button-label": {
+                      "content": "Move shift"
+                    }
+                  }
+                },
+                {
+                  "type": "ref",
+                  "id": "ui-drawer-cancel",
+                  "width": "fill_container",
+                  "height": 44,
+                  "fill": "$control",
+                  "stroke": "$border",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
+                  "ref": "ui-button",
+                  "descendants": {
+                    "ui-button-label": {
+                      "content": "Cancel",
+                      "fill": "$foreground"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "ui-toast",
+          "name": "Toast",
+          "reusable": true,
+          "width": 356,
+          "gap": 8,
+          "padding": 16,
+          "alignItems": "center",
+          "fill": "$popover",
+          "stroke": "$hairline",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
+          "effect": [
+            {
+              "type": "shadow",
+              "offset": {
+                "x": 0,
+                "y": 2
+              },
+              "blur": 6,
+              "color": "#0000000f"
+            },
+            {
+              "type": "shadow",
+              "offset": {
+                "x": 0,
+                "y": 12
+              },
+              "blur": 28,
+              "color": "#0000001f"
+            }
+          ],
+          "cornerRadius": "$radius-lg",
+          "children": [
+            {
+              "type": "icon",
+              "id": "ui-toast-icon",
+              "name": "Icon",
+              "width": 16,
+              "height": 16,
+              "fill": "$foreground",
+              "library": "lucide",
+              "icon": "circle-check"
+            },
+            {
+              "type": "frame",
+              "id": "ui-toast-content",
+              "name": "Content",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "ui-toast-title",
+                  "name": "Title",
+                  "fill": "$foreground",
+                  "content": "Invitation sent",
+                  "fontFamily": "$font",
+                  "fontSize": 13,
+                  "fontWeight": "500"
+                },
+                {
+                  "type": "text",
+                  "id": "ui-toast-description",
+                  "name": "Description",
+                  "fill": "$muted-foreground",
+                  "content": "Maren gets an email in a minute.",
+                  "fontFamily": "$font",
+                  "fontSize": 13
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "ui-toast-action",
+              "name": "Action",
+              "height": 24,
+              "padding": [
+                0,
+                8
+              ],
+              "justifyContent": "center",
+              "alignItems": "center",
+              "fill": "$primary",
+              "cornerRadius": "$radius-xs",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "ui-toast-action-label",
+                  "fill": "$primary-foreground",
+                  "content": "Undo",
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "500"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "screen",
+      "x": 0,
+      "y": 0,
+      "name": "Today's shifts, swap drawer open",
+      "theme": {
+        "Mode": "Dark"
+      },
+      "width": 390,
+      "height": 844,
+      "clip": true,
+      "layout": "none",
+      "fill": "$background",
+      "children": [
+        {
+          "type": "frame",
+          "id": "page",
+          "x": 0,
+          "y": 0,
+          "name": "Page",
+          "width": 390,
+          "height": 844,
+          "layout": "vertical",
+          "children": [
+            {
+              "type": "frame",
+              "id": "page-header",
+              "name": "Header",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 4,
+              "padding": [
+                24,
+                16,
+                16,
+                16
+              ],
+              "children": [
+                {
+                  "type": "text",
+                  "id": "page-title",
+                  "name": "Title",
+                  "fill": "$foreground",
+                  "content": "Today's shifts",
+                  "fontFamily": "$font",
+                  "fontSize": 24,
+                  "fontWeight": "500"
+                },
+                {
+                  "type": "text",
+                  "id": "page-date",
+                  "name": "Date",
+                  "fill": "$muted-foreground",
+                  "content": "Saturday 14 November",
+                  "fontFamily": "$font",
+                  "fontSize": 14
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "shift-list",
+              "name": "Shift list",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "row-1",
+                  "name": "Shift row",
+                  "width": "fill_container",
+                  "height": 64,
+                  "gap": 12,
+                  "padding": [
+                    0,
+                    16
+                  ],
+                  "alignItems": "center",
+                  "stroke": "$border",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "row-1-text",
+                      "name": "Text",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "row-1-place",
+                          "name": "Station",
+                          "fill": "$foreground",
+                          "content": "Ticket desk",
+                          "fontFamily": "$font",
+                          "fontSize": 14,
+                          "fontWeight": "500"
+                        },
+                        {
+                          "type": "text",
+                          "id": "row-1-person",
+                          "name": "Teammate",
+                          "fill": "$muted-foreground",
+                          "content": "Ingrid Vang",
+                          "fontFamily": "$font",
+                          "fontSize": 14
+                        }
+                      ]
+                    },
+                    {
+                      "type": "ref",
+                      "id": "row-1-badge",
+                      "ref": "ui-badge",
+                      "descendants": {
+                        "ui-badge-label": {
+                          "content": "Swap sent"
+                        }
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "id": "row-1-time",
+                      "name": "Time",
+                      "width": 96,
+                      "fill": "$foreground",
+                      "content": "06:00–14:00",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "textAlign": "right"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "row-2",
+                  "name": "Shift row",
+                  "width": "fill_container",
+                  "height": 64,
+                  "gap": 12,
+                  "padding": [
+                    0,
+                    16
+                  ],
+                  "alignItems": "center",
+                  "stroke": "$border",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "row-2-text",
+                      "name": "Text",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "row-2-place",
+                          "name": "Station",
+                          "fill": "$foreground",
+                          "content": "Harbour office",
+                          "fontFamily": "$font",
+                          "fontSize": 14,
+                          "fontWeight": "500"
+                        },
+                        {
+                          "type": "text",
+                          "id": "row-2-person",
+                          "name": "Teammate",
+                          "fill": "$muted-foreground",
+                          "content": "Maren Solheim",
+                          "fontFamily": "$font",
+                          "fontSize": 14
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "row-2-time",
+                      "name": "Time",
+                      "width": 96,
+                      "fill": "$foreground",
+                      "content": "07:30–15:30",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "textAlign": "right"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "row-3",
+                  "name": "Shift row, chosen",
+                  "width": "fill_container",
+                  "height": 64,
+                  "gap": 12,
+                  "padding": [
+                    0,
+                    16
+                  ],
+                  "alignItems": "center",
+                  "fill": "$muted",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "row-3-text",
+                      "name": "Text",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "row-3-place",
+                          "name": "Station",
+                          "fill": "$foreground",
+                          "content": "Ferry desk",
+                          "fontFamily": "$font",
+                          "fontSize": 14,
+                          "fontWeight": "500"
+                        },
+                        {
+                          "type": "text",
+                          "id": "row-3-person",
+                          "name": "Teammate",
+                          "fill": "$muted-foreground",
+                          "content": "Aksel Bjørnstad-Lie",
+                          "fontFamily": "$font",
+                          "fontSize": 14
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "row-3-time",
+                      "name": "Time",
+                      "width": 96,
+                      "fill": "$foreground",
+                      "content": "10:00–18:00",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "textAlign": "right"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "rectangle",
+          "id": "scrim",
+          "x": 0,
+          "y": 0,
+          "name": "Scrim",
+          "width": 390,
+          "height": 844,
+          "fill": "$scrim"
+        },
+        {
+          "type": "frame",
+          "id": "overlays",
+          "x": 0,
+          "y": 0,
+          "name": "Overlays",
+          "width": 390,
+          "height": 844,
+          "layout": "vertical",
+          "gap": 16,
+          "justifyContent": "end",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "ref",
+              "id": "swap-toast",
+              "name": "Toast, swap sent",
+              "width": 358,
+              "ref": "ui-toast",
+              "descendants": {
+                "ui-toast-title": {
+                  "content": "Swap request sent"
+                },
+                "ui-toast-description": {
+                  "content": "Waiting for Ingrid Vang to accept."
+                },
+                "ui-toast-action": {
+                  "enabled": false
+                }
+              }
+            },
+            {
+              "type": "ref",
+              "id": "swap-drawer",
+              "name": "Drawer, swap shift",
+              "ref": "ui-drawer",
+              "descendants": {
+                "ui-drawer-title": {
+                  "content": "Swap this shift"
+                },
+                "ui-drawer-description": {
+                  "content": "Ferry desk, 10:00 to 18:00, now with Aksel Bjørnstad-Lie."
+                },
+                "ui-drawer-body": {
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "swap-field-teammate",
+                      "name": "Field",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "swap-teammate-label",
+                          "name": "Label",
+                          "content": "Swap with",
+                          "fontFamily": "$font",
+                          "fontSize": 14,
+                          "fontWeight": "500",
+                          "fill": "$foreground"
+                        },
+                        {
+                          "type": "ref",
+                          "id": "swap-teammate-select",
+                          "ref": "ui-select",
+                          "width": "fill_container",
+                          "height": 44,
+                          "padding": [
+                            0,
+                            10,
+                            0,
+                            12
+                          ],
+                          "descendants": {
+                            "ui-select-value": {
+                              "content": "Jonas Eikrem",
+                              "fontSize": 16
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "swap-field-note",
+                      "name": "Field",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "swap-note-label-row",
+                          "name": "Label",
+                          "gap": 4,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "swap-note-label",
+                              "name": "Label",
+                              "content": "Note",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "500",
+                              "fill": "$foreground"
+                            },
+                            {
+                              "type": "text",
+                              "id": "swap-note-optional",
+                              "content": "(optional)",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fill": "$muted-foreground"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "ref",
+                          "id": "swap-note-textarea",
+                          "ref": "ui-textarea",
+                          "width": "fill_container",
+                          "height": 88,
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "descendants": {
+                            "ui-textarea-value": {
+                              "content": "Aksel has a dentist at 15:30. Jonas knows the 16:10 sailing.",
+                              "fontSize": 16,
+                              "fill": "$foreground"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "ui-drawer-confirm": {
+                  "descendants": {
+                    "ui-button-label": {
+                      "content": "Send swap request"
+                    }
+                  }
+                },
+                "ui-drawer-cancel": {
+                  "descendants": {
+                    "ui-button-label": {
+                      "content": "Cancel",
+                      "fill": "$foreground"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "themes": {
+    "Mode": [
+      "Light",
+      "Dark"
+    ]
+  },
+  "variables": {
+    "background": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#ffffff"
+        },
+        {
+          "value": "#0a0a0a",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#0a0a0a"
+        },
+        {
+          "value": "#fafafa",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "card": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#ffffff"
+        },
+        {
+          "value": "#171717",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "popover": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#ffffff"
+        },
+        {
+          "value": "#171717",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "primary": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#171717"
+        },
+        {
+          "value": "#e5e5e5",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "primary-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#fafafa"
+        },
+        {
+          "value": "#171717",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "primary-hover": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#171717cc"
+        },
+        {
+          "value": "#e5e5e5cc",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "secondary": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f5f5f5"
+        },
+        {
+          "value": "#262626",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "muted": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f5f5f5"
+        },
+        {
+          "value": "#262626",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "muted-half": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f5f5f580"
+        },
+        {
+          "value": "#26262680",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "muted-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#5c5c5c"
+        },
+        {
+          "value": "#a8a8a8",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "accent": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f5f5f5"
+        },
+        {
+          "value": "#262626",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "destructive": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#c40d1f"
+        },
+        {
+          "value": "#ff6467",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "destructive-tint": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#c40d1f1a"
+        },
+        {
+          "value": "#ff646733",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "border": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#e5e5e5"
+        },
+        {
+          "value": "#ffffff1a",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "input": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#d4d4d4"
+        },
+        {
+          "value": "#ffffff26",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "control": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#ffffff00"
+        },
+        {
+          "value": "#ffffff0b",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "hairline": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#0a0a0a1a"
+        },
+        {
+          "value": "#fafafa1a",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "ring": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#a1a1a1"
+        },
+        {
+          "value": "#737373",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "ring-soft": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#a1a1a180"
+        },
+        {
+          "value": "#73737380",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "scrim": {
+      "type": "color",
+      "value": "#00000033"
+    },
+    "radius-xs": {
+      "type": "number",
+      "value": 4
+    },
+    "radius-sm": {
+      "type": "number",
+      "value": 6
+    },
+    "radius-md": {
+      "type": "number",
+      "value": 8
+    },
+    "radius-lg": {
+      "type": "number",
+      "value": 10
+    },
+    "radius-xl": {
+      "type": "number",
+      "value": 14
+    },
+    "font": {
+      "type": "string",
+      "value": "Segoe UI Variable"
+    }
+  }
+}

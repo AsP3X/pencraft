@@ -1,0 +1,29 @@
+{"description":"Insert the standard components the screen needs","operations":[
+{"op":"insert","node":{"type":"frame","id":"ui-board","name":"UI components","x":470,"y":0,"layout":"vertical","gap":32,"padding":32,"fill":"#e5e5e5","children":[
+ {"type":"frame","id":"ui-button","name":"Button","reusable":true,"height":36,"padding":[0,10],"gap":6,"justifyContent":"center","alignItems":"center","cornerRadius":"$radius-md","fill":"$primary","children":[
+  {"type":"text","id":"ui-button-label","name":"Label","content":"Save changes","fontFamily":"$font","fontSize":14,"fontWeight":"500","fill":"$primary-foreground"}]},
+ {"type":"frame","id":"ui-select","name":"Select","reusable":true,"width":280,"height":36,"padding":[0,8,0,10],"gap":6,"justifyContent":"space_between","alignItems":"center","cornerRadius":"$radius-md","fill":"$control","stroke":"$input","strokeWidth":1,"strokeAlignment":"inner","children":[
+  {"type":"text","id":"ui-select-value","name":"Value","content":"Editor","fontFamily":"$font","fontSize":14,"fill":"$foreground"},
+  {"type":"icon","id":"ui-select-icon","name":"Icon","library":"lucide","icon":"chevron-down","width":16,"height":16,"fill":"$muted-foreground"}]},
+ {"type":"frame","id":"ui-textarea","name":"Textarea","reusable":true,"width":280,"height":80,"padding":[8,10],"alignItems":"start","cornerRadius":"$radius-md","fill":"$control","stroke":"$input","strokeWidth":1,"strokeAlignment":"inner","children":[
+  {"type":"text","id":"ui-textarea-value","name":"Value","content":"Tell the team what changed and why.","textGrowth":"fixed-width","width":"fill_container","lineHeight":1.45,"fontFamily":"$font","fontSize":14,"fill":"$muted-foreground"}]},
+ {"type":"frame","id":"ui-badge","name":"Badge","reusable":true,"height":20,"padding":[0,8],"gap":4,"justifyContent":"center","alignItems":"center","cornerRadius":10,"fill":"$secondary","children":[
+  {"type":"text","id":"ui-badge-label","name":"Label","content":"Draft","fontFamily":"$font","fontSize":12,"fontWeight":"500","fill":"$foreground"}]},
+ {"type":"frame","id":"ui-drawer","name":"Drawer","reusable":true,"width":390,"layout":"vertical","alignItems":"center","padding":[16,0,0,0],"cornerRadius":[14,14,0,0],"fill":"$popover","children":[
+  {"type":"rectangle","id":"ui-drawer-handle","name":"Handle","width":100,"height":6,"cornerRadius":3,"fill":"$muted"},
+  {"type":"frame","id":"ui-drawer-header","name":"Header","width":"fill_container","layout":"vertical","gap":4,"padding":16,"children":[
+    {"type":"text","id":"ui-drawer-title","name":"Title","content":"Move to another shift","fontFamily":"$font","fontSize":16,"fontWeight":"500","fill":"$foreground"},
+    {"type":"text","id":"ui-drawer-description","name":"Description","content":"Maren keeps her break at 12:30.","textGrowth":"fixed-width","width":"fill_container","lineHeight":1.45,"fontFamily":"$font","fontSize":14,"fill":"$muted-foreground"}]},
+  {"type":"frame","id":"ui-drawer-body","name":"Body","width":"fill_container","layout":"vertical","gap":24,"padding":[8,16]},
+  {"type":"frame","id":"ui-drawer-footer","name":"Footer","width":"fill_container","layout":"vertical","gap":8,"padding":[8,16,24,16],"children":[
+    {"type":"ref","id":"ui-drawer-confirm","ref":"ui-button","width":"fill_container","height":44,"descendants":{"ui-button-label":{"content":"Move shift"}}},
+    {"type":"ref","id":"ui-drawer-cancel","ref":"ui-button","width":"fill_container","height":44,"fill":"$control","stroke":"$border","strokeWidth":1,"strokeAlignment":"inner","descendants":{"ui-button-label":{"content":"Cancel","fill":"$foreground"}}}]}]},
+ {"type":"frame","id":"ui-toast","name":"Toast","reusable":true,"width":356,"padding":16,"gap":8,"alignItems":"center","cornerRadius":"$radius-lg","fill":"$popover","stroke":"$hairline","strokeWidth":1,"strokeAlignment":"inner","effect":[{"type":"shadow","offset":{"x":0,"y":2},"blur":6,"color":"#0000000f"},{"type":"shadow","offset":{"x":0,"y":12},"blur":28,"color":"#0000001f"}],"children":[
+  {"type":"icon","id":"ui-toast-icon","name":"Icon","library":"lucide","icon":"circle-check","width":16,"height":16,"fill":"$foreground"},
+  {"type":"frame","id":"ui-toast-content","name":"Content","width":"fill_container","layout":"vertical","gap":2,"children":[
+    {"type":"text","id":"ui-toast-title","name":"Title","content":"Invitation sent","fontFamily":"$font","fontSize":13,"fontWeight":"500","fill":"$foreground"},
+    {"type":"text","id":"ui-toast-description","name":"Description","content":"Maren gets an email in a minute.","fontFamily":"$font","fontSize":13,"fill":"$muted-foreground"}]},
+  {"type":"frame","id":"ui-toast-action","name":"Action","height":24,"padding":[0,8],"justifyContent":"center","alignItems":"center","cornerRadius":"$radius-xs","fill":"$primary","children":[
+    {"type":"text","id":"ui-toast-action-label","content":"Undo","fontFamily":"$font","fontSize":12,"fontWeight":"500","fill":"$primary-foreground"}]}]}
+]}}
+]}

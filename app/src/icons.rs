@@ -20,7 +20,7 @@ pub const VIEW_BOX: f32 = 24.0;
 pub const LINE_WIDTH: f32 = 2.0;
 /// Names Lucide used in earlier releases (and Feather still uses), with the bundled icon that replaced each.
 // Agent: every right-hand name MUST exist in the bundled set; a test checks it.
-const RENAMED: [(&str, &str); 14] = [
+const RENAMED: [(&str, &str); 20] = [
     ("home", "house"),
     ("trash-2", "trash"),
     ("edit", "square-pen"),
@@ -35,6 +35,12 @@ const RENAMED: [(&str, &str); 14] = [
     ("check-circle-2", "circle-check"),
     ("x-circle", "circle-x"),
     ("bar-chart", "chart-bar"),
+    ("triangle-alert", "triangle-exclamation-point"),
+    ("alert-triangle", "triangle-exclamation-point"),
+    ("circle-alert", "circle-exclamation-point"),
+    ("alert-circle", "circle-exclamation-point"),
+    ("octagon-alert", "octagon-exclamation-point"),
+    ("alert-octagon", "octagon-exclamation-point"),
 ];
 /// Straight pieces a curve of an interface icon is drawn with.
 const CURVE_STEPS: u8 = 10;
@@ -57,6 +63,38 @@ pub fn outline(library: &str, name: &str) -> Option<Vec<Segment>> {
     let icon = names.get(name.as_str()).or_else(|| renamed.and_then(|new| names.get(new)))?;
     let segments = segments(icon.svg_str());
     (!segments.is_empty()).then_some(segments)
+}
+
+/// How many single-letter changes turn `a` into `b`.
+fn changes(a: &str, b: &str) -> usize {
+    let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, x) in a.iter().enumerate() {
+        let mut before = row[0];
+        row[0] = i + 1;
+        for (j, y) in b.iter().enumerate() {
+            let kept = row[j + 1];
+            row[j + 1] = (before + usize::from(x != y)).min(row[j] + 1).min(kept + 1);
+            before = kept;
+        }
+    }
+    row[b.len()]
+}
+
+/// The bundled icon whose name is nearest to `name`: the one sharing most of its words ("circle-loader" for
+/// "loader-circle"), then the one fewest letters away. `None` when nothing bundled is close.
+// Human: a model writes icon names from memory, and Lucide renames icons; an answer that names the icon it
+// most likely meant saves it a guess.
+#[must_use]
+pub fn nearest(name: &str) -> Option<&'static str> {
+    let name = name.trim().to_ascii_lowercase();
+    let words: Vec<&str> = name.split('-').collect();
+    let shared = |known: &str| known.split('-').filter(|word| words.contains(word)).count();
+    Icon::all()
+        .iter()
+        .map(|icon| icon.name())
+        .min_by_key(|known| (words.len().saturating_sub(shared(known)), changes(&name, known)))
+        .filter(|known| shared(known) > 0 || changes(&name, known) <= 2)
 }
 
 /// Draws the Lucide icon `name` into `rect` as thin lines, for the interface's own buttons.
@@ -283,6 +321,35 @@ fn rect(x: f32, y: f32, w: f32, h: f32, rx: f32, ry: f32, out: &mut Vec<Segment>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_unknown_name_finds_the_icon_most_likely_meant() {
+        assert_eq!(nearest("loader-circl"), Some("loader-circle"));
+        assert_eq!(nearest("user-circle"), Some("circle-user"));
+        assert_eq!(nearest("zzqq"), None);
+        // The names the guide gives a model for the parts components are built from.
+        for name in [
+            "check",
+            "x",
+            "chevron-down",
+            "chevron-right",
+            "chevron-up",
+            "ellipsis",
+            "search",
+            "loader-circle",
+            "panel-left",
+            "circle-check",
+            "info",
+            "triangle-exclamation-point",
+            "octagon-x",
+            "plus",
+            "house",
+            "trash",
+        ] {
+            assert!(outline("lucide", name).is_some(), "{name}");
+            assert!(crate::agent::GUIDE.contains(&format!("`{name}`")), "{name}");
+        }
+    }
 
     /// The icons the interface's own buttons use.
     const INTERFACE: [&str; 35] = [
