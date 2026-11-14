@@ -396,3 +396,19 @@ pub const IDEA_ROW: f32 = 30.0;
 pub const IDEA_ROW_GAP: f32 = 12.0;
 /// Size of the zoom island at the canvas's bottom right corner.
 pub const ZOOM_ISLAND: [f32; 2] = [116.0, 30.0];
+/// Size of the title of a small window over the app, such as "Generate image" (as "Settings" is drawn).
+pub const DIALOG_TITLE_SIZE: f32 = 15.0;
+/// How dark the backdrop behind a window over the app is, out of 255: the settings, "Generate image".
+pub const DIALOG_BACKDROP: u8 = 140;
+/// Space between the edge of a small window over the app and its content.
+pub const DIALOG_PADDING: i8 = 20;
+/// Space between the parts of a small window over the app: its title, its fields, its buttons.
+pub const DIALOG_GAP: f32 = 12.0;
+/// Least width of a button in a small window over the app (as the settings' forms' main button).
+pub const DIALOG_BUTTON: f32 = 92.0;
+/// Space between a text field's outline and its text, across and down (as in the settings' fields).
+pub const FIELD_MARGIN: [i8; 2] = [11, 7];
+/// Width of the "Generate image" window's content.
+pub const GENERATE_WIDTH: f32 = 440.0;
+/// Lines of text the description field of the "Generate image" window shows.
+pub const GENERATE_LINES: usize = 4;

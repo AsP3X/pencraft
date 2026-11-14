@@ -24,6 +24,7 @@ use crate::theme::{
 };
 use crate::{fonts, samples, screenshot};
 
+mod pictures;
 mod talk;
 mod tools;
 
@@ -62,12 +63,15 @@ pub struct Launch {
     pub dark: bool,
     /// `--sidebar <view>`: the sidebar view the screenshot shows, or `hidden` for the folded sidebar.
     pub sidebar: Option<String>,
-    /// `--settings <page>`: the screenshot shows the settings window on `general`, `agents` or `provider`.
+    /// `--settings <page>`: the screenshot shows the settings window on `general`, `agents`, `provider`, `images` or
+    /// `image-service`.
     pub settings: Option<String>,
     /// `--select <id>[,<id>…]`: the layers selected in the picture, to show their properties.
     pub select: Option<String>,
     /// `--actions`: the picture shows the action search open.
     pub actions: bool,
+    /// `--generate-image`: the picture shows the "Generate Image…" dialog open for the selection.
+    pub generate_image: bool,
     /// `--export <file>`: with `--screenshot`, also exports the selected layer (or every top-level layer) to
     /// this file, in the format its ending names.
     pub export: Option<PathBuf>,
@@ -150,6 +154,10 @@ pub struct App {
     private: bool,
     /// Tool calls that wait for the user to finish a drag, each with when it came in.
     waiting: Vec<(crate::link::Call, Instant)>,
+    /// `generate_image` calls whose picture is still being made.
+    picturing: Vec<pictures::Waiting>,
+    /// The "Generate Image…" dialog and the picture it is having made.
+    generating: pictures::Generating,
     /// The top-level layers models have changed since a reviewer last looked, each with its document's id and
     /// how many layers were written in it.
     pub(crate) designed: Vec<(u64, String, usize)>,
@@ -209,6 +217,8 @@ impl App {
             assistant_asked: launch.assistant.clone(),
             private: launch.private || launch.screenshot.is_some(),
             waiting: Vec::new(),
+            picturing: Vec::new(),
+            generating: pictures::Generating::default(),
             designed: Vec::new(),
             updates: crate::update::Updates::new(launch.looks_for_updates(), launch.update_prompt),
         };
@@ -234,14 +244,11 @@ impl App {
             if launch.dark {
                 app.prefs.update(|p| p.appearance.dark = true);
             }
-            if let Some(name) = launch.settings.as_deref() {
-                app.settings.open_named(name);
-            }
             if let (Some(ids), Some(editor)) = (launch.select, app.tabs.first_mut()) {
                 editor.selection = ids.split(',').map(str::to_owned).collect();
                 editor.pose_points(launch.points);
             }
-            app.pose_extras(launch.actions, launch.find.as_deref(), launch.attach.clone());
+            app.pose_extras(launch.settings.as_deref(), launch.actions, launch.find.as_deref(), launch.attach.clone(), launch.generate_image);
             if let (true, Some(editor)) = (launch.activity, app.tabs.first_mut()) {
                 editor.activity.posed = true;
             }
@@ -335,9 +342,13 @@ impl App {
         None
     }
 
-    /// For a picture of the app: the action search open (`--actions`), find layers with a query (`--find`),
-    /// files attached to the chat message (`--attach`).
-    fn pose_extras(&mut self, actions: bool, find: Option<&str>, attach: Vec<PathBuf>) {
+    /// For a picture of the app: the settings window on a page (`--settings`), the action search open
+    /// (`--actions`), find layers with a query (`--find`), files attached to the chat message (`--attach`), the
+    /// "Generate Image…" dialog for the selection (`--generate-image`).
+    fn pose_extras(&mut self, settings: Option<&str>, actions: bool, find: Option<&str>, attach: Vec<PathBuf>, generate: bool) {
+        if let Some(name) = settings {
+            self.settings.open_named(name);
+        }
         self.attach(attach);
         if actions {
             self.actions.toggle();
@@ -345,6 +356,9 @@ impl App {
         if let Some(query) = find {
             self.open_find();
             self.find.pose(query);
+        }
+        if generate {
+            self.open_picture_dialog();
         }
     }
 
@@ -559,6 +573,8 @@ impl App {
                     self.ask_import();
                 }
             }
+            // Human: it opens only for a document in front (`open_picture_dialog`).
+            Command::GenerateImage => self.open_picture_dialog(),
             Command::Settings => self.settings.open_general(),
             Command::CheckForUpdates => {
                 self.say("Looking for a new version…");
@@ -653,7 +669,10 @@ impl App {
     // Agent: MAIN-THREAD; lays the menus out every frame and lets craft-menu rebuild them only when they differ.
     fn native_menus(&mut self, ctx: &egui::Context) {
         let Some(mut menu) = self.native_menu.take() else { return };
-        menu.set_gate(craft_menu::Gate { modal: self.prompt.is_some(), recording_shortcut: false, text_editing: ctx.egui_wants_keyboard_input() });
+        // Human: the Generate Image dialog counts as asking something: a menu click must not change the
+        // document behind it either (see `shortcuts`).
+        let modal = self.prompt.is_some() || self.generating.is_open();
+        menu.set_gate(craft_menu::Gate { modal, recording_shortcut: false, text_editing: ctx.egui_wants_keyboard_input() });
         for chosen in menu.take_clicks(ctx) {
             if let Some(command) = crate::menus::command(&chosen) {
                 self.run(command, ctx);
@@ -719,6 +738,13 @@ impl App {
         });
         let clipboard_events: Vec<egui::Event> =
             ctx.input(|i| i.events.iter().filter(|e| matches!(e, egui::Event::Copy | egui::Event::Cut | egui::Event::Paste(_))).cloned().collect());
+        // Human: while the Generate Image dialog shows, no shortcut acts on the documents behind it: Backspace
+        // would delete the layer the picture is meant for, ⌘W close its tab. Here, before any of them, because
+        // this is the one place every app and editor shortcut goes through; the dialog's own keys (Escape, typing
+        // in its field) are egui's and aren't touched. The Settings window keeps its own way.
+        if self.generating.is_open() {
+            return;
+        }
         let typing = ctx.egui_wants_keyboard_input();
         let none = Modifiers::NONE;
         let cmd = Modifiers::COMMAND;
@@ -1484,6 +1510,7 @@ impl eframe::App for App {
         self.dropped(&ctx);
         self.chat_asks(&ctx);
         self.settings_window(&ctx);
+        self.show_picture_dialog(&ctx);
         self.update_prompt(&ctx);
         self.close_prompt(&ctx);
         self.message(&ctx);
@@ -1555,6 +1582,7 @@ fn run_on(editor: &mut Editor, command: Command, view: egui::Rect) {
         | Command::OpenFile
         | Command::CloseTab
         | Command::Import
+        | Command::GenerateImage
         | Command::Copy
         | Command::Cut
         | Command::Paste

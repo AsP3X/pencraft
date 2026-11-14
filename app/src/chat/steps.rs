@@ -49,7 +49,7 @@ struct Words {
 }
 
 /// The tools the app gives a model, as the chat names them.
-const TOOLS: [Words; 13] = [
+const TOOLS: [Words; 14] = [
     Words {
         tool: "get_state",
         icon: "eye",
@@ -80,6 +80,13 @@ const TOOLS: [Words; 13] = [
     Words { tool: "open_document", icon: "folder-open", doing: "Opening a document", did: "Opened a document", failed: "Couldn't open the document" },
     Words { tool: "save_document", icon: "save", doing: "Saving the document", did: "Saved the document", failed: "Couldn't save the document" },
     Words { tool: "export_layers", icon: "download", doing: "Exporting layers", did: "Exported layers", failed: "Couldn't export the layers" },
+    Words {
+        tool: "generate_image",
+        icon: "image-plus",
+        doing: "Generating a picture",
+        did: "Generated a picture",
+        failed: "Couldn't generate the picture",
+    },
     // Human: not a tool the model calls: the app has a reviewer look at a finished design ([`super::critic`]).
     Words {
         tool: "review_design",
@@ -158,6 +165,9 @@ fn file_name(path: &str) -> &str {
     path.rsplit(['/', '\\']).next().unwrap_or(path)
 }
 
+/// The most letters of a picture's description a note shows.
+const MOST_PROMPT: usize = 36;
+
 /// What a call of `tool` with `input` is about, in a few words; empty when the tool's usual words say it all.
 #[must_use]
 pub fn detail(tool: &str, input: &Value) -> String {
@@ -175,6 +185,21 @@ pub fn detail(tool: &str, input: &Value) -> String {
             changes => counted(changes, "change", "changes"),
         },
         "open_document" | "save_document" | "export_layers" => path(),
+        "generate_image" => {
+            // Human: white space (new lines too) is one space, as in the model's description of a change.
+            let prompt = input.get("prompt").and_then(Value::as_str).unwrap_or_default().split_whitespace().collect::<Vec<_>>().join(" ");
+            if prompt.chars().count() > MOST_PROMPT {
+                // Human: cut at the last whole word that fits; a word that ends just where the cut falls fits.
+                let mut letters = prompt.chars();
+                let cut: String = letters.by_ref().take(MOST_PROMPT).collect();
+                let whole = if letters.next() == Some(' ') { cut.as_str() } else { cut.rsplit_once(' ').map_or(cut.as_str(), |(whole, _)| whole) };
+                format!("“{}…”", whole.trim_end_matches(','))
+            } else if prompt.is_empty() {
+                String::new()
+            } else {
+                format!("“{prompt}”")
+            }
+        }
         _ => String::new(),
     }
 }
@@ -249,6 +274,25 @@ mod tests {
         assert_eq!(detail("export_layers", &json!({ "path": "C:\\Users\\me\\Desktop\\dog.png" })), "dog.png");
         assert_eq!(detail("save_document", &json!({ "path": "/designs/site.pen" })), "site.pen");
         assert_eq!(detail("get_state", &json!({})), "");
+    }
+
+    #[test]
+    fn generating_a_picture_is_named_with_the_start_of_its_description() {
+        assert_eq!((doing("generate_image"), did("generate_image")), ("Generating a picture".to_owned(), "Generated a picture".to_owned()));
+        assert_eq!(failed("generate_image"), "Couldn't generate the picture");
+        assert_eq!(icon("generate_image"), "image-plus");
+        assert_eq!(
+            detail("generate_image", &json!({ "prompt": "A red fox in fresh snow at dawn, seen from the side" })),
+            "“A red fox in fresh snow at dawn…”"
+        );
+        assert_eq!(detail("generate_image", &json!({ "prompt": "A fox" })), "“A fox”");
+        // Human: a description written over several lines is shown on one.
+        assert_eq!(detail("generate_image", &json!({ "prompt": " A red\n\n  fox\tin snow " })), "“A red fox in snow”");
+        // Human: a cut that falls just after a word keeps that word.
+        assert_eq!(
+            detail("generate_image", &json!({ "prompt": "A red fox in fresh snow at dawn, the end of it" })),
+            "“A red fox in fresh snow at dawn, the…”"
+        );
     }
 
     #[test]

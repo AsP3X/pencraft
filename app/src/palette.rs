@@ -25,6 +25,8 @@ pub enum Command {
     CloseTab,
     /// Add a picture or SVG file as a layer.
     Import,
+    /// Open the "Generate Image…" dialog.
+    GenerateImage,
     /// Step back.
     Undo,
     /// Step forward again.
@@ -146,7 +148,7 @@ const fn action(
 
 /// Every action, in the order and under the headings the search lists them.
 // Agent: icons MUST be bundled Lucide names; a test checks it.
-pub const ACTIONS: [Action; 74] = [
+pub const ACTIONS: [Action; 75] = [
     action(Command::Dashboard, "layout-grid", "Open dashboard", "File", &[], "home files projects recent"),
     action(Command::Save, "save", "Save", "File", &["⌘", "S"], "write store disk"),
     action(Command::SaveAs, "save-all", "Save as…", "File", &["⌘", "⇧", "S"], "copy duplicate file disk"),
@@ -161,6 +163,7 @@ pub const ACTIONS: [Action; 74] = [
     action(Command::Cut, "scissors", "Cut", "Edit", &["⌘", "X"], "clipboard"),
     action(Command::Paste, "clipboard", "Paste", "Edit", &["⌘", "V"], "clipboard insert"),
     action(Command::Import, "image", "Import image or SVG…", "Edit", &[], "place insert picture photo file upload"),
+    action(Command::GenerateImage, "image-plus", "Generate image…", "Edit", &[], "ai picture photo illustration make create prompt"),
     action(Command::Group, "group", "Group selection", "Arrange", &["⌘", "G"], "combine"),
     action(Command::FrameSelection, "frame", "Frame selection", "Arrange", &["⌥", "⌘", "G"], "wrap container"),
     action(Command::Ungroup, "ungroup", "Ungroup", "Arrange", &["⌘", "⇧", "G"], "split release"),

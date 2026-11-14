@@ -32,11 +32,12 @@ const EXPORT: &str = "file.export";
 const LATER: &str = "later";
 
 /// The ids of the plain items, with the command each runs.
-const COMMANDS: [(&str, Command); 21] = [
+const COMMANDS: [(&str, Command); 22] = [
     ("file.new", Command::NewFile),
     ("file.open", Command::OpenFile),
     ("file.home", Command::Dashboard),
     ("file.import", Command::Import),
+    ("file.generate", Command::GenerateImage),
     ("file.save", Command::Save),
     ("file.save_as", Command::SaveAs),
     ("file.close_tab", Command::CloseTab),
@@ -133,6 +134,7 @@ pub fn bar(state: &State<'_>) -> MenuBar {
             item("file.home", "Home", "⌘N", true),
             Node::Separator,
             item("file.import", "Import Image/SVG/Figma…", "", doc),
+            item("file.generate", "Generate Image…", "", doc),
             // Human: with nothing selected the export takes every top-level layer, so it is there whenever a
             // document is open.
             Node::submenu(
@@ -232,6 +234,7 @@ mod tests {
                 "Home",
                 "—",
                 "Import Image/SVG/Figma…",
+                "Generate Image…",
                 "Export Selection to… ▸",
                 "Export Snapshot…",
                 "—",

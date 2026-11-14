@@ -16,8 +16,10 @@ pub struct Prefs {
     pub files: Files,
     /// How the canvas behaves.
     pub canvas: CanvasPrefs,
-    /// Importing pages and generating pictures.
+    /// Importing pages and generating drawings.
     pub generation: Generation,
+    /// The image model services and who may use them.
+    pub images: Images,
     /// The assistants and their providers.
     pub agents: Agents,
     /// Looking for newer versions of the app.
@@ -77,22 +79,54 @@ impl Default for CanvasPrefs {
     }
 }
 
-/// Importing pages and generating pictures.
+/// Importing pages and generating drawings.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Generation {
     /// Keep a page's HTML metadata when importing it.
     pub html_metadata: bool,
-    /// Who makes generated pictures.
-    pub image_provider: String,
     /// Who makes generated SVG drawings.
     pub svg_provider: String,
 }
 
 impl Default for Generation {
     fn default() -> Self {
-        Generation { html_metadata: false, image_provider: "Nano Banana Lite".to_owned(), svg_provider: "Pencraft".to_owned() }
+        Generation { html_metadata: false, svg_provider: "Pencraft".to_owned() }
     }
+}
+
+/// The image model services and who may use them.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Images {
+    /// The services the user added. Their API keys are in the keychain, not here.
+    pub services: Vec<ImageService>,
+    /// The name of the service used when none is asked for; empty for the first one that works.
+    pub default: String,
+    /// AI models may generate pictures (each one costs money on the user's key).
+    pub assistant: bool,
+}
+
+impl Default for Images {
+    fn default() -> Self {
+        Images { services: Vec::new(), default: String::new(), assistant: true }
+    }
+}
+
+/// One account at one image model provider.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ImageService {
+    /// What the user calls it.
+    pub name: String,
+    /// The kind of API it speaks, as [`crate::imagery::Kind::name`] gives it.
+    pub kind: String,
+    /// Where it is reached; empty for the kind's own address.
+    pub base_url: String,
+    /// The model; empty for the kind's usual one.
+    pub model: String,
+    /// The name its API key is kept under in the keychain; `None` when it has no key. Never the key itself.
+    pub key_ref: Option<String>,
 }
 
 /// The assistants and their providers.

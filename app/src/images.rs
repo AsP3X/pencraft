@@ -2,6 +2,7 @@
 //!
 //! A fill's `url` is a file path, relative to the folder of the `.pen` file. Nothing is fetched from the network;
 //! a web address, a missing file or an unreadable picture leaves the fill on its grey placeholder.
+//! Pictures an image service made are files like any other by the time they get here ([`crate::imagery`]).
 
 use std::cell::RefCell;
 use std::collections::HashMap;

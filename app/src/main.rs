@@ -1,6 +1,6 @@
 //! Pencraft: a canvas design editor for `.pen` files, written in Rust as a Craft app.
 //!
-//! `pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--activity] [--update-prompt] [--export FILE]]`
+//! `pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--export FILE]]`
 //! `pencraft [--background] [--private] [--no-update-check] [--assistant ID] [--ask MESSAGE] [FILE.pen]...` opens the window behind what the user is doing.
 //! `pencraft mcp` connects an AI client to the running app (Model Context Protocol over standard input and output).
 
@@ -27,6 +27,7 @@ mod fonts;
 mod glass_check;
 mod gpu;
 mod icons;
+mod imagery;
 mod images;
 mod keys;
 mod link;
@@ -62,7 +63,7 @@ const MIN_WINDOW_SIZE: [f32; 2] = [560.0, 400.0];
 
 /// How many samples a pixel the window is drawn with (multisample anti-aliasing).
 const SAMPLES: u16 = 4;
-const USAGE: &str = "usage: pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--activity] [--update-prompt] [--export FILE]]\n       pencraft [--background] [--private] [--no-update-check] [--assistant ID] [--ask MESSAGE] [FILE.pen]...\n       pencraft mcp
+const USAGE: &str = "usage: pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--export FILE]]\n       pencraft [--background] [--private] [--no-update-check] [--assistant ID] [--ask MESSAGE] [FILE.pen]...\n       pencraft mcp
        pencraft skills [show NAME [FILE] | install [--project DIR | --dir DIR]]";
 
 fn main() -> ExitCode {
@@ -157,6 +158,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<app::Launch, String>
         settings: None,
         select: None,
         actions: false,
+        generate_image: false,
         export: None,
         background: false,
         activity: false,
@@ -178,8 +180,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<app::Launch, String>
             }
             "--dark" => launch.dark = true,
             "--sidebar" => launch.sidebar = Some(args.next().ok_or("--sidebar needs a view: history, chat, layers or hidden")?),
-            "--settings" => launch.settings = Some(args.next().ok_or("--settings needs a page: general, agents or provider")?),
+            "--settings" => launch.settings = Some(args.next().ok_or("--settings needs a page: general, agents, provider, images or image-service")?),
             "--actions" => launch.actions = true,
+            "--generate-image" => launch.generate_image = true,
             "--background" => launch.background = true,
             "--activity" => launch.activity = true,
             "--points" => launch.points = true,

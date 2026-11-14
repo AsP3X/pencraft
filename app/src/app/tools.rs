@@ -17,7 +17,10 @@ use crate::editor::Editor;
 use crate::link::Call;
 
 /// How long a change waits for the user to finish a drag on the canvas before the model is told to try again.
-const BUSY_PATIENCE: Duration = Duration::from_secs(10);
+/// A finished picture waits as long to be put on its layer (`App::finish_pictures`).
+pub(super) const BUSY_PATIENCE: Duration = Duration::from_secs(10);
+/// What `get_state` says when the assistant may not make pictures.
+const SERVICES_OFF: &str = "Generating pictures is turned off for AI models in Pencraft's settings.";
 /// The longest side of a picture given to a model, pixels: larger ones are drawn at a smaller scale.
 const MOST_PICTURE_SIDE: f32 = 2000.0;
 /// How many parts of a design the reviewer is shown enlarged, and the fewest layers such a part holds.
@@ -75,6 +78,17 @@ fn full_path(args: &Value, key: &str) -> Result<Option<PathBuf>, String> {
     if path.is_absolute() { Ok(Some(path)) } else { Err(format!("`{key}` must be a full path, starting at the root: \"{text}\" isn't.")) }
 }
 
+/// Puts what `get_state` says about image services into `state`: the `listed` ones, or, when the assistant may
+/// not make pictures (`assistant` is off), none and why.
+fn tell_services(state: &mut Value, assistant: bool, listed: Value) {
+    if assistant {
+        state["imageServices"] = listed;
+    } else {
+        state["imageServices"] = json!([]);
+        state["imageServicesNote"] = json!(SERVICES_OFF);
+    }
+}
+
 /// Asks for the face of every text layer written out in `value` (a tool call's arguments).
 fn want_faces(value: &Value) {
     match value {
@@ -99,6 +113,7 @@ impl App {
     // a document that changed under it); everything else is answered at once.
     // Agent: MAIN-THREAD; runs from `logic`, so also while the window is hidden or behind others.
     pub(super) fn serve_tools(&mut self, ctx: &egui::Context) {
+        self.finish_pictures(ctx);
         let mut calls = std::mem::take(&mut self.waiting);
         calls.extend(self.tool_calls.try_iter().map(|call| (call, Instant::now())));
         if calls.is_empty() {
@@ -111,6 +126,11 @@ impl App {
         }
         self.settle_fonts(ctx);
         for (call, since) in calls {
+            // Human: a picture takes up to a minute; its call is kept and answered when the picture is there.
+            if call.tool == "generate_image" && self.prefs.get().agents.tools {
+                self.start_picture(call, ctx);
+                continue;
+            }
             let result = if !self.prefs.get().agents.tools {
                 Err("AI tools are turned off in Pencraft's settings (Agents: \"Let AI models work on documents\").".to_owned())
             } else if self.canvas.dragging() && CHANGING.contains(&call.tool.as_str()) {
@@ -171,7 +191,7 @@ impl App {
     }
 
     /// The tab a call is about: the one its `document` names (by path, file name or title), or its own.
-    fn document(&self, call: &Call) -> Result<usize, String> {
+    pub(super) fn document(&self, call: &Call) -> Result<usize, String> {
         let args = &call.arguments;
         if let Some(wanted) = args.get("document").and_then(Value::as_str).filter(|name| !name.is_empty()) {
             let path = Path::new(wanted);
@@ -268,11 +288,21 @@ impl App {
         Ok(text(&read))
     }
 
+    /// `edit_layers`: the change a call asks for, in the document it is about.
+    fn edit_tool(&mut self, call: &Call, ctx: &egui::Context) -> Result<Vec<Value>, String> {
+        let tab = self.document(call)?;
+        self.edit_in(tab, call, ctx)
+    }
+
+    /// The change an `edit_layers` call asks for, in the document at `tab`.
     // Human: one call is one undo step, made only when the call worked. Every layer it touched flashes, and the
     // model's cursor goes to them.
-    fn edit_tool(&mut self, call: &Call, ctx: &egui::Context) -> Result<Vec<Value>, String> {
+    // Agent: a finished picture is put on its layer through this with the tab found by its document's id
+    // (`App::fill_picture`), so two documents of the same name can't be mistaken for each other.
+    pub(super) fn edit_in(&mut self, tab: usize, call: &Call, ctx: &egui::Context) -> Result<Vec<Value>, String> {
         let args = &call.arguments;
-        let (tab, _, label) = self.laid_out(call, ctx)?;
+        let label = self.cursor_label(&call.client);
+        self.tabs.get_mut(tab).ok_or("The document was closed.")?.refresh(&text_measure(ctx));
         let editing = self.canvas.editing.clone();
         let view = self.canvas_view;
         let editor = self.tabs.get_mut(tab).ok_or("The document was closed.")?;
@@ -486,6 +516,31 @@ impl App {
                 json!({ "name": editor.title(), "file": editor.path.as_ref().map(|p| p.display().to_string()), "inFront": Some(tab) == front, "unsavedChanges": editor.dirty })
             })
             .collect();
-        json!({ "documents": documents, "front": front.and_then(|tab| self.tabs.get(tab)).map(agent::state) })
+        let (ready, default) = self.image_services();
+        let mut state = json!({
+            "documents": documents,
+            "front": front.and_then(|tab| self.tabs.get(tab)).map(agent::state),
+        });
+        tell_services(&mut state, self.prefs.get().images.assistant, crate::imagery::listed(&ready, &default));
+        state
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn get_state_lists_no_image_service_when_the_assistant_may_not_make_pictures() {
+        let listed = json!([{ "name": "Studio" }]);
+        let mut on = json!({ "documents": [] });
+        tell_services(&mut on, true, listed.clone());
+        assert_eq!(on, json!({ "documents": [], "imageServices": listed }));
+        let mut off = json!({ "documents": [] });
+        tell_services(&mut off, false, listed);
+        assert_eq!(off, json!({ "documents": [], "imageServices": [], "imageServicesNote": SERVICES_OFF }));
+        assert_eq!(SERVICES_OFF, "Generating pictures is turned off for AI models in Pencraft's settings.");
     }
 }

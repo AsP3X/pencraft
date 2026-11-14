@@ -90,6 +90,36 @@ A client that speaks MCP over HTTP can skip `pencraft mcp`: the address and the 
 | `open_document` | Opens a `.pen` file, or starts an empty document |
 | `save_document` | Saves the document, or saves it under a new path |
 | `export_layers` | Writes layers to a PNG, JPEG, WebP, PDF or SVG file |
+| `generate_image` | Has an image model make a picture from a description and gives back the file to use in an image fill, or puts it on a layer. Needs an image service (see Pictures) |
+
+## Pictures
+
+Pencraft can have an image model make a picture: File → Generate Image… (also in the action search), or ask
+the assistant ("put a photo of a red fox on this card"). It needs an image service: add one with its API key in
+Settings → Images (Google Gemini, OpenAI Images, or another service that speaks the OpenAI Images API), or start
+Pencraft with `GEMINI_API_KEY` or `OPENAI_API_KEY` set. The model and the address can be changed there. A
+service saved without a key is not used; asking for it by name says it has no key yet.
+
+A Gemini key must belong to a project with billing set up in Google AI Studio: the free tier makes no
+pictures, and a Google AI Pro subscription does not count for the API. Gemini's usual model here
+(`gemini-3.1-flash-lite-image`) makes the normal size only; for large pictures set the model to
+`gemini-3.1-flash-image` in Settings → Images.
+
+A picture is saved as a file in an `images` folder beside the document, with a line in `images/credits.json`
+saying which service and model made it from which description. A document that has no file yet keeps its
+pictures in `~/.pencraft/images` until then. If `credits.json` can't be read (it is not valid JSON), the picture
+is not saved and the message says so; fix or remove the file and ask again. Pencraft never replaces it.
+
+A picture can take a minute or two. After 100 seconds Pencraft gives up and keeps nothing; the service may still
+have charged for it. A picture is also not kept when you cancel the dialog or stop the chat that asked for it.
+At most 3 pictures are made at once for assistants; a fourth is turned away until one is done.
+
+When the assistant asks for a picture to go on a layer and you are dragging something on the canvas, the
+picture waits up to 10 seconds for you to let go. If you are still dragging, the layer is left as it is and the
+assistant is told to place the picture itself.
+
+`get_state` lists the services an assistant can use under `imageServices`. It is empty, with a note, when
+"Let the assistant generate pictures" is off.
 
 ## Skills
 
@@ -126,3 +156,7 @@ The skill still needs Pencraft's tools to do anything: connect the client as des
 The server listens on this computer only, serves only callers that show the secret from `~/.pencraft/agent.json`
 (readable by you alone), and refuses requests from web pages. Turn it off in Settings → Agents →
 "Let AI models work on documents".
+
+Making a picture sends its description, and nothing else of the document, to the image service you chose, and
+is paid for on your key. Settings → Images → "Let the assistant generate pictures" stops AI models from doing
+it; the Generate Image dialog still works.

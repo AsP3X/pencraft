@@ -13,19 +13,21 @@ use egui::{Align, Align2, Color32, FontId, Layout, Margin, Rect, Response, RichT
 use crate::icons;
 use craft_ai_core::SecretString;
 
-use crate::prefs::{CustomProvider, Prefs, ProviderModel};
+use crate::prefs::{CustomProvider, ImageService, Images, Prefs, ProviderModel};
 use crate::secrets::{self, Keychain, Vault};
 use crate::sidebar::icon_button;
 use crate::theme::{
-    self, CHECKING, CHIP_RADIUS, CONNECTED, FIELD_HEIGHT, ICON_SIZE, PROVIDER_CARD, PROVIDER_RADIUS, PROVIDER_TILE, Palette, SETTINGS_CONTROL,
-    SETTINGS_MARGIN, SETTINGS_MAX, SETTINGS_NAV_ROW, SETTINGS_NAV_WIDTH, SETTINGS_RADIUS, SETTINGS_ROW, SETTINGS_SECTION_SIZE, SETTINGS_TALL_ROW,
-    SETTINGS_TITLE_SIZE, SIDEBAR_TEXT_SIZE, SWITCH_SIZE,
+    self, CHECKING, CHIP_RADIUS, CONNECTED, DIALOG_BACKDROP, FIELD_HEIGHT, ICON_SIZE, PROVIDER_CARD, PROVIDER_RADIUS, PROVIDER_TILE, Palette,
+    SETTINGS_CONTROL, SETTINGS_MARGIN, SETTINGS_MAX, SETTINGS_NAV_ROW, SETTINGS_NAV_WIDTH, SETTINGS_RADIUS, SETTINGS_ROW, SETTINGS_SECTION_SIZE,
+    SETTINGS_TALL_ROW, SETTINGS_TITLE_SIZE, SIDEBAR_TEXT_SIZE, SWITCH_SIZE,
 };
 
 /// Said when a provider is chosen: nothing can be connected in this version.
 const NOT_YET: &str = "Providers can't be connected yet.";
 /// The kinds of API a custom provider can speak.
 const API_TYPES: [&str; 3] = ["OpenAI Completions", "OpenAI Responses", "Anthropic Messages"];
+/// What the Images page's default service choice shows when no service is named: the first that works.
+const ANY_SERVICE: &str = "First that works";
 /// Token counts a new model row starts with (the design's example values).
 const DEFAULT_TOKENS: &str = "512000";
 
@@ -58,6 +60,8 @@ pub enum Page {
     General,
     /// Assistant providers.
     Agents,
+    /// Image model services.
+    Images,
     /// Names of assistants.
     AgentNames,
     /// The chat.
@@ -67,9 +71,10 @@ pub enum Page {
 }
 
 /// The pages in the order of the list: page, icon, name.
-const PAGES: [(Page, &str, &str); 5] = [
+const PAGES: [(Page, &str, &str); 6] = [
     (Page::General, "settings", "General"),
     (Page::Agents, "sparkle", "Agents"),
+    (Page::Images, "image", "Images"),
     (Page::AgentNames, "tag", "Agent names"),
     (Page::Chat, "message-square", "Chat"),
     (Page::Mcp, "terminal", "MCP"),
@@ -163,6 +168,91 @@ impl Form {
     }
 }
 
+/// The image service form.
+#[derive(Clone, PartialEq, Eq)]
+struct ImageForm {
+    /// The saved service being changed; `None` for a new one.
+    index: Option<usize>,
+    name: String,
+    kind: String,
+    base_url: String,
+    model: String,
+    /// A newly typed key; it goes to the keychain when the form is saved, never to the settings.
+    key: String,
+    /// The name the service's saved key has in the keychain, if it has one.
+    key_ref: Option<String>,
+    /// The saved key is to be removed when the form is saved.
+    forget_key: bool,
+}
+
+// Human: written out so a typed key never reaches a log or a test's message: it shows as "…".
+impl std::fmt::Debug for ImageForm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ImageForm")
+            .field("index", &self.index)
+            .field("name", &self.name)
+            .field("kind", &self.kind)
+            .field("base_url", &self.base_url)
+            .field("model", &self.model)
+            .field("key", &if self.key.is_empty() { "" } else { "…" })
+            .field("key_ref", &self.key_ref)
+            .field("forget_key", &self.forget_key)
+            .finish()
+    }
+}
+
+impl ImageForm {
+    fn new() -> ImageForm {
+        ImageForm {
+            index: None,
+            name: String::new(),
+            kind: crate::imagery::Kind::ALL[0].name().to_owned(),
+            base_url: String::new(),
+            model: String::new(),
+            key: String::new(),
+            key_ref: None,
+            forget_key: false,
+        }
+    }
+
+    fn of(index: usize, service: &ImageService) -> ImageForm {
+        ImageForm {
+            index: Some(index),
+            name: service.name.clone(),
+            kind: service.kind.clone(),
+            base_url: service.base_url.clone(),
+            model: service.model.clone(),
+            key_ref: service.key_ref.clone(),
+            ..ImageForm::new()
+        }
+    }
+
+    /// Whether the saved key would go to another service than it was saved for: the saved service's kind or
+    /// address was changed and no new key was typed (nor the saved one forgotten).
+    fn key_moves(&self, images: &Images) -> bool {
+        let Some(saved) = self.index.and_then(|index| images.services.get(index)) else { return false };
+        saved.key_ref.is_some()
+            && !self.forget_key
+            && self.key.trim().is_empty()
+            && (saved.kind != self.kind || saved.base_url.trim() != self.base_url.trim())
+    }
+
+    /// The service the form describes, when it has a kind Pencraft knows and a name no other saved service has.
+    fn service(&self, images: &Images) -> Option<ImageService> {
+        let name = self.name.trim();
+        // Human: names are compared without regard to case, as the generate_image tool picks a service by name.
+        let taken = images.services.iter().enumerate().any(|(index, other)| Some(index) != self.index && other.name.eq_ignore_ascii_case(name));
+        let known = crate::imagery::Kind::named(&self.kind).is_some();
+        (!name.is_empty() && !taken && known).then(|| ImageService {
+            name: name.to_owned(),
+            kind: self.kind.clone(),
+            base_url: self.base_url.trim().to_owned(),
+            model: self.model.trim().to_owned(),
+            key_ref: self.key_ref.clone(),
+        })
+    }
+}
+
 /// What a provider's card says about its connection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Link {
@@ -200,6 +290,8 @@ pub struct Settings {
     page: Page,
     /// The custom provider form, when it is open on the Agents page.
     form: Option<Form>,
+    /// The image service form, when it is open on the Images page.
+    image_form: Option<ImageForm>,
     /// The search for installed assistant programs, while it runs.
     search: Option<mpsc::Receiver<Installed>>,
     /// What the search found; `None` until it has finished.
@@ -210,17 +302,22 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { open: false, page: Page::default(), form: None, search: None, installed: None, vault: Box::new(Keychain) }
+        Settings { open: false, page: Page::default(), form: None, image_form: None, search: None, installed: None, vault: Box::new(Keychain) }
     }
 }
 
 impl Settings {
-    /// Opens the window on the page called `name` on the command line (`--settings`): `general`, `agents`, or
-    /// `provider` for the custom provider form.
+    /// Opens the window on the page called `name` on the command line (`--settings`): `general`, `agents`,
+    /// `provider` for the custom provider form, `images`, or `image-service` for the image service form.
     pub fn open_named(&mut self, name: &str) {
         self.open = true;
-        self.page = if name == "general" { Page::General } else { Page::Agents };
+        self.page = match name {
+            "general" => Page::General,
+            "images" | "image-service" => Page::Images,
+            _ => Page::Agents,
+        };
         self.form = (name == "provider").then(Form::new);
+        self.image_form = (name == "image-service").then(ImageForm::new);
         self.installed = None;
     }
 
@@ -278,6 +375,7 @@ impl Settings {
         self.open = true;
         self.page = Page::General;
         self.form = None;
+        self.image_form = None;
         self.installed = None;
     }
 
@@ -286,6 +384,9 @@ impl Settings {
     // Agent: MAIN-THREAD; WRITES prefs only; the caller saves them and follows a changed appearance.
     pub fn show(&mut self, ctx: &egui::Context, prefs: &mut Prefs, dark: bool) -> Option<String> {
         if !self.open {
+            // Human: however the window was closed (its cross, Escape, a click beside it, or the app), an image
+            // service form left open goes, and a key typed in it with it.
+            self.image_form = None;
             return None;
         }
         self.search(ctx);
@@ -300,7 +401,7 @@ impl Settings {
         let modal = egui::Modal::new(id)
             .area(egui::Modal::default_area(id).fade_in(false))
             .frame(frame)
-            .backdrop_color(Color32::from_black_alpha(140))
+            .backdrop_color(Color32::from_black_alpha(DIALOG_BACKDROP))
             .show(ctx, |ui| {
                 let (window, _) = ui.allocate_exact_size(size, Sense::hover());
                 self.pages(ui, window, palette);
@@ -311,14 +412,16 @@ impl Settings {
                 );
                 ui.scope_builder(UiBuilder::new().max_rect(page), |ui| {
                     ui.set_clip_rect(page.intersect(ui.clip_rect()));
-                    egui::ScrollArea::vertical().id_salt(("settings-page", self.page, self.form.is_some())).auto_shrink([false, false]).show(
-                        ui,
-                        |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt(("settings-page", self.page, self.form.is_some() || self.image_form.is_some()))
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
                             // Human: room on the right for the close cross and the scroll bar.
                             ui.set_max_width(page.width() - 24.0);
                             match self.page {
                                 Page::General => general(ui, prefs, palette),
                                 Page::Agents => self.agents(ui, prefs, palette, &mut notice),
+                                Page::Images => self.images(ui, prefs, palette, &mut notice),
                                 Page::AgentNames | Page::Chat | Page::Mcp => {
                                     let name = PAGES.iter().find(|(page, ..)| *page == self.page).map_or("", |(.., name)| name);
                                     title(ui, name);
@@ -327,8 +430,7 @@ impl Settings {
                                 }
                             }
                             ui.add_space(28.0);
-                        },
-                    );
+                        });
                 });
                 ui.scope_builder(UiBuilder::new().max_rect(close), |ui| {
                     if icon_button(ui, "x", close.size(), false, palette).on_hover_text("Close").clicked() {
@@ -366,6 +468,7 @@ impl Settings {
             if response.clicked() {
                 self.page = page;
                 self.form = None;
+                self.image_form = None;
             }
         }
     }
@@ -426,6 +529,58 @@ impl Settings {
             "*Not all models from each provider are supported by Pencraft, we are working on validating and adding more models as they fit.";
         ui.add(egui::Label::new(RichText::new(footnote).small().color(palette.muted.gamma_multiply(0.8))).wrap());
     }
+
+    /// The Images page: the image model services, or the form for one.
+    fn images(&mut self, ui: &mut Ui, prefs: &mut Prefs, palette: Palette, notice: &mut Option<String>) {
+        if let Some(form) = &mut self.image_form {
+            if image_form(ui, form, prefs, self.vault.as_ref(), palette, notice) {
+                self.image_form = None;
+            }
+            return;
+        }
+        title(ui, "Images");
+        ui.add_space(8.0);
+        let about =
+            "Image model services make pictures from a description. Add the ones you have an API key for; each picture is paid for on that key.";
+        ui.scope(|ui| {
+            ui.set_max_width(450.0);
+            ui.add(egui::Label::new(RichText::new(about).size(SIDEBAR_TEXT_SIZE + 0.5).color(palette.muted)).wrap());
+        });
+        section(ui, "Services");
+        ui.spacing_mut().item_spacing.y = 7.5;
+        let saved: Vec<(String, String)> = prefs.images.services.iter().map(|s| (s.name.clone(), service_about(s))).collect();
+        for (index, (name, about)) in saved.iter().enumerate() {
+            if provider_card(ui, name, about, false, None, palette).clicked()
+                && let Some(service) = prefs.images.services.get(index)
+            {
+                self.image_form = Some(ImageForm::of(index, service));
+            }
+        }
+        if provider_card(ui, "Add image service", "", false, None, palette).clicked() {
+            self.image_form = Some(ImageForm::new());
+        }
+        let ready = crate::imagery::ready(&prefs.images, &|name| std::env::var(name).ok());
+        // Human: a service from the environment has no card: it is set where Pencraft was started, not here.
+        for line in ready.iter().filter_map(environment_line) {
+            ui.label(RichText::new(line).color(palette.muted));
+        }
+        section(ui, "Use");
+        // Human: the choice offers the services that can be used now. An empty default means "the first service
+        // that works"; a saved default that can't be used now shows as that too, but stays saved until the
+        // person picks another, so a key that comes back brings it back.
+        let usable: Vec<String> = ready.into_iter().map(|r| r.name).collect();
+        let names: Vec<&str> = std::iter::once(ANY_SERVICE).chain(usable.iter().map(String::as_str)).collect();
+        let shown = shown_default(&usable, &prefs.images.default);
+        let mut chosen = shown.clone();
+        row(ui, "Default service", None, palette, |ui| choice(ui, "image-default", &mut chosen, &names, palette));
+        if chosen != shown {
+            prefs.images.default = if chosen == ANY_SERVICE { String::new() } else { chosen };
+        }
+        divider(ui, palette);
+        let cost =
+            "AI models may make pictures with the generate_image tool. Each one costs money on your key. The Generate Image dialog works either way.";
+        row(ui, "Let the assistant generate pictures", Some(cost), palette, |ui| switch(ui, &mut prefs.images.assistant, palette));
+    }
 }
 
 /// The General page.
@@ -464,10 +619,6 @@ fn general(ui: &mut Ui, prefs: &mut Prefs, palette: Palette) {
     section(ui, "Import & generation");
     let generation = &mut prefs.generation;
     row(ui, "Include HTML metadata when importing pages", None, palette, |ui| switch(ui, &mut generation.html_metadata, palette));
-    divider(ui, palette);
-    row(ui, "Default image generation provider", None, palette, |ui| {
-        choice(ui, "image-provider", &mut generation.image_provider, &["Nano Banana Lite"], palette);
-    });
     divider(ui, palette);
     row(ui, "Default SVG generation provider", None, palette, |ui| choice(ui, "svg-provider", &mut generation.svg_provider, &["Pencraft"], palette));
 
@@ -592,19 +743,120 @@ fn provider_form(ui: &mut Ui, form: &mut Form, prefs: &mut Prefs, vault: &dyn Va
     finished
 }
 
+/// The image service form. Returns `true` when it is finished: the service was saved or removed, or the user
+/// cancelled.
+fn image_form(ui: &mut Ui, form: &mut ImageForm, prefs: &mut Prefs, vault: &dyn Vault, palette: Palette, notice: &mut Option<String>) -> bool {
+    let mut finished = false;
+    title(ui, if form.index.is_some() { "Image service" } else { "Add image service" });
+    let kind = crate::imagery::Kind::named(&form.kind);
+    section(ui, "Service");
+    ui.columns(2, |columns| {
+        caption(&mut columns[0], "Name");
+        field(&mut columns[0], &mut form.name, "My image service", false, false, palette);
+        caption(&mut columns[1], "Kind");
+        let kinds: Vec<&str> = crate::imagery::Kind::ALL.iter().map(|kind| kind.name()).collect();
+        wide_choice(&mut columns[1], &mut form.kind, &kinds, palette);
+    });
+    // Human: a kind from a newer Pencraft, or typed into the settings file; the service can't be saved until
+    // one Pencraft knows is picked (`ImageForm::service`).
+    if kind.is_none() {
+        ui.add_space(2.0);
+        ui.label(RichText::new("Pencraft doesn't know this kind of service; pick one.").color(CHECKING));
+    }
+    ui.add_space(8.0);
+    caption(ui, "Model");
+    // Human: the hints show the kind's usual model and address, which an empty field stands for.
+    field(ui, &mut form.model, kind.map_or("", crate::imagery::Kind::model), true, false, palette);
+    ui.add_space(8.0);
+    caption(ui, "Address");
+    field(ui, &mut form.base_url, kind.map_or("", crate::imagery::Kind::base), true, false, palette);
+    if unprotected(&form.base_url) {
+        ui.add_space(2.0);
+        ui.label(RichText::new("This address isn't encrypted: the key and your descriptions could be read on the way.").color(CHECKING));
+    }
+    ui.add_space(2.0);
+    ui.label(
+        RichText::new("Leave model and address empty for the usual ones. \"OpenAI Images\" also fits other services that speak the same API.")
+            .color(palette.muted),
+    );
+    section(ui, "API key");
+    let saved = form.key_ref.is_some() && !form.forget_key;
+    field(ui, &mut form.key, if saved { "Saved - type a new key to replace it" } else { "Needed to make pictures" }, true, true, palette);
+    ui.add_space(2.0);
+    key_help(ui, "The key is kept in your system's keychain.", saved && form.key.is_empty(), &mut form.forget_key, palette);
+    if form.key_moves(&prefs.images) {
+        ui.add_space(2.0);
+        ui.label(RichText::new("The saved key will be sent to the new address.").color(CHECKING));
+    }
+    ui.add_space(16.0);
+    let service = form.service(&prefs.images);
+    ui.horizontal(|ui| {
+        let label = if form.index.is_some() { "Save service" } else { "Add service" };
+        let save = egui::Button::new(RichText::new(label).color(palette.primary_text))
+            .fill(palette.primary)
+            .corner_radius(CHIP_RADIUS)
+            .min_size(vec2(92.0, FIELD_HEIGHT));
+        if ui.add_enabled(service.is_some(), save).clicked()
+            && let Some(service) = service
+        {
+            match save_image_service(form, service, prefs, vault) {
+                Ok(()) => finished = true,
+                Err(why) => *notice = Some(why),
+            }
+        }
+        if let Some(index) = form.index
+            && ui.add(egui::Button::new("Remove").corner_radius(CHIP_RADIUS).min_size(vec2(72.0, FIELD_HEIGHT))).clicked()
+        {
+            match remove_image_service(index, prefs, vault) {
+                Ok(()) => finished = true,
+                Err(why) => *notice = Some(why),
+            }
+        }
+        if ui.add(egui::Button::new("Cancel").corner_radius(CHIP_RADIUS).min_size(vec2(72.0, FIELD_HEIGHT))).clicked() {
+            finished = true;
+        }
+    });
+    finished
+}
+
 /// The API key field with what it says about a key that is already saved.
 fn key_field(ui: &mut Ui, form: &mut Form, palette: Palette) {
     caption(ui, "API key");
     let saved = form.key_ref.is_some() && !form.forget_key;
     field(ui, &mut form.key, if saved { "Saved - type a new key to replace it" } else { "Optional" }, true, true, palette);
     ui.add_space(2.0);
+    let help = "Leave blank if your endpoint doesn't require a key. The key is kept in your system's keychain.";
+    key_help(ui, help, saved && form.key.is_empty(), &mut form.forget_key, palette);
+}
+
+/// What a form says under its key field, and its "Forget saved key" button when `forgettable` (a key is saved
+/// and none is typed); the button sets `forget`.
+fn key_help(ui: &mut Ui, help: &str, forgettable: bool, forget: &mut bool, palette: Palette) {
     ui.horizontal(|ui| {
-        let help = "Leave blank if your endpoint doesn't require a key. The key is kept in your system's keychain.";
         ui.label(RichText::new(help).color(palette.muted));
-        if saved && form.key.is_empty() && ui.small_button("Forget saved key").clicked() {
-            form.forget_key = true;
+        if forgettable && ui.small_button("Forget saved key").clicked() {
+            *forget = true;
         }
     });
+}
+
+/// The keychain name a form's key has once it is saved, `key_ref` being the one it had: a newly `typed` key
+/// is put under it (or under a new name); `forget` removes the saved key; otherwise the saved key stays.
+///
+/// # Errors
+/// A sentence for the user when the keychain refused.
+fn kept_key(typed: &str, forget: bool, key_ref: Option<String>, vault: &dyn Vault) -> Result<Option<String>, String> {
+    let typed = typed.trim();
+    if !typed.is_empty() {
+        let name = key_ref.unwrap_or_else(secrets::new_name);
+        vault.put(&name, &SecretString::new(typed)).map_err(|e| format!("The key couldn't be saved in the keychain: {e}"))?;
+        Ok(Some(name))
+    } else if forget && let Some(name) = key_ref {
+        vault.forget(&name).map_err(|e| format!("The key couldn't be removed from the keychain: {e}"))?;
+        Ok(None)
+    } else {
+        Ok(key_ref)
+    }
 }
 
 /// Saves the form's `provider` in the settings and its key in the keychain.
@@ -616,16 +868,7 @@ fn key_field(ui: &mut Ui, form: &mut Form, palette: Palette) {
 // Agent: WRITES the keychain first, the settings only after that worked, so the settings never name a key
 // that isn't there.
 fn save_provider(form: &mut Form, mut provider: CustomProvider, prefs: &mut Prefs, vault: &dyn Vault) -> Result<(), String> {
-    let typed = form.key.trim();
-    if !typed.is_empty() {
-        let name = provider.key_ref.clone().unwrap_or_else(secrets::new_name);
-        vault.put(&name, &SecretString::new(typed)).map_err(|e| format!("The key couldn't be saved in the keychain: {e}"))?;
-        provider.key_ref = Some(name);
-    } else if form.forget_key
-        && let Some(name) = provider.key_ref.take()
-    {
-        vault.forget(&name).map_err(|e| format!("The key couldn't be removed from the keychain: {e}"))?;
-    }
+    provider.key_ref = kept_key(&form.key, form.forget_key, provider.key_ref.take(), vault)?;
     form.key.clear();
     match form.index.and_then(|index| prefs.agents.providers.get_mut(index)) {
         Some(saved) => *saved = provider,
@@ -645,6 +888,69 @@ fn remove_provider(index: usize, prefs: &mut Prefs, vault: &dyn Vault) -> Result
     }
     prefs.agents.providers.remove(index);
     Ok(())
+}
+
+/// Saves the form's `service` in the settings and its key in the keychain.
+///
+/// A newly typed key replaces the saved one; "Forget saved key" removes it; otherwise the saved key stays.
+///
+/// # Errors
+/// A sentence for the user when the keychain refused; the settings are then left as they were.
+// Agent: WRITES the keychain first, the settings only after that worked, so the settings never name a key
+// that isn't there.
+fn save_image_service(form: &mut ImageForm, mut service: ImageService, prefs: &mut Prefs, vault: &dyn Vault) -> Result<(), String> {
+    service.key_ref = kept_key(&form.key, form.forget_key, service.key_ref.take(), vault)?;
+    form.key.clear();
+    match form.index.and_then(|index| prefs.images.services.get_mut(index)) {
+        Some(saved) => {
+            // Human: the default follows a service that was renamed.
+            if prefs.images.default == saved.name {
+                prefs.images.default.clone_from(&service.name);
+            }
+            *saved = service;
+        }
+        None => prefs.images.services.push(service),
+    }
+    Ok(())
+}
+
+/// Removes the saved image service at `index` and its key.
+///
+/// # Errors
+/// A sentence for the user when the keychain refused; the service then stays.
+fn remove_image_service(index: usize, prefs: &mut Prefs, vault: &dyn Vault) -> Result<(), String> {
+    let Some(service) = prefs.images.services.get(index) else { return Ok(()) };
+    if let Some(name) = &service.key_ref {
+        vault.forget(name).map_err(|e| format!("The key couldn't be removed from the keychain: {e}"))?;
+    }
+    if prefs.images.default == service.name {
+        prefs.images.default.clear();
+    }
+    prefs.images.services.remove(index);
+    Ok(())
+}
+
+/// What a saved image service's card says under its name: its kind, its model, and when it has no key yet.
+// Human: parts that are empty (the model of a kind Pencraft doesn't know) are left out with their dot.
+fn service_about(service: &ImageService) -> String {
+    let kind = crate::imagery::Kind::named(&service.kind);
+    let model = if service.model.trim().is_empty() { kind.map_or("", crate::imagery::Kind::model) } else { service.model.trim() };
+    let key = if service.key_ref.is_some() { "" } else { "no key yet" };
+    [service.kind.trim(), model, key].into_iter().filter(|part| !part.is_empty()).collect::<Vec<_>>().join(" · ")
+}
+
+/// The line the Images page shows for a service whose key comes from the environment, if `ready` is one.
+fn environment_line(ready: &crate::imagery::Ready) -> Option<String> {
+    match ready.key {
+        crate::imagery::KeyFrom::Environment(variable) => Some(format!("{}: from the {variable} environment variable.", ready.name)),
+        crate::imagery::KeyFrom::Keychain(_) => None,
+    }
+}
+
+/// What the default service choice shows: the saved default when it is among the `usable` services (by name,
+/// whatever the case), else "First that works".
+fn shown_default(usable: &[String], saved: &str) -> String {
+    usable.iter().find(|name| !saved.trim().is_empty() && name.eq_ignore_ascii_case(saved.trim())).cloned().unwrap_or_else(|| ANY_SERVICE.to_owned())
 }
 
 /// Whether `address` would send the key without encryption: plain `http` to anything but this computer.
@@ -723,7 +1029,7 @@ fn section(ui: &mut Ui, text: &str) {
 }
 
 /// The small name over a form field.
-fn caption(ui: &mut Ui, text: &str) {
+pub(crate) fn caption(ui: &mut Ui, text: &str) {
     ui.add(egui::Label::new(RichText::new(text).size(SIDEBAR_TEXT_SIZE)).selectable(false));
     ui.add_space(2.0);
 }
@@ -735,7 +1041,7 @@ fn divider(ui: &mut Ui, palette: Palette) {
 }
 
 /// A settings row: its name (and a second, quieter line) on the left, its control on the right.
-fn row(ui: &mut Ui, name: &str, more: Option<&str>, palette: Palette, control: impl FnOnce(&mut Ui)) {
+pub(crate) fn row(ui: &mut Ui, name: &str, more: Option<&str>, palette: Palette, control: impl FnOnce(&mut Ui)) {
     ui.spacing_mut().item_spacing.y = 0.0;
     let height = if more.is_some() { SETTINGS_TALL_ROW } else { SETTINGS_ROW };
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::hover());
@@ -751,7 +1057,7 @@ fn row(ui: &mut Ui, name: &str, more: Option<&str>, palette: Palette, control: i
 }
 
 /// An on/off switch.
-fn switch(ui: &mut Ui, on: &mut bool, palette: Palette) {
+pub(crate) fn switch(ui: &mut Ui, on: &mut bool, palette: Palette) {
     let (rect, response) = ui.allocate_exact_size(Vec2::from(SWITCH_SIZE), Sense::click());
     if response.clicked() {
         *on = !*on;
@@ -802,7 +1108,8 @@ fn wide_choice(ui: &mut Ui, value: &mut String, options: &[&str], palette: Palet
     choice_at(ui, rect, "wide", value, options, FontId::proportional(SIDEBAR_TEXT_SIZE), palette);
 }
 
-fn choice_at(ui: &mut Ui, rect: Rect, salt: &str, value: &mut String, options: &[&str], font: FontId, palette: Palette) {
+/// A choice drawn in `rect`, showing `value`; a click offers `options`. `salt` tells it apart from others.
+pub(crate) fn choice_at(ui: &mut Ui, rect: Rect, salt: &str, value: &mut String, options: &[&str], font: FontId, palette: Palette) {
     let response = ui.interact(rect, ui.scope_id().with(("choice", salt)), Sense::click());
     if response.hovered() {
         ui.painter().rect_filled(rect, CHIP_RADIUS, palette.hover.gamma_multiply(0.4));
@@ -1014,6 +1321,147 @@ mod tests {
         assert!(why.contains("keychain") && !why.contains("secret"));
         assert_eq!(prefs.agents.providers.len(), 0);
         assert_eq!(form.key, "secret");
+    }
+
+    #[test]
+    fn an_image_service_form_needs_a_name_no_other_service_has() {
+        let mut prefs = Prefs::default();
+        let mut form = ImageForm::new();
+        assert_eq!(form.service(&prefs.images), None);
+        form.name = " Studio ".to_owned();
+        let service = form.service(&prefs.images).unwrap();
+        assert_eq!(
+            (service.name.as_str(), service.kind.as_str(), service.base_url.as_str(), service.model.as_str()),
+            ("Studio", "Google Gemini", "", "")
+        );
+        prefs.images.services.push(service);
+        assert_eq!(form.service(&prefs.images), None, "a second service of the same name");
+        let again = ImageForm::of(0, &prefs.images.services[0]);
+        assert!(again.service(&prefs.images).is_some(), "the service being changed may keep its name");
+    }
+
+    #[test]
+    fn an_image_services_key_goes_to_the_vault_and_leaves_with_the_service() {
+        let vault = Memory::default();
+        let mut prefs = Prefs::default();
+        let mut form = ImageForm::new();
+        form.name = "Studio".to_owned();
+        form.key = "secret".to_owned();
+        let service = form.service(&prefs.images).unwrap();
+        save_image_service(&mut form, service, &mut prefs, &vault).unwrap();
+        let name = prefs.images.services[0].key_ref.clone().unwrap();
+        assert_eq!(vault.kept.borrow().get(&name).map(String::as_str), Some("secret"));
+        assert!(!serde_json::to_string(&prefs).unwrap().contains("secret"));
+        assert_eq!(form.key, "");
+        prefs.images.default = "Studio".to_owned();
+        remove_image_service(0, &mut prefs, &vault).unwrap();
+        assert!(prefs.images.services.is_empty() && prefs.images.default.is_empty());
+        assert!(!vault.kept.borrow().contains_key(&name));
+    }
+
+    /// A saved image service called `name` of the kind `kind` whose key is kept as `key_ref`.
+    fn service(name: &str, kind: &str, key_ref: Option<&str>) -> ImageService {
+        ImageService {
+            name: name.to_owned(),
+            kind: kind.to_owned(),
+            base_url: String::new(),
+            model: String::new(),
+            key_ref: key_ref.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn an_image_services_saved_key_can_be_forgotten_and_the_service_stays() {
+        let vault = Memory::default();
+        let mut prefs = Prefs::default();
+        let mut form = ImageForm::new();
+        form.name = "Studio".to_owned();
+        form.key = "secret".to_owned();
+        let service = form.service(&prefs.images).unwrap();
+        save_image_service(&mut form, service, &mut prefs, &vault).unwrap();
+        let mut form = ImageForm::of(0, &prefs.images.services[0]);
+        form.forget_key = true;
+        let service = form.service(&prefs.images).unwrap();
+        save_image_service(&mut form, service, &mut prefs, &vault).unwrap();
+        assert!(vault.kept.borrow().is_empty());
+        assert_eq!(prefs.images.services.len(), 1);
+        assert_eq!((prefs.images.services[0].name.as_str(), prefs.images.services[0].key_ref.as_ref()), ("Studio", None));
+    }
+
+    #[test]
+    fn a_saved_key_is_said_to_go_elsewhere_only_when_kind_or_address_changed_without_a_new_key() {
+        let mut images = Images::default();
+        images.services.push(service("Studio", "Google Gemini", Some("k")));
+        let form = ImageForm::of(0, &images.services[0]);
+        assert!(!form.key_moves(&images));
+        let moved = ImageForm { base_url: "https://elsewhere.example/v1".to_owned(), ..form.clone() };
+        assert!(moved.key_moves(&images));
+        assert!(ImageForm { kind: "OpenAI Images".to_owned(), ..form.clone() }.key_moves(&images));
+        assert!(!ImageForm { base_url: "  ".to_owned(), ..form.clone() }.key_moves(&images), "spaces are no address");
+        assert!(!ImageForm { key: "new".to_owned(), ..moved.clone() }.key_moves(&images), "a new key goes there instead");
+        assert!(!ImageForm { forget_key: true, ..moved.clone() }.key_moves(&images), "no key goes there");
+        // A new service, or a saved one without a key, has no saved key to send.
+        assert!(!ImageForm { index: None, ..moved.clone() }.key_moves(&images));
+        images.services[0].key_ref = None;
+        assert!(!moved.key_moves(&images));
+    }
+
+    #[test]
+    fn a_service_of_a_kind_pencraft_doesnt_know_can_be_saved_once_a_known_kind_is_picked() {
+        let mut images = Images::default();
+        images.services.push(service("Odd", "Something else", Some("k")));
+        let mut form = ImageForm::of(0, &images.services[0]);
+        assert_eq!(form.service(&images), None);
+        "OpenAI Images".clone_into(&mut form.kind);
+        assert!(form.service(&images).is_some());
+        // Its card has no dangling dot.
+        assert_eq!(service_about(&images.services[0]), "Something else");
+        assert_eq!(service_about(&service("Odd", "Something else", None)), "Something else · no key yet");
+        assert_eq!(
+            service_about(&service("Studio", "OpenAI Images", None)),
+            format!("OpenAI Images · {} · no key yet", crate::imagery::openai::MODEL)
+        );
+    }
+
+    #[test]
+    fn the_default_choice_shows_a_saved_default_only_while_it_can_be_used() {
+        let usable = ["Studio".to_owned(), "Gemini".to_owned()];
+        assert_eq!(shown_default(&usable, "Gemini"), "Gemini");
+        assert_eq!(shown_default(&usable, "studio"), "Studio");
+        assert_eq!(shown_default(&usable, "Gone"), ANY_SERVICE);
+        assert_eq!(shown_default(&usable, ""), ANY_SERVICE);
+        assert_eq!(shown_default(&[], "Gemini"), ANY_SERVICE);
+    }
+
+    #[test]
+    fn a_service_from_the_environment_gets_a_line_of_its_own() {
+        let mut images = Images::default();
+        images.services.push(service("Studio", "OpenAI Images", Some("k")));
+        let ready = crate::imagery::ready(&images, &|name| (name == "GEMINI_API_KEY").then(|| "g".to_owned()));
+        let lines: Vec<String> = ready.iter().filter_map(environment_line).collect();
+        assert_eq!(lines, ["Gemini: from the GEMINI_API_KEY environment variable."]);
+    }
+
+    #[test]
+    fn a_typed_key_never_shows_in_the_forms_debug_text() {
+        let mut form = ImageForm::new();
+        assert!(format!("{form:?}").contains("key: \"\""));
+        form.key = "sk-very-secret".to_owned();
+        let shown = format!("{form:?}");
+        assert!(!shown.contains("sk-very-secret") && shown.contains("key: \"…\""), "{shown}");
+    }
+
+    #[test]
+    fn closing_the_window_drops_an_open_image_form_and_its_key() {
+        let mut settings = Settings { vault: Box::new(Memory::default()), ..Settings::default() };
+        settings.open_named("image-service");
+        if let Some(form) = &mut settings.image_form {
+            form.key = "secret".to_owned();
+        }
+        settings.open = false;
+        let ctx = egui::Context::default();
+        assert_eq!(settings.show(&ctx, &mut Prefs::default(), false), None);
+        assert!(settings.image_form.is_none());
     }
 
     #[test]

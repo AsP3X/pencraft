@@ -4,7 +4,8 @@
 //! settings file holds only a key's name in the keychain (`CustomProvider::key_ref`). Keys travel through the
 //! app as [`SecretString`], which can't be printed or saved by accident.
 //!
-//! A key is read back only by the chat, when it calls the provider the key belongs to.
+//! A key is read back only by the chat and by the maker of pictures ([`crate::imagery`]), when they call the
+//! provider the key belongs to.
 
 use craft_ai_core::SecretString;
 

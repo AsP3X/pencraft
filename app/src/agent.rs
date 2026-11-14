@@ -103,6 +103,18 @@ entry with `children` gives a frame inside the component content of its own (thi
 A layer inside an instance is addressed as `instanceId/layerId` in `read_layers` and in an `update`.
 Look for existing components before building the same thing twice.
 
+## Pictures
+A photograph or an illustration is a file shown by an image fill (see "Fill and stroke"). When the user asks
+for one, or a design plainly needs one (a hero, a product shot, a portrait), `generate_image` makes it:
+describe subject, setting, light, framing and style; pick the `aspect` nearest the layer; give `layer` to put
+it straight onto a rectangle, ellipse or frame, or use the `url` it answers with in a fill. Each picture costs
+the user money and up to a minute: one per need, and look at it before asking for another. Ask the user
+before making several pictures of the same kind (a grid of people, a product list). `get_state` lists the
+services under `imageServices`; with none, say so and go on without a picture (a plain fill, not a stand-in
+drawn to look like a photo). When it fails, tell the user why and go on without the picture; call it again
+only when the fix is in your own arguments: a refusal, a limit or a time-out is not fixed by asking again, and
+a time-out may already have cost money. Interface, text, icons and logos are never generated: draw them.
+
 ## Working well
 - Read before you write: `get_state`, then `read_layers` on the frame you will work in.
 - Make one `edit_layers` call per meaningful step, with a `description`; a call is one undo step, and if one
@@ -124,6 +136,7 @@ Look for existing components before building the same thing twice.
 
 /// The tools, as a tools list gives them: name, what it is for, and the JSON schema of what it takes.
 #[must_use]
+#[expect(clippy::too_many_lines, reason = "one list of the tools, each with its schema")]
 pub fn tools() -> Value {
     let document =
         json!({ "type": "string", "description": "The document to work on: its file path or its tab's name. Leave out for the document in front." });
@@ -217,6 +230,19 @@ pub fn tools() -> Value {
                 "ids": ids("The layers to export."),
                 "path": { "type": "string", "description": "The file to write, with its ending (.png, .jpg, .webp, .pdf, .svg)." },
                 "scale": { "type": "integer", "minimum": 1, "maximum": 3, "description": "Pixels per unit for PNG, JPEG and WebP (default 1)." }
+            } }
+        },
+        {
+            "name": "generate_image",
+            "description": "Have an image model make a picture from a description: a photograph or an illustration a design needs (a hero, a product shot). Answers with the picture and the `url` to put in an image fill, or gives it to `layer` as its fill. Takes up to a minute and costs the user money each time: one picture per need, and look at it before asking for another; ask the user before making several pictures of the same kind (a grid of people, a product list). When it fails, tell the user why and go on without the picture; call it again only when the fix is in your own arguments (a refusal, a limit or a time-out is not fixed by asking again, and a time-out may already have cost money). Never for interface, text, icons or logos; draw those as layers. `get_state` lists the services under `imageServices`; with none there, tell the user to add one in Settings → Images.",
+            "inputSchema": { "type": "object", "required": ["prompt"], "properties": {
+                "document": document,
+                "prompt": { "type": "string", "description": "What the picture shows: subject, setting, light, framing and style, in plain sentences." },
+                "service": { "type": "string", "description": "A service's name from `imageServices`. Leave out for the user's default." },
+                "aspect": { "type": "string", "enum": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"], "description": "Width to height (default 1:1). Pick the one nearest the layer it is for." },
+                "size": { "type": "string", "enum": ["normal", "large"], "description": "normal: about 1024 pixels on the long side (default). large: about 2048, for a picture shown big." },
+                "transparent": { "type": "boolean", "description": "A transparent background, for a thing cut out. Only services listed with `transparent: true` can." },
+                "layer": { "type": "string", "description": "A rectangle, ellipse or frame to give the picture to as its fill (one undo step). Without it nothing in the document changes." }
             } }
         }
     ])
@@ -656,7 +682,8 @@ pub fn base64(bytes: &[u8]) -> String {
     out
 }
 
-/// The bytes base64 text stands for, or `None` when it isn't base64. White space and missing `=` are fine.
+/// The bytes base64 text stands for, or `None` when it isn't base64. White space and missing `=` are fine;
+/// an `=` only closes the text.
 #[must_use]
 pub fn unbase64(text: &str) -> Option<Vec<u8>> {
     let value = |letter: u8| match letter {
@@ -667,18 +694,35 @@ pub fn unbase64(text: &str) -> Option<Vec<u8>> {
         b'/' | b'_' => Some(63),
         _ => None,
     };
-    let letters: Vec<u32> =
-        text.bytes().filter(|letter| !letter.is_ascii_whitespace() && *letter != b'=').map(value).collect::<Option<_>>()?;
-    let mut out = Vec::with_capacity(letters.len() / 4 * 3 + 2);
-    for group in letters.chunks(4) {
-        // Human: four letters carry three bytes; a last group of three carries two, of two carries one, and a
-        // single letter carries nothing whole, so it is refused.
-        if group.len() == 1 {
+    // Human: the letters are read in one pass, four at a time into three bytes, because a picture's answer can
+    // be tens of megabytes. Once an `=` is seen only more `=` (at most two in all) may follow.
+    // Agent: `group` holds up to four letters' bits; `held` says how many. White space is skipped everywhere.
+    let mut out = Vec::with_capacity(text.len() / 4 * 3 + 2);
+    let (mut group, mut held, mut letters, mut padding) = (0_u32, 0_usize, 0_usize, 0_usize);
+    for letter in text.bytes().filter(|letter| !letter.is_ascii_whitespace()) {
+        if letter == b'=' {
+            padding += 1;
+            continue;
+        }
+        if padding > 0 {
             return None;
         }
-        let bits = group.iter().fold(0_u32, |bits, letter| (bits << 6) | letter) << (6 * (4 - group.len()));
-        let bytes = bits.to_be_bytes();
-        out.extend_from_slice(&bytes[1..group.len()]);
+        group = (group << 6) | value(letter)?;
+        held += 1;
+        letters += 1;
+        if held == 4 {
+            out.extend_from_slice(&group.to_be_bytes()[1..]);
+            (group, held) = (0, 0);
+        }
+    }
+    // Human: a last group of three letters carries two bytes, of two carries one, and a single letter carries
+    // nothing whole, so it is refused; padding, when there is any, fills the last group to four exactly.
+    if held == 1 || padding > 2 || (padding > 0 && (letters + padding) % 4 != 0) {
+        return None;
+    }
+    if held > 1 {
+        let bytes = (group << (6 * (4 - held))).to_be_bytes();
+        out.extend_from_slice(&bytes[1..held]);
     }
     Some(out)
 }
@@ -720,11 +764,27 @@ mod tests {
                 "select_layers",
                 "open_document",
                 "save_document",
-                "export_layers"
+                "export_layers",
+                "generate_image"
             ]
         );
         for tool in tools.as_array().unwrap() {
             assert!(tool["description"].as_str().is_some_and(|d| d.len() > 20) && tool["inputSchema"]["type"] == "object", "{}", tool["name"]);
+        }
+    }
+
+    #[test]
+    fn the_guide_says_when_to_generate_a_picture() {
+        assert!(GUIDE.contains("## Pictures") && GUIDE.contains("generate_image") && GUIDE.contains("imageServices"));
+        // Human: a failed picture is not asked for again blindly, and a set of pictures is the user's call.
+        let generate = tools().as_array().and_then(|tools| tools.iter().find(|tool| tool["name"] == "generate_image")).cloned().unwrap();
+        let described = generate["description"].as_str().unwrap();
+        let section = GUIDE.split("## Pictures").nth(1).and_then(|rest| rest.split("\n## ").next()).unwrap();
+        for said in [section, described] {
+            assert!(said.contains("tell the user why and go on without the picture"), "{said}");
+            assert!(said.contains("a time-out may already have cost money"), "{said}");
+            assert!(said.contains("before making several pictures of the same kind"), "{said}");
+            assert!(!said.contains("avatar"), "{said}");
         }
     }
 
@@ -892,5 +952,14 @@ mod tests {
         assert_eq!(unbase64("Zm8").as_deref(), Some(&b"fo"[..]));
         assert_eq!(unbase64("Zm9v!"), None);
         assert_eq!(unbase64("Z"), None);
+        // Padding closes the text: white space may follow it, nothing else may.
+        assert_eq!(unbase64("Zg==\r\n").as_deref(), Some(&b"f"[..]));
+        assert_eq!(unbase64("Zg= =").as_deref(), Some(&b"f"[..]));
+        assert_eq!(unbase64("Zg==Zg=="), None);
+        assert_eq!(unbase64("Zg=a"), None);
+        assert_eq!(unbase64("Zg==="), None);
+        assert_eq!(unbase64("Zm9v="), None);
+        assert_eq!(unbase64("Z==="), None);
+        assert_eq!(unbase64("=="), None);
     }
 }
