@@ -49,7 +49,7 @@ struct Words {
 }
 
 /// The tools the app gives a model, as the chat names them.
-const TOOLS: [Words; 14] = [
+const TOOLS: [Words; 15] = [
     Words {
         tool: "get_state",
         icon: "eye",
@@ -87,6 +87,7 @@ const TOOLS: [Words; 14] = [
         did: "Generated a picture",
         failed: "Couldn't generate the picture",
     },
+    Words { tool: "edit_image", icon: "wand-sparkles", doing: "Editing a picture", did: "Edited a picture", failed: "Couldn't edit the picture" },
     // Human: not a tool the model calls: the app has a reviewer look at a finished design ([`super::critic`]).
     Words {
         tool: "review_design",
@@ -185,22 +186,26 @@ pub fn detail(tool: &str, input: &Value) -> String {
             changes => counted(changes, "change", "changes"),
         },
         "open_document" | "save_document" | "export_layers" => path(),
-        "generate_image" => {
-            // Human: white space (new lines too) is one space, as in the model's description of a change.
-            let prompt = input.get("prompt").and_then(Value::as_str).unwrap_or_default().split_whitespace().collect::<Vec<_>>().join(" ");
-            if prompt.chars().count() > MOST_PROMPT {
-                // Human: cut at the last whole word that fits; a word that ends just where the cut falls fits.
-                let mut letters = prompt.chars();
-                let cut: String = letters.by_ref().take(MOST_PROMPT).collect();
-                let whole = if letters.next() == Some(' ') { cut.as_str() } else { cut.rsplit_once(' ').map_or(cut.as_str(), |(whole, _)| whole) };
-                format!("“{}…”", whole.trim_end_matches(','))
-            } else if prompt.is_empty() {
-                String::new()
-            } else {
-                format!("“{prompt}”")
-            }
-        }
+        "generate_image" => quoted(input.get("prompt")),
+        "edit_image" => quoted(input.get("instruction")),
         _ => String::new(),
+    }
+}
+
+/// The start of a picture's description (or of what to change in one), in quotes; empty when there is none.
+fn quoted(said: Option<&Value>) -> String {
+    // Human: white space (new lines too) is one space, as in the model's description of a change.
+    let prompt = said.and_then(Value::as_str).unwrap_or_default().split_whitespace().collect::<Vec<_>>().join(" ");
+    if prompt.chars().count() > MOST_PROMPT {
+        // Human: cut at the last whole word that fits; a word that ends just where the cut falls fits.
+        let mut letters = prompt.chars();
+        let cut: String = letters.by_ref().take(MOST_PROMPT).collect();
+        let whole = if letters.next() == Some(' ') { cut.as_str() } else { cut.rsplit_once(' ').map_or(cut.as_str(), |(whole, _)| whole) };
+        format!("“{}…”", whole.trim_end_matches(','))
+    } else if prompt.is_empty() {
+        String::new()
+    } else {
+        format!("“{prompt}”")
     }
 }
 
@@ -293,6 +298,19 @@ mod tests {
             detail("generate_image", &json!({ "prompt": "A red fox in fresh snow at dawn, the end of it" })),
             "“A red fox in fresh snow at dawn, the…”"
         );
+    }
+
+    #[test]
+    fn editing_a_picture_is_named_with_the_start_of_its_instruction() {
+        assert_eq!((doing("edit_image"), did("edit_image")), ("Editing a picture".to_owned(), "Edited a picture".to_owned()));
+        assert_eq!(failed("edit_image"), "Couldn't edit the picture");
+        assert_eq!(icon("edit_image"), "wand-sparkles");
+        assert_eq!(
+            detail("edit_image", &json!({ "instruction": "Make the sky a deep dusk blue and keep the people" })),
+            "“Make the sky a deep dusk blue and…”"
+        );
+        assert_eq!(detail("edit_image", &json!({ "instruction": " Make it\n dusk " })), "“Make it dusk”");
+        assert_eq!(detail("edit_image", &json!({})), "");
     }
 
     #[test]

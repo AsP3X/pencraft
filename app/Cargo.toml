@@ -7,7 +7,7 @@ resolver = "3"
 members = ["crates/pen-doc"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.99"
 license-file = "../LICENSE"
@@ -29,7 +29,9 @@ craft-ai-core = { git = "https://github.com/storytold/craft-libs", rev = "915fc5
 
 # Human: The window and UI, on the storytold egui fork (patched below) like every Craft app.
 egui = { version = "0.37", default-features = false, features = ["default_fonts"] }
-eframe = { version = "0.37", default-features = false, features = ["default_fonts", "wgpu", "accesskit"] }
+# Human: `clipboard` connects copy and paste to the system clipboard; without it egui keeps a clipboard of its
+# own inside the app, and text copied from the chat or pasted into the message box never crosses over.
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "wgpu", "accesskit", "clipboard"] }
 
 # Human: Reading and writing `.pen` JSON. `preserve_order` keeps unknown keys in the order the file had them.
 serde = { version = "=1.0.229", features = ["derive"] }

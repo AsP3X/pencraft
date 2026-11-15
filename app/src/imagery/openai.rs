@@ -29,12 +29,24 @@ fn size(aspect: Aspect, large: bool) -> String {
     if wide >= tall { format!("{long}x{}", short(tall, wide)) } else { format!("{}x{long}", short(wide, tall)) }
 }
 
+/// Whether `request` is one this API is asked at all: one with pictures to send is refused before anything is
+/// sent.
+// Human: OpenAI's edit endpoint is documented in two forms that contradict each other, and there was no key to
+// tell which is true (stage 2's spec); editing with it waits for a live check.
+fn asked(request: &Request) -> Result<(), Failure> {
+    if request.sources.is_empty() {
+        Ok(())
+    } else {
+        Err(Failure::Other("Editing isn't possible with this kind of service yet; use a Google Gemini service.".to_owned()))
+    }
+}
+
 /// The request as the Images API takes it.
 fn body(request: &Request) -> Value {
     json!({
         "model": request.model,
         "prompt": request.prompt,
-        "size": size(request.aspect, request.large),
+        "size": size(request.aspect.unwrap_or_default(), request.large),
         "quality": "auto",
         "background": if request.transparent { "transparent" } else { "auto" },
         "output_format": "png",
@@ -68,6 +80,7 @@ fn read(status: u16, said: &str) -> Result<Made, Failure> {
 /// Why there is no picture.
 // Agent: BLOCKS for one answer (up to 95 s).
 pub fn make(base: &str, request: &Request, key: &SecretString) -> Result<Made, Failure> {
+    asked(request)?;
     let bearer = format!("Bearer {}", key.expose());
     let (status, said) = post(&endpoint(base), &[("authorization", bearer.as_str())], &body(request))?;
     read(status, &said)
@@ -78,16 +91,27 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::imagery::service::Aspect;
+    use crate::imagery::service::{Aspect, Source};
 
     fn request() -> Request {
         Request {
             prompt: "A red fox".to_owned(),
             model: "gpt-image-2.5-sunburst".to_owned(),
-            aspect: Aspect(16, 9),
+            aspect: Some(Aspect(16, 9)),
             large: false,
             transparent: false,
+            sources: Vec::new(),
         }
+    }
+
+    #[test]
+    fn a_request_with_pictures_is_refused_before_anything_is_sent() {
+        assert_eq!(asked(&request()), Ok(()));
+        let edit = Request { sources: vec![Source { bytes: b"foo".to_vec(), kind: "image/jpeg", change: true }], ..request() };
+        assert_eq!(
+            asked(&edit),
+            Err(Failure::Other("Editing isn't possible with this kind of service yet; use a Google Gemini service.".to_owned()))
+        );
     }
 
     #[test]

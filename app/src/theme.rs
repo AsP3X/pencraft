@@ -53,6 +53,8 @@ pub const MESSAGE_TEXT_SIZE: f32 = 13.5;
 pub const SIDEBAR_TEXT_SIZE: f32 = 13.0;
 /// Diameter of the round send button in the message box.
 pub const SEND_BUTTON: f32 = 20.0;
+/// Side of the arrow on a round send button (the message box's, and the quick field's under a picture).
+pub const SEND_ARROW: f32 = 12.0;
 /// Diameter of the highlight behind the active tool in the rail.
 pub const RAIL_ACTIVE: f32 = 28.0;
 /// Width of the tool rail beside the sidebar.
@@ -412,3 +414,23 @@ pub const FIELD_MARGIN: [i8; 2] = [11, 7];
 pub const GENERATE_WIDTH: f32 = 440.0;
 /// Lines of text the description field of the "Generate image" window shows.
 pub const GENERATE_LINES: usize = 4;
+/// Side of a picture in the "Generate image" window's row of pictures (as the app's other small pictures).
+pub const PIECE_SIDE: f32 = 64.0;
+/// Side, in pixels, a small picture in that row is made at: twice its side, so it stays sharp on a fine screen.
+pub const PIECE_PIXELS: u32 = 128;
+/// Space between two pictures of that row.
+pub const PIECE_GAP: f32 = 8.0;
+/// Size of a picture's name and role under it in that row.
+pub const PIECE_TEXT: f32 = 11.5;
+/// Side of the cross that takes a picture out of that row.
+pub const PIECE_CROSS: f32 = 18.0;
+/// Height of the "Change this" / "Reference" toggle under a picture of that row.
+pub const PIECE_TOGGLE: f32 = 20.0;
+/// Space across between the edge of that toggle's chip and its words.
+pub const PIECE_CHIP_PADDING: f32 = 6.0;
+/// How far the cross that takes a picture out of that row reaches past the picture's top right corner.
+pub const PIECE_CROSS_OUT: f32 = 6.0;
+/// Words on the accent colour, such as a picture's "Change this" while it is marked.
+pub const ON_ACCENT: Color32 = Color32::WHITE;
+/// Width of the Cancel button that takes the place of the quick field's button while its picture is made.
+pub const PROPS_CANCEL: f32 = 56.0;

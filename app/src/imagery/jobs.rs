@@ -7,9 +7,10 @@ use std::sync::mpsc::{Receiver, TryRecvError, channel};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use serde_json::json;
+use serde_json::{Value, json};
 
 use super::service::Request;
+use super::sources::{self, Take};
 use super::store::{self, Saved};
 use super::{Ready, key, make};
 use crate::secrets::Keychain;
@@ -31,6 +32,16 @@ pub struct Order {
     pub request: Request,
     /// The document's `.pen` file, if it has one: the picture goes beside it.
     pub document: Option<PathBuf>,
+    /// The pictures to send with the request, got ready on the job's thread; empty for a plain generation.
+    pub takes: Vec<Take>,
+}
+
+impl Order {
+    /// An order to make the picture `request` describes from words alone, with no pictures sent.
+    #[must_use]
+    pub fn new(ready: Ready, request: Request, document: Option<PathBuf>) -> Order {
+        Order { ready, request, document, takes: Vec::new() }
+    }
 }
 
 /// A picture that was made and written.
@@ -68,6 +79,11 @@ impl Flags {
         !self.given_up.load(Ordering::SeqCst)
     }
 
+    /// Whether nobody waits for the result any more: the limit passed, or the `Job` was dropped.
+    pub fn given_up(&self) -> bool {
+        self.given_up.load(Ordering::SeqCst)
+    }
+
     /// Whether the `Job` was dropped.
     fn dropped(&self) -> bool {
         *self.dropped.lock().unwrap_or_else(PoisonError::into_inner)
@@ -101,8 +117,9 @@ fn discard(path: &Path) {
     }
 }
 
-/// Does `order` from start to end: reads the key, asks the service, writes the picture and its credit. Once
-/// `flags` say nobody waits any more, nothing is written; a job dropped during the save takes it back.
+/// Does `order` from start to end: gets its pictures ready, reads the key, asks the service, writes the picture
+/// and its credit. A job given up on before the service is asked asks nothing; once `flags` say nobody waits
+/// any more, nothing is written; a job dropped during the save takes it back.
 ///
 /// # Errors
 /// A sentence for a person or a model; nothing is left half-written.
@@ -113,16 +130,36 @@ fn discard(path: &Path) {
 // writes nothing, so when it fails nothing has been written. Worker thread only.
 pub fn work(order: &Order, flags: &Flags) -> Result<Done, String> {
     let name = &order.ready.name;
+    // Human: the pictures are got ready before the key is read, so one that can't be read is said without
+    // asking the service anything.
+    let request = Request { sources: sources::prepare(&order.takes)?, ..order.request.clone() };
+    // Human: a job stopped while its pictures were got ready (the chat stopped, the dialog cancelled) sends
+    // nothing: the user's pictures don't leave the computer for a picture nobody waits for.
+    if flags.given_up() {
+        return Err(GIVEN_UP.to_owned());
+    }
     let key = key(&order.ready, &Keychain).map_err(|failure| failure.sentence(name))?;
-    let made = make(&order.ready, &order.request, &key).map_err(|failure| failure.sentence(name))?;
+    let made = make(&order.ready, &request, &key).map_err(|failure| failure.sentence(name))?;
     let shown = store::shown(&made.0, SHOWN_SIDE)?;
-    let credit = json!({ "made": "generated", "service": name, "model": order.request.model, "prompt": order.request.prompt });
+    let names: Vec<&str> = sources::in_order(&order.takes).into_iter().map(|take| take.name.as_str()).collect();
+    let credit = credit(order, &names);
     let saved = keep(
         flags,
         || store::save(order.document.as_deref(), store::home().as_deref(), &made.0, &order.request.prompt, &credit),
         |saved| discard(&saved.path),
     )?;
     Ok(Done { saved, shown, service: name.clone(), model: order.request.model.clone() })
+}
+
+/// What `images/credits.json` says of the picture `order` made: generated, or edited from the pictures `names`
+/// (in the order they were sent).
+fn credit(order: &Order, names: &[&str]) -> Value {
+    let (service, model, prompt) = (&order.ready.name, &order.request.model, &order.request.prompt);
+    if names.is_empty() {
+        json!({ "made": "generated", "service": service, "model": model, "prompt": prompt })
+    } else {
+        json!({ "made": "edited", "service": service, "model": model, "prompt": prompt, "from": names })
+    }
 }
 
 /// A picture being made.
@@ -293,8 +330,8 @@ mod tests {
         let job = Job::start(|_| Ok(done()), wake);
         assert_eq!(wait(&job), Ok(done()));
         assert!(until(&woken));
-        let job = Job::start(|_| Err("Studio refused the description: no.".to_owned()), || {});
-        assert_eq!(wait(&job), Err("Studio refused the description: no.".to_owned()));
+        let job = Job::start(|_| Err("Studio refused to make this picture: no.".to_owned()), || {});
+        assert_eq!(wait(&job), Err("Studio refused to make this picture: no.".to_owned()));
     }
 
     #[test]
@@ -464,6 +501,103 @@ mod tests {
         assert_eq!(too_long(LIMIT), "The picture took too long (over 100 seconds); none was kept.");
     }
 
+    /// An order for the Gemini service from the environment, to change pictures or make one.
+    fn gemini_order(request: Request, takes: Vec<Take>, document: Option<PathBuf>) -> Order {
+        use crate::imagery::{KeyFrom, Kind};
+
+        let kind = Kind::Gemini;
+        Order {
+            ready: Ready {
+                name: "Gemini".to_owned(),
+                kind,
+                base_url: kind.base().to_owned(),
+                model: kind.model().to_owned(),
+                key: KeyFrom::Environment("GEMINI_API_KEY"),
+            },
+            request,
+            document,
+            takes,
+        }
+    }
+
+    #[test]
+    fn work_given_up_on_while_its_pictures_were_got_ready_asks_no_service() {
+        use crate::imagery::service::Aspect;
+
+        let request = Request {
+            prompt: "x".to_owned(),
+            model: "m".to_owned(),
+            aspect: Some(Aspect(1, 1)),
+            large: false,
+            transparent: false,
+            sources: Vec::new(),
+        };
+        let mut order = gemini_order(request, vec![Take::pixels(2, 2, vec![255; 16], true)], None);
+        // Human: a key that isn't there: had the work gone on, it would have said so.
+        order.ready.key = crate::imagery::KeyFrom::Environment("PENCRAFT_TEST_NO_SUCH_KEY");
+        let flags = Flags::default();
+        assert!(work(&order, &flags).is_err_and(|why| why.contains("PENCRAFT_TEST_NO_SUCH_KEY")), "not given up on: it goes on to the key");
+        flags.given_up.store(true, Ordering::SeqCst);
+        assert!(flags.given_up());
+        assert_eq!(work(&order, &flags), Err(GIVEN_UP.to_owned()));
+    }
+
+    #[test]
+    fn an_edit_is_credited_with_the_pictures_it_was_made_from() {
+        use crate::imagery::service::Aspect;
+
+        let request = Request {
+            prompt: "Make it dusk".to_owned(),
+            model: "m".to_owned(),
+            aspect: Some(Aspect(1, 1)),
+            large: false,
+            transparent: false,
+            sources: Vec::new(),
+        };
+        let order = gemini_order(request, Vec::new(), None);
+        assert_eq!(credit(&order, &[]), json!({ "made": "generated", "service": "Gemini", "model": "m", "prompt": "Make it dusk" }));
+        assert_eq!(
+            credit(&order, &["photo.jpg", "drawn"]),
+            json!({ "made": "edited", "service": "Gemini", "model": "m", "prompt": "Make it dusk", "from": ["photo.jpg", "drawn"] })
+        );
+    }
+
+    /// Has the real Gemini service change a picture file made here and keeps the result beside a document in the
+    /// temporary folder, the whole way a job goes. Run by hand, with a key that may make pictures:
+    /// `GEMINI_API_KEY=… cargo test -p pencraft -- --ignored the_real_gemini_service_changes`.
+    #[test]
+    #[ignore = "calls the real service and costs money on the key of the person running it"]
+    fn the_real_gemini_service_changes_a_picture() {
+        use crate::imagery::Kind;
+
+        let folder = std::env::temp_dir().join(format!("pencraft-live-gemini-edit-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image::RgbaImage::from_fn(512, 384, |x, y| {
+            if (x / 64 + y / 64) % 2 == 0 { image::Rgba([230, 60, 40, 255]) } else { image::Rgba([250, 240, 220, 255]) }
+        })
+        .write_to(&mut bytes, image::ImageFormat::Png)
+        .unwrap();
+        std::fs::write(folder.join("squares.png"), bytes.into_inner()).unwrap();
+        let take = Take::file(folder.join("squares.png"), true, None);
+        let request = Request {
+            prompt: "Make the whole picture blue.".to_owned(),
+            model: Kind::Gemini.model().to_owned(),
+            aspect: None,
+            large: false,
+            transparent: false,
+            sources: Vec::new(),
+        };
+        let order = gemini_order(request, vec![take], Some(folder.join("live.pen")));
+        let done = work(&order, &Flags::default()).unwrap();
+        assert!(done.saved.path.is_file() && done.saved.width > done.saved.height, "{} x {}", done.saved.width, done.saved.height);
+        let credits: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(folder.join("images").join(store::CREDITS)).unwrap()).unwrap();
+        let name = done.saved.path.file_name().unwrap().to_str().unwrap();
+        assert_eq!(credits[name]["made"], "edited");
+        assert_eq!(credits[name]["from"], json!(["squares.png"]));
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
     /// Has the real Gemini service make a picture and keeps it beside a document in the temporary folder, the
     /// whole way a job goes. Run by hand, with a key that may make pictures:
     /// `GEMINI_API_KEY=… cargo test -p pencraft -- --ignored the_real_gemini`.
@@ -476,23 +610,22 @@ mod tests {
         let folder = std::env::temp_dir().join(format!("pencraft-live-gemini-{}", std::process::id()));
         std::fs::create_dir_all(&folder).unwrap();
         let kind = Kind::Gemini;
-        let order = Order {
-            ready: Ready {
-                name: "Gemini".to_owned(),
-                kind,
-                base_url: kind.base().to_owned(),
-                model: kind.model().to_owned(),
-                key: KeyFrom::Environment("GEMINI_API_KEY"),
-            },
-            request: Request {
-                prompt: "A red apple on a white table".to_owned(),
-                model: kind.model().to_owned(),
-                aspect: Aspect(16, 9),
-                large: false,
-                transparent: false,
-            },
-            document: Some(folder.join("live.pen")),
+        let ready = Ready {
+            name: "Gemini".to_owned(),
+            kind,
+            base_url: kind.base().to_owned(),
+            model: kind.model().to_owned(),
+            key: KeyFrom::Environment("GEMINI_API_KEY"),
         };
+        let request = Request {
+            prompt: "A red apple on a white table".to_owned(),
+            model: kind.model().to_owned(),
+            aspect: Some(Aspect(16, 9)),
+            large: false,
+            transparent: false,
+            sources: Vec::new(),
+        };
+        let order = Order::new(ready, request, Some(folder.join("live.pen")));
         let done = work(&order, &Flags::default()).unwrap();
         assert!(done.saved.url.starts_with("./images/a-red-apple-on-a-white-table-"), "{}", done.saved.url);
         assert!(done.saved.path.is_file() && done.saved.width > done.saved.height, "{} x {}", done.saved.width, done.saved.height);

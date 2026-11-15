@@ -20,7 +20,7 @@ use crate::link::Call;
 /// A finished picture waits as long to be put on its layer (`App::finish_pictures`).
 pub(super) const BUSY_PATIENCE: Duration = Duration::from_secs(10);
 /// What `get_state` says when the assistant may not make pictures.
-const SERVICES_OFF: &str = "Generating pictures is turned off for AI models in Pencraft's settings.";
+const SERVICES_OFF: &str = "Generating and editing pictures is turned off for AI models in Pencraft's settings.";
 /// The longest side of a picture given to a model, pixels: larger ones are drawn at a smaller scale.
 const MOST_PICTURE_SIDE: f32 = 2000.0;
 /// How many parts of a design the reviewer is shown enlarged, and the fewest layers such a part holds.
@@ -33,6 +33,8 @@ const WORTH_A_REVIEW: usize = 30;
 const FACE_PATIENCE: Duration = Duration::from_secs(3);
 /// The tools that change a document.
 const CHANGING: [&str; 2] = ["edit_layers", "select_layers"];
+/// The tools whose call waits for a picture to be made ([`App::start_picture`]).
+const PICTURING: [&str; 2] = ["generate_image", "edit_image"];
 
 /// A tool's answer as text content: `value` as JSON.
 fn text(value: &Value) -> Vec<Value> {
@@ -53,7 +55,7 @@ fn stands_in(family: &str) -> Option<String> {
 }
 
 /// Whether `scene` is the layer `id` or holds it.
-fn holds(scene: &SceneNode, id: &str) -> bool {
+pub(super) fn holds(scene: &SceneNode, id: &str) -> bool {
     scene.id == id || scene.children.iter().any(|child| holds(child, id))
 }
 
@@ -126,8 +128,15 @@ impl App {
         }
         self.settle_fonts(ctx);
         for (call, since) in calls {
-            // Human: a picture takes up to a minute; its call is kept and answered when the picture is there.
-            if call.tool == "generate_image" && self.prefs.get().agents.tools {
+            // Human: a picture takes up to a minute, made or changed; its call is kept and answered when the
+            // picture is there.
+            if PICTURING.contains(&call.tool.as_str()) && self.prefs.get().agents.tools {
+                // Human: layers an edit sends as they look are drawn when it starts, so it waits for the faces
+                // of the document's text as a screenshot does, and goes on without them after as long.
+                if self.draws(&call) && self.faces_coming(&call, ctx) && since.elapsed() < FACE_PATIENCE {
+                    self.waiting.push((call, since));
+                    continue;
+                }
                 self.start_picture(call, ctx);
                 continue;
             }
@@ -384,10 +393,23 @@ impl App {
         // these layers, and what to ask of the picture before calling it done.
         // Human: while the chat's assistant works on a request that names what to follow (a library, plain
         // standard components), the review says nothing about what that reference calls for.
-        let follows = call.chat.and_then(|id| self.talk(id)).is_some_and(|talk| {
-            talk.chat.entries.iter().any(|entry| entry.role == crate::chat::Role::User && crate::craft::names_a_reference(&entry.text))
-        });
-        let notes = crate::review::review(&layers, Vars::new(&editor.doc), &stands_in, follows);
+        let asked = |test: fn(&str) -> bool| {
+            call.chat
+                .and_then(|id| self.talk(id))
+                .is_some_and(|talk| talk.chat.entries.iter().any(|entry| entry.role == crate::chat::Role::User && test(&entry.text)))
+        };
+        let follows = asked(crate::craft::names_a_reference);
+        let mut notes = crate::review::review(&layers, Vars::new(&editor.doc), &stands_in, follows);
+        // Human: while the chat's request names a phone or a tablet, a phone screen standing bare on the canvas
+        // is the first thing to put right. It is judged by the top-level layers the picture shows or lies in,
+        // so a picture of the screen inside a device doesn't count as a bare screen.
+        if asked(crate::craft::names_a_device) {
+            let tops: Vec<&SceneNode> = editor.scene.iter().filter(|top| layers.iter().any(|layer| holds(top, &layer.id))).collect();
+            if let Some(note) = crate::review::device_note(&tops) {
+                notes.insert(0, note);
+                notes.truncate(crate::review::MOST_NOTES);
+            }
+        }
         let mut answer =
             vec![json!({ "type": "image", "data": agent::base64(&png), "mimeType": "image/png" }), json!({ "type": "text", "text": note })];
         answer.extend(crate::craft::with_picture(&notes, crate::review::size(&layers)).map(|said| json!({ "type": "text", "text": said })));
@@ -541,6 +563,6 @@ mod tests {
         let mut off = json!({ "documents": [] });
         tell_services(&mut off, false, listed);
         assert_eq!(off, json!({ "documents": [], "imageServices": [], "imageServicesNote": SERVICES_OFF }));
-        assert_eq!(SERVICES_OFF, "Generating pictures is turned off for AI models in Pencraft's settings.");
+        assert_eq!(SERVICES_OFF, "Generating and editing pictures is turned off for AI models in Pencraft's settings.");
     }
 }

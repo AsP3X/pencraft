@@ -577,9 +577,8 @@ impl Settings {
             prefs.images.default = if chosen == ANY_SERVICE { String::new() } else { chosen };
         }
         divider(ui, palette);
-        let cost =
-            "AI models may make pictures with the generate_image tool. Each one costs money on your key. The Generate Image dialog works either way.";
-        row(ui, "Let the assistant generate pictures", Some(cost), palette, |ui| switch(ui, &mut prefs.images.assistant, palette));
+        let cost = "AI models may make pictures with the generate_image tool and change them with edit_image, which sends your pictures to the service. Each one costs money on your key. The Generate Image dialog works either way.";
+        row(ui, "Let the assistant generate and edit pictures", Some(cost), palette, |ui| switch(ui, &mut prefs.images.assistant, palette));
     }
 }
 

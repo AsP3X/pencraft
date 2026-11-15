@@ -114,6 +114,13 @@ services under `imageServices`; with none, say so and go on without a picture (a
 drawn to look like a photo). When it fails, tell the user why and go on without the picture; call it again
 only when the fix is in your own arguments: a refusal, a limit or a time-out is not fixed by asking again, and
 a time-out may already have cost money. Interface, text, icons and logos are never generated: draw them.
+`edit_image` changes a picture that is there, by an instruction ("make it dusk", "take the people out"),
+or makes one that goes by reference pictures ("put this logo on that mug"). Use it when the user asks for a
+change to a picture, never to "improve" pictures unasked; it costs as much as a new picture and the same rules
+hold. Give `layer` to change a layer's picture in place. Every picture the call names (`layer`, `layers`,
+`file` and `references`) is sent to the image service: the user's own pictures, and with `layers` a picture of
+their design, so send only what the user named. The result is never transparent: a picture with a transparent
+background comes back with a filled one. Only services listed with `edits: true` can edit.
 
 ## Working well
 - Read before you write: `get_state`, then `read_layers` on the frame you will work in.
@@ -127,7 +134,8 @@ a time-out may already have cost money. Interface, text, icons and logos are nev
 - Make what was asked for and nothing around it. A thing the user asks for (a dog, a logo, an icon, a button)
   is drawn as itself: no backdrop, board, card or coloured frame behind it, unless the user asks for one or
   the thing is one (a screen, a page, a poster and a card have a background of their own). To keep its parts
-  together use a group, or a frame without a fill.
+  together use a group, or a frame without a fill. A screen of a phone or tablet app is shown inside its
+  device, never bare ("A screen on a device" in Designing well).
 - Never give a layer the fill of what is behind it: a white card on a white board can't be seen. A board that
   only presents parts or components gets a background the parts don't use (a grey or a tint), and text never
   has the colour of its background. `edit_layers` answers with `advice` when it finds this; act on it.
@@ -243,6 +251,21 @@ pub fn tools() -> Value {
                 "size": { "type": "string", "enum": ["normal", "large"], "description": "normal: about 1024 pixels on the long side (default). large: about 2048, for a picture shown big." },
                 "transparent": { "type": "boolean", "description": "A transparent background, for a thing cut out. Only services listed with `transparent: true` can." },
                 "layer": { "type": "string", "description": "A rectangle, ellipse or frame to give the picture to as its fill (one undo step). Without it nothing in the document changes." }
+            } }
+        },
+        {
+            "name": "edit_image",
+            "description": "Have an image model change a picture that is there, by an instruction (\"make it dusk\", \"take the people out\"), or make one that goes by reference pictures (\"put this logo on that mug\"). Every picture named (`layer`, `layers`, `file` and `references`) is sent to the image service, so name only what the user named. The result is never transparent: a picture with a transparent background comes back with a filled one. With `layer`, that layer's picture is changed and its fill replaced (one undo step); with `layers`, those layers are drawn as they look and the result is put beside them as a new layer; with `file`, nothing in the document changes. Costs the user money and takes up to a minute, like generate_image, and the same rules hold: only when the user asks for it, one at a time, look at the result, and when it fails tell the user why and go on. Only services listed with `edits: true` in `get_state` can do this.",
+            "inputSchema": { "type": "object", "required": ["instruction"], "properties": {
+                "document": document,
+                "instruction": { "type": "string", "description": "What to change, in plain words. Say what should stay as it is when that matters." },
+                "layer": { "type": "string", "description": "The layer whose image fill is the picture to change." },
+                "layers": ids("Layers to draw together, as they look on the canvas, as the picture to change. This sends a picture of the user's design to the service: only when the user asks for that."),
+                "file": { "type": "string", "description": "A picture file's full path, as the picture to change." },
+                "references": { "type": "array", "maxItems": 4, "items": { "type": "string" }, "description": "Up to four pictures to go by: layer ids (their picture, or how they look) or full file paths. Only what the user named." },
+                "service": { "type": "string", "description": "A service's name from `imageServices` with `edits: true`. Leave out for the first that can." },
+                "aspect": { "type": "string", "enum": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"], "description": "Width to height. Leave out to keep the shape of the picture to change." },
+                "size": { "type": "string", "enum": ["normal", "large"], "description": "As in generate_image." }
             } }
         }
     ])
@@ -765,7 +788,8 @@ mod tests {
                 "open_document",
                 "save_document",
                 "export_layers",
-                "generate_image"
+                "generate_image",
+                "edit_image"
             ]
         );
         for tool in tools.as_array().unwrap() {
@@ -785,6 +809,31 @@ mod tests {
             assert!(said.contains("a time-out may already have cost money"), "{said}");
             assert!(said.contains("before making several pictures of the same kind"), "{said}");
             assert!(!said.contains("avatar"), "{said}");
+        }
+    }
+
+    #[test]
+    fn the_guide_says_when_to_edit_a_picture_and_what_leaves_the_computer() {
+        let edit = tools().as_array().and_then(|tools| tools.iter().find(|tool| tool["name"] == "edit_image")).cloned().unwrap();
+        assert_eq!(edit["inputSchema"]["required"], json!(["instruction"]));
+        let section = GUIDE.split("## Pictures").nth(1).and_then(|rest| rest.split("\n## ").next()).unwrap();
+        assert!(section.contains("`edit_image`"), "{section}");
+        // Human: a picture is changed only when the user asks, and the user's own pictures or design are sent
+        // only when the user named them.
+        assert!(section.contains("never to \"improve\" pictures unasked"), "{section}");
+        assert!(section.contains("only what the user named"), "{section}");
+        let described = edit["description"].as_str().unwrap();
+        assert!(described.contains("only when the user asks for it") && described.contains("`edits: true`"), "{described}");
+        // Human: every picture named leaves the computer, not only drawn layers and references; and a model is
+        // not led to expect a cut-out it can't get.
+        for said in [section, described] {
+            let said = said.replace('\n', " ");
+            assert!(said.contains("(`layer`, `layers`, `file` and `references`) is sent to the image service"), "{said}");
+            assert!(
+                said.contains("The result is never transparent: a picture with a transparent background comes back with a filled one."),
+                "{said}"
+            );
+            assert!(!said.contains("remove the background"), "{said}");
         }
     }
 

@@ -19,7 +19,8 @@ use crate::ops::{AlignTo, Order};
 use crate::render::color32;
 use crate::shader;
 use crate::theme::{
-    self, ACCENT, PROPS_GAP, PROPS_ICON, PROPS_MENU_WIDTH, PROPS_PADDING, PROPS_RADIUS, PROPS_ROW, PROPS_SMALL_TEXT, PROPS_TEXT, Palette,
+    self, ACCENT, PROBLEM, PROPS_CANCEL, PROPS_GAP, PROPS_ICON, PROPS_MENU_WIDTH, PROPS_PADDING, PROPS_RADIUS, PROPS_ROW, PROPS_SMALL_TEXT,
+    PROPS_TEXT, Palette, SEND_ARROW, SEND_BUTTON,
 };
 
 /// A short symbol for each kind of layer in the layers list.
@@ -60,6 +61,40 @@ impl PaintEdit {
             PaintEdit::Clear => None,
         }
     }
+}
+
+/// What the properties island shows of changing a picture by description (the quick field and "Edit with AI…"
+/// on an image fill), and what the person asked of it.
+#[derive(Default)]
+pub struct Pictures {
+    /// The service the quick field sends to: one that can edit; `None` when there is none.
+    pub service: Option<String>,
+    /// The quick field's words.
+    pub text: String,
+    /// What went wrong the last time.
+    pub problem: Option<String>,
+    /// A picture of the person's is being made (by the dialog or the field): the field is off.
+    pub busy: bool,
+    /// The field itself is having it made: progress and Cancel show.
+    pub ours: bool,
+    /// The name of the layer the quick field is having a picture made for, when it is doing so (for this layer
+    /// or another).
+    pub making_for: Option<String>,
+    /// The dark look is on.
+    pub dark: bool,
+    /// What the person asked this frame.
+    pub asked: Option<PictureAsk>,
+}
+
+/// What the person asked of a picture in the properties island.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PictureAsk {
+    /// "Edit with AI…": the dialog, with the layer marked.
+    Dialog,
+    /// Return or the quick field's button: change the picture as its words say.
+    Quick,
+    /// Cancel: give up the quick field's picture.
+    Cancel,
 }
 
 /// The layers list: the document tree, with show/hide toggles.
@@ -245,7 +280,7 @@ const NO_CODE: &str = "Code export isn't available yet.";
 
 /// The properties island for the selection. Returns a sentence to tell the user, if a control asks for one.
 // Agent: MAIN-THREAD; WRITES editor.doc through one checkpoint per edit (a drag merges into its first step).
-pub fn properties(ui: &mut Ui, editor: &mut Editor, dark: bool) -> Option<&'static str> {
+pub fn properties(ui: &mut Ui, editor: &mut Editor, dark: bool, pictures: &mut Pictures) -> Option<&'static str> {
     let mut notice = None;
     egui::ScrollArea::vertical().id_salt("properties").auto_shrink([false, false]).show(ui, |ui| {
         let content = ui.max_rect().shrink2(vec2(PROPS_PADDING, 0.0));
@@ -260,7 +295,7 @@ pub fn properties(ui: &mut Ui, editor: &mut Editor, dark: bool) -> Option<&'stat
                 [] => document_panel(ui, editor, dark),
                 [id] => {
                     let id = id.clone();
-                    notice = node_panel(ui, editor, &id, dark);
+                    notice = node_panel(ui, editor, &id, dark, pictures);
                 }
                 many => {
                     let palette = theme::palette(dark);
@@ -396,6 +431,8 @@ struct Edits {
     anywhere: bool,
     /// A sentence for the user.
     notice: Option<&'static str>,
+    /// The quick field and "Edit with AI…" on an image fill: what they show, and what was asked of them.
+    pictures: Pictures,
 }
 
 impl Edits {
@@ -404,7 +441,7 @@ impl Edits {
     }
 }
 
-fn node_panel(ui: &mut Ui, editor: &mut Editor, id: &str, dark: bool) -> Option<&'static str> {
+fn node_panel(ui: &mut Ui, editor: &mut Editor, id: &str, dark: bool, pictures: &mut Pictures) -> Option<&'static str> {
     let role = editor.role(id);
     let scene = editor.scene_node(id).cloned();
     // Human: an instance and the layers inside it show what the component gives them, with the instance's
@@ -431,11 +468,12 @@ fn node_panel(ui: &mut Ui, editor: &mut Editor, id: &str, dark: bool) -> Option<
         folder: editor.path.as_deref().and_then(std::path::Path::parent).map(std::path::Path::to_path_buf),
         palette: theme::palette(dark),
     };
-    let mut edits = Edits::default();
+    let mut edits = Edits { pictures: std::mem::take(pictures), ..Edits::default() };
     header(ui, &shown, &mut edits);
     for section in [slot, context, align, position, layout, appearance, material, fill, stroke, effects, text, code, export] {
         section(ui, &shown, &mut edits);
     }
+    *pictures = std::mem::take(&mut edits.pictures);
     if let Some(chosen) = edits.export {
         editor.export = chosen;
     }
@@ -1071,7 +1109,10 @@ fn fill(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
         list.push(Paint::Solid("#D9D9D9".to_owned()));
         edits.set(move |n| n.fill = paints_of(list.clone()));
     }
-    if let Some(edit) = paint_editor(ui, node.fill.as_ref(), shown, "fill") {
+    // Human: a picture is changed by description on the layer's own fill: a layer inside an instance, or an
+    // instance, is changed through its component.
+    let pictures = matches!(shown.role, Role::Plain | Role::Component).then_some(&mut edits.pictures);
+    if let Some(edit) = paint_editor(ui, node.fill.as_ref(), shown, "fill", pictures) {
         edits.set(move |n| n.fill = edit.paints());
     }
     end(ui, node.fill.is_some());
@@ -1089,7 +1130,7 @@ fn stroke(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
         list.push(Paint::Solid("#000000".to_owned()));
         edits.set(move |n| n.stroke = paints_of(list.clone()));
     }
-    if let Some(edit) = paint_editor(ui, node.stroke.as_ref(), shown, "stroke") {
+    if let Some(edit) = paint_editor(ui, node.stroke.as_ref(), shown, "stroke", None) {
         edits.set(move |n| n.stroke = edit.paints());
     }
     if node.stroke.is_some() {
@@ -1829,10 +1870,13 @@ fn color_row(ui: &mut Ui, salt: &str, current: Rgba, palette: Palette) -> Option
 }
 
 /// The rows of a fill or stroke: a plain colour can be changed, the others are named. Each row can be removed.
-/// Returns the new paints when something changed.
-fn paint_editor(ui: &mut Ui, paints: Option<&Paints>, shown: &Shown, what: &'static str) -> Option<PaintEdit> {
+/// With `pictures`, the topmost image paint (the one a change by description replaces) gets "Edit with AI…" and
+/// the quick field. Returns the new paints when something changed.
+fn paint_editor(ui: &mut Ui, paints: Option<&Paints>, shown: &Shown, what: &'static str, mut pictures: Option<&mut Pictures>) -> Option<PaintEdit> {
     let palette = shown.palette;
     let list: Vec<Paint> = paints.map(|p| p.as_slice().to_vec()).unwrap_or_default();
+    let topmost_image =
+        list.iter().rposition(|paint| matches!(paint, Paint::Object(object) if object.get("type").and_then(Value::as_str) == Some("image")));
     let mut result = None;
     for (index, paint) in list.iter().enumerate() {
         ui.add_space(PROPS_GAP);
@@ -1882,8 +1926,93 @@ fn paint_editor(ui: &mut Ui, paints: Option<&Paints>, shown: &Shown, what: &'sta
             new.remove(index);
             result = Some(paints_of(new).map_or(PaintEdit::Clear, PaintEdit::Set));
         }
+        if Some(index) == topmost_image
+            && let Some(pictures) = pictures.as_deref_mut()
+        {
+            picture_tools(ui, line, pictures, palette);
+        }
     }
     result
+}
+
+/// "Edit with AI…" beside an image paint's Remove, and the quick field under its row: words, and a button that
+/// sends the picture with them and replaces it with the result. While the field's picture is made, progress
+/// and Cancel; with no service that can edit, one line that says where to add one.
+// Human: the row of a paint leaves room for two buttons at its right end; Remove takes the outer one.
+fn picture_tools(ui: &mut Ui, line: Rect, pictures: &mut Pictures, palette: Palette) {
+    if corner_button(ui, line.translate(vec2(-(PROPS_ROW - 2.0), 0.0)), "wand-sparkles", "Edit with AI…", palette).clicked() {
+        pictures.asked = Some(PictureAsk::Dialog);
+    }
+    ui.add_space(PROPS_GAP);
+    let Some(service) = pictures.service.clone() else {
+        let line = "Add a Google Gemini service in Settings → Images to change pictures by description.";
+        ui.add(egui::Label::new(RichText::new(line).size(PROPS_SMALL_TEXT).color(palette.muted)).wrap().selectable(false));
+        return;
+    };
+    let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), PROPS_ROW), Sense::hover());
+    let side = if pictures.ours { PROPS_CANCEL } else { PROPS_ROW };
+    let button = Rect::from_min_size(pos2(row.right() - side, row.top()), vec2(side, PROPS_ROW));
+    let field = Rect::from_min_max(row.min, pos2(button.left() - PROPS_GAP, row.bottom()));
+    // Human: in the dark look the panels' usual plate is too close to the island behind it for a field one types
+    // in; the input colour sets it apart.
+    if pictures.dark {
+        ui.painter().rect_filled(field, PROPS_RADIUS, palette.input);
+    } else {
+        plate(ui, field, false, palette);
+    }
+    let inner = field.shrink2(vec2(8.0, 0.0));
+    let mut child = ui.new_child(UiBuilder::new().max_rect(inner).layout(Layout::left_to_right(Align::Center)).id_salt("quick-edit"));
+    if pictures.ours {
+        child.spacing_mut().item_spacing.x = 6.0;
+        child.add(egui::Spinner::new().size(PROPS_ICON).color(palette.muted));
+        child.add(egui::Label::new(RichText::new("Changing the picture…").color(palette.muted)).truncate().selectable(false));
+        if plate_button(ui, button, "quick-cancel", None, "Cancel", palette).on_hover_text("Give up this picture").clicked() {
+            pictures.asked = Some(PictureAsk::Cancel);
+        }
+    } else {
+        let hint = match (&pictures.making_for, pictures.busy) {
+            (Some(name), _) => format!("A picture is being made for \"{name}\"…"),
+            (None, true) => "A picture is being made…".to_owned(),
+            (None, false) => "Describe a change…".to_owned(),
+        };
+        let words = egui::TextEdit::singleline(&mut pictures.text)
+            .frame(egui::Frame::new())
+            .background_color(Color32::TRANSPARENT)
+            .hint_text(RichText::new(hint).color(palette.muted))
+            .desired_width(inner.width());
+        let typed = child.add_enabled(!pictures.busy, words);
+        let ready = !pictures.busy && !pictures.text.trim().is_empty();
+        let tip = if pictures.busy {
+            "A picture is being made. Wait for it to finish.".to_owned()
+        } else {
+            format!("Sends this picture to {service} and replaces it with the result.")
+        };
+        // Human: the field says what Return does too, since Return sends without the button being looked at.
+        let typed = typed.on_hover_text(&tip).on_disabled_hover_text(&tip);
+        // Human: Return runs it, as the button does.
+        if ready && typed.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter)) {
+            pictures.asked = Some(PictureAsk::Quick);
+        }
+        // Human: the button is the chat's send button (an arrow up, filled once there are words to send), so it
+        // isn't taken for "Edit with AI…" beside it, which keeps the wand.
+        let response = ui.interact(button, ui.scope_id().with("quick-go"), if ready { Sense::click() } else { Sense::hover() });
+        let mark = if ready {
+            let fill = if response.hovered() { palette.primary.gamma_multiply(0.85) } else { palette.primary };
+            ui.painter().circle_filled(button.center(), SEND_BUTTON / 2.0, fill);
+            palette.primary_text
+        } else {
+            ui.painter().circle_filled(button.center(), SEND_BUTTON / 2.0, palette.input);
+            palette.muted
+        };
+        icons::paint(ui.painter(), Rect::from_center_size(button.center(), Vec2::splat(SEND_ARROW)), "arrow-up", mark);
+        if response.on_hover_text(tip).clicked() && ready {
+            pictures.asked = Some(PictureAsk::Quick);
+        }
+    }
+    if let Some(problem) = &pictures.problem {
+        ui.add_space(4.0);
+        ui.add(egui::Label::new(RichText::new(problem).size(PROPS_SMALL_TEXT).color(PROBLEM)).wrap().selectable(false));
+    }
 }
 
 fn section(ui: &mut Ui, title: &str) {
@@ -2034,6 +2163,10 @@ mod tests {
             "rotate-ccw",
             "scaling",
             "download",
+            "wand-sparkles",
+            "arrow-up",
+            "image",
+            "x",
         ];
         let effects = EffectKind::ALL.map(EffectKind::icon);
         for icon in kinds.iter().map(kind_icon).chain(named).chain(effects) {

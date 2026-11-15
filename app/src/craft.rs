@@ -130,6 +130,18 @@ them. Otherwise, before the first layer, make variables with `set_variables` and
   colour; a state (pending, overdue) is shown by a word or a mark beside the amount, not by a third style. No panel is left half empty by accident:
   make it as tall as its content or give it content.
 
+## A screen on a device
+A mock of an app for a phone or a tablet always shows the device with the screen in it, never a bare
+rectangle on the canvas: when the user asks for a mock, a mockup or a prototype of a phone or tablet app, or
+names a device (an iPhone, an iPad, an Android phone), the device is part of what was asked for, even when the
+request does not say "device" or "frame". Leave it out only when the user asks for the screen alone (screens
+for a developer handoff, "no device"), or when what is asked for is not a screen (an app icon, a logo, one
+component on its own). Never draw the device or its status bar from memory: read the `devices` skill and
+insert its template as it is (the body, the screen, the status bar with its time and glyphs, the Dynamic
+Island, the home indicator and the side buttons), then build the app in its "App" frame. The device the user
+named (every iPhone since the XR is in the skill), or the template's iPhone when they named none. Several
+screens: one device each, side by side.
+
 ## 4. What gives a generated design away: leave these out
 The user's own words can earn any of these; reaching for one when nobody asked means you were not deciding.
 Then rebuild that part, don't soften it.
@@ -291,6 +303,25 @@ pub fn names_a_reference(asked: &str) -> bool {
     REFERENCES.iter().any(|word| asked.contains(&format!(" {word}")))
 }
 
+/// Words that name a phone or a tablet: a request that has one of them may be for a screen on that device.
+const DEVICES: [&str; 9] = ["iphone", "ipad", "ios", "android", "smartphone", "phone", "mobile", "tablet", "app store"];
+
+/// Whether what the user `asked` names a phone or a tablet, so a screen made for it stands in the device.
+// Human: a mock of a phone app shown as a bare rectangle reads as half done; the model, left to itself, draws
+// only the screen. A word match is coarse: the note it brings says when it does not apply (an app icon, a
+// screen alone), so a wrong yes costs one sentence the model sets aside.
+#[must_use]
+pub fn names_a_device(asked: &str) -> bool {
+    let asked: String = std::iter::once(' ').chain(asked.to_lowercase().chars().map(|c| if c.is_alphanumeric() { c } else { ' ' })).collect();
+    // Human: a word counts where it starts a word: "phone" in "a phone app", not in "microphone".
+    DEVICES.iter().any(|word| asked.contains(&format!(" {word}")))
+}
+
+/// The note that goes with a message which names a phone or a tablet.
+pub const DEVICE_NOTE: &str = "<pencraft_device>
+This message names a phone or a tablet. If what you make is a screen of an app or a site for it (a mock, a mockup, a prototype, a gallery, a screen of any kind), show it inside the device: read the `devices` skill with read_skill first and insert its template as it is, then build the app in its \"App\" frame. Never draw the device or its status bar from memory. Leave the device out only if the user asks for the screen alone or for no device, or if this is not a screen (an app icon, a logo, one component). Before you answer, check the device is there (\"A screen on a device\" in Designing well).
+</pencraft_device>";
+
 /// The installed font families, as the model is told about them; empty when none were found.
 #[must_use]
 pub fn fonts() -> String {
@@ -366,5 +397,17 @@ Before you call this done"
         assert!(names_a_reference("Just a Standard button, nothing fancy"));
         assert!(!names_a_reference("A poster for a jazz night in Leith"));
         assert!(!names_a_reference("Explain what this frame is for"));
+    }
+
+    #[test]
+    fn a_request_that_names_a_device_is_known() {
+        assert!(names_a_device("Create a mock of an iphone galarie app with real pictures"));
+        assert!(names_a_device("A banking app for Android"));
+        assert!(names_a_device("the settings screen of our phone app"));
+        assert!(names_a_device("A smartphone onboarding flow"));
+        assert!(!names_a_device("A poster for a microphone shop"));
+        assert!(!names_a_device("A dashboard for a bakery"));
+        // The guide says how to draw the device, and the note points there.
+        assert!(CRAFT.contains("## A screen on a device") && DEVICE_NOTE.contains("A screen on a device"));
     }
 }

@@ -49,6 +49,7 @@ pub const ALL: &[Skill] = &[
             ("references/styles.md", include_str!("../skills/ui-components/references/styles.md")),
         ],
     },
+    Skill { name: "devices", files: &[(MAIN, include_str!("../skills/devices/SKILL.md"))] },
 ];
 
 impl Skill {
@@ -365,6 +366,116 @@ mod tests {
     }
 
     #[test]
+    fn the_device_template_is_a_device_the_checks_take() {
+        let main = find("devices").unwrap().file(None).unwrap();
+        let block = blocks(main).into_iter().find(|block| block.contains("\"Dynamic Island\"")).unwrap();
+        let mut device: Value = serde_json::from_str(block).unwrap();
+        give_ids(&mut device, &mut 0);
+        let json = json!({ "version": "2.22", "children": [device] }).to_string();
+        let mut editor = crate::editor::Editor::new(pen_doc::read(&json).unwrap(), None, 1);
+        editor.refresh(&|style| (style.size * 0.5 * 4.0, style.size * 1.3));
+        let tops: Vec<&pen_doc::scene::SceneNode> = editor.scene.iter().collect();
+        // A screen in the template's body is no bare screen, and the template makes none of the app's mistakes.
+        assert_eq!(crate::review::device_note(&tops), None);
+        assert_eq!(crate::review::mistakes_in(&tops, pen_doc::vars::Vars::new(&editor.doc), &|_| None), Vec::<String>::new());
+        // The status bar sits where the iPhone's does: the time centred in the strip left of the island.
+        let mut middle = None;
+        tops[0].walk(
+            &mut |layer, _| {
+                if layer.node.name.as_deref() == Some("Time") {
+                    middle = Some(layer.local.x + layer.local.w / 2.0);
+                }
+            },
+            0,
+        );
+        let middle = middle.unwrap();
+        assert!((middle - (393.0 - 126.0) / 4.0).abs() < 1.0, "{middle}");
+    }
+
+    /// Sets the numbers `changes` on the layer named `name` anywhere in `layer`, or takes it out when `changes`
+    /// is `None`.
+    fn set_on(layer: &mut Value, name: &str, changes: Option<&Value>) {
+        let Some(children) = layer.get_mut("children").and_then(Value::as_array_mut) else { return };
+        if changes.is_none() {
+            children.retain(|child| child["name"] != name);
+        }
+        for child in children.iter_mut() {
+            if child["name"] == name
+                && let (Some(fields), Some(changes)) = (child.as_object_mut(), changes.and_then(Value::as_object))
+            {
+                fields.extend(changes.clone());
+            }
+            set_on(child, name, changes);
+        }
+    }
+
+    #[test]
+    fn every_iphone_in_the_table_is_a_device_the_checks_take() {
+        let main = find("devices").unwrap().file(None).unwrap();
+        let template: Value = serde_json::from_str(blocks(main).into_iter().find(|block| block.contains("\"Dynamic Island\"")).unwrap()).unwrap();
+        let rows: Vec<Vec<&str>> = main
+            .lines()
+            .filter(|line| line.starts_with("| iPhone") && !line.contains("SE"))
+            .map(|line| line.trim_matches('|').split('|').map(str::trim).collect())
+            .collect();
+        assert!(rows.len() >= 19, "{}", rows.len());
+        let number = |text: &str| text.parse::<f64>().unwrap();
+        for row in rows {
+            let [model, size, corners, top, mark_text, bar_text, left, control] = row[..] else { panic!("{row:?}") };
+            let (wide, high) = size.split_once(" × ").map(|(across, down)| (number(across), number(down))).unwrap();
+            let (corner, mark, bar) = (number(corners), number(mark_text), number(bar_text));
+            // Human: the rules of the skill's section 2, as a model reading them would apply them.
+            let mut device = template.clone();
+            set_on(&mut device, "Body", Some(&json!({ "width": wide + 24.0, "height": high + 24.0, "cornerRadius": corner + 12.0 })));
+            set_on(&mut device, "Screen", Some(&json!({ "width": wide, "height": high, "cornerRadius": corner })));
+            set_on(&mut device, "App", Some(&json!({ "width": wide, "height": high })));
+            set_on(&mut device, "Status bar", Some(&json!({ "width": wide, "height": bar })));
+            set_on(&mut device, "Side button", Some(&json!({ "x": wide + 26.0 })));
+            let middle = if top == "island" {
+                let island_y = if [402.0, 420.0, 440.0].contains(&wide) { 14.0 } else { 11.0 };
+                set_on(&mut device, "Dynamic Island", Some(&json!({ "x": (wide - 126.0) / 2.0, "y": island_y })));
+                island_y + 18.5
+            } else {
+                set_on(
+                    &mut device,
+                    "Dynamic Island",
+                    Some(&json!({ "name": "Notch", "x": (wide - mark) / 2.0, "y": 0, "width": mark, "height": 32, "cornerRadius": [0, 0, 20, 20] })),
+                );
+                bar / 2.0
+            };
+            set_on(&mut device, "Time", Some(&json!({ "x": (wide - mark) / 4.0 - 33.0, "y": middle - 11.0 })));
+            set_on(&mut device, "Levels", Some(&json!({ "x": (3.0 * wide + mark) / 4.0 - 36.25, "y": middle - 6.0 })));
+            set_on(&mut device, "Home indicator", Some(&json!({ "x": (wide - 134.0) / 2.0, "y": high - 13.0 })));
+            if left == "switch" {
+                set_on(&mut device, "Action button", Some(&json!({ "name": "Ring/Silent switch", "height": 20 })));
+            }
+            set_on(&mut device, "Camera Control", (control == "yes").then(|| json!({ "x": wide + 26.0, "y": 0.62 * (high + 24.0) })).as_ref());
+            set_on(&mut device, "iPhone 16", Some(&json!({ "name": model })));
+            give_ids(&mut device, &mut 0);
+            let json = json!({ "version": "2.22", "children": [device] }).to_string();
+            let mut editor = crate::editor::Editor::new(pen_doc::read(&json).unwrap(), None, 1);
+            editor.refresh(&|style| (style.size * 0.5 * 4.0, style.size * 1.3));
+            let tops: Vec<&pen_doc::scene::SceneNode> = editor.scene.iter().collect();
+            assert_eq!(crate::review::device_note(&tops), None, "{model}");
+            assert_eq!(crate::review::mistakes_in(&tops, pen_doc::vars::Vars::new(&editor.doc), &|_| None), Vec::<String>::new(), "{model}");
+            // The time and the glyphs fit in the strips beside the island or notch, inside the screen.
+            let mut found = Vec::new();
+            tops[0].walk(
+                &mut |layer, _| {
+                    if matches!(layer.node.name.as_deref(), Some("Time" | "Levels")) {
+                        found.push((layer.local.x, layer.local.x + layer.local.w));
+                    }
+                },
+                0,
+            );
+            let [(time_left, time_right), (levels_left, levels_right)] = found[..] else { panic!("{model}: {found:?}") };
+            let (mark_left, mark_right) = ((wide - mark) / 2.0, f64::midpoint(wide, mark));
+            assert!(time_left >= 0.0 && f64::from(time_right) <= mark_left, "{model}: the time {time_left}–{time_right}");
+            assert!(f64::from(levels_left) >= mark_right && f64::from(levels_right) <= wide, "{model}: the glyphs {levels_left}–{levels_right}");
+        }
+    }
+
+    #[test]
     fn a_skill_is_listed_read_and_written_out_whole() {
         assert_eq!(list()["skills"][0]["name"], "liquid-glass");
         assert!(index().contains("- `liquid-glass`: Design Liquid Glass interfaces"));
@@ -376,7 +487,7 @@ mod tests {
 
         let root = std::env::temp_dir().join(format!("pencraft-skills-test-{}", std::process::id()));
         let written = install(&root).unwrap();
-        assert_eq!(written, [root.join("liquid-glass").join(MAIN), root.join("ui-components").join(MAIN)]);
+        assert_eq!(written, [root.join("liquid-glass").join(MAIN), root.join("ui-components").join(MAIN), root.join("devices").join(MAIN)]);
         for (path, text) in ALL[0].files {
             assert_eq!(std::fs::read_to_string(root.join("liquid-glass").join(path)).unwrap(), *text);
         }

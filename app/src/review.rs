@@ -14,7 +14,7 @@ use pen_doc::vars::Vars;
 use serde_json::Value;
 
 /// How many notes one review carries.
-const MOST_NOTES: usize = 10;
+pub const MOST_NOTES: usize = 10;
 /// How many layers one note names.
 const MOST_NAMED: usize = 4;
 /// The least contrast between body text and its background (WCAG AA), and for large text.
@@ -1192,6 +1192,74 @@ pub fn review(layers: &[&SceneNode], vars: Vars<'_>, stands_in: &dyn Fn(&str) ->
     out
 }
 
+/// How wide a phone's screen is, and how many times its width it is high (upright).
+// Source: the iPhone SE is 375 × 667 points (1.78), the iPhone 17 Pro Max 440 × 956 (2.17); Android phones run
+// from 360 × 800 (2.22) to 412 × 915 dp (2.22). A device drawn around a screen is about 24 larger each way.
+const PHONE_WIDTH: (f32, f32) = (340.0, 480.0);
+/// See [`PHONE_WIDTH`].
+const PHONE_SHAPE: (f32, f32) = (1.7, 2.4);
+/// The least room a device leaves around its screen on every side.
+const BEZEL: f32 = 4.0;
+/// How deep below a top-level layer a phone screen is looked for.
+const SCREEN_DEPTH: usize = 3;
+
+/// Whether `scene` is a frame of a phone screen's size and shape.
+fn phone_shaped(scene: &SceneNode) -> bool {
+    let (w, h) = (scene.local.w, scene.local.h);
+    scene.node.kind == Kind::Frame && (PHONE_WIDTH.0..=PHONE_WIDTH.1).contains(&w) && (PHONE_SHAPE.0..=PHONE_SHAPE.1).contains(&(h / w.max(1.0)))
+}
+
+/// Whether `device` holds a phone screen with room around it on every side: the body of a device.
+fn holds_a_screen(device: &SceneNode) -> bool {
+    let body = layout::doc_bounds(device);
+    let mut found = false;
+    device.walk(
+        &mut |part, depth| {
+            if depth == 0 || depth > SCREEN_DEPTH || found || !phone_shaped(part) {
+                return;
+            }
+            let screen = layout::doc_bounds(part);
+            found = screen.x - body.x >= BEZEL
+                && screen.y - body.y >= BEZEL
+                && body.x + body.w - (screen.x + screen.w) >= BEZEL
+                && body.y + body.h - (screen.y + screen.h) >= BEZEL;
+        },
+        0,
+    );
+    found
+}
+
+/// Notes the phone screens in `scene` that no device is drawn around.
+fn bare_screens(scene: &SceneNode, depth: usize, out: &mut Vec<String>) {
+    if phone_shaped(scene) {
+        if !holds_a_screen(scene) {
+            out.push(label(scene));
+        }
+        return;
+    }
+    if depth < SCREEN_DEPTH {
+        for child in &scene.children {
+            bare_screens(child, depth + 1, out);
+        }
+    }
+}
+
+/// What to say about the phone screens in the top-level layers `tops` that stand bare, without the device
+/// around them; `None` when every one is in a device. For a request that names a phone or a tablet.
+#[must_use]
+pub fn device_note(tops: &[&SceneNode]) -> Option<String> {
+    let mut bare = Vec::new();
+    for top in tops {
+        bare_screens(top, 0, &mut bare);
+    }
+    (!bare.is_empty()).then(|| {
+        format!(
+            "Phone screens without their device around them: {}. The user asked for a phone app, so each screen stands inside the device (\"A screen on a device\" in the guide): insert the template of the `devices` skill (read it with read_skill) and move the screen's content into its \"App\" frame. Leave it bare only if the user asked for the screen alone.",
+            named(bare.iter().map(String::as_str))
+        )
+    })
+}
+
 /// The mistakes in `layers`, whatever the design is meant to be: text too faint to read or too small, layers
 /// that don't fit their frame, a font that isn't installed. Told with every change, so they don't pile up.
 #[must_use]
@@ -1517,6 +1585,38 @@ mod tests {
         let said = notes(&list(r##","stroke":"#d6d3d1","strokeWidth":{"bottom":1}"##), &[]);
         assert!(said.iter().any(|note| note.contains("the last row of \"Activity\" (rows) (\"Row\" (c)) has a line under it")), "{said:#?}");
         assert_eq!(notes(&list(""), &[]), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_phone_screen_without_its_device_is_named() {
+        let said = |json: &str| {
+            let mut editor = Editor::new(pen_doc::read(json).unwrap(), None, 1);
+            editor.refresh(&|style| (style.size * 0.5 * 10.0, style.size * 1.2));
+            let layers: Vec<&SceneNode> = editor.scene.iter().collect();
+            device_note(&layers)
+        };
+        let screen = r##"{"type":"frame","id":"screen","name":"Photos – Library","x":12,"y":12,"width":393,"height":852,"layout":"none","cornerRadius":55,"clip":true,"fill":"#ffffff"}"##;
+        // The screen alone on the canvas, and on a board that only presents it.
+        let bare = said(&format!(r#"{{"version":"2.22","children":[{}]}}"#, screen.replace(r#""x":12,"y":12"#, r#""x":0,"y":0"#)));
+        assert!(bare.is_some_and(|note| note.contains("\"Photos – Library\" (screen)")));
+        let board = format!(
+            r##"{{"version":"2.22","children":[{{"type":"frame","id":"board","x":0,"y":0,"width":900,"height":1000,"layout":"none","fill":"#e7e5e4","children":[{screen}]}}]}}"##
+        );
+        assert!(said(&board).is_some());
+        // The screen in the body of an iPhone, and in a group with the side buttons around that.
+        let body = format!(
+            r##"{{"type":"frame","id":"body","name":"iPhone 17 Pro","x":0,"y":0,"width":417,"height":876,"layout":"none","cornerRadius":67,"fill":"#1c1c1e","children":[{screen}]}}"##
+        );
+        assert_eq!(said(&format!(r#"{{"version":"2.22","children":[{body}]}}"#)), None);
+        let grouped = format!(
+            r##"{{"version":"2.22","children":[{{"type":"group","id":"device","x":0,"y":0,"children":[{body},{{"type":"rectangle","id":"side","x":417,"y":200,"width":3,"height":96,"fill":"#3a3a3c"}}]}}]}}"##
+        );
+        assert_eq!(said(&grouped), None);
+        // A desktop page has no phone screen in it.
+        assert_eq!(
+            said(r##"{"version":"2.22","children":[{"type":"frame","id":"page","x":0,"y":0,"width":1440,"height":900,"fill":"#ffffff"}]}"##),
+            None
+        );
     }
 
     #[test]

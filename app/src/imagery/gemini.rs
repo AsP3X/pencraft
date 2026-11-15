@@ -19,20 +19,28 @@ fn endpoint(base: &str) -> String {
     format!("{}/v1beta/interactions", base.trim().trim_end_matches('/'))
 }
 
+/// Said before the words when a request has both a picture to change and references.
+const ROLES: &str = "The first picture is the one to change; the others are references.";
+
 /// The request as the Interactions API takes it.
+// Human: the pictures follow the words, the one to change first (`sources::prepare` puts it there). Without an
+// aspect the service keeps the shape of the picture to change (live service, 2026-11-15).
 fn body(request: &Request) -> Value {
-    json!({
-        "model": request.model,
-        "input": [{ "type": "text", "text": request.prompt }],
-        "response_format": {
-            "type": "image",
-            // Human: asked of the live service on 2026-11-14, the lite model makes JPEG only ("The value
-            // 'image/png' is not supported"), and every model makes JPEG.
-            "mime_type": "image/jpeg",
-            "aspect_ratio": request.aspect.text(),
-            "image_size": if request.large { "2K" } else { "1K" },
-        }
-    })
+    let sources = &request.sources;
+    let roles = sources.iter().any(|source| source.change) && sources.iter().any(|source| !source.change);
+    let text = if roles { format!("{ROLES} {}", request.prompt) } else { request.prompt.clone() };
+    let mut input = vec![json!({ "type": "text", "text": text })];
+    input.extend(sources.iter().map(|source| json!({ "type": "image", "mime_type": source.kind, "data": crate::agent::base64(&source.bytes) })));
+    let mut format = serde_json::Map::new();
+    format.insert("type".to_owned(), json!("image"));
+    // Human: asked of the live service on 2026-11-14, the lite model makes JPEG only ("The value
+    // 'image/png' is not supported"), and every model makes JPEG.
+    format.insert("mime_type".to_owned(), json!("image/jpeg"));
+    if let Some(aspect) = request.aspect {
+        format.insert("aspect_ratio".to_owned(), json!(aspect.text()));
+    }
+    format.insert("image_size".to_owned(), json!(if request.large { "2K" } else { "1K" }));
+    json!({ "model": request.model, "input": input, "response_format": format })
 }
 
 /// The picture in an answer with `status` and the body `said`.
@@ -45,6 +53,13 @@ fn read(status: u16, said: &str) -> Result<Made, Failure> {
         // only in the error's reason.
         if said.contains(BAD_KEY) {
             return Err(Failure::Key(super::service::message_of(said)));
+        }
+        // Human: a picture the model won't make from the pictures it was given comes as 400 with a code that
+        // starts with `image_` ("image_recitation", live service, 2026-11-15): a refusal, in the service's words.
+        let code =
+            serde_json::from_str::<Value>(said).ok().and_then(|answer| answer.pointer("/error/code").and_then(Value::as_str).map(str::to_owned));
+        if status == 400 && code.is_some_and(|code| code.starts_with("image_")) {
+            return Err(Failure::Refused(super::service::message_of(said)));
         }
         return Err(Failure::of(status, said));
     }
@@ -96,15 +111,16 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::imagery::service::Aspect;
+    use crate::imagery::service::{Aspect, Source};
 
     fn request() -> Request {
         Request {
             prompt: "A red fox".to_owned(),
             model: "gemini-3.1-flash-lite-image".to_owned(),
-            aspect: Aspect(16, 9),
+            aspect: Some(Aspect(16, 9)),
             large: false,
             transparent: false,
+            sources: Vec::new(),
         }
     }
 
@@ -167,6 +183,32 @@ mod tests {
         // The normal size, and any other failure, are told as the service told them.
         assert_eq!(explained(not_found(), 404, &request()), not_found());
         assert_eq!(explained(Failure::Limit("Slow down.".to_owned()), 429, &large), Failure::Limit("Slow down.".to_owned()));
+    }
+
+    #[test]
+    fn pictures_follow_the_words_and_roles_are_said_only_when_both_are_there() {
+        let source = |change| Source { bytes: b"foo".to_vec(), kind: "image/jpeg", change };
+        let one = body(&Request { sources: vec![source(true)], aspect: None, ..request() });
+        assert_eq!(one["input"], json!([{ "type": "text", "text": "A red fox" }, { "type": "image", "mime_type": "image/jpeg", "data": "Zm9v" }]));
+        assert!(one["response_format"].get("aspect_ratio").is_none(), "no shape asked for: the picture's own");
+        let both = body(&Request { sources: vec![source(true), source(false)], ..request() });
+        assert_eq!(both["input"][0]["text"], "The first picture is the one to change; the others are references. A red fox");
+        assert_eq!(both["input"].as_array().unwrap().len(), 3);
+        let only_references = body(&Request { sources: vec![source(false)], ..request() });
+        assert_eq!(only_references["input"][0]["text"], "A red fox");
+    }
+
+    #[test]
+    fn a_picture_the_service_wont_make_from_the_pictures_given_is_a_refusal() {
+        // Human: the live service's own answer, taken on 2026-11-15 (research_notes/imagery/gemini-edit.md).
+        let recitation = r#"{"error":{"message":"Image generation blocked due to copyright/recitation. Please modify your input and retry.","code":"image_recitation"}}"#;
+        assert_eq!(
+            read(400, recitation),
+            Err(Failure::Refused("Image generation blocked due to copyright/recitation. Please modify your input and retry.".to_owned()))
+        );
+        // Another 400 is still an error, not a refusal.
+        let invalid = r#"{"error":{"message":"Invalid value.","code":"invalid_request"}}"#;
+        assert_eq!(read(400, invalid), Err(Failure::Other("400: Invalid value.".to_owned())));
     }
 
     #[test]

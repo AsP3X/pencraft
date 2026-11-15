@@ -26,6 +26,10 @@ A few words mean something definite to the assistant when you ask it to change a
 (take away), "polish" (alignment, spacing and consistency, no new ideas), and "what do you think?" (a review
 that changes nothing). In each case it leaves alone what you did not name.
 
+A mock of a phone or tablet app ("a mock of an iPhone gallery app") comes inside the device: the phone's body
+and corners, with the status bar, the Dynamic Island or camera and the home indicator. Say "the screen alone"
+or "no device" to get the bare screen.
+
 The send button turns into a stop button while the assistant works. "New" starts a new chat.
 
 Every open design has a chat of its own: switching tabs switches the chat, and a message half written in one
@@ -91,6 +95,7 @@ A client that speaks MCP over HTTP can skip `pencraft mcp`: the address and the 
 | `save_document` | Saves the document, or saves it under a new path |
 | `export_layers` | Writes layers to a PNG, JPEG, WebP, PDF or SVG file |
 | `generate_image` | Has an image model make a picture from a description and gives back the file to use in an image fill, or puts it on a layer. Needs an image service (see Pictures) |
+| `edit_image` | Has an image model change a picture by an instruction (a layer's picture, layers as they look, or a picture file), or make one that goes by up to four reference pictures; puts the result in place of the layer's picture or beside the layers drawn. Needs a Google Gemini service (see Pictures) |
 
 ## Pictures
 
@@ -116,10 +121,64 @@ At most 3 pictures are made at once for assistants; a fourth is turned away unti
 
 When the assistant asks for a picture to go on a layer and you are dragging something on the canvas, the
 picture waits up to 10 seconds for you to let go. If you are still dragging, the layer is left as it is and the
-assistant is told to place the picture itself.
+assistant is told to place the picture itself. A picture you asked for yourself waits as long as you are
+dragging or typing text on the canvas, and goes in when you stop; once it has come back, Cancel no longer
+throws it away.
 
-`get_state` lists the services an assistant can use under `imageServices`. It is empty, with a note, when
-"Let the assistant generate pictures" is off.
+`get_state` lists the services an assistant can use under `imageServices`, with `edits: true` for those that
+can change pictures. It is empty, with a note, when "Let the assistant generate and edit pictures" is off.
+
+### Changing a picture
+
+Pencraft can also have a picture changed by description ("make it dusk", "take the people out"), or have a new
+one made that goes by pictures you give it. There are three ways:
+
+- **Ask the assistant.** It uses the `edit_image` tool, and sends only the pictures you name.
+- **The Generate Image dialog.** Select layers and open File → Generate Image…. The selected layers show as a
+  row of small pictures. Click "Reference" under one to mark it "Change this": it is then the picture to
+  change, and the dialog is called "Edit image". The others are references, pictures for the service to go
+  by. "Add file…" adds picture files as references, and the cross takes a picture out of the row. A layer
+  selected alone goes into the row only when it has a picture as its fill (it is then marked at once) or has
+  layers inside it. Any other lone layer, such as an empty rectangle, gets the plain dialog, which offers to
+  use the new picture as that layer's fill. Under the row the dialog says how many pictures it sends, and to
+  which service, before you press the button.
+- **On an image fill.** When the selected layer has a picture as its fill, the properties panel shows "Edit
+  with AI…" (the wand) on the picture's row, which opens the dialog with that picture marked, and under the
+  row a field, "Describe a change…". Type the change and press Return or the arrow: the picture and your
+  words go to the default service when it can change pictures, else to the first that can, and the result
+  takes the picture's place. You can go on working meanwhile. If another layer or tab is in front when it is
+  done, the message line says what became of the picture. Words you typed and left stay with that layer
+  until its picture is changed (for the last layer you left with words in the field).
+
+The picture to change is the picture in a layer's fill (the topmost one when the fill has several), layers as
+they look on the canvas ("as drawn", for a design or anything without a picture), or for the assistant a
+picture file. A reference is any layer (its picture when its fill has one, otherwise how it looks) or a
+picture file. One picture to change and four references at most go in one request. With references alone,
+the service makes a new picture from your description, guided by them.
+
+Where the result goes:
+
+- **In place of a layer's picture.** Only the picture is replaced: the fill's other paints and the picture's
+  mode stay, and it is one undo step. This happens only while the layer still shows the picture that was sent.
+  If the picture was changed or removed meanwhile, the result becomes a new layer instead, and you are told.
+  In the dialog, "Replace the picture" turned off puts the result beside the layer instead.
+- **Beside.** Layers changed as drawn are left alone. The result is a new layer, "Edited picture", as large as
+  what was drawn and at its height, to the right of the top-level layer it is in and clear of the other
+  top-level layers. It is selected when you asked for it yourself.
+- **Elsewhere.** From the dialog, a picture made from references alone becomes a new layer in the middle of the
+  view. The assistant gets that picture, or a changed picture file, as a file to use; nothing in the document
+  changes.
+
+The dialog's result brings its document's tab to the front; the field's does not. The result is never
+transparent: a picture with a transparent background comes back with a filled one.
+
+Only Google Gemini services can change pictures for now. With only an OpenAI Images service, the dialog says
+so when pictures are in its row, and the field on an image fill says where to add a Gemini one.
+
+The pictures sent are scaled down to at most 2048 pixels on their longer side. A picture file is read only
+when it is a PNG, JPEG, WebP or GIF file of at most 100 MB (its first bytes say which, not its name). All the
+pictures of one request together may come to 15 MB. Changing a picture takes as long as making one, with the
+same 100 second limit.
 
 ## Skills
 
@@ -131,6 +190,7 @@ layers, and how to check the result. Skills are folders in the open Agent Skills
 |---|---|
 | [`liquid-glass`](skills/liquid-glass/SKILL.md) | Liquid Glass interfaces (the translucent, light-bending material of iOS 26 and macOS 26) and frosted panels: which surfaces get glass, the `material` property, glass groups, legibility, tokens, ready-made components |
 | [`ui-components`](skills/ui-components/SKILL.md) | Standard components the way the common libraries build them (shadcn/ui, Radix, Base UI, Sonner, Vaul, cmdk): buttons, fields, menus, dialogs, drawers, toasts, a command palette, cards and tables, with sizes, tokens for light and dark, states and placement, and the numbers of named looks |
+| [`devices`](skills/devices/SKILL.md) | Screens shown inside the phone or tablet they are for: a ready iPhone template measured from the real one (status bar with the time and the signal, Wi-Fi and battery glyphs, Dynamic Island, home indicator, side buttons), and the numbers of an Android phone and an iPad |
 
 A model gets a skill in one of two ways, with the same text either way:
 
@@ -157,6 +217,14 @@ The server listens on this computer only, serves only callers that show the secr
 (readable by you alone), and refuses requests from web pages. Turn it off in Settings → Agents →
 "Let AI models work on documents".
 
-Making a picture sends its description, and nothing else of the document, to the image service you chose, and
-is paid for on your key. Settings → Images → "Let the assistant generate pictures" stops AI models from doing
-it; the Generate Image dialog still works.
+Making a picture from a description sends that description, and nothing else of the document, to the image
+service you chose. Changing a picture sends more: the description, and every picture named. That is a
+layer's picture file, a picture file added as a reference, and for layers sent as drawn a picture of that
+part of your design. Pictures are sent only when you ask for it yourself (in the Generate Image dialog or the
+field on an image fill), or when the assistant calls `edit_image` while Settings → Images → "Let the assistant
+generate and edit pictures" is on. Both are paid for on your key. That switch stops AI models from making and
+changing pictures; the dialog and the field still work.
+
+A layer's picture is replaced only if the layer still shows the picture that was sent. Cancel in the dialog or
+the field, or Stop in the chat, keeps anything that has not been sent yet from being sent; a request already
+sent may still be charged.

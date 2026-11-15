@@ -39,19 +39,40 @@ impl Aspect {
     }
 }
 
+/// A picture sent with a request: the one to change, or one to go by.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Source {
+    /// The bytes of a JPEG or PNG file.
+    pub bytes: Vec<u8>,
+    /// "image/jpeg" or "image/png".
+    pub kind: &'static str,
+    /// This is the picture to change; the others are references.
+    pub change: bool,
+}
+
+// Human: a picture is shown by its kind and size, so the user's pictures never end up in a log (a `Request`
+// prints its sources this way too).
+impl std::fmt::Debug for Source {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Source({}, {} bytes{})", self.kind, self.bytes.len(), if self.change { ", to change" } else { "" })
+    }
+}
+
 /// One picture to make.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Request {
-    /// What the picture shows.
+    /// What the picture shows, or for an edit what to change.
     pub prompt: String,
     /// The model, as the service names it.
     pub model: String,
-    /// Its shape.
-    pub aspect: Aspect,
+    /// Its shape; `None` for the shape of the picture to change (a plain generation always has one).
+    pub aspect: Option<Aspect>,
     /// About 2048 pixels on the long side instead of about 1024.
     pub large: bool,
     /// A transparent background.
     pub transparent: bool,
+    /// The pictures sent with it, the one to change first; empty for a plain generation.
+    pub sources: Vec<Source>,
 }
 
 /// A picture a service made: the bytes of a PNG, JPEG or WebP file.
@@ -91,7 +112,7 @@ impl Failure {
     #[must_use]
     pub fn sentence(&self, service: &str) -> String {
         match self {
-            Failure::Refused(why) => format!("{service} refused the description: {}", ended(why)),
+            Failure::Refused(why) => format!("{service} refused to make this picture: {}", ended(why)),
             Failure::Key(why) => format!("{service} didn't accept its API key: {} Check the key in Settings → Images.", ended(why)),
             Failure::NoKey(why) => format!("{service}'s API key couldn't be found: {}", ended(why)),
             Failure::Limit(why) => format!("{service} has reached a limit: {}", ended(why)),
@@ -180,7 +201,7 @@ mod tests {
             Failure::Key("Bad key.".to_owned()).sentence("My Gemini"),
             "My Gemini didn't accept its API key: Bad key. Check the key in Settings → Images."
         );
-        assert_eq!(Failure::Refused("No people.".to_owned()).sentence("My Gemini"), "My Gemini refused the description: No people.");
+        assert_eq!(Failure::Refused("No people.".to_owned()).sentence("My Gemini"), "My Gemini refused to make this picture: No people.");
         assert_eq!(Failure::Limit("Slow down.".to_owned()).sentence("X"), "X has reached a limit: Slow down.");
         assert_eq!(Failure::Network("timed out".to_owned()).sentence("X"), "X couldn't be reached or took too long: timed out.");
         assert_eq!(Failure::Other("500: oops".to_owned()).sentence("X"), "X answered with an error: 500: oops.");
@@ -192,7 +213,23 @@ mod tests {
         assert_eq!(Failure::Limit("  ".to_owned()).sentence("X"), "X has reached a limit: no reason given.");
         assert_eq!(Failure::Key("Bad key".to_owned()).sentence("X"), "X didn't accept its API key: Bad key. Check the key in Settings → Images.");
         assert_eq!(Failure::Key(String::new()).sentence("X"), "X didn't accept its API key: no reason given. Check the key in Settings → Images.");
-        assert_eq!(Failure::Refused("Why not?".to_owned()).sentence("X"), "X refused the description: Why not?");
+        assert_eq!(Failure::Refused("Why not?".to_owned()).sentence("X"), "X refused to make this picture: Why not?");
         assert_eq!(Failure::NoKey("it is gone".to_owned()).sentence("X"), "X's API key couldn't be found: it is gone.");
+    }
+
+    #[test]
+    fn a_picture_sent_is_printed_by_its_kind_and_size_never_its_bytes() {
+        let source = Source { bytes: b"secret".to_vec(), kind: "image/png", change: true };
+        assert_eq!(format!("{source:?}"), "Source(image/png, 6 bytes, to change)");
+        let request = Request {
+            prompt: "x".to_owned(),
+            model: "m".to_owned(),
+            aspect: None,
+            large: false,
+            transparent: false,
+            sources: vec![source, Source { bytes: vec![1], kind: "image/jpeg", change: false }],
+        };
+        let printed = format!("{request:?}");
+        assert!(printed.contains("Source(image/jpeg, 1 bytes)") && !printed.contains("115"), "{printed}");
     }
 }

@@ -40,6 +40,9 @@ enum Then {
     Attach,
     /// Export the selection, as these options say, to the chosen file or into the chosen folder.
     Export(crate::export::Options),
+    /// Add the chosen pictures as references to the row of the Generate Image dialog opened for the document
+    /// with this id ([`Editor::id`]), if it is still open for it.
+    Reference(u64),
 }
 
 /// An unsaved-changes question waiting for an answer.
@@ -543,6 +546,13 @@ impl App {
         self.dialogs.ask(FileDialog::open_many().title("Import Image or SVG").filter("Pictures", &kinds), Then::Import);
     }
 
+    /// Asks for picture files to send as references with the picture of the Generate Image dialog opened for the
+    /// document `doc`.
+    fn ask_reference(&mut self, doc: u64) {
+        let kinds = ["png", "jpg", "jpeg", "webp", "gif"];
+        self.dialogs.ask(FileDialog::open_many().title("Add Reference Pictures").filter("Pictures", &kinds), Then::Reference(doc));
+    }
+
     /// Does what an action of the action search (or its shortcut) asks.
     // Human: one place for everything the app can be told to do, so the search and the keyboard can't drift
     // apart in what an action means.
@@ -702,6 +712,7 @@ impl App {
                 }
                 (Then::Export(options), Answer::Paths(paths)) => self.exporting = paths.into_iter().next().map(|path| (path, options)),
                 (Then::Attach, Answer::Paths(paths)) => self.attach(paths),
+                (Then::Reference(doc), Answer::Paths(paths)) => self.add_references(doc, paths),
                 (Then::Import, Answer::Paths(paths)) => {
                     let view = self.canvas_view;
                     let mut failed = None;
@@ -736,8 +747,20 @@ impl App {
                 })
                 .collect()
         });
-        let clipboard_events: Vec<egui::Event> =
-            ctx.input(|i| i.events.iter().filter(|e| matches!(e, egui::Event::Copy | egui::Event::Cut | egui::Event::Paste(_))).cloned().collect());
+        // Human: words selected in the chat take ⌘C and ⌘X for themselves (egui copies them): the layers selected
+        // on the canvas are neither copied over them nor cut away. Pasting still goes to the canvas.
+        let words_selected = ctx.plugin_opt::<egui::text_selection::LabelSelectionState>().is_some_and(|state| state.lock().has_selection());
+        let clipboard_events: Vec<egui::Event> = ctx.input(|i| {
+            i.events
+                .iter()
+                .filter(|e| match e {
+                    egui::Event::Copy | egui::Event::Cut => !words_selected,
+                    egui::Event::Paste(_) => true,
+                    _ => false,
+                })
+                .cloned()
+                .collect()
+        });
         // Human: while the Generate Image dialog shows, no shortcut acts on the documents behind it: Backspace
         // would delete the layer the picture is meant for, ⌘W close its tab. Here, before any of them, because
         // this is the one place every app and editor shortcut goes through; the dialog's own keys (Escape, typing
@@ -1219,6 +1242,7 @@ impl App {
         }
         let mut notice = None;
         let mut asked = None;
+        let mut pictures = self.quick_look(index);
         // Human: with "Animations & effects" off the sidebar opens and folds at once.
         let open = self.sidebar.openness(&ctx, self.prefs.get().appearance.animations);
         if !hide {
@@ -1268,7 +1292,7 @@ impl App {
                             crate::sidebar::island(ui, place, ISLAND_RADIUS, palette);
                             ui.scope_builder(egui::UiBuilder::new().max_rect(place.shrink(1.0)), |ui| {
                                 ui.set_clip_rect(place.shrink(1.0).intersect(ui.clip_rect()));
-                                notice = notice.or(crate::panels::properties(ui, editor, dark));
+                                notice = notice.or(crate::panels::properties(ui, editor, dark, &mut pictures));
                             });
                         },
                     );
@@ -1312,6 +1336,7 @@ impl App {
         if let Some(options) = wanted {
             self.ask_export(options);
         }
+        self.quick_asked(pictures, &ctx);
         notice = notice.or(self.asked(asked));
         if let Some(sentence) = notice {
             self.say(sentence);
