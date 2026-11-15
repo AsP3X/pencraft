@@ -1,7 +1,7 @@
 //! The app's side of making pictures: `generate_image` and `edit_image` calls that wait for their picture, the
 //! dialog's own picture, and putting a finished one into the document.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
 use std::time::{Duration, Instant};
 
@@ -19,7 +19,7 @@ use crate::editor::Editor;
 use crate::imagery::dialog::{Dialog, Did, Offered, Piece, PieceOf};
 use crate::imagery::jobs::{self, Done, Job, Order};
 use crate::imagery::sources::{self, Take};
-use crate::imagery::store::Saved;
+use crate::imagery::store::{self, Saved};
 use crate::imagery::{self, Pick};
 use crate::link::Call;
 use crate::palette::Command;
@@ -459,6 +459,46 @@ fn quick_asked(text: &str, layer: &str, service: &str) -> Value {
 fn beside_of(editor: &Editor, ids: &[String]) -> Option<Goes> {
     let drawn = ids.iter().filter_map(|id| editor.scene_node(id)).map(layout::doc_bounds).reduce(|a, b| a.union(&b))?;
     Some(Goes::Beside { drawn, tops: tops_holding(editor, ids).unwrap_or(drawn) })
+}
+
+/// Brings the pictures of the document `editor` to where its file lies, before that is written: a picture kept
+/// under the home folder `home` because the document had no file when it was made is copied into `images/`
+/// beside it and named from there, and when the document goes to another folder than that of `was`, the file
+/// it had, the pictures named from there are copied along. A sentence for each picture that couldn't be
+/// brought; that one keeps its path.
+// Human: done on every save, not only the first: a picture can still land under the home folder after it (one
+// that was being made while the document was saved), and the next save brings that one too. Without this a
+// saved document names pictures by a full path into one person's home folder, and shows none of them anywhere
+// else. A path that leaves the document's folder (`../shared/a.png`) is left as it is.
+// Agent: READS and WRITES picture files and credits (`store::adopt`, `store::bring`); BLOCKS on them, on the
+// thread that saves, which the document's own file is written on too. Changes `url`s in the document and its
+// undo steps without a new undo step.
+pub(super) fn settle(editor: &mut Editor, was: Option<&Path>, home: Option<&Path>) -> Vec<String> {
+    let Some(document) = editor.path.clone() else { return Vec::new() };
+    let folder = document.parent().unwrap_or(Path::new("")).to_path_buf();
+    let left = was.and_then(Path::parent).filter(|left| *left != folder);
+    let waiting = home.map(store::waiting);
+    let mut told = Vec::new();
+    editor.repicture(&mut |url| {
+        let done = match crate::images::resolve(None, url) {
+            Some(whole) if waiting.as_deref().is_some_and(|waiting| whole.starts_with(waiting)) => store::adopt(&whole, &document).map(Some),
+            Some(_) => Ok(None),
+            None => {
+                let places = left.and_then(|left| crate::images::resolve(Some(left), url)).zip(crate::images::resolve(Some(&folder), url));
+                match places {
+                    Some((source, target)) if source.is_file() && !target.components().any(|part| part == Component::ParentDir) => {
+                        store::bring(&source, &target).map(|()| None)
+                    }
+                    _ => Ok(None),
+                }
+            }
+        };
+        done.unwrap_or_else(|why| {
+            told.push(why);
+            None
+        })
+    });
+    told
 }
 
 /// A small picture of the picture file at `path`, at most [`PIECE_PIXELS`] a side; `None` when it isn't a PNG,
@@ -1466,6 +1506,97 @@ mod tests {
         .unwrap();
         let editor = Editor::new(doc, Some(folder.join("site.pen")), 7);
         (folder, editor)
+    }
+
+    /// A PNG picture of one pixel.
+    fn dot() -> Vec<u8> {
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image::RgbaImage::from_pixel(1, 1, image::Rgba([200, 30, 30, 255])).write_to(&mut bytes, image::ImageFormat::Png).unwrap();
+        bytes.into_inner()
+    }
+
+    /// An empty folder of this test's own, named after `name`.
+    fn empty(name: &str) -> PathBuf {
+        let folder = std::env::temp_dir().join(format!("pencraft-pictures-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).unwrap();
+        folder
+    }
+
+    /// A document without a file whose layers show the picture at `url`: as a fill, among several paints, as a
+    /// stroke and in an instance's override; with one undo step behind it that shows it too.
+    fn unsaved_with(url: &str) -> Editor {
+        let text = r##"{"version":"2.22","children":[
+              {"type":"rectangle","id":"one","width":10,"height":10,"fill":{"type":"image","url":"URL","mode":"contain"}},
+              {"type":"rectangle","id":"many","width":10,"height":10,"fill":["#ffffff",{"type":"image","url":"URL"}],"stroke":{"type":"image","url":"URL"}},
+              {"type":"frame","id":"card","reusable":true,"width":10,"height":10,"children":[{"type":"rectangle","id":"photo","width":10,"height":10}]},
+              {"type":"ref","id":"inst","ref":"card","descendants":{"photo":{"fill":{"type":"image","url":"URL"}}}}]}"##
+            .replace("URL", url);
+        let mut editor = Editor::new(pen_doc::read(&text).unwrap(), None, 7);
+        editor.checkpoint();
+        pen_doc::edit::find_mut(&mut editor.doc, "one").unwrap().name = Some("Hero".to_owned());
+        editor
+    }
+
+    #[test]
+    fn saving_brings_the_pictures_kept_under_the_home_folder_beside_the_document() {
+        let (home, folder) = (empty("settle-home"), empty("settle"));
+        let kept = crate::imagery::store::save(None, Some(&home), &dot(), "A fox", &json!({ "made": "generated" })).unwrap();
+        let mut editor = unsaved_with(&kept.url);
+        editor.path = Some(folder.join("site.pen"));
+        assert_eq!(settle(&mut editor, None, Some(&home)), Vec::<String>::new());
+        let url = format!("./images/{}", kept.path.file_name().unwrap().to_str().unwrap());
+        assert!(folder.join(&url).is_file());
+        let written = pen_doc::write(&editor.doc).unwrap();
+        assert_eq!(written.matches(&url).count(), 4, "{written}");
+        assert!(!written.contains(&kept.url), "{written}");
+        // Human: the step before the save names the picture beside the document too, so undoing keeps it portable.
+        editor.undo();
+        let before = pen_doc::write(&editor.doc).unwrap();
+        assert!(before.matches(&url).count() == 4 && !before.contains(&kept.url), "{before}");
+        // Human: a later save has nothing left to do, and makes no second copy.
+        assert_eq!(settle(&mut editor, Some(&folder.join("site.pen")), Some(&home)), Vec::<String>::new());
+        assert_eq!(std::fs::read_dir(folder.join("images")).unwrap().count(), 2, "the picture and the credits");
+        std::fs::remove_dir_all(&home).unwrap();
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn saving_under_a_new_name_elsewhere_takes_the_documents_pictures_along() {
+        let (folder, mut editor) = pictured("moved");
+        let other = empty("moved-to");
+        std::fs::create_dir_all(folder.join("images")).unwrap();
+        std::fs::write(folder.join("images").join("c.png"), b"c").unwrap();
+        std::fs::write(folder.join("images").join("credits.json"), r#"{"c.png":{"made":"generated"}}"#).unwrap();
+        pen_doc::edit::find_mut(&mut editor.doc, "plain").unwrap().fill =
+            Some(Paints::One(Paint::Object(json!({ "type": "image", "url": "./images/c.png" }).as_object().cloned().unwrap())));
+        let before = pen_doc::write(&editor.doc).unwrap();
+        editor.path = Some(other.join("copy.pen"));
+        assert_eq!(settle(&mut editor, Some(&folder.join("site.pen")), None), Vec::<String>::new());
+        assert_eq!(pen_doc::write(&editor.doc).unwrap(), before, "the paths still fit, so the document is as it was");
+        for picture in ["a.png", "b.png", "images/c.png"] {
+            assert_eq!(std::fs::read(other.join(picture)).unwrap(), std::fs::read(folder.join(picture)).unwrap(), "{picture}");
+        }
+        assert_eq!(std::fs::read_to_string(other.join("images").join("credits.json")).unwrap().matches("c.png").count(), 1);
+        assert!(!other.join("gone.png").exists());
+        std::fs::remove_dir_all(&folder).unwrap();
+        std::fs::remove_dir_all(&other).unwrap();
+    }
+
+    #[test]
+    fn a_picture_that_cant_be_brought_is_told_and_keeps_its_path() {
+        let (home, folder) = (empty("stuck-home"), empty("stuck"));
+        let kept = crate::imagery::store::save(None, Some(&home), &dot(), "A fox", &json!({})).unwrap();
+        let mut editor = unsaved_with(&kept.url);
+        editor.path = Some(folder.join("site.pen"));
+        // Human: a file where the folder for pictures would be.
+        std::fs::write(folder.join("images"), b"in the way").unwrap();
+        let told = settle(&mut editor, None, Some(&home));
+        assert_eq!(told.len(), 1, "one sentence for the one picture, however many layers show it: {told:?}");
+        assert!(told[0].starts_with("The picture ") && told[0].contains("couldn't be brought"), "{told:?}");
+        assert_eq!(pen_doc::write(&editor.doc).unwrap().matches(&kept.url).count(), 4);
+        std::fs::remove_dir_all(&home).unwrap();
+        std::fs::remove_dir_all(&folder).unwrap();
     }
 
     #[test]

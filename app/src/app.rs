@@ -460,16 +460,27 @@ impl App {
     }
 
     fn save(&mut self, tab: usize, close: bool) {
+        let was = self.tabs.get(tab).and_then(|editor| editor.path.clone());
+        self.save_from(tab, close, was.as_deref());
+    }
+
+    /// Saves the document in the tab `tab`, which was last saved as `was` (`None` when never), asking for a
+    /// file first when it has none; its pictures are brought to where it is saved (`pictures::settle`).
+    fn save_from(&mut self, tab: usize, close: bool, was: Option<&Path>) {
         let Some(editor) = self.tabs.get_mut(tab) else { return };
         if editor.path.is_none() {
             let name = format!("{}.pen", editor.title());
             self.dialogs.ask(FileDialog::save().title("Save").filter("Design files", &["pen"]).file_name(name), Then::SaveAs { tab, close });
             return;
         }
+        let stuck = pictures::settle(editor, was, crate::imagery::store::home().as_deref());
         match editor.save() {
             Ok(()) => {
                 if let Some(path) = editor.path.as_ref().map(|p| p.display().to_string()) {
                     self.prefs.update(|p| p.files.touch(&path));
+                }
+                if !stuck.is_empty() {
+                    self.say(format!("Saved. {}", stuck.join(" ")));
                 }
                 if close {
                     self.close_tab_now(tab);
@@ -705,8 +716,8 @@ impl App {
                 (Then::SaveAs { tab, close }, Answer::Paths(paths)) => {
                     if let (Some(path), Some(editor)) = (paths.into_iter().next(), self.tabs.get_mut(tab)) {
                         let path = if path.extension().is_some() { path } else { path.with_extension("pen") };
-                        editor.path = Some(path);
-                        self.save(tab, close);
+                        let was = editor.path.replace(path);
+                        self.save_from(tab, close, was.as_deref());
                         self.remember_tabs();
                     }
                 }

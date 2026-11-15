@@ -341,6 +341,30 @@ impl Editor {
         self.ids.renew(node, &mut taken);
     }
 
+    /// Asks `new` about the `url` of every image paint in the document, once per `url`, and writes the one it
+    /// gives in its place; `None` leaves a `url` as it is. The documents undo and redo go to get the same new
+    /// `url`s, so stepping back doesn't bring an old one back.
+    // Human: not an undo step and not a change to save: it is done while saving, to say where a picture lies now.
+    pub fn repicture(&mut self, new: &mut dyn FnMut(&str) -> Option<String>) {
+        let mut moved: std::collections::HashMap<String, Option<String>> = std::collections::HashMap::new();
+        image_urls(&mut self.doc, &mut |url| {
+            if let Some(to) = moved.entry(url.clone()).or_insert_with(|| new(url)) {
+                url.clone_from(to);
+            }
+        });
+        if moved.values().all(Option::is_none) {
+            return;
+        }
+        for past in self.undo.iter_mut().chain(&mut self.redo) {
+            image_urls(past, &mut |url| {
+                if let Some(Some(to)) = moved.get(url.as_str()) {
+                    url.clone_from(to);
+                }
+            });
+        }
+        self.needs_layout = true;
+    }
+
     /// Writes the document to its file, crash-safely.
     ///
     /// # Errors
@@ -351,5 +375,54 @@ impl Editor {
         craft_atomic::atomic_write(&path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))?;
         self.dirty = false;
         Ok(())
+    }
+}
+
+/// Shows `visit` the `url` of every image paint in `doc`: in fills and strokes, and in what instances override.
+// Human: fills and strokes are read as paints; an instance's overrides are kept as plain JSON, so every
+// object in them that is an image paint counts.
+fn image_urls(doc: &mut Document, visit: &mut dyn FnMut(&mut String)) {
+    use pen_doc::model::{Paint, Paints};
+    fn in_paint(object: &mut Map<String, Value>, visit: &mut dyn FnMut(&mut String)) {
+        if object.get("type").and_then(Value::as_str) == Some("image")
+            && let Some(Value::String(url)) = object.get_mut("url")
+        {
+            visit(url);
+        }
+    }
+    fn in_paints(paints: &mut Paints, visit: &mut dyn FnMut(&mut String)) {
+        let list = match paints {
+            Paints::One(one) => std::slice::from_mut(one),
+            Paints::Many(many) => many.as_mut_slice(),
+        };
+        for one in list {
+            if let Paint::Object(object) = one {
+                in_paint(object, visit);
+            }
+        }
+    }
+    fn in_value(value: &mut Value, visit: &mut dyn FnMut(&mut String)) {
+        match value {
+            Value::Object(object) => {
+                in_paint(object, visit);
+                object.values_mut().for_each(|inner| in_value(inner, visit));
+            }
+            Value::Array(list) => list.iter_mut().for_each(|inner| in_value(inner, visit)),
+            _ => {}
+        }
+    }
+    fn in_node(node: &mut Node, visit: &mut dyn FnMut(&mut String)) {
+        for own in [&mut node.fill, &mut node.stroke].into_iter().flatten() {
+            in_paints(own, visit);
+        }
+        for overridden in node.descendants.iter_mut().flat_map(Map::values_mut) {
+            in_value(overridden, visit);
+        }
+        for child in node.children.iter_mut().flatten() {
+            in_node(child, visit);
+        }
+    }
+    for top in &mut doc.children {
+        in_node(top, visit);
     }
 }

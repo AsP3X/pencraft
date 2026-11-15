@@ -57,9 +57,95 @@ pub fn home() -> Option<PathBuf> {
     std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(PathBuf::from)
 }
 
+/// The folder the pictures of documents that have no file yet are kept in, under the home folder `home`.
+#[must_use]
+pub fn waiting(home: &Path) -> PathBuf {
+    home.join(".pencraft").join(FOLDER)
+}
+
+/// Copies the picture file `file` into `images/` beside the document `document`, with its credit, and gives the
+/// `url` an image fill is to say for it there (`./images/name.png`).
+///
+/// # Errors
+/// A sentence when the picture can't be read or the folder can't be written; nothing is left behind then.
+// Human: for a picture made before its document had a file ([`waiting`]), once the document has one. The
+// picture keeps its name; when another picture has that name there already, it gets a new one, and when the
+// very same picture is there already, that one is used. `file` itself stays where it is, for another document
+// or an undo step that still names it.
+// Agent: READS `file`; WRITES up to two files under the document's folder. BLOCKS on both.
+pub fn adopt(file: &Path, document: &Path) -> Result<String, String> {
+    let folder = document.parent().unwrap_or(Path::new("")).join(FOLDER);
+    carried(file, &folder, true).map(|name| format!("./{FOLDER}/{name}"))
+}
+
+/// Copies the picture file `source` to `target`, a file of the same name in another folder, with its credit.
+/// A file that is at `target` already is left as it is.
+///
+/// # Errors
+/// A sentence when the picture can't be read or the folder can't be written; nothing is left behind then.
+// Human: for a document saved under a new name in another folder, whose pictures are named from where it lies.
+// Agent: READS `source`; WRITES up to two files in the folder of `target`. BLOCKS on both.
+pub fn bring(source: &Path, target: &Path) -> Result<(), String> {
+    carried(source, target.parent().unwrap_or(Path::new("")), false).map(|_| ())
+}
+
+/// Copies the picture file `source` into `folder` with its line of the credits, and gives the name it has
+/// there. When a file of its name is there already: the same picture is used as it is; another one is left
+/// alone, and the copy gets a new name when `rename` says so and isn't made otherwise.
+///
+/// # Errors
+/// A sentence when `source` can't be read or `folder` can't be written; a copy that was made is removed again.
+// Human: the credits of `folder` are read before the picture is written, as `save` does, so a credits file
+// that can't be kept up to date stops the copy while nothing has changed yet.
+// Agent: READS `source` and the credits beside it; WRITES the copy and the credits in `folder`, under the lock.
+fn carried(source: &Path, folder: &Path, rename: bool) -> Result<String, String> {
+    let not_brought =
+        |error: &dyn std::fmt::Display| format!("The picture {} couldn't be brought to {}: {error}.", source.display(), folder.display());
+    let name = source.file_name().and_then(|name| name.to_str()).ok_or_else(|| not_brought(&"it has no name"))?;
+    let bytes = std::fs::read(source).map_err(|error| not_brought(&error))?;
+    let _one_at_a_time = FILING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Human: a picture whose credits can't be read is brought without one, rather than not at all.
+    let credit = source.parent().and_then(|from| filed(&from.join(CREDITS)).ok()).and_then(|mut filed| filed.remove(name));
+    std::fs::create_dir_all(folder).map_err(|error| not_brought(&error))?;
+    let credits = folder.join(CREDITS);
+    let mut filed = if credit.is_some() { filed(&credits)? } else { Map::new() };
+    let target = folder.join(name);
+    let (name, fresh) = match std::fs::read(&target) {
+        Ok(there) if there == bytes || !rename => (name.to_owned(), None),
+        Ok(_) => {
+            let stem = target.file_stem().and_then(|stem| stem.to_str()).unwrap_or("picture");
+            let ending = target.extension().and_then(|ending| ending.to_str()).unwrap_or("png");
+            let (name, path) = write_new(folder, stem, ending, 0, &bytes).map_err(|error| not_brought(&error))?;
+            (name, Some(path))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            if !claim(&target, &bytes).map_err(|error| not_brought(&error))? {
+                return Err(not_brought(&"another picture took its name meanwhile"));
+            }
+            (name.to_owned(), Some(target))
+        }
+        Err(error) => return Err(not_brought(&error)),
+    };
+    if let Some(credit) = credit.filter(|_| !filed.contains_key(&name)) {
+        filed.insert(name.clone(), credit);
+        let written = serde_json::to_string_pretty(&filed)
+            .map_err(|error| error.to_string())
+            .and_then(|text| craft_atomic::atomic_write(&credits, text.as_bytes()).map_err(|error| error.to_string()));
+        if let Err(error) = written {
+            // As in `save`: a copy without its credit would be a file nobody knows the source of.
+            if let Some(path) = fresh {
+                let _ = std::fs::remove_file(path);
+            }
+            return Err(not_brought(&error));
+        }
+    }
+    Ok(name)
+}
+
 /// Writes the picture `bytes` (described as `prompt`) and files `credit` under its name.
 ///
-/// `document` is the document's `.pen` file; without one the picture goes to `.pencraft/images` under `home`.
+/// `document` is the document's `.pen` file; without one the picture goes to [`waiting`] under `home`, from
+/// where [`adopt`] brings it beside the document once that has a file.
 ///
 /// # Errors
 /// A sentence when the bytes aren't a picture, the credits can't be read, or the folder can't be written;
@@ -77,10 +163,7 @@ pub fn save(document: Option<&Path>, home: Option<&Path>, bytes: &[u8], prompt: 
     };
     let (width, height) = image::load_from_memory(bytes).map(|picture| (picture.width(), picture.height())).map_err(|_| NOT_A_PICTURE.to_owned())?;
     let beside = document.and_then(Path::parent).map(|folder| folder.join(FOLDER));
-    let folder = beside
-        .clone()
-        .or_else(|| home.map(|home| home.join(".pencraft").join(FOLDER)))
-        .ok_or("There is no folder to keep the picture in: save the document first.")?;
+    let folder = beside.clone().or_else(|| home.map(waiting)).ok_or("There is no folder to keep the picture in: save the document first.")?;
     // A save that panicked can't have left the folder half-filed (every step undoes itself), so its lock is fine.
     let _one_at_a_time = FILING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let not_saved = |error: &dyn std::fmt::Display| format!("The picture couldn't be saved in {}: {error}.", folder.display());
@@ -164,23 +247,34 @@ fn filed(credits: &Path) -> Result<Map<String, Value>, String> {
 // savers can't both pick the same free name; a name that is taken gets the next number.
 // Agent: WRITES one file in `folder`; tries at most 65536 names.
 fn write_new(folder: &Path, stem: &str, ending: &str, first: u32, bytes: &[u8]) -> Result<(String, PathBuf), std::io::Error> {
-    use std::io::Write as _;
     for n in 0..=0xffff_u32 {
         let name = format!("{stem}-{:04x}.{ending}", first.wrapping_add(n) & 0xffff);
         let path = folder.join(&name);
-        let mut file = match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
-            Ok(file) => file,
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error),
-        };
-        if let Err(error) = file.write_all(bytes).and_then(|()| file.sync_all()) {
-            drop(file);
-            let _ = std::fs::remove_file(&path);
-            return Err(error);
+        if claim(&path, bytes)? {
+            return Ok((name, path));
         }
-        return Ok((name, path));
     }
     Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "every name for it is taken"))
+}
+
+/// Writes `bytes` to the file `path` if there is no such file yet, and says whether it did.
+///
+/// # Errors
+/// The system's reason when the file could not be made or written; a file that was made is removed again.
+// Agent: WRITES `path`, never over a file that is there.
+fn claim(path: &Path, bytes: &[u8]) -> Result<bool, std::io::Error> {
+    use std::io::Write as _;
+    let mut file = match std::fs::OpenOptions::new().write(true).create_new(true).open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    if let Err(error) = file.write_all(bytes).and_then(|()| file.sync_all()) {
+        drop(file);
+        let _ = std::fs::remove_file(path);
+        return Err(error);
+    }
+    Ok(true)
 }
 
 /// A PNG copy of the picture `bytes`, no wider or taller than `side` pixels, for a model to look at.
@@ -253,6 +347,70 @@ mod tests {
         assert_eq!(saved.url, saved.path.to_string_lossy().replace('\\', "/"));
         assert!(Path::new(&saved.url).is_absolute());
         std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[test]
+    fn a_picture_kept_under_the_home_folder_is_copied_beside_the_document_with_its_credit() {
+        let (home, folder) = (folder("adopt-home"), folder("adopt"));
+        let credit = json!({ "made": "generated", "prompt": "A fox" });
+        let kept = save(None, Some(&home), &png(3, 2), "A fox", &credit).unwrap();
+        assert!(kept.path.starts_with(waiting(&home)));
+        let name = kept.path.file_name().unwrap().to_str().unwrap().to_owned();
+        let url = adopt(&kept.path, &folder.join("site.pen")).unwrap();
+        assert_eq!(url, format!("./images/{name}"));
+        let images = folder.join("images");
+        assert_eq!(std::fs::read(images.join(&name)).unwrap(), std::fs::read(&kept.path).unwrap());
+        let credits = |folder: &Path| serde_json::from_str::<Value>(&std::fs::read_to_string(folder.join(CREDITS)).unwrap()).unwrap();
+        assert_eq!(credits(&images), json!({ name.as_str(): credit }));
+        // Human: the one under the home folder stays, for another document or an undo step that still names it.
+        assert!(kept.path.is_file());
+        // Human: taken again it is the same file, not a second copy.
+        assert_eq!(adopt(&kept.path, &folder.join("site.pen")).unwrap(), url);
+        assert_eq!(std::fs::read_dir(&images).unwrap().count(), 2, "the picture and the credits");
+        std::fs::remove_dir_all(&home).unwrap();
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn a_picture_copied_beside_a_document_never_replaces_another_of_its_name() {
+        let (home, folder) = (folder("clash-home"), folder("clash"));
+        let kept = save(None, Some(&home), &png(3, 2), "A fox", &json!({ "n": 1 })).unwrap();
+        let name = kept.path.file_name().unwrap().to_str().unwrap().to_owned();
+        let images = folder.join("images");
+        std::fs::create_dir_all(&images).unwrap();
+        std::fs::write(images.join(&name), b"mine").unwrap();
+        let url = adopt(&kept.path, &folder.join("site.pen")).unwrap();
+        assert_ne!(url, format!("./images/{name}"));
+        assert_eq!(std::fs::read(images.join(&name)).unwrap(), b"mine");
+        let copy = images.join(url.trim_start_matches("./images/"));
+        assert_eq!(std::fs::read(&copy).unwrap(), std::fs::read(&kept.path).unwrap());
+        let credits: Value = serde_json::from_str(&std::fs::read_to_string(images.join(CREDITS)).unwrap()).unwrap();
+        assert_eq!(credits, json!({ copy.file_name().unwrap().to_str().unwrap(): { "n": 1 } }));
+        std::fs::remove_dir_all(&home).unwrap();
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn a_picture_is_brought_to_a_new_place_with_its_credit_and_leaves_what_is_there() {
+        let (old, new) = (folder("bring-old"), folder("bring-new"));
+        let made = save(Some(&old.join("site.pen")), None, &png(3, 2), "A fox", &json!({ "n": 1 })).unwrap();
+        let name = made.path.file_name().unwrap().to_str().unwrap().to_owned();
+        let target = new.join("deep").join("images").join(&name);
+        bring(&made.path, &target).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), std::fs::read(&made.path).unwrap());
+        let credits: Value = serde_json::from_str(&std::fs::read_to_string(target.with_file_name(CREDITS)).unwrap()).unwrap();
+        assert_eq!(credits, json!({ name.as_str(): { "n": 1 } }));
+        // Human: a picture without a credit is brought without one, and one already there is left alone.
+        std::fs::write(old.join("plain.png"), png(1, 1)).unwrap();
+        bring(&old.join("plain.png"), &new.join("plain.png")).unwrap();
+        assert!(new.join("plain.png").is_file() && !new.join(CREDITS).exists());
+        std::fs::write(new.join("mine.png"), b"mine").unwrap();
+        std::fs::write(old.join("mine.png"), png(1, 1)).unwrap();
+        bring(&old.join("mine.png"), &new.join("mine.png")).unwrap();
+        assert_eq!(std::fs::read(new.join("mine.png")).unwrap(), b"mine");
+        assert!(bring(&old.join("missing.png"), &new.join("missing.png")).unwrap_err().starts_with("The picture "));
+        std::fs::remove_dir_all(&old).unwrap();
+        std::fs::remove_dir_all(&new).unwrap();
     }
 
     #[test]

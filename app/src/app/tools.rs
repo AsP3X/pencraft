@@ -257,15 +257,22 @@ impl App {
                 let tab = self.document(call)?;
                 let path = full_path(args, "path")?;
                 let editor = self.tabs.get_mut(tab).ok_or("The document was closed.")?;
+                let was = editor.path.clone();
                 if let Some(path) = path {
                     editor.path =
                         Some(if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("pen")) { path } else { path.with_extension("pen") });
                 }
+                // Human: as when the person saves: the pictures come to where the document is saved.
+                let stuck = super::pictures::settle(editor, was.as_deref(), crate::imagery::store::home().as_deref());
                 editor.save().map_err(|error| format!("Couldn't save: {error}. A document without a file needs `path`."))?;
                 let saved = editor.path.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
                 self.prefs.update(|p| p.files.touch(&saved));
                 self.remember_tabs();
-                Ok(text(&json!({ "saved": saved })))
+                let mut answer = json!({ "saved": saved });
+                if !stuck.is_empty() {
+                    answer["picturesNotBrought"] = json!(stuck);
+                }
+                Ok(text(&answer))
             }
             "read_layers" => self.read_tool(call, ctx),
             "edit_layers" => self.edit_tool(call, ctx),

@@ -112,7 +112,9 @@ pictures, and a Google AI Pro subscription does not count for the API. Gemini's 
 
 A picture is saved as a file in an `images` folder beside the document, with a line in `images/credits.json`
 saying which service and model made it from which description. A document that has no file yet keeps its
-pictures in `~/.pencraft/images` until then. If `credits.json` can't be read (it is not valid JSON), the picture
+pictures in `~/.pencraft/images` until then; when it is saved, they are copied into `images` beside it with
+their credits, and the document names them from there. Saving a document under a new name in another folder
+copies the pictures it names from its own folder along. If `credits.json` can't be read (it is not valid JSON), the picture
 is not saved and the message says so; fix or remove the file and ask again. Pencraft never replaces it.
 
 A picture can take a minute or two. After 100 seconds Pencraft gives up and keeps nothing; the service may still

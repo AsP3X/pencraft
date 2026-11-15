@@ -9,6 +9,17 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Pictures made before the first save stay with the design.** A picture
+  generated in a design that had no file yet was kept in your home folder,
+  and the saved design named it by that full path, so it showed no picture
+  on another computer. Saving now copies such pictures into `images/` beside
+  the design. Designs saved with 0.2.0 are repaired the next time they are
+  saved on the computer they were made on.
+- **Save As takes the pictures along.** A design saved under a new name in
+  another folder gets a copy of the pictures it names from its own folder.
+
 ## [0.2.0] - 2026-11-15
 
 Pictures made and changed by AI, a chat for every open design, and phone
