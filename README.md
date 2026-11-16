@@ -30,8 +30,8 @@ It runs on Windows and macOS.
 - **A door for other AI clients.** `pencraft mcp` lets Claude Code, Cursor,
   Codex and others read and change open documents, also while Pencraft is in
   the background. See [app/AI.md](app/AI.md).
-- **Tells you about new versions.** When a newer release is out, a card in
-  the app shows what is new and offers the download.
+- **Updates itself.** When a newer release is out, a card in the app shows
+  what is new; one click downloads it, installs it and starts the new version.
 
 ## Install
 
@@ -77,8 +77,15 @@ Pencraft asks GitHub for the latest release when it starts, and once a day
 while it stays open. When there is a newer one, a card in the corner of the
 window names the version and shows what is new, with three choices:
 
-- **Download** opens the installer for your system in your browser. Run it
-  like the first time; it replaces the old version and keeps your settings.
+- **Update and restart** downloads the new version, checks the file against
+  the release's checksums, asks about unsaved designs, installs it and
+  starts Pencraft again. Your settings stay. On Windows a small progress
+  window shows the install; a Pencraft installed for all users asks for
+  administrator rights once.
+- **Download** is what the button reads when this copy can't replace itself:
+  it was installed with the MSI, is the plain program, or is a Mac app
+  outside a folder it may write to. It opens the installer in your browser;
+  run it like the first time.
 - **Skip this version** never offers that version again.
 - **Later** hides the card until the next start.
 

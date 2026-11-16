@@ -40,11 +40,11 @@ version.
 
 | File | For |
 |---|---|
-| `pencraft-<version>-setup.exe` | Windows, the setup wizard; the update card downloads this |
+| `pencraft-<version>-setup.exe` | Windows, the setup wizard; the app installs updates with this |
 | `pencraft-<version>-x64.msi` | Windows, installing for all users, deployment |
 | `pencraft-<version>-x64.exe` | Windows, the plain program |
-| `pencraft-<version>-macos-universal.dmg` | macOS 11 or newer, Apple Silicon and Intel; the update card downloads this |
-| `SHA256SUMS.txt` | Checking any of the files (`sha256sum -c SHA256SUMS.txt`) |
+| `pencraft-<version>-macos-universal.dmg` | macOS 11 or newer, Apple Silicon and Intel; the app installs updates with this |
+| `SHA256SUMS.txt` | Checking any of the files (`sha256sum -c SHA256SUMS.txt`); the app checks its download with this |
 
 Versions follow [semantic versioning](https://semver.org/). A release must
 not be marked as a pre-release or left as a draft if installed copies should
@@ -54,9 +54,10 @@ see it: the app asks GitHub for the latest full release. A tag like
 If a build fails, nothing is published. Fix the problem on `master`, then
 move the tag: `git tag -f v1.2.3`, `git push -f origin v1.2.3`.
 
-## How the update check works
+## How updating works
 
-The code is in `app/src/update.rs`.
+The look and the card are in `app/src/update.rs`, the download and the
+install in `app/src/update/install.rs`.
 
 1. **Look.** When the app starts, and once every 24 hours while it stays
    open, a thread asks
@@ -66,18 +67,64 @@ The code is in `app/src/update.rs`.
    than the running one, and not the version the user chose to skip, the
    card appears.
 3. **Offer.** The card names the version and shows the release notes.
-   **Download** opens the installer for the system in the browser (the file
-   ending in `-setup.exe` on Windows, in `.dmg` on a Mac), or the release's
-   page when there is none. **Skip this version** remembers the version in
-   the settings. **Later** hides the card until the next start.
+   **Skip this version** remembers the version in the settings. **Later**
+   hides the card until the next start. The first button is **Update and
+   restart** when this copy can replace itself, and **Download** otherwise.
+4. **Download.** After **Update and restart** a thread fetches
+   `SHA256SUMS.txt` and the installer for the system (the file ending in
+   `-setup.exe` on Windows, in `.dmg` on a Mac) into `pencraft-update` in
+   the temporary folder. Both are asked for by their asset number at
+   `api.github.com/repos/AsP3X/pencraft/releases/assets/<id>`. The card
+   shows the progress and a **Cancel** button.
+5. **Check.** The file's SHA-256, worked out by `certutil` on Windows and
+   `shasum` on a Mac, must be the one `SHA256SUMS.txt` gives for the file's
+   name. A file that differs is deleted and the user is told.
+6. **Quit.** The app closes the usual way and asks about each unsaved
+   design. Cancelling there keeps it open; the card then reads **Restart to
+   update** and nothing is downloaded again.
+7. **Install.** As the app exits it starts the install, which outlives it:
+   - **Windows:** `pencraft-setup.exe /SILENT /SUPPRESSMSGBOXES /NORESTART
+     /RELAUNCH /WAITPID=<process>`. The setup wizard first waits for that
+     Pencraft to be gone (`InitializeSetup` in `installer/pencraft.iss`): a
+     silent setup that finds the app running cannot close it and gives up.
+     Then it shows only a progress window, installs into the folder and with
+     the options of the install it finds, and because of `/RELAUNCH` starts
+     Pencraft again (the `[Run]` entry with `Check: RelaunchAsked`). An install for
+     everyone asks for administrator rights; Pencraft is still started as
+     the user.
+   - **macOS:** before quitting, the app in the disk image was copied to
+     `.Pencraft-update.app` beside the running bundle (`hdiutil`, `ditto`)
+     and its signature verified (`codesign --verify`). A shell script waits
+     for the app to end, moves the old bundle aside, the new one into its
+     place, and opens it. If the move fails the old bundle is put back.
+
+**Download** opens the installer in the browser, or the release's page when
+the release has none. A copy gets that button when it can't replace itself:
+
+- on Windows, when there is no `unins000.exe` beside the program, which is
+  how the app knows the setup wizard installed it (so not the MSI, the plain
+  program or a development build);
+- on a Mac, when the program is not inside an `.app` bundle or the bundle's
+  folder can't be written to;
+- on any system, when the release lacks the installer or `SHA256SUMS.txt`.
 
 Things that follow from this design:
 
-- **The file names matter.** Do not rename the setup wizard or the disk
-  image.
-- **Pencraft does not install anything itself.** The browser downloads the
-  installer and the user runs it, so the unsigned-download warnings below
-  come back with every update.
+- **The file names matter.** Do not rename the setup wizard, the disk image
+  or `SHA256SUMS.txt`, and keep the app in the disk image named
+  `Pencraft.app`.
+- **The setup wizard's `/RELAUNCH`, `/WAITPID=` and its `AppId` must stay.** Installed
+  copies run whatever setup the newest release ships, with those arguments.
+- **The first update is still by hand.** Versions up to 0.2.1 only know the
+  browser download, and their setup wizard doesn't know `/RELAUNCH`.
+- **An update the app installs itself shows no unsigned-download warning**:
+  a file the app downloaded carries no mark of the web (Windows) and no
+  quarantine flag (macOS). The warnings below still come with the first
+  install and with the browser download.
+- **The Mac install has only been tested in pieces**: the swap script and
+  everything around it have tests, but `hdiutil`, `ditto` and a real swap
+  were not run when this was written on Windows. Try one update on a Mac
+  after the first release that has it.
 - **Nothing is ever shown when the look fails.** No network, a rate limit or
   an answer that makes no sense is written to the log at `info` level and
   tried again a day later. Only **Check for updates…** in the action search
@@ -85,8 +132,9 @@ Things that follow from this design:
 - **Some runs never look**: `--screenshot` (and with it `--export`),
   `--private`, `--background`, `--no-update-check`, `pencraft mcp`, and any
   run with Settings → General → "Look for new versions" switched off.
-- **The browser is only sent to this repository.** An address in GitHub's
-  answer that is not under `https://github.com/AsP3X/pencraft/` is ignored.
+- **The browser is only sent to this repository**, and the download only
+  asks this repository. An address in GitHub's answer that is not under
+  `https://github.com/AsP3X/pencraft/` is ignored.
 
 ### While the repository is private
 

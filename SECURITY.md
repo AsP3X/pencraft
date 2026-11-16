@@ -38,15 +38,24 @@ Knowing this helps to judge a report.
   `pencraft mcp` connects clients to it with a token that is made anew at
   every start. It is not reachable from other computers.
 - **It runs programs you installed.** The `claude` program for the chat, and
-  your browser when you choose to download an update.
+  your browser when you choose to download an update there.
 - **It asks GitHub for the latest release.** At start and once a day, from
   `api.github.com`, sending only the app's name and version. If GitHub says
   the repository cannot be seen without a sign-in, it asks again with the
   one from `GH_TOKEN`, `GITHUB_TOKEN` or the GitHub CLI; that token goes to
-  `api.github.com` only and is never saved or logged. Pencraft does not
-  download or install anything by itself: **Download** opens a page of this
-  repository's releases in your browser, and no other address. Settings →
-  General → "Look for new versions" switches the check off.
+  `api.github.com` only and is never saved or logged. Settings → General →
+  "Look for new versions" switches the check off.
+- **It installs an update when you ask it to.** Nothing is downloaded before
+  you choose **Update and restart**. Then the installer of that release is
+  fetched from this repository's releases by its file number (no address in
+  GitHub's answer is followed), saved in the temporary folder, and compared
+  with the SHA-256 checksum in the release's `SHA256SUMS.txt`; a file that
+  differs is deleted and not run. On Windows the setup wizard is then run;
+  on a Mac the app is copied out of the disk image and put in the old one's
+  place. The checksum comes from the same release as the file, so it guards
+  against a damaged or swapped download, not against a release that was
+  itself tampered with. A copy that can't replace itself opens a page of
+  this repository's releases in your browser instead, and no other address.
 - **The releases are not code-signed**, and the Mac app is not notarised.
   `SHA256SUMS.txt` in each release lets you check a download.
 

@@ -68,8 +68,66 @@ Root: HKA; Subkey: "Software\Classes\Pencraft.Design\shell\open\command"; ValueT
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Start {#AppName}"; Flags: nowait postinstall skipifsilent
+; An update Pencraft started itself (app\src\update\install.rs) runs without
+; pages. /WAITPID=<process> has it wait for that Pencraft to quit first, and
+; /RELAUNCH asks for the app to come back, as the user who started the setup
+; and not as the administrator an install for everyone runs as.
+Filename: "{app}\{#AppExe}"; Flags: nowait runasoriginaluser; Check: RelaunchAsked
 
 [Code]
+// Whether the command line has /RELAUNCH.
+function RelaunchAsked: Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 1 to ParamCount do
+    if CompareText(ParamStr(I), '/RELAUNCH') = 0 then
+      Result := True;
+end;
+
+function OpenProcess(Access: DWORD; Inherit: BOOL; Process: DWORD): THandle;
+  external 'OpenProcess@kernel32.dll stdcall';
+function WaitForSingleObject(Handle: THandle; Milliseconds: DWORD): DWORD;
+  external 'WaitForSingleObject@kernel32.dll stdcall';
+function CloseHandle(Handle: THandle): BOOL;
+  external 'CloseHandle@kernel32.dll stdcall';
+
+// The process number given with /WAITPID=, or 0.
+function WaitFor: Integer;
+var
+  I: Integer;
+  P: String;
+begin
+  Result := 0;
+  for I := 1 to ParamCount do
+  begin
+    P := ParamStr(I);
+    if CompareText(Copy(P, 1, 9), '/WAITPID=') = 0 then
+      Result := StrToIntDef(Copy(P, 10, Length(P)), 0);
+  end;
+end;
+
+// The Pencraft that started an update is quitting while Setup starts. Its
+// file cannot be replaced before it is gone, and a silent Setup that finds
+// it running gives up, so wait for it: half a minute at most.
+function InitializeSetup: Boolean;
+var
+  Process: Integer;
+  Handle: THandle;
+begin
+  Result := True;
+  Process := WaitFor;
+  if Process <= 0 then
+    exit;
+  // SYNCHRONIZE: the right to wait for the process, nothing more.
+  Handle := OpenProcess($00100000, False, Process);
+  if Handle = 0 then
+    exit;
+  WaitForSingleObject(Handle, 30000);
+  CloseHandle(Handle);
+end;
+
 // PATH lives in the machine environment for an install for everyone, and
 // in the user's own environment otherwise.
 

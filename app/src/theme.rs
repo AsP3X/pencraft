@@ -305,13 +305,27 @@ pub fn visuals(dark: bool) -> Visuals {
 }
 
 /// Width of the card that offers a newer version.
-pub const UPDATE_WIDTH: f32 = 320.0;
+pub const UPDATE_WIDTH: f32 = 360.0;
 /// Space between the window's edge and that card.
 pub const UPDATE_MARGIN: f32 = 16.0;
 /// Most height the release notes take in the card before they scroll.
-pub const UPDATE_NOTES_HEIGHT: f32 = 180.0;
-/// Space between the card's title, its notes and its buttons.
-pub const UPDATE_GAP: f32 = 10.0;
+pub const UPDATE_NOTES_HEIGHT: f32 = 220.0;
+/// Space between the card's head, its notes and its buttons.
+pub const UPDATE_GAP: f32 = 12.0;
+/// Side of the square behind the card's icon.
+pub const UPDATE_BADGE: f32 = 36.0;
+/// Size of the card's title.
+pub const UPDATE_TITLE_SIZE: f32 = 14.5;
+/// Height of the card's buttons.
+pub const UPDATE_BUTTON_HEIGHT: f32 = 30.0;
+/// Space inside the card's buttons, left and right of their text.
+pub const UPDATE_BUTTON_PADDING: f32 = 12.0;
+/// Room a list item's dot takes before its text in the release notes.
+pub const UPDATE_BULLET: f32 = 14.0;
+/// Space between two paragraphs or list items of the release notes.
+pub const UPDATE_NOTE_GAP: f32 = 6.0;
+/// Thickness of the bar that shows how far a download is.
+pub const UPDATE_BAR: f32 = 6.0;
 
 /// Space between the window's edge and the settings window (the user's settings design).
 pub const SETTINGS_MARGIN: f32 = 8.0;

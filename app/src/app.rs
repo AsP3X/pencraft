@@ -166,6 +166,8 @@ pub struct App {
     pub(crate) designed: Vec<(u64, String, usize)>,
     /// What is known about a newer version of the app, and the card that offers it.
     updates: crate::update::Updates,
+    /// A downloaded update to install when the app quits.
+    install: Option<crate::update::Prepared>,
 }
 
 /// How long a message stays at the bottom of the window.
@@ -224,6 +226,7 @@ impl App {
             generating: pictures::Generating::default(),
             designed: Vec::new(),
             updates: crate::update::Updates::new(launch.looks_for_updates(), launch.update_prompt),
+            install: None,
         };
         app.find_assistants();
         if launch.screenshot.is_none() {
@@ -1380,6 +1383,12 @@ impl App {
                     self.say(problem);
                 }
             }
+            Some(crate::update::Answer::Install(prepared)) => {
+                // Human: the usual way out, so every unsaved design is asked about first; the install starts
+                // in `on_exit`, once the window is really closing.
+                self.install = Some(prepared);
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
             Some(crate::update::Answer::Skip(version)) => {
                 self.prefs.update(|p| p.updates.skipped = version);
             }
@@ -1429,6 +1438,8 @@ impl App {
             Some(_) => {
                 self.prompt = None;
                 self.discard_confirmed = false;
+                // Human: staying in the app also means not installing the update when it is quit later.
+                self.install = None;
             }
             None => {}
         }
@@ -1569,6 +1580,11 @@ impl eframe::App for App {
         }
         if let Err(e) = self.prefs.flush() {
             log::warn!("settings not saved: {e}");
+        }
+        if let Some(update) = self.install.take()
+            && let Err(problem) = update.start()
+        {
+            log::warn!("{problem}");
         }
     }
 }

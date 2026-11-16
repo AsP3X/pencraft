@@ -9,6 +9,18 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Changed
+
+- **Updates install themselves.** The card that offers a new version now has
+  **Update and restart**: Pencraft downloads the new version, checks it,
+  asks about unsaved designs, installs it and starts again. No browser and
+  no setup wizard. This works from the version after this one on, for a
+  Pencraft installed with the setup wizard on Windows or as an app on a Mac;
+  other copies keep the download in the browser.
+- **The update card reads better.** What is new is shown as paragraphs and a
+  list that fit the card, instead of the changelog's short lines, with the
+  bold words standing out.
+
 ## [0.2.1] - 2026-11-16
 
 Pictures stay with the design they belong to.

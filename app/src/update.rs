@@ -2,15 +2,28 @@
 //!
 //! The look runs on a thread of its own when the app starts and once a day after that. It never holds the
 //! window up, and when GitHub can't be reached nothing is shown: the next look is a day later. A newer version
-//! is offered in a small card with what is new in it; the user downloads it, skips that version, or decides later.
+//! is offered in a small card with what is new in it; the user takes it, skips that version, or decides later.
+//! Taking it downloads the installer, installs it and starts the new version ([`install`]); a copy that can't
+//! replace itself sends the user to the browser instead.
 
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::Arc;
+use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel};
 use std::time::{Duration, Instant};
 
-use egui::{Align2, RichText, Stroke, vec2};
+use egui::text::{LayoutJob, TextFormat};
+use egui::{Align, Align2, FontId, Layout, Rect, RichText, Sense, Stroke, Ui, Vec2, vec2};
 use serde::Deserialize;
 
-use crate::theme::{ISLAND_PADDING, ISLAND_RADIUS, Palette, SIDEBAR_TEXT_SIZE, UPDATE_GAP, UPDATE_MARGIN, UPDATE_NOTES_HEIGHT, UPDATE_WIDTH};
+pub use install::Prepared;
+use install::{Place, Progress};
+
+mod install;
+
+use crate::icons;
+use crate::theme::{
+    CHIP_RADIUS, CONTROL_RADIUS, ICON_SIZE, ISLAND_PADDING, ISLAND_RADIUS, Palette, SIDEBAR_TEXT_SIZE, UPDATE_BADGE, UPDATE_BAR, UPDATE_BULLET,
+    UPDATE_BUTTON_HEIGHT, UPDATE_BUTTON_PADDING, UPDATE_GAP, UPDATE_MARGIN, UPDATE_NOTE_GAP, UPDATE_NOTES_HEIGHT, UPDATE_TITLE_SIZE, UPDATE_WIDTH,
+};
 
 /// The GitHub repository whose releases are the updates.
 pub const REPOSITORY: &str = "AsP3X/pencraft";
@@ -23,6 +36,22 @@ const EVERY: Duration = Duration::from_hours(24);
 /// How long one look may take before it gives up.
 const PATIENCE: Duration = Duration::from_secs(20);
 
+/// The name of the release file that lists the checksums of the others.
+const CHECKSUMS: &str = "SHA256SUMS.txt";
+/// How often the card looks at a download to show how far it is.
+const GLANCE: Duration = Duration::from_millis(100);
+
+/// A file of a release.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReleaseFile {
+    /// GitHub's number for the file; the download asks for it by this.
+    pub id: u64,
+    /// The file's name, as the release's checksums list it.
+    pub name: String,
+    /// The file's size in bytes, 0 when GitHub didn't say.
+    pub size: u64,
+}
+
 /// A release that is newer than the running app.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Release {
@@ -32,6 +61,10 @@ pub struct Release {
     pub notes: String,
     /// The address the browser is sent to: the installer for this system, or the release's page without one.
     pub download: String,
+    /// The installer for this system, when the release has one.
+    pub installer: Option<ReleaseFile>,
+    /// The file with the checksums of the release's files, when the release has one.
+    pub checksums: Option<ReleaseFile>,
 }
 
 /// What the user chose in the card.
@@ -39,6 +72,8 @@ pub struct Release {
 pub enum Answer {
     /// Download it: open this address in the browser.
     Get(String),
+    /// Quit, install this downloaded update, and start again.
+    Install(Prepared),
     /// Never offer this version again.
     Skip(String),
 }
@@ -56,7 +91,11 @@ struct ApiRelease {
 
 #[derive(Deserialize)]
 struct ApiAsset {
+    #[serde(default)]
+    id: u64,
     name: String,
+    #[serde(default)]
+    size: u64,
     #[serde(default)]
     browser_download_url: String,
 }
@@ -71,7 +110,18 @@ pub fn parse_release(json: &str) -> Result<Release, String> {
     // Human: the browser is only ever sent to this repository's own pages, whatever the answer says.
     let download =
         [installer, Some(api.html_url.as_str())].into_iter().flatten().find(|address| is_ours(address)).map_or_else(releases_page, str::to_owned);
-    Ok(Release { version: api.tag_name.trim_start_matches(['v', 'V']).to_owned(), notes: api.body.unwrap_or_default().trim().to_owned(), download })
+    // Human: a file without a number can't be asked for, so it counts as not there.
+    let file = |wanted: &dyn Fn(&str) -> bool| {
+        let asset = api.assets.iter().find(|asset| asset.id != 0 && wanted(&asset.name))?;
+        Some(ReleaseFile { id: asset.id, name: asset.name.clone(), size: asset.size })
+    };
+    Ok(Release {
+        version: api.tag_name.trim_start_matches(['v', 'V']).to_owned(),
+        notes: api.body.unwrap_or_default().trim().to_owned(),
+        download,
+        installer: file(&is_installer_for_this_system),
+        checksums: file(&|name| name == CHECKSUMS),
+    })
 }
 
 /// The page that lists every release, for when a release names no page of its own.
@@ -171,6 +221,19 @@ fn get(address: &str, token: Option<&str>) -> Result<(u16, String), String> {
     Ok((status, body))
 }
 
+/// A command that reads nothing and, on Windows, shows no terminal window beside the app.
+fn quiet(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+    let mut command = std::process::Command::new(program);
+    command.stdin(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        // Human: CREATE_NO_WINDOW.
+        command.creation_flags(0x0800_0000);
+    }
+    command
+}
+
 /// A GitHub sign-in on this computer: `GH_TOKEN`, `GITHUB_TOKEN`, or the one the GitHub CLI holds.
 // Human: only people who may see a private repository have one that helps; everyone else gets "no news".
 // Agent: RUNS `gh auth token` (no window on Windows); the token is never logged or saved.
@@ -179,14 +242,8 @@ fn token() -> Option<String> {
     if let Some(token) = ["GH_TOKEN", "GITHUB_TOKEN"].into_iter().find_map(|name| std::env::var(name).ok().and_then(filled)) {
         return Some(token);
     }
-    let mut command = std::process::Command::new("gh");
-    command.args(["auth", "token"]).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt as _;
-        // Human: CREATE_NO_WINDOW, so no terminal window flashes up beside the app.
-        command.creation_flags(0x0800_0000);
-    }
+    let mut command = quiet("gh");
+    command.args(["auth", "token"]).stderr(std::process::Stdio::null());
     let output = command.output().ok()?;
     output.status.success().then(|| String::from_utf8(output.stdout).ok()).flatten().and_then(filled)
 }
@@ -224,8 +281,40 @@ pub struct Updates {
     asked: bool,
     /// The newer release the card shows.
     offered: Option<Release>,
+    /// How this copy can be replaced by a newer one; `None` sends the user to the browser.
+    place: Option<Place>,
+    /// How far taking the offered release is.
+    stage: Stage,
     answers: Receiver<Found>,
     send: Sender<Found>,
+}
+
+/// How far taking the offered release is.
+enum Stage {
+    /// The user hasn't decided.
+    Offered,
+    /// The installer is being downloaded on a thread of its own.
+    Fetching {
+        /// How far it is, and the way to stop it.
+        progress: Arc<Progress>,
+        /// Where the thread says how it ended.
+        result: Receiver<Result<Prepared, String>>,
+    },
+    /// The installer has just arrived and is checked: quit and install it without another click.
+    Arrived(Prepared),
+    /// The installer is there, and the user kept the app open; it waits for a click.
+    Ready(Prepared),
+}
+
+/// What the user clicked in the card.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Click {
+    /// The first button: take the update, or restart into it.
+    Take,
+    Skip,
+    Later,
+    /// Stop the download.
+    Cancel,
 }
 
 impl Updates {
@@ -234,7 +323,8 @@ impl Updates {
     #[must_use]
     pub fn new(allowed: bool, posed: bool) -> Updates {
         let (send, answers) = channel();
-        let mut updates = Updates { allowed, looked: None, looking: false, asked: false, offered: None, answers, send };
+        let (place, stage) = (install::place(), Stage::Offered);
+        let mut updates = Updates { allowed, looked: None, looking: false, asked: false, offered: None, place, stage, answers, send };
         if posed {
             updates.pose();
         }
@@ -244,7 +334,8 @@ impl Updates {
     /// Puts a made-up release into the card.
     fn pose(&mut self) {
         let notes = "A sharper canvas, and exports that keep their colours.\n\n### Added\n\n- **Export to PDF.** Every top-level layer becomes a page.\n- Find layers by the text they hold.\n\n### Fixed\n\n- Shadows no longer cut off at the edge of a frame.";
-        self.offered = Some(Release { version: "9.1.0".to_owned(), notes: notes.to_owned(), download: releases_page() });
+        self.offered =
+            Some(Release { version: "9.1.0".to_owned(), notes: notes.to_owned(), download: releases_page(), installer: None, checksums: None });
     }
 
     /// Whether it is time to look: at the start, and once a day while the app stays open.
@@ -259,7 +350,8 @@ impl Updates {
         let asked = std::mem::take(&mut self.asked);
         match found {
             Ok(Some(release)) => {
-                if asked || release.version != skipped {
+                // Human: a download under way or done is not thrown away by the daily look.
+                if matches!(self.stage, Stage::Offered) && (asked || release.version != skipped) {
                     self.offered = Some(release);
                 }
                 None
@@ -308,13 +400,90 @@ impl Updates {
         if self.due(wanted, Instant::now()) {
             self.look(ctx);
         }
-        say
+        self.fetched().or(say)
+    }
+
+    /// The installer and the checksums of the offered release, when this copy can install them itself.
+    fn installable(&self) -> Option<(ReleaseFile, ReleaseFile, Place)> {
+        let release = self.offered.as_ref()?;
+        Some((release.installer.clone()?, release.checksums.clone()?, self.place.clone()?))
+    }
+
+    /// Starts downloading the offered release's installer on a thread of its own.
+    // Agent: SPAWNS one thread that lives as long as the download; WAKES the window through `ctx` when it ends.
+    fn fetch(&mut self, ctx: &egui::Context) {
+        let Some((installer, checksums, place)) = self.installable() else { return };
+        let progress = Arc::new(Progress::of(installer.size));
+        let (send, result) = channel();
+        let (shared, ctx) = (Arc::clone(&progress), ctx.clone());
+        let work = move || {
+            // Human: a download the user stopped has nobody waiting for its answer.
+            let _ = send.send(install::fetch(&installer, &checksums, &place, &shared));
+            ctx.request_repaint();
+        };
+        match std::thread::Builder::new().name("update-download".to_owned()).spawn(work) {
+            Ok(_) => self.stage = Stage::Fetching { progress, result },
+            Err(error) => log::info!("update: no thread to download on: {error}"),
+        }
+    }
+
+    /// Takes in a finished download. Gives a sentence for the user when it failed.
+    fn fetched(&mut self) -> Option<String> {
+        let Stage::Fetching { result, .. } = &self.stage else { return None };
+        let ended = match result.try_recv() {
+            Ok(ended) => ended,
+            Err(TryRecvError::Empty) => return None,
+            Err(TryRecvError::Disconnected) => Err("The download ended without an answer.".to_owned()),
+        };
+        match ended {
+            Ok(prepared) => {
+                self.stage = Stage::Arrived(prepared);
+                None
+            }
+            Err(error) => {
+                log::info!("update download: {error}");
+                self.stage = Stage::Offered;
+                Some(format!("The update couldn't be downloaded. {error}"))
+            }
+        }
+    }
+
+    /// What follows a click in the card.
+    fn clicked(&mut self, click: Click, ctx: &egui::Context) -> Option<Answer> {
+        match (click, &self.stage) {
+            (Click::Take, Stage::Arrived(prepared) | Stage::Ready(prepared)) => Some(Answer::Install(prepared.clone())),
+            (Click::Take, Stage::Fetching { .. }) | (Click::Cancel, Stage::Offered | Stage::Arrived(_) | Stage::Ready(_)) => None,
+            (Click::Take, Stage::Offered) if self.installable().is_some() => {
+                self.fetch(ctx);
+                None
+            }
+            (Click::Take, Stage::Offered) => self.offered.take().map(|release| Answer::Get(release.download)),
+            (Click::Skip, _) => {
+                self.stage = Stage::Offered;
+                self.offered.take().map(|release| Answer::Skip(release.version))
+            }
+            (Click::Later, _) => {
+                self.offered = None;
+                self.stage = Stage::Offered;
+                None
+            }
+            (Click::Cancel, Stage::Fetching { progress, .. }) => {
+                progress.cancel();
+                self.stage = Stage::Offered;
+                None
+            }
+        }
     }
 
     /// Draws the card while a newer version is on offer, and gives what the user chose in it.
     pub fn show(&mut self, ctx: &egui::Context, palette: Palette) -> Option<Answer> {
+        if let Stage::Arrived(prepared) = &self.stage {
+            let prepared = prepared.clone();
+            self.stage = Stage::Ready(prepared.clone());
+            return Some(Answer::Install(prepared));
+        }
         let release = self.offered.as_ref()?;
-        let (mut get, mut skip, mut later) = (false, false, false);
+        let mut click = None;
         egui::Area::new(egui::Id::unique("update"))
             .anchor(Align2::RIGHT_BOTTOM, vec2(-UPDATE_MARGIN, -UPDATE_MARGIN))
             .order(egui::Order::Foreground)
@@ -326,76 +495,198 @@ impl Updates {
                     .inner_margin(ISLAND_PADDING)
                     .show(ui, |ui| {
                         ui.set_width(UPDATE_WIDTH);
-                        ui.label(RichText::new(format!("Pencraft {} is available", release.version)).strong());
-                        ui.label(RichText::new(format!("You have {VERSION}.")).size(SIDEBAR_TEXT_SIZE).color(palette.muted));
+                        head(ui, &release.version, palette);
                         if !release.notes.is_empty() {
-                            ui.add_space(UPDATE_GAP);
+                            rule(ui, palette);
                             egui::ScrollArea::vertical().max_height(UPDATE_NOTES_HEIGHT).auto_shrink([false, true]).show(ui, |ui| {
                                 notes(ui, &release.notes, palette);
                             });
                         }
-                        ui.add_space(UPDATE_GAP);
-                        ui.horizontal(|ui| {
-                            let download = egui::Button::new(RichText::new("Download").color(palette.primary_text)).fill(palette.primary);
-                            get = ui.add(download).clicked();
-                            skip = ui.button("Skip this version").clicked();
-                            later = ui.button("Later").clicked();
-                        });
+                        rule(ui, palette);
+                        click = self.foot(ui, palette);
                     });
             });
-        if !(get || skip || later) {
-            return None;
+        self.clicked(click?, ctx)
+    }
+
+    /// Draws the card's last part, which depends on how far taking the update is: the choices, the download's
+    /// progress, or the restart. Gives what was clicked.
+    fn foot(&self, ui: &mut Ui, palette: Palette) -> Option<Click> {
+        let mut click = None;
+        match &self.stage {
+            Stage::Offered => {
+                let take = if self.installable().is_some() { "Update and restart" } else { "Download" };
+                ui.horizontal(|ui| {
+                    click = primary(ui, take, palette).then_some(Click::Take);
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        click = quiet_button(ui, "Skip this version", palette).then_some(Click::Skip).or(click);
+                        click = quiet_button(ui, "Later", palette).then_some(Click::Later).or(click);
+                    });
+                });
+            }
+            Stage::Fetching { progress, .. } => {
+                let part = progress.fraction();
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        // Human: after the last piece the file is still checked, and on a Mac unpacked.
+                        let text = if part < 1.0 { format!("Downloading… {:.0} %", part * 100.0) } else { "Getting ready…".to_owned() };
+                        ui.label(RichText::new(text).size(SIDEBAR_TEXT_SIZE).color(palette.muted));
+                    });
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        click = quiet_button(ui, "Cancel", palette).then_some(Click::Cancel);
+                    });
+                });
+                bar(ui, part, palette);
+                ui.ctx().request_repaint_after(GLANCE);
+            }
+            Stage::Arrived(_) | Stage::Ready(_) => {
+                ui.label(RichText::new("Downloaded and checked. Pencraft restarts to install it.").size(SIDEBAR_TEXT_SIZE).color(palette.muted));
+                ui.add_space(UPDATE_NOTE_GAP);
+                ui.horizontal(|ui| {
+                    click = primary(ui, "Restart to update", palette).then_some(Click::Take);
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        click = quiet_button(ui, "Later", palette).then_some(Click::Later).or(click);
+                    });
+                });
+            }
         }
-        let release = self.offered.take()?;
-        if get {
-            Some(Answer::Get(release.download))
-        } else if skip {
-            Some(Answer::Skip(release.version))
-        } else {
-            None
-        }
+        click
     }
 }
 
-/// One line of release notes as the card shows it: a heading or plain text, without Markdown's marks.
+/// The card's head: an icon, the new version, and the one that is running.
+fn head(ui: &mut Ui, version: &str, palette: Palette) {
+    ui.horizontal(|ui| {
+        let (badge, _) = ui.allocate_exact_size(Vec2::splat(UPDATE_BADGE), Sense::hover());
+        ui.painter().rect_filled(badge, CHIP_RADIUS, palette.hover);
+        icons::paint(ui.painter(), Rect::from_center_size(badge.center(), Vec2::splat(ICON_SIZE)), "download", palette.foreground);
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = 2.0;
+            ui.label(RichText::new(format!("Pencraft {version} is available")).size(UPDATE_TITLE_SIZE).color(palette.foreground).strong());
+            ui.label(RichText::new(format!("You have {VERSION}")).size(SIDEBAR_TEXT_SIZE).color(palette.muted));
+        });
+    });
+}
+
+/// A thin line across the card, with room above and below.
+fn rule(ui: &mut Ui, palette: Palette) {
+    ui.add_space(UPDATE_GAP);
+    let (line, _) = ui.allocate_exact_size(vec2(ui.available_width(), 1.0), Sense::hover());
+    ui.painter().rect_filled(line, 0.0, palette.border);
+    ui.add_space(UPDATE_GAP);
+}
+
+/// The card's main button. Gives whether it was clicked.
+fn primary(ui: &mut Ui, text: &str, palette: Palette) -> bool {
+    ui.spacing_mut().button_padding.x = UPDATE_BUTTON_PADDING;
+    let text = RichText::new(text).size(SIDEBAR_TEXT_SIZE).color(palette.primary_text);
+    ui.add(egui::Button::new(text).fill(palette.primary).corner_radius(CONTROL_RADIUS).min_size(vec2(0.0, UPDATE_BUTTON_HEIGHT))).clicked()
+}
+
+/// One of the card's lesser buttons: only words until the pointer is on it. Gives whether it was clicked.
+fn quiet_button(ui: &mut Ui, text: &str, palette: Palette) -> bool {
+    let size = vec2(0.0, UPDATE_BUTTON_HEIGHT);
+    let (rect, response) = {
+        let galley = ui.painter().layout_no_wrap(text.to_owned(), FontId::proportional(SIDEBAR_TEXT_SIZE), palette.muted);
+        ui.allocate_exact_size(vec2(galley.size().x + UPDATE_BUTTON_PADDING * 1.5, size.y), Sense::click())
+    };
+    let on = response.hovered() || response.has_focus();
+    if on {
+        ui.painter().rect_filled(rect, CONTROL_RADIUS, palette.hover);
+    }
+    let color = if on { palette.foreground } else { palette.muted };
+    ui.painter().text(rect.center(), Align2::CENTER_CENTER, text, FontId::proportional(SIDEBAR_TEXT_SIZE), color);
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, text));
+    response.clicked()
+}
+
+/// The bar that shows how far a download is, from 0 to 1.
+fn bar(ui: &mut Ui, part: f32, palette: Palette) {
+    ui.add_space(UPDATE_NOTE_GAP);
+    let (track, _) = ui.allocate_exact_size(vec2(ui.available_width(), UPDATE_BAR), Sense::hover());
+    ui.painter().rect_filled(track, UPDATE_BAR / 2.0, palette.input);
+    let done = Rect::from_min_size(track.min, vec2(track.width() * part.clamp(0.0, 1.0), UPDATE_BAR));
+    if done.width() >= UPDATE_BAR {
+        ui.painter().rect_filled(done, UPDATE_BAR / 2.0, palette.primary);
+    }
+}
+
+/// One piece of release notes as the card shows it. The text keeps Markdown's `**` around what is bold.
 #[derive(Debug, PartialEq, Eq)]
-enum NoteLine {
+enum Note {
+    /// A heading, without its `#`.
     Heading(String),
+    /// A paragraph.
     Text(String),
-    Gap,
+    /// An item of a list, without its dash.
+    Item(String),
 }
 
-/// Release notes line by line. Headings lose their `#`, bold and code lose their marks, and several empty
-/// lines count as one.
-fn note_lines(notes: &str) -> Vec<NoteLine> {
-    let mut lines: Vec<NoteLine> = Vec::new();
-    for line in notes.lines().map(str::trim_end) {
-        let plain = line.replace("**", "").replace('`', "");
-        let line = if plain.trim().is_empty() {
-            NoteLine::Gap
-        } else if plain.starts_with('#') {
-            NoteLine::Heading(plain.trim_start_matches('#').trim().to_owned())
+/// Release notes as headings, paragraphs and list items. A changelog breaks its lines to fit an editor; here
+/// the lines of a paragraph or an item are joined again, so the card can break them to fit itself. Code loses
+/// its backticks.
+fn note_blocks(notes: &str) -> Vec<Note> {
+    let mut blocks: Vec<Note> = Vec::new();
+    // Whether the next plain line carries on the last block.
+    let mut open = false;
+    for line in notes.lines().map(|line| line.trim().replace('`', "")) {
+        if line.is_empty() {
+            open = false;
+        } else if line.starts_with('#') {
+            blocks.push(Note::Heading(line.trim_start_matches('#').trim().to_owned()));
+            open = false;
+        } else if let Some(item) = line.strip_prefix("- ").or_else(|| line.strip_prefix("* ")) {
+            blocks.push(Note::Item(item.trim().to_owned()));
+            open = true;
+        } else if let (true, Some(Note::Text(text) | Note::Item(text))) = (open, blocks.last_mut()) {
+            text.push(' ');
+            text.push_str(&line);
         } else {
-            NoteLine::Text(plain)
-        };
-        if line != NoteLine::Gap || lines.last().is_some_and(|last| *last != NoteLine::Gap) {
-            lines.push(line);
+            blocks.push(Note::Text(line));
+            open = true;
         }
     }
-    lines
+    blocks
+}
+
+/// A line of notes cut where `**` switches bold on and off: each piece with whether it is bold.
+fn spans(text: &str) -> Vec<(bool, &str)> {
+    text.split("**").enumerate().map(|(index, piece)| (index % 2 == 1, piece)).filter(|(_, piece)| !piece.is_empty()).collect()
+}
+
+/// A paragraph or item of the notes as words to draw: quiet, with what was bold in the main text colour.
+fn words(text: &str, palette: Palette) -> LayoutJob {
+    let mut job = LayoutJob::default();
+    for (bold, piece) in spans(text) {
+        let color = if bold { palette.foreground } else { palette.muted };
+        job.append(piece, 0.0, TextFormat { font_id: FontId::proportional(SIDEBAR_TEXT_SIZE), color, ..TextFormat::default() });
+    }
+    job
 }
 
 /// Draws release notes.
-fn notes(ui: &mut egui::Ui, text: &str, palette: Palette) {
-    for line in note_lines(text) {
-        match line {
-            NoteLine::Heading(text) => {
-                ui.add(egui::Label::new(RichText::new(text).size(SIDEBAR_TEXT_SIZE).strong()).wrap());
+fn notes(ui: &mut Ui, text: &str, palette: Palette) {
+    ui.spacing_mut().item_spacing.y = UPDATE_NOTE_GAP;
+    for (index, block) in note_blocks(text).into_iter().enumerate() {
+        match block {
+            Note::Heading(text) => {
+                if index > 0 {
+                    ui.add_space(UPDATE_NOTE_GAP);
+                }
+                ui.add(egui::Label::new(RichText::new(text).size(SIDEBAR_TEXT_SIZE).color(palette.foreground).strong()).wrap());
             }
-            NoteLine::Text(text) => {
-                ui.add(egui::Label::new(RichText::new(text).size(SIDEBAR_TEXT_SIZE).color(palette.muted)).wrap());
+            Note::Text(text) => {
+                ui.add(egui::Label::new(words(&text, palette)).wrap());
             }
-            NoteLine::Gap => ui.add_space(UPDATE_GAP / 2.0),
+            Note::Item(text) => {
+                ui.horizontal_top(|ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    let line = ui.fonts_mut(|fonts| fonts.row_height(&FontId::proportional(SIDEBAR_TEXT_SIZE)));
+                    let (dot, _) = ui.allocate_exact_size(vec2(UPDATE_BULLET, line), Sense::hover());
+                    ui.painter().circle_filled(dot.left_center() + vec2(3.0, 0.0), 1.75, palette.muted);
+                    ui.add(egui::Label::new(words(&text, palette)).wrap());
+                });
+            }
         }
     }
 }
@@ -419,7 +710,19 @@ mod tests {
     }"#;
 
     fn release(version: &str) -> Release {
-        Release { version: version.to_owned(), notes: "- New things".to_owned(), download: releases_page() }
+        Release { version: version.to_owned(), notes: "- New things".to_owned(), download: releases_page(), installer: None, checksums: None }
+    }
+
+    /// An offered release this copy could install itself, with a download under way that `send` ends.
+    fn fetching() -> (Updates, Sender<Result<Prepared, String>>, Arc<Progress>) {
+        let mut updates = Updates::new(true, false);
+        let file = |name: &str| Some(ReleaseFile { id: 1, name: name.to_owned(), size: 3 });
+        updates.offered = Some(Release { installer: file("pencraft-9.1.0-setup.exe"), checksums: file(CHECKSUMS), ..release("9.1.0") });
+        updates.place = Some(Place::Setup);
+        let (send, result) = channel();
+        let progress = Arc::new(Progress::of(3));
+        updates.stage = Stage::Fetching { progress: Arc::clone(&progress), result };
+        (updates, send, progress)
     }
 
     #[test]
@@ -457,8 +760,88 @@ mod tests {
 
         // A release without files or notes still reads, and leads to the list of releases.
         let bare = parse_release(r#"{"tag_name": "v9.2.0"}"#).unwrap();
-        assert_eq!(bare, Release { version: "9.2.0".to_owned(), notes: String::new(), download: releases_page() });
+        assert_eq!(bare, Release { version: "9.2.0".to_owned(), notes: String::new(), download: releases_page(), installer: None, checksums: None });
         assert!(parse_release("not json").is_err());
+    }
+
+    #[test]
+    fn a_release_names_the_files_an_update_in_place_needs() {
+        let numbered = NEWER.replace(r#"{"name": "#, r#"{"id": 7, "size": 9, "name": "#);
+        let release = parse_release(&numbered).unwrap();
+        assert_eq!(release.checksums, Some(ReleaseFile { id: 7, name: CHECKSUMS.to_owned(), size: 9 }));
+        if cfg!(all(windows, target_arch = "x86_64")) {
+            assert_eq!(release.installer.unwrap().name, "pencraft-9.1.0-setup.exe");
+        } else if cfg!(target_os = "macos") {
+            assert_eq!(release.installer.unwrap().name, "pencraft-9.1.0-macos-universal.dmg");
+        } else {
+            assert_eq!(release.installer, None);
+        }
+        // Human: files GitHub gave no number can't be asked for.
+        let release = parse_release(NEWER).unwrap();
+        assert_eq!((release.installer, release.checksums), (None, None));
+    }
+
+    #[test]
+    fn a_copy_that_cant_replace_itself_sends_the_user_to_the_browser() {
+        let ctx = egui::Context::default();
+        let (mut updates, _send, _progress) = fetching();
+        updates.stage = Stage::Offered;
+        updates.place = None;
+        assert_eq!(updates.clicked(Click::Take, &ctx), Some(Answer::Get(releases_page())));
+        assert_eq!(updates.offered, None);
+
+        // Human: so does a release without an installer or without checksums.
+        let mut updates = Updates::new(true, false);
+        updates.place = Some(Place::Setup);
+        updates.offered = Some(release("9.1.0"));
+        assert_eq!(updates.clicked(Click::Take, &ctx), Some(Answer::Get(releases_page())));
+    }
+
+    #[test]
+    fn a_finished_download_restarts_into_the_update_once() {
+        let ctx = egui::Context::default();
+        let (mut updates, send, _progress) = fetching();
+        assert_eq!(updates.fetched(), None);
+        let prepared = Prepared::Setup(std::path::PathBuf::from("pencraft-setup.exe"));
+        send.send(Ok(prepared.clone())).unwrap();
+        assert_eq!(updates.fetched(), None);
+        assert_eq!(updates.show(&ctx, crate::theme::palette(true)), Some(Answer::Install(prepared.clone())));
+        // Human: when the user then keeps the app open, the card waits for a click and downloads nothing again.
+        assert!(matches!(updates.stage, Stage::Ready(_)));
+        assert!(updates.offered.is_some());
+        assert_eq!(updates.clicked(Click::Take, &ctx), Some(Answer::Install(prepared)));
+        assert_eq!(updates.clicked(Click::Later, &ctx), None);
+        assert_eq!(updates.offered, None);
+        assert!(matches!(updates.stage, Stage::Offered));
+    }
+
+    #[test]
+    fn a_failed_or_stopped_download_goes_back_to_the_offer() {
+        let ctx = egui::Context::default();
+        let (mut updates, send, _progress) = fetching();
+        send.send(Err("GitHub answered 500".to_owned())).unwrap();
+        assert_eq!(updates.fetched().unwrap(), "The update couldn't be downloaded. GitHub answered 500");
+        assert!(matches!(updates.stage, Stage::Offered));
+        assert!(updates.offered.is_some());
+
+        // Human: a stopped download's thread is told so, and what it says afterwards reaches nobody.
+        let (mut updates, send, _progress) = fetching();
+        assert_eq!(updates.clicked(Click::Cancel, &ctx), None);
+        assert!(matches!(updates.stage, Stage::Offered));
+        assert!(send.send(Err("The download was stopped.".to_owned())).is_err());
+        assert_eq!(updates.fetched(), None);
+
+        // Human: a thread that died without a word is a failure too, not a card stuck on "Downloading".
+        let (mut updates, send, _progress) = fetching();
+        drop(send);
+        assert!(updates.fetched().is_some());
+    }
+
+    #[test]
+    fn the_daily_look_leaves_a_download_alone() {
+        let (mut updates, _send, _progress) = fetching();
+        assert_eq!(updates.take(Ok(Some(release("9.2.0"))), ""), None);
+        assert_eq!(updates.offered.as_ref().map(|release| release.version.as_str()), Some("9.1.0"));
     }
 
     #[test]
@@ -610,18 +993,48 @@ mod tests {
     }
 
     #[test]
-    fn release_notes_are_shown_without_markdowns_marks() {
-        let lines = note_lines("A sharper canvas.\n\n\n### Added\n\n- **Export to PDF.** Uses `--export`.\n");
+    fn release_notes_are_put_together_again_from_a_changelogs_short_lines() {
+        let notes = "A sharper canvas,\nand more.\n\n\n### Added\n\n- **Export to PDF.** Every top-level\n  layer becomes a page. Uses `--export`.\n- Find layers.\n\nThanks.\n";
         assert_eq!(
-            lines,
+            note_blocks(notes),
             vec![
-                NoteLine::Text("A sharper canvas.".to_owned()),
-                NoteLine::Gap,
-                NoteLine::Heading("Added".to_owned()),
-                NoteLine::Gap,
-                NoteLine::Text("- Export to PDF. Uses --export.".to_owned()),
+                Note::Text("A sharper canvas, and more.".to_owned()),
+                Note::Heading("Added".to_owned()),
+                Note::Item("**Export to PDF.** Every top-level layer becomes a page. Uses --export.".to_owned()),
+                Note::Item("Find layers.".to_owned()),
+                Note::Text("Thanks.".to_owned()),
             ]
         );
-        assert_eq!(note_lines("\n\n"), Vec::new());
+        // Human: a line right under a heading starts a paragraph of its own.
+        assert_eq!(note_blocks("## Fixed\nShadows."), vec![Note::Heading("Fixed".to_owned()), Note::Text("Shadows.".to_owned())]);
+        assert_eq!(note_blocks("\n\n"), Vec::new());
+    }
+
+    #[test]
+    fn what_the_notes_make_bold_stands_out() {
+        assert_eq!(spans("**Export to PDF.** Every layer."), vec![(true, "Export to PDF."), (false, " Every layer.")]);
+        assert_eq!(spans("Plain"), vec![(false, "Plain")]);
+        assert_eq!(spans("A **b** c **d**"), vec![(false, "A "), (true, "b"), (false, " c "), (true, "d")]);
+        assert_eq!(spans(""), Vec::new());
+    }
+
+    #[test]
+    fn the_card_draws_in_every_stage() {
+        let ctx = egui::Context::default();
+        let draw = |updates: &mut Updates| {
+            let mut answer = None;
+            let mut drawn = ctx.run_ui(egui::RawInput::default(), |ui| answer = updates.show(ui.ctx(), crate::theme::palette(true)));
+            // The font picture this frame made is for a screen; there is none here.
+            drawn.textures_delta.clear();
+            answer
+        };
+        let (mut updates, send, _progress) = fetching();
+        updates.offered.as_mut().unwrap().notes = "Intro.\n\n### Added\n\n- **One.** Two\n  three.".to_owned();
+        assert_eq!(draw(&mut updates), None);
+        updates.stage = Stage::Offered;
+        assert_eq!(draw(&mut updates), None);
+        updates.stage = Stage::Ready(Prepared::Setup(std::path::PathBuf::from("pencraft-setup.exe")));
+        assert_eq!(draw(&mut updates), None);
+        drop(send);
     }
 }
