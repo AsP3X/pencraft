@@ -9,6 +9,10 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-16
+
+Pictures stay with the design they belong to.
+
 ### Fixed
 
 - **Pictures made before the first save stay with the design.** A picture
@@ -86,6 +90,7 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/AsP3X/pencraft/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/AsP3X/pencraft/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/AsP3X/pencraft/releases/tag/v0.1.0
