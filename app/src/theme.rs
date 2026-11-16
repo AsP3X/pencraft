@@ -448,3 +448,53 @@ pub const PIECE_CROSS_OUT: f32 = 6.0;
 pub const ON_ACCENT: Color32 = Color32::WHITE;
 /// Width of the Cancel button that takes the place of the quick field's button while its picture is made.
 pub const PROPS_CANCEL: f32 = 56.0;
+
+/// Most width of the home screen's column; in a narrower window it takes what there is.
+pub const HOME_WIDTH: f32 = 920.0;
+/// Space between the window's edge and the home screen's column, left and right.
+pub const HOME_MARGIN: f32 = 28.0;
+/// Space above the home screen's headline, and under its last line.
+pub const HOME_TOP: f32 = 44.0;
+/// Size of the home screen's headline.
+pub const HOME_TITLE_SIZE: f32 = 27.0;
+/// Space between the headline and the box a design is described in.
+pub const HOME_TITLE_GAP: f32 = 18.0;
+/// Size of the text typed into that box.
+pub const HOME_PROMPT_TEXT: f32 = 14.5;
+/// Diameter of that box's round send button.
+pub const HOME_SEND: f32 = 26.0;
+/// Size of the home screen's small text: a card's second line, the assistant's name, the shortcuts.
+pub const HOME_SMALL_TEXT: f32 = 11.5;
+/// Size of a card's name on the home screen.
+pub const HOME_CARD_TEXT: f32 = 13.0;
+/// Space above a section's title on the home screen ("Start from", "Recent").
+pub const HOME_SECTION_GAP: f32 = 38.0;
+/// Space between a section's title and its cards.
+pub const HOME_SECTION_TITLE_GAP: f32 = 12.0;
+/// Space between two cards of the home screen, across and down.
+pub const HOME_CARD_GAP: f32 = 12.0;
+/// Corner radius of a card on the home screen.
+pub const HOME_CARD_RADIUS: f32 = 12.0;
+/// Space between a card's edge and its picture and text.
+pub const HOME_CARD_PADDING: f32 = 8.0;
+/// Least width of a card to start a design from; a row holds as many as fit.
+pub const HOME_START_WIDTH: f32 = 150.0;
+/// Height of the picture on such a card.
+pub const HOME_START_PICTURE: f32 = 92.0;
+/// Least width of a recent file's card.
+pub const HOME_RECENT_WIDTH: f32 = 200.0;
+/// Height of a recent file's picture, as a share of its width.
+pub const HOME_RECENT_SHAPE: f32 = 0.6;
+/// Height of the two lines of text under a card's picture, with the space around them.
+pub const HOME_CARD_LINES: f32 = 50.0;
+/// Space between a card's picture and what is drawn in it.
+pub const HOME_PICTURE_INSET: f32 = 10.0;
+/// The most room, in points across and down, a recent file's small picture is made for: the largest a card's
+/// picture gets, in a window one card wide.
+pub const HOME_THUMB_SIZE: [f32; 2] = [400.0, 240.0];
+/// The most points a unit of the design takes in that picture, so a small design isn't blown up.
+pub const HOME_THUMB_SCALE: f32 = 2.0;
+/// Height of the note the home screen shows while there are no recent files.
+pub const HOME_EMPTY_HEIGHT: f32 = 112.0;
+/// Height of a shortcut's key on the home screen's last line.
+pub const HOME_KEY_HEIGHT: f32 = 20.0;

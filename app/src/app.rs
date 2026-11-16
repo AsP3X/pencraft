@@ -18,12 +18,13 @@ use crate::settings::Settings;
 use crate::sidebar::Ask;
 use crate::sidebar::{Sidebar, icon_button, text_button};
 use crate::theme::{
-    self, ACCENT, AGENT_CURSOR_LARGE, AGENT_CURSOR_MEDIUM, ICON_SIZE, ISLAND_GAP, ISLAND_RADIUS, MESSAGE_BAR_HEIGHT, PROPERTIES_WIDTH, RAIL_WIDTH,
+    self, AGENT_CURSOR_LARGE, AGENT_CURSOR_MEDIUM, ICON_SIZE, ISLAND_GAP, ISLAND_RADIUS, MESSAGE_BAR_HEIGHT, PROPERTIES_WIDTH, RAIL_WIDTH,
     SIDEBAR_TEXT_SIZE, TAB_BAR_HEIGHT, TAB_HEIGHT, TAB_WORK_DOT, TITLE_BUTTON, TITLE_ISLAND_HEIGHT, TITLE_ISLAND_TOP, TITLE_SIZE, TRAFFIC_LIGHT_LEFT,
     TRAFFIC_LIGHT_SPACE, ZOOM_ISLAND,
 };
 use crate::{fonts, samples, screenshot};
 
+mod home;
 mod pictures;
 mod talk;
 mod tools;
@@ -100,6 +101,8 @@ pub struct Launch {
     pub no_update_check: bool,
     /// `--update-prompt`: the picture shows the card that offers a newer version.
     pub update_prompt: bool,
+    /// `--home`: the picture shows the home screen, with the files named on the command line as its recent files.
+    pub home: bool,
 }
 
 impl Launch {
@@ -168,6 +171,8 @@ pub struct App {
     updates: crate::update::Updates,
     /// A downloaded update to install when the app quits.
     install: Option<crate::update::Prepared>,
+    /// What the home screen keeps: the words being written there, and the recent files' small pictures.
+    home: home::Home,
 }
 
 /// How long a message stays at the bottom of the window.
@@ -227,6 +232,7 @@ impl App {
             designed: Vec::new(),
             updates: crate::update::Updates::new(launch.looks_for_updates(), launch.update_prompt),
             install: None,
+            home: home::Home::default(),
         };
         app.find_assistants();
         if launch.screenshot.is_none() {
@@ -234,17 +240,7 @@ impl App {
             app.install_menus(&cc.egui_ctx);
         }
         if let Some(path) = launch.screenshot {
-            // Human: the picture shows the files named on the command line, or without any the editor with the
-            // starter board, one card selected.
-            for file in &launch.files {
-                app.open_path(file);
-            }
-            if app.tabs.is_empty() {
-                app.open_sample();
-                if let Some(editor) = app.tabs.last_mut() {
-                    editor.selection = vec!["card2".to_owned()];
-                }
-            }
+            app.pose_documents(launch.home, &launch.files);
             // Human: a picture can ask for the dark look and a sidebar view; neither is saved (settings are in
             // memory for a screenshot run).
             if launch.dark {
@@ -283,6 +279,25 @@ impl App {
         }
         cc.egui_ctx.set_visuals(theme::visuals(app.dark()));
         app
+    }
+
+    /// For a picture of the app: what it shows of `files`, the files named on the command line.
+    // Human: the picture shows those files in tabs, or without any the editor with the starter board, one card
+    // selected; with `--home` it shows the home screen with those files as its recent ones.
+    fn pose_documents(&mut self, home: bool, files: &[PathBuf]) {
+        if home {
+            self.pose_home(files);
+            return;
+        }
+        for file in files {
+            self.open_path(file);
+        }
+        if self.tabs.is_empty() {
+            self.open_sample();
+            if let Some(editor) = self.tabs.last_mut() {
+                editor.selection = vec!["card2".to_owned()];
+            }
+        }
     }
 
     /// Puts the app's menus into the menu bar at the top of the screen, where the system has one.
@@ -1188,62 +1203,6 @@ impl App {
         });
     }
 
-    fn home(&mut self, ui: &mut egui::Ui) {
-        let palette = theme::palette(self.dark());
-        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            ui.vertical_centered(|ui| {
-                ui.add_space(56.0);
-                ui.label(RichText::new("Pencraft").size(30.0).strong());
-                ui.label(RichText::new("Design on an infinite canvas. Files stay .pen documents on your disk.").color(palette.muted));
-                ui.add_space(24.0);
-                ui.horizontal(|ui| {
-                    let width = 360.0;
-                    ui.add_space(((ui.available_width() - width) / 2.0).max(0.0));
-                    let primary = egui::Button::new(RichText::new("New design").color(palette.primary_text))
-                        .fill(palette.primary)
-                        .min_size(egui::vec2(170.0, 36.0));
-                    if ui.add(primary).clicked() {
-                        self.new_file();
-                    }
-                    if ui.add(egui::Button::new("Open…").min_size(egui::vec2(170.0, 36.0))).clicked() {
-                        self.ask_open();
-                    }
-                });
-                ui.add_space(32.0);
-                ui.label(RichText::new("Start from").strong());
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    let width = 2.0 * 220.0 + 16.0;
-                    ui.add_space(((ui.available_width() - width) / 2.0).max(0.0));
-                    if starter_card(ui, "Blank canvas", "An empty document", palette, None).clicked() {
-                        self.new_file();
-                    }
-                    ui.add_space(16.0);
-                    if starter_card(ui, "Starter board", "Layouts, a component, themes", palette, Some(ACCENT)).clicked() {
-                        self.open_sample();
-                    }
-                });
-                ui.add_space(32.0);
-                let recent = self.prefs.get().files.recent.clone();
-                if !recent.is_empty() {
-                    ui.label(RichText::new("Recent").strong());
-                    ui.add_space(6.0);
-                    let mut open = None;
-                    for path in recent {
-                        let name = Path::new(&path).file_stem().map_or_else(|| path.clone(), |s| s.to_string_lossy().into_owned());
-                        let response = ui.add(egui::Button::new(RichText::new(&name)).frame(false)).on_hover_text(&path);
-                        if response.clicked() {
-                            open = Some(PathBuf::from(&path));
-                        }
-                    }
-                    if let Some(path) = open {
-                        self.open_path(&path);
-                    }
-                }
-            });
-        });
-    }
-
     fn editor_view(&mut self, ui: &mut egui::Ui) {
         let dark = self.dark();
         let palette = theme::palette(dark);
@@ -1723,24 +1682,6 @@ fn tab_button(ui: &mut egui::Ui, title: &str, look: TabLook, palette: theme::Pal
     let on_cross = response.interact_pointer_pos().is_some_and(|p| slot.expand(5.0).contains(p));
     let closed = response.clicked() && on_cross;
     (response.on_hover_text(if at_work { format!("{title}: the assistant is working") } else { title.to_owned() }), closed)
-}
-
-fn starter_card(ui: &mut egui::Ui, title: &str, subtitle: &str, palette: theme::Palette, accent: Option<Color32>) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(220.0, 150.0), egui::Sense::click());
-    let painter = ui.painter();
-    let fill = if response.hovered() { palette.hover } else { palette.island };
-    painter.rect(rect, 12.0, fill, egui::Stroke::new(1.0, palette.border), egui::StrokeKind::Inside);
-    let preview = egui::Rect::from_min_size(rect.min + egui::vec2(14.0, 14.0), egui::vec2(rect.width() - 28.0, 76.0));
-    painter.rect_filled(preview, 8.0, palette.canvas);
-    if let Some(accent) = accent {
-        let bar = egui::Rect::from_min_size(preview.min + egui::vec2(14.0, 14.0), egui::vec2(90.0, 10.0));
-        painter.rect_filled(bar, 3.0, palette.foreground.gamma_multiply(0.6));
-        painter.rect_filled(bar.translate(egui::vec2(0.0, 18.0)), 3.0, palette.muted.gamma_multiply(0.5));
-        painter.rect_filled(egui::Rect::from_min_size(bar.min + egui::vec2(0.0, 36.0), egui::vec2(48.0, 14.0)), 4.0, accent);
-    }
-    painter.text(rect.min + egui::vec2(14.0, 102.0), egui::Align2::LEFT_TOP, title, egui::FontId::proportional(14.0), palette.foreground);
-    painter.text(rect.min + egui::vec2(14.0, 122.0), egui::Align2::LEFT_TOP, subtitle, egui::FontId::proportional(12.0), palette.muted);
-    response
 }
 
 /// The canvas's settings, from the user's.

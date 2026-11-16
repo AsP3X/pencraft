@@ -34,7 +34,7 @@ const ROTATE_STEP: f32 = 15.0;
 /// Side of a newly placed icon.
 const ICON_TOOL_SIZE: f32 = 24.0;
 /// Fill of new frames.
-const FRAME_FILL: &str = "#FFFFFF";
+pub const FRAME_FILL: &str = "#FFFFFF";
 /// Wheel zoom: largest wheel step counted, with ⌘ and with ctrl.
 const ZOOM_STEP_LIMIT_CMD: f32 = 15.0;
 /// See [`ZOOM_STEP_LIMIT_CMD`].

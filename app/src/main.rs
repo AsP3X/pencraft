@@ -1,6 +1,6 @@
 //! Pencraft: a canvas design editor for `.pen` files, written in Rust as a Craft app.
 //!
-//! `pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--export FILE]]`
+//! `pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--home] [--export FILE]]`
 //! `pencraft [--background] [--private] [--no-update-check] [--assistant ID] [--ask MESSAGE] [FILE.pen]...` opens the window behind what the user is doing.
 //! `pencraft mcp` connects an AI client to the running app (Model Context Protocol over standard input and output).
 
@@ -63,7 +63,7 @@ const MIN_WINDOW_SIZE: [f32; 2] = [560.0, 400.0];
 
 /// How many samples a pixel the window is drawn with (multisample anti-aliasing).
 const SAMPLES: u16 = 4;
-const USAGE: &str = "usage: pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--export FILE]]\n       pencraft [--background] [--private] [--no-update-check] [--assistant ID] [--ask MESSAGE] [FILE.pen]...\n       pencraft mcp
+const USAGE: &str = "usage: pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--home] [--export FILE]]\n       pencraft [--background] [--private] [--no-update-check] [--assistant ID] [--ask MESSAGE] [FILE.pen]...\n       pencraft mcp
        pencraft skills [show NAME [FILE] | install [--project DIR | --dir DIR]]";
 
 fn main() -> ExitCode {
@@ -170,6 +170,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<app::Launch, String>
         private: false,
         no_update_check: false,
         update_prompt: false,
+        home: false,
     };
     let mut args = args.peekable();
     while let Some(arg) = args.next() {
@@ -191,6 +192,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<app::Launch, String>
             "--private" => launch.private = true,
             "--no-update-check" => launch.no_update_check = true,
             "--update-prompt" => launch.update_prompt = true,
+            "--home" => launch.home = true,
             "--ask" => launch.ask = Some(args.next().ok_or("--ask needs a message")?),
             "--assistant" => launch.assistant = Some(args.next().ok_or("--assistant needs an id, like code/claude-opus-5-5")?),
             "--export" => launch.export = Some(PathBuf::from(args.next().ok_or("--export needs a file name")?)),
