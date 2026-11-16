@@ -9,6 +9,23 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-16
+
+A new home screen.
+
+### Changed
+
+- **The home screen starts designs faster.** Describe a screen or a page in
+  the box at the top and press Return: Pencraft opens a new design and the
+  assistant starts drawing it, with the chat showing.
+- **Start at a screen size.** Beside the blank canvas and the starter board
+  there are now a phone (390 × 844), a tablet (820 × 1180) and a desktop
+  window (1440 × 900): each opens a design with one frame of that size.
+- **Recent files show what is in them.** Each recent design has a small
+  picture of its canvas, when it was last changed and the folder it is in.
+  A file that is no longer there says so; right-click a recent file to take
+  it off the list.
+
 ## [0.3.0] - 2026-11-16
 
 Pencraft installs its own updates.
@@ -107,7 +124,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/AsP3X/pencraft/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/AsP3X/pencraft/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/AsP3X/pencraft/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/AsP3X/pencraft/compare/v0.1.0...v0.2.0
