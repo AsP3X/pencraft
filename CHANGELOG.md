@@ -9,14 +9,19 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-16
+
+Pencraft installs its own updates.
+
 ### Changed
 
 - **Updates install themselves.** The card that offers a new version now has
   **Update and restart**: Pencraft downloads the new version, checks it,
   asks about unsaved designs, installs it and starts again. No browser and
-  no setup wizard. This works from the version after this one on, for a
-  Pencraft installed with the setup wizard on Windows or as an app on a Mac;
-  other copies keep the download in the browser.
+  no setup wizard. This version still has to be installed by hand; the ones
+  after it arrive this way, for a Pencraft installed with the setup wizard
+  on Windows or as an app on a Mac. Other copies keep the download in the
+  browser.
 - **The update card reads better.** What is new is shown as paragraphs and a
   list that fit the card, instead of the changelog's short lines, with the
   bold words standing out.
@@ -102,7 +107,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/AsP3X/pencraft/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/AsP3X/pencraft/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/AsP3X/pencraft/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/AsP3X/pencraft/releases/tag/v0.1.0
