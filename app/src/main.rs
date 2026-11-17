@@ -53,6 +53,7 @@ mod theme;
 mod tool_icons;
 mod update;
 mod web;
+mod wire_edit;
 
 use std::path::PathBuf;
 use std::process::ExitCode;

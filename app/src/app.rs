@@ -1062,6 +1062,7 @@ impl App {
             (Key::T, Tool::Text),
             (Key::N, Tool::Note),
             (Key::P, Tool::Pen),
+            (Key::C, Tool::Connector),
             (Key::K, Tool::Scale),
         ] {
             if hit(key, none) {

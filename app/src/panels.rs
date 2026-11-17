@@ -471,7 +471,7 @@ fn node_panel(ui: &mut Ui, editor: &mut Editor, id: &str, dark: bool, pictures: 
     };
     let mut edits = Edits { pictures: std::mem::take(pictures), ..Edits::default() };
     header(ui, &shown, &mut edits);
-    for section in [slot, context, align, position, layout, appearance, material, fill, stroke, effects, text, code, export] {
+    for section in [slot, context, align, position, layout, connector, appearance, material, fill, stroke, effects, text, code, export] {
         section(ui, &shown, &mut edits);
     }
     *pictures = std::mem::take(&mut edits.pictures);
@@ -659,6 +659,10 @@ fn alignment(ui: &mut Ui, palette: Palette) -> Option<AlignTo> {
 }
 
 fn align(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
+    // A connector lies where its ends are: there is nothing to align, place or lay out.
+    if shown.node.kind == Kind::Connector {
+        return;
+    }
     rule(ui, shown.palette);
     title_row(ui, "Alignment", None, shown.palette);
     edits.command = match alignment(ui, shown.palette) {
@@ -676,6 +680,9 @@ fn align(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
 /// Position: x and y, rotation, and bring to front and the two flips.
 fn position(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
     let (palette, node) = (shown.palette, shown.node);
+    if node.kind == Kind::Connector {
+        return;
+    }
     rule(ui, palette);
     title_row(ui, "Position", None, palette);
     ui.add_space(PROPS_GAP);
@@ -715,6 +722,9 @@ fn position(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
 /// Layout: the size, how it fills its parent, and for frames how they lay out what is in them.
 fn layout(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
     let (palette, node) = (shown.palette, shown.node);
+    if node.kind == Kind::Connector {
+        return;
+    }
     rule(ui, palette);
     if title_row(ui, "Layout", Some(("layout-panel-left", "Add flex layout (⇧A)")), palette) {
         edits.command = Some(Editor::add_flex_layout);
@@ -845,6 +855,101 @@ fn frame_layout(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
 }
 
 /// Appearance: opacity, corner radius, and whether the layer shows at all.
+/// The Connector section: how the line runs, what sits at its ends, and its measures.
+// Human: Pencraft's own section. Where the ends are and where the waypoints lie is set on the canvas, with the
+// connector's handles; here is everything about the line's look. A value at its default is left out of the file.
+fn connector(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
+    /// The routes, as the section names them and as the file does.
+    const ROUTES: [(&str, &str); 3] = [("Curved", "curved"), ("Elbow", "elbow"), ("Straight", "straight")];
+    /// The markers, in two rows of three.
+    const MARKERS: [[(&str, &str); 3]; 2] =
+        [[("None", ""), ("Arrow", "arrow"), ("Bar", "bar")], [("Triangle", "triangle"), ("Dot", "dot"), ("Diamond", "diamond")]];
+    let (palette, node) = (shown.palette, shown.node);
+    if node.kind != Kind::Connector {
+        return;
+    }
+    rule(ui, palette);
+    title_row(ui, "Connector", None, palette);
+    ui.add_space(PROPS_GAP);
+    let said = |key: &str| node.extra.get(key).and_then(Value::as_str).unwrap_or_default().to_owned();
+    // Sets a key of the connector, or takes it away when the value is the one it has without the key.
+    let put = |edits: &mut Edits, key: &'static str, value: Option<Value>| {
+        edits.set(move |n| match &value {
+            Some(value) => {
+                n.extra.insert(key.to_owned(), value.clone());
+            }
+            None => {
+                n.extra.remove(key);
+            }
+        });
+    };
+    let route = match said("route").as_str() {
+        "elbow" => "elbow",
+        "straight" => "straight",
+        _ => "curved",
+    };
+    if let Some(picked) = choice_row(ui, "route", &ROUTES.map(|(label, key)| (label, key == route)), palette) {
+        let key = ROUTES[picked].1;
+        put(edits, "route", (key != "curved").then(|| Value::from(key)));
+    }
+    for (title, key) in [("Start", "startMarker"), ("End", "endMarker")] {
+        ui.add_space(PROPS_GAP);
+        small(ui, title, palette);
+        let now = said(key);
+        for (line, row) in MARKERS.iter().enumerate() {
+            if let Some(picked) = choice_row(ui, &format!("{key}{line}"), &row.map(|(label, marker)| (label, marker == now)), palette) {
+                let marker = row[picked].1;
+                put(edits, key, (!marker.is_empty()).then(|| Value::from(marker)));
+            }
+        }
+    }
+    let number_of = |key: &str| node.extra.get(key).and_then(Value::as_f64).map(pen_doc::value::narrow);
+    let stored = |value: f32| Value::from((f64::from(value) * 100.0).round() / 100.0);
+    ui.add_space(PROPS_GAP);
+    small(ui, if route == "curved" { "Marker size · Curvature" } else { "Marker size · Corner radius" }, palette);
+    let [left, right] = pair(ui);
+    if let Some(v) = number(ui, left, Tag::Icon("move-diagonal"), Some(number_of("markerSize").unwrap_or(8.0)), None, 0.5, palette) {
+        put(edits, "markerSize", Some(stored(v.max(0.0))));
+    }
+    if route == "curved" {
+        if let Some(v) = number(ui, right, Tag::Icon("spline"), Some(number_of("curvature").unwrap_or(1.0)), None, 0.05, palette) {
+            let v = v.max(0.0);
+            put(edits, "curvature", ((v - 1.0).abs() > 0.005).then(|| stored(v)));
+        }
+    } else {
+        let radius = match &node.corner_radius {
+            Some(Corners::All(radius)) => shown.vars.number(radius, shown.theme).unwrap_or(0.0),
+            _ => 0.0,
+        };
+        if let Some(v) = number(ui, right, Tag::Icon("scan"), Some(radius), None, 0.5, palette) {
+            edits.set(move |n| n.corner_radius = (v > 0.0).then(|| Corners::All(Num::new(v))));
+        }
+    }
+    // Human: one dash length here; a list of lengths written into the file by hand shows its first.
+    let dash = match node.extra.get("dash") {
+        Some(Value::Array(lengths)) => lengths.first().and_then(Value::as_f64).map(pen_doc::value::narrow),
+        other => other.and_then(Value::as_f64).map(pen_doc::value::narrow),
+    };
+    ui.add_space(PROPS_GAP);
+    small(ui, if route == "elbow" { "Dash · Run-out" } else { "Dash" }, palette);
+    let [left, right] = pair(ui);
+    if let Some(v) = number(ui, left, Tag::Icon("ellipsis"), Some(dash.unwrap_or(0.0)), None, 0.5, palette) {
+        put(edits, "dash", (v > 0.01).then(|| stored(v)));
+    }
+    if route == "elbow"
+        && let Some(v) = number(ui, right, Tag::Icon("corner-down-right"), Some(number_of("stub").unwrap_or(16.0)), None, 0.5, palette)
+    {
+        put(edits, "stub", Some(stored(v.max(0.0))));
+    }
+    if node.extra.get("via").and_then(Value::as_array).is_some_and(|via| !via.is_empty()) {
+        ui.add_space(PROPS_GAP);
+        if wide_button(ui, Some("x"), "Remove waypoints", palette).clicked() {
+            put(edits, "via", None);
+        }
+    }
+    end(ui, true);
+}
+
 fn appearance(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
     let (palette, node) = (shown.palette, shown.node);
     rule(ui, palette);
@@ -1091,6 +1196,10 @@ fn joined_corners(all: &[Num; 4], kind: &Kind) -> Option<Corners> {
 /// Fill, or a sticky note's colour.
 fn fill(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
     let (palette, node) = (shown.palette, shown.node);
+    // A connector is a line: it is drawn by its stroke alone.
+    if node.kind == Kind::Connector {
+        return;
+    }
     if node.kind == Kind::Note {
         rule(ui, palette);
         title_row(ui, "Note color", None, palette);

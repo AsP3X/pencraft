@@ -47,6 +47,8 @@ pub enum Tool {
     Note,
     /// Draw a path point by point (P).
     Pen,
+    /// Draw a connector from one layer to another (C).
+    Connector,
 }
 
 /// What a layer is to components.

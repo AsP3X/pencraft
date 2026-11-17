@@ -148,7 +148,7 @@ const fn action(
 
 /// Every action, in the order and under the headings the search lists them.
 // Agent: icons MUST be bundled Lucide names; a test checks it.
-pub const ACTIONS: [Action; 75] = [
+pub const ACTIONS: [Action; 76] = [
     action(Command::Dashboard, "layout-grid", "Open dashboard", "File", &[], "home files projects recent"),
     action(Command::Save, "save", "Save", "File", &["⌘", "S"], "write store disk"),
     action(Command::SaveAs, "save-all", "Save as…", "File", &["⌘", "⇧", "S"], "copy duplicate file disk"),
@@ -217,6 +217,7 @@ pub const ACTIONS: [Action; 75] = [
     action(Command::Tool(Tool::Text), "type", "Text tool", "Tools", &["T"], "type write"),
     action(Command::Tool(Tool::Note), "sticky-note", "Sticky note tool", "Tools", &["N"], "comment memo"),
     action(Command::Tool(Tool::Pen), "pen-tool", "Pen tool", "Tools", &["P"], "path vector curve bezier draw"),
+    action(Command::Tool(Tool::Connector), "spline", "Connector tool", "Tools", &["C"], "wire line arrow link edge node graph flow"),
     action(Command::Tool(Tool::Rectangle), "square", "Rectangle tool", "Tools", &["R"], "box shape"),
     action(Command::Tool(Tool::Ellipse), "circle", "Ellipse tool", "Tools", &["O"], "oval shape"),
     action(Command::Tool(Tool::Polygon), "triangle", "Polygon tool", "Tools", &[], "triangle shape"),

@@ -262,12 +262,13 @@ enum Act {
 }
 
 /// The tool rail's entries from top to bottom: icon, hint, what it does.
-const RAIL: [(&str, &str, Act); 13] = [
+const RAIL: [(&str, &str, Act); 14] = [
     ("mouse-pointer-2", "Move (V), Scale (K)", Act::Pointer),
     ("chevron-down", "Move tools", Act::Menu(&POINTER_MENU)),
     ("square", "Shapes", Act::Shape),
     ("chevron-down", "Shapes", Act::Menu(&SHAPE_MENU)),
     ("pen-tool", "Pen (P)", Act::Pick(Tool::Pen)),
+    ("spline", "Connector (C)", Act::Pick(Tool::Connector)),
     ("type", "Text (T)", Act::Pick(Tool::Text)),
     ("frame", "Frame (F)", Act::Pick(Tool::Frame)),
     ("sticky-note", "Sticky note (N)", Act::Pick(Tool::Note)),

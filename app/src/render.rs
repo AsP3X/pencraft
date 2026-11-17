@@ -117,40 +117,96 @@ pub struct DisplayList {
     images: ImageStore,
     /// The pictures effects were baked into, kept from one build to the next.
     baked: bake::Baked,
+    /// The part of the document whose effects are baked, when the last build left some out; `None` when it
+    /// baked them all.
+    cover: Option<Rect>,
+    /// The zoom at the last look, and when it last differed from the look before: a zoom still on the move
+    /// isn't followed step by step.
+    zoom_seen: f32,
+    /// See `zoom_seen`.
+    zoom_moved: Option<std::time::Instant>,
+    /// What was on screen at the last look, and when that last changed (or effects were last added to).
+    view_seen: Rect,
+    /// See `view_seen`.
+    view_moved: Option<std::time::Instant>,
+    /// How far past the screen the last build baked effects, as a share of the screen's width and height.
+    margin: f32,
 }
 
+/// How long the zoom must hold still before the list is rebuilt for its new step.
+const ZOOM_SETTLE: std::time::Duration = std::time::Duration::from_millis(120);
+/// How far past the visible part of the canvas effects are baked at first, as a share of its width and height.
+const BAKE_MARGIN: f32 = 0.5;
+/// How long the view must rest before effects further out are baked, a step at a time.
+const BAKE_ON_AFTER: std::time::Duration = std::time::Duration::from_millis(300);
+/// Effects further out are only baked while the pictures held are fewer pixels than this (128 MB).
+const BAKE_ON_BELOW: usize = 32_000_000;
+
 impl DisplayList {
-    /// Rebuilds the list when the scene changed or the zoom moved to another power of two.
+    /// Rebuilds the list when the scene changed, when the zoom has come to rest on another power of two, or when
+    /// `visible` (the part of the document on screen) has left the part whose effects are baked.
     // Human: Curves are flattened to a tolerance that depends on the zoom, so zooming far in re-tessellates
     // once per doubling instead of showing facets.
     // Human: Effects (blurs, and the shadows egui can't draw) are baked into pictures at the pixel size of that
     // power of two, so they stay sharp while zooming in; `background` is the canvas colour behind the design.
-    #[expect(clippy::too_many_arguments, reason = "the scene, what it was built from, and where its pictures live")]
+    // Human: a build costs up to seconds on a design with many effects, nearly all of it baking. So it waits
+    // until a zoom has held still for a moment (the list drawn meanwhile is the old one, scaled), and it bakes
+    // only what is on screen or near it. Zooming out or panning past that part rebuilds at once: effects
+    // that were left out would otherwise be seen missing. And while the view rests, the part that is baked
+    // grows a step at a time, until it is the whole design or the pictures would take too much memory: after
+    // a short rest panning costs nothing.
+    // Agent: CALLS ctx.request_repaint_after while a rebuild is waiting for the zoom to settle or the view to rest.
+    #[expect(clippy::too_many_arguments, reason = "the scene, what it was built from, where its pictures live, and what is on screen")]
     pub fn update(
         &mut self,
         scene: &[SceneNode],
         generation: u64,
         zoom: f32,
+        visible: Rect,
         vars: Vars<'_>,
         ctx: &egui::Context,
         folder: Option<&std::path::Path>,
         background: Color32,
     ) {
         let bucket = zoom_bucket(zoom);
-        if !self.items.is_empty()
-            && self.generation == generation
-            && self.zoom_bucket == bucket
-            && self.folder.as_deref() == folder
-            && self.background == background
-        {
+        let now = std::time::Instant::now();
+        if (zoom - self.zoom_seen).abs() > f32::EPSILON {
+            // The very first zoom is no move: the first build is made at once.
+            self.zoom_moved = (!self.items.is_empty()).then_some(now);
+            self.zoom_seen = zoom;
+        }
+        if visible != self.view_seen {
+            self.view_seen = visible;
+            self.view_moved = Some(now);
+        }
+        let wait = self.zoom_moved.and_then(|moved| ZOOM_SETTLE.checked_sub(now.duration_since(moved)));
+        let rest = self.view_moved.and_then(|moved| BAKE_ON_AFTER.checked_sub(now.duration_since(moved)));
+        let same = !self.items.is_empty() && self.generation == generation && self.folder.as_deref() == folder && self.background == background;
+        let covered = self.cover.is_none_or(|cover| cover.holds(&visible));
+        let current = same && covered && self.zoom_bucket == bucket;
+        // Effects were left out, there is room for more, and nothing is moving: bake on.
+        let more = current && self.cover.is_some() && self.baked.pixels_held() < BAKE_ON_BELOW;
+        if (current && !(more && rest.is_none())) || (same && covered && wait.is_some()) {
+            if let Some(wait) = wait.filter(|_| self.zoom_bucket != bucket).or(rest.filter(|_| more)) {
+                ctx.request_repaint_after(wait);
+            }
             return;
         }
+        self.margin = if current { self.margin * 2.0 + BAKE_MARGIN } else { BAKE_MARGIN };
+        // The next step out waits for another rest.
+        self.view_moved = Some(now);
+        let cover = Rect::new(
+            visible.x - visible.w * self.margin,
+            visible.y - visible.h * self.margin,
+            visible.w * (1.0 + 2.0 * self.margin),
+            visible.h * (1.0 + 2.0 * self.margin),
+        );
         self.folder = folder.map(std::path::Path::to_path_buf);
         self.items.clear();
         self.generation = generation;
         self.zoom_bucket = bucket;
         self.background = background;
-        self.baked.begin();
+        self.baked.begin_within(Some(cover));
         let builder = Builder {
             vars,
             tolerance: (0.25 / zoom).clamp(0.002, 4.0),
@@ -166,6 +222,10 @@ impl DisplayList {
             builder.node(node, 1.0, None, &mut self.items);
         }
         self.baked.finish();
+        self.cover = self.baked.skipped().then_some(cover);
+        if self.cover.is_some() {
+            ctx.request_repaint_after(BAKE_ON_AFTER);
+        }
     }
 
     /// `scene` (a layer with everything in it) drawn as a picture at `scale` pixels per unit, with its shadows

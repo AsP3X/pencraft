@@ -14,7 +14,7 @@ use crate::ops::{is_free, set_position, stored_position};
 use crate::render::{DisplayList, doc_point, screen};
 use crate::theme::{
     self, ACCENT, COMPONENT, EDGE_GRAB, HANDLE_SIZE, INSTANCE, PEN_ANCHOR, PEN_HANDLE, PEN_REACH, RADIUS_HANDLE, RADIUS_HANDLE_INSET,
-    RADIUS_HANDLE_ROOM, ROTATE_DOT, ROTATE_DOT_GAP, ROTATE_DOT_GRAB, ROTATE_REACH, SIZE_LABEL_TEXT,
+    RADIUS_HANDLE_ROOM, ROTATE_DOT, ROTATE_DOT_GAP, ROTATE_DOT_GRAB, ROTATE_REACH, SIZE_LABEL_TEXT, WIRE_REACH,
 };
 
 /// Wheel and trackpad panning: screen points per scroll point.
@@ -92,6 +92,8 @@ enum Drag {
     },
     /// The pen pulling the handles out of the point it just placed.
     Pen,
+    /// The connector tool pulling a connector out of where the button went down (see `Canvas::wire_draft`).
+    Wire,
     /// Pulling a corner-radius handle: the layer, its box, and which way is inwards from the pulled corner.
     Radius {
         id: String,
@@ -135,6 +137,10 @@ pub struct Canvas {
     pub editing: Option<String>,
     /// What a drag holds of a path whose points are edited.
     path_grab: Option<crate::path_edit::Grab>,
+    /// The handle of the selected connector a drag holds.
+    wire_grab: Option<crate::wire_edit::Grab>,
+    /// The connector being drawn with the connector tool.
+    wire_draft: Option<crate::wire_edit::Draft>,
 }
 
 impl Canvas {
@@ -155,7 +161,8 @@ impl Canvas {
         }
         self.zoom_and_pan(ui, editor, view, &response);
         let folder = editor.path.as_deref().and_then(std::path::Path::parent);
-        self.list.update(&editor.scene, editor.generation, editor.camera.zoom, Vars::new(&editor.doc), ui.ctx(), folder, self.background);
+        let visible = crate::render::view_to_doc(&editor.camera, view);
+        self.list.update(&editor.scene, editor.generation, editor.camera.zoom, visible, Vars::new(&editor.doc), ui.ctx(), folder, self.background);
         self.list.draw(&painter, &editor.camera, view);
         // Human: a path being drawn becomes a layer when the tool changes (Escape goes back to Move) or with
         // Enter, which also goes back to Move.
@@ -170,6 +177,7 @@ impl Canvas {
         self.overlay(ui, &painter, editor, view, dark);
         spotlight(&painter, editor, view);
         crate::path_edit::overlay(ui, &painter, editor, view, self.path_grab.is_some());
+        crate::wire_edit::overlay(ui, &painter, editor, view, self.wire_grab.as_ref(), self.wire_draft.as_ref());
         let pulling = matches!(self.drag, Some(Drag::Pen));
         pen_overlay(ui, &painter, editor, view, pulling, self.options.snap_to_pixels);
         if editor.activity.posed {
@@ -266,7 +274,7 @@ impl Canvas {
             ui.ctx().set_cursor_icon(if response.dragged() { CursorIcon::Grabbing } else { CursorIcon::Grab });
         } else if matches!(
             editor.tool,
-            Tool::Frame | Tool::Rectangle | Tool::Ellipse | Tool::Polygon | Tool::Icon | Tool::Text | Tool::Note | Tool::Pen
+            Tool::Frame | Tool::Rectangle | Tool::Ellipse | Tool::Polygon | Tool::Icon | Tool::Text | Tool::Note | Tool::Pen | Tool::Connector
         ) {
             ui.ctx().set_cursor_icon(CursorIcon::Crosshair);
         }
@@ -275,11 +283,21 @@ impl Canvas {
             crate::path_edit::pointer(ui, editor, view, response, &mut self.path_grab, snap);
             return;
         }
+        // Human: a connector that is selected alone has handles of its own; a press on one of them is theirs, and
+        // anything else goes on as usual.
+        if editor.tool == Tool::Move
+            && !space
+            && !middle
+            && self.drag.is_none()
+            && crate::wire_edit::pointer(ui, editor, view, response, &mut self.wire_grab, snap)
+        {
+            return;
+        }
         // Double click: edit text, the points of a path, or step into the clicked container.
         if response.double_clicked()
             && let Some(p) = pointer
         {
-            let chain = hit_chain(&editor.scene, doc_point(&editor.camera, view, p), Vars::new(&editor.doc));
+            let chain = hit_chain(&editor.scene, doc_point(&editor.camera, view, p), Vars::new(&editor.doc), WIRE_REACH / editor.camera.zoom);
             let current = editor.selection.first().and_then(|s| chain.iter().position(|c| c == s));
             match current {
                 Some(i) if chain.get(i + 1).is_some() => editor.selection = vec![chain[i + 1].clone()],
@@ -306,6 +324,10 @@ impl Canvas {
                 if pen_press(editor, doc_point(&editor.camera, view, grab), modifiers.shift, snap) {
                     self.drag = Some(Drag::Pen);
                 }
+            } else if editor.tool == Tool::Connector {
+                // Human: a connector is pulled from where the button went down to where it is let go.
+                self.wire_draft = Some(crate::wire_edit::Draft::start(doc_point(&editor.camera, view, grab)));
+                self.drag = Some(Drag::Wire);
             } else if matches!(editor.tool, Tool::Frame | Tool::Rectangle | Tool::Ellipse | Tool::Polygon | Tool::Text) {
                 // Human: snap to the pixel grid, on by default.
                 self.drag = Some(Drag::Create { tool: editor.tool, start: snapped(at, snap) });
@@ -436,11 +458,16 @@ impl Canvas {
                     editor.selection = selection;
                 }
                 Some(Drag::Pen) => editor.pen.pull(snapped(at, snap), modifiers.shift),
-                Some(Drag::Create { .. }) | None => {}
+                Some(Drag::Create { .. } | Drag::Wire) | None => {}
             }
         }
         if response.drag_stopped() {
             match self.drag.take() {
+                Some(Drag::Wire) => {
+                    if let (Some(draft), Some(p)) = (self.wire_draft.take(), pointer) {
+                        draft.finish(editor, doc_point(&editor.camera, view, p), snap);
+                    }
+                }
                 Some(Drag::Create { tool, start }) => {
                     let end = snapped(pointer.map_or(start, |p| doc_point(&editor.camera, view, p)), snap);
                     let area = Rect::from_corners(start, end);
@@ -477,7 +504,7 @@ impl Canvas {
                 Tool::Text => self.editing = Some(create_text(editor, snapped(at, snap), None, self.background)),
                 Tool::Note => self.editing = Some(create_note(editor, snapped(at, snap))),
                 // Human: a click without a drag draws nothing with the shape tools.
-                Tool::Frame | Tool::Rectangle | Tool::Ellipse | Tool::Polygon | Tool::Hand => {}
+                Tool::Frame | Tool::Rectangle | Tool::Ellipse | Tool::Polygon | Tool::Hand | Tool::Connector => {}
                 Tool::Icon => create_icon(editor, snapped(at, snap), self.background),
                 // Human: a click places a corner point; on the first point it closes the path.
                 Tool::Pen => {
@@ -603,6 +630,7 @@ impl Canvas {
             Some(
                 Drag::Pan
                 | Drag::Pen
+                | Drag::Wire
                 | Drag::Move { .. }
                 | Drag::Resize { .. }
                 | Drag::Rotate { .. }
@@ -712,13 +740,13 @@ impl Canvas {
     /// Whether a drag on the canvas is in progress.
     #[must_use]
     pub fn busy(&self) -> bool {
-        self.drag.is_some() || self.editing.is_some()
+        self.drag.is_some() || self.editing.is_some() || self.wire_grab.is_some()
     }
 
     /// Whether the user is dragging something on the canvas right now.
     #[must_use]
     pub fn dragging(&self) -> bool {
-        self.drag.is_some()
+        self.drag.is_some() || self.wire_grab.is_some()
     }
 }
 
@@ -778,13 +806,27 @@ fn trim(v: f32) -> String {
 /// Draws a thin line in the selection colour along a layer's own shape (the ellipse or polygon itself, else its
 /// box), to mark it as one of several selected layers without covering its colours.
 fn trace_shape(painter: &egui::Painter, cam: &Camera, view: ScreenRect, node: &SceneNode) {
+    if node.node.kind == Kind::Connector {
+        trace_wire(painter, cam, view, node, Stroke::new(1.0, ACCENT));
+        return;
+    }
     let points = shape_points(node).unwrap_or_else(|| Rect::new(0.0, 0.0, node.local.w, node.local.h).corners().to_vec());
     let on_screen: Vec<Pos2> = points.into_iter().map(|p| screen(cam, view, node.to_doc.apply(p))).collect();
     painter.add(egui::Shape::closed_line(on_screen, Stroke::new(1.0, ACCENT)));
 }
 
-/// Outlines a layer: its box, and for an ellipse or polygon the shape itself too.
+/// Draws a line along a connector, which has no box worth showing.
+fn trace_wire(painter: &egui::Painter, cam: &Camera, view: ScreenRect, node: &SceneNode, stroke: Stroke) {
+    let on_screen: Vec<Pos2> = crate::wire_edit::line(node).into_iter().map(|p| screen(cam, view, p)).collect();
+    painter.add(egui::Shape::line(on_screen, stroke));
+}
+
+/// Outlines a layer: its box, and for an ellipse or polygon the shape itself too. A connector is traced.
 fn outline(painter: &egui::Painter, cam: &Camera, view: ScreenRect, node: &SceneNode, stroke: Stroke) {
+    if node.node.kind == Kind::Connector {
+        trace_wire(painter, cam, view, node, stroke);
+        return;
+    }
     let corners = tight(node).corners().map(|c| screen(cam, view, node.to_doc.apply(c)));
     painter.add(egui::Shape::closed_line(corners.to_vec(), stroke));
     if let Some(points) = shape_points(node) {
@@ -899,10 +941,11 @@ fn radius_handle_at(editor: &Editor, view: ScreenRect, p: Pos2) -> Option<(Strin
     Some((id.clone(), layout::doc_bounds(node), inward))
 }
 
-/// Whether a layer has handles: any layer that isn't mirrored (a turned one included).
+/// Whether a layer has handles: any layer that isn't mirrored (a turned one included). A connector has its
+/// own, at its ends and waypoints (`wire_edit`).
 fn resizable(node: &SceneNode) -> bool {
     let [a, b, c, d, _, _] = node.to_doc.m;
-    a * d - b * c > 0.0
+    a * d - b * c > 0.0 && node.node.kind != Kind::Connector
 }
 
 /// Where the pointer is on the selected layer's box, in the layer's own coordinates: the layer, its box, the
@@ -926,6 +969,10 @@ fn rotate_dot(editor: &Editor, view: ScreenRect) -> Option<(Pos2, Pos2)> {
         [] => None,
         [id] => {
             let node = editor.scene_node(id).filter(|_| matches!(editor.role(id), Role::Plain | Role::Component | Role::Instance))?;
+            // A connector lies where its ends are and can't be turned.
+            if node.node.kind == Kind::Connector {
+                return None;
+            }
             let frame = tight(node);
             let top = Point::new(frame.x + frame.w / 2.0, frame.y);
             let foot = screen(cam, view, node.to_doc.apply(top));
@@ -982,7 +1029,7 @@ fn handle_at(editor: &Editor, view: ScreenRect, p: Pos2) -> Option<(String, Hand
 }
 
 /// The transform of the parent of the document node `id` (identity at the top level).
-fn parent_transform(editor: &Editor, id: &str) -> Affine {
+pub(crate) fn parent_transform(editor: &Editor, id: &str) -> Affine {
     edit::slot(&editor.doc, id).and_then(|s| s.parent).and_then(|p| editor.scene_node(&p)).map_or(Affine::IDENTITY, |p| p.to_doc)
 }
 
@@ -998,10 +1045,19 @@ fn linear(t: &Affine, dx: f32, dy: f32) -> (f32, f32) {
 }
 
 /// The layers under `p`, outermost first, by scene id: an instance is followed by the layers inside it.
-fn hit_chain(scene: &[SceneNode], p: Point, vars: Vars<'_>) -> Vec<String> {
-    fn visit(node: &SceneNode, p: Point, vars: Vars<'_>) -> Option<Vec<String>> {
+// Human: a connector is hit on its line, within `reach` of it (in the document's units), never on the box
+// around it, which would cover the layers it runs between. With a reach of 0 connectors are passed over.
+pub(crate) fn hit_chain(scene: &[SceneNode], p: Point, vars: Vars<'_>, reach: f32) -> Vec<String> {
+    fn visit(node: &SceneNode, p: Point, vars: Vars<'_>, reach: f32) -> Option<Vec<String>> {
         if node.node.enabled.as_ref().and_then(|e| vars.flag(e, &node.theme)) == Some(false) {
             return None;
+        }
+        if node.node.kind == Kind::Connector {
+            // The box is looked at first: reading the line is work, and this runs for every connector on
+            // every frame the pointer is over the canvas.
+            let b = layout::doc_bounds(node);
+            let close = p.x >= b.x - reach && p.x <= b.right() + reach && p.y >= b.y - reach && p.y <= b.bottom() + reach;
+            return (reach > 0.0 && close && crate::wire_edit::near(node, p, reach)).then(|| vec![node.id.clone()]);
         }
         let local = layout::to_local(node, p);
         let inside = local.is_some_and(|l| l.x >= 0.0 && l.y >= 0.0 && l.x <= node.local.w && l.y <= node.local.h);
@@ -1010,7 +1066,7 @@ fn hit_chain(scene: &[SceneNode], p: Point, vars: Vars<'_>) -> Vec<String> {
         let clips = node.node.clip.as_ref().and_then(|c| vars.flag(c, &node.theme)).unwrap_or(false);
         if !clips || inside {
             for child in node.children.iter().rev() {
-                if let Some(mut chain) = visit(child, p, vars) {
+                if let Some(mut chain) = visit(child, p, vars, reach) {
                     chain.insert(0, node.id.clone());
                     return Some(chain);
                 }
@@ -1022,7 +1078,7 @@ fn hit_chain(scene: &[SceneNode], p: Point, vars: Vars<'_>) -> Vec<String> {
         None
     }
     for node in scene.iter().rev() {
-        if let Some(chain) = visit(node, p, vars) {
+        if let Some(chain) = visit(node, p, vars, reach) {
             return chain;
         }
     }
@@ -1042,7 +1098,7 @@ fn hit_chain(scene: &[SceneNode], p: Point, vars: Vars<'_>) -> Vec<String> {
 // Agent: "selected" here also means holding the selection, so after stepping into a frame, group or instance a
 // click on a sibling of the selected layer stays inside it.
 fn pick(editor: &Editor, p: Point, deep: bool) -> Option<String> {
-    let chain = hit_chain(&editor.scene, p, Vars::new(&editor.doc));
+    let chain = hit_chain(&editor.scene, p, Vars::new(&editor.doc), WIRE_REACH / editor.camera.zoom);
     if deep {
         return chain.last().cloned();
     }
@@ -1080,8 +1136,10 @@ fn selectable_level(editor: &Editor) -> Vec<&SceneNode> {
 }
 
 fn start_move(editor: &mut Editor, id: &str, at: Point, alt: bool) -> Drag {
-    // A layer inside an instance is placed by its component and isn't dragged about.
-    if editor.role(id) == Role::Inside {
+    // A layer inside an instance is placed by its component and isn't dragged about; a connector lies where
+    // its ends are.
+    let wire = |id: &str| edit::find(&editor.doc, id).is_some_and(|node| node.kind == Kind::Connector);
+    if editor.role(id) == Role::Inside || wire(id) {
         return Drag::Move { start: at, origins: Vec::new(), moved: false };
     }
     let in_flex = !is_free(editor, id);
@@ -1096,7 +1154,7 @@ fn start_move(editor: &mut Editor, id: &str, at: Point, alt: bool) -> Drag {
     let origins = editor
         .selection
         .iter()
-        .filter(|s| is_free(editor, s))
+        .filter(|s| is_free(editor, s) && !edit::find(&editor.doc, s).is_some_and(|node| node.kind == Kind::Connector))
         .filter_map(|s| edit::find(&editor.doc, s).map(|n| (s.clone(), stored_position(n).0, stored_position(n).1)))
         .collect();
     Drag::Move { start: at, origins, moved: alt }
@@ -1357,7 +1415,7 @@ fn create(editor: &mut Editor, tool: Tool, area: Rect) {
             n.polygon_count = Some(Num::new(POLYGON_CORNERS));
             n
         }
-        Tool::Text | Tool::Note | Tool::Icon | Tool::Move | Tool::Scale | Tool::Hand | Tool::Pen => return,
+        Tool::Text | Tool::Note | Tool::Icon | Tool::Move | Tool::Scale | Tool::Hand | Tool::Pen | Tool::Connector => return,
     };
     node.width = Some(Num::new(area.w));
     node.height = Some(Num::new(area.h));
@@ -1430,7 +1488,7 @@ fn create_icon(editor: &mut Editor, at: Point, background: Color32) {
 /// The solid fill of the top layer under `at`, if it has one.
 fn color_under(editor: &Editor, at: Point) -> Option<pen_doc::color::Rgba> {
     let vars = Vars::new(&editor.doc);
-    hit_chain(&editor.scene, at, vars).iter().rev().find_map(|id| {
+    hit_chain(&editor.scene, at, vars, 0.0).iter().rev().find_map(|id| {
         let scene = editor.scene_node(id)?;
         match scene.node.fill.as_ref()?.as_slice().last()? {
             pen_doc::model::Paint::Solid(c) => vars.color(c, &scene.theme),
@@ -1449,14 +1507,108 @@ fn create_note(editor: &mut Editor, at: Point) -> String {
 }
 
 /// The deepest document frame under `p` that new nodes go into (none: the top level).
-fn container_at(editor: &Editor, p: Point) -> Option<String> {
-    let chain = hit_chain(&editor.scene, p, Vars::new(&editor.doc));
+pub(crate) fn container_at(editor: &Editor, p: Point) -> Option<String> {
+    let chain = hit_chain(&editor.scene, p, Vars::new(&editor.doc), 0.0);
     chain.into_iter().rev().find(|id| edit::find(&editor.doc, id).is_some_and(|n| n.kind == Kind::Frame))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The size of the window the pointer tests draw the canvas in; the canvas fills it.
+    const WINDOW: egui::Vec2 = egui::vec2(1000.0, 800.0);
+
+    /// Draws the canvas for one frame with `events`.
+    fn frame(canvas: &mut Canvas, ctx: &egui::Context, editor: &mut Editor, events: Vec<egui::Event>) {
+        let input = egui::RawInput { screen_rect: Some(ScreenRect::from_min_size(Pos2::ZERO, WINDOW)), events, focused: true, ..Default::default() };
+        editor.refresh(&|_| (0.0, 0.0));
+        let mut drawn = ctx.run_ui(input, |ui| canvas.show(ui, editor, false));
+        // The font picture this frame made is for a screen; there is none here.
+        drawn.textures_delta.clear();
+    }
+
+    /// Presses at the first of `points` (in the document), moves through the others and lets go at the last.
+    fn drag(canvas: &mut Canvas, ctx: &egui::Context, editor: &mut Editor, points: &[Point]) {
+        let view = ScreenRect::from_min_size(Pos2::ZERO, WINDOW);
+        let at = |editor: &Editor, p: Point| screen(&editor.camera, view, p);
+        let button = |pos: Pos2, pressed: bool| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let first = at(editor, points[0]);
+        frame(canvas, ctx, editor, vec![egui::Event::PointerMoved(first)]);
+        frame(canvas, ctx, editor, vec![button(first, true)]);
+        for point in &points[1..] {
+            let here = at(editor, *point);
+            frame(canvas, ctx, editor, vec![egui::Event::PointerMoved(here)]);
+        }
+        let last = at(editor, points[points.len() - 1]);
+        frame(canvas, ctx, editor, vec![button(last, false)]);
+    }
+
+    #[test]
+    fn a_connector_is_drawn_with_the_tool_and_edited_by_its_handles() {
+        let doc: pen_doc::Document = serde_json::from_str(
+            r##"{"version":"2.22","children":[{"type":"frame","id":"board","x":0,"y":0,"width":800,"height":600,"layout":"none","fill":"#ffffff","children":[
+            {"type":"rectangle","id":"a","x":50,"y":100,"width":100,"height":60,"fill":"#333333"},
+            {"type":"rectangle","id":"b","x":500,"y":100,"width":100,"height":60,"fill":"#333333"},
+            {"type":"rectangle","id":"c","x":500,"y":400,"width":100,"height":60,"fill":"#333333"}]}]}"##,
+        )
+        .unwrap();
+        let (ctx, mut canvas, mut editor) = (egui::Context::default(), Canvas::default(), Editor::new(doc, None, 7));
+        frame(&mut canvas, &ctx, &mut editor, Vec::new());
+        let wire = |editor: &Editor| editor.doc.children[0].kids().iter().find(|n| n.kind == Kind::Connector).cloned();
+        let key = |editor: &Editor, key: &str| wire(editor).and_then(|w| w.extra.get(key).cloned());
+        // The tool pulls a connector from the right edge of a to the left edge of b, and gives the pointer back.
+        editor.tool = Tool::Connector;
+        drag(&mut canvas, &ctx, &mut editor, &[Point::new(145.0, 130.0), Point::new(300.0, 130.0), Point::new(505.0, 130.0)]);
+        assert_eq!(key(&editor, "from"), Some(serde_json::json!({ "id": "a", "side": "right" })));
+        assert_eq!(key(&editor, "to"), Some(serde_json::json!({ "id": "b", "side": "left" })));
+        let id = wire(&editor).unwrap().id;
+        assert_eq!((editor.selection.clone(), editor.tool, canvas.busy()), (vec![id.clone()], Tool::Move, false));
+        // Its last end, at (500, 130), is dragged onto the top of c; a drag of the line itself moves nothing.
+        drag(&mut canvas, &ctx, &mut editor, &[Point::new(500.0, 130.0), Point::new(520.0, 300.0), Point::new(550.0, 404.0)]);
+        assert_eq!(key(&editor, "to"), Some(serde_json::json!({ "id": "c", "side": "top" })));
+        // ... and off into the open, where it stays a free point.
+        drag(&mut canvas, &ctx, &mut editor, &[Point::new(550.0, 400.0), Point::new(400.0, 300.0), Point::new(300.0, 500.0)]);
+        assert_eq!(key(&editor, "to"), Some(serde_json::json!({ "x": 300.0, "y": 500.0 })));
+        // The dot in the middle of the line is pulled aside: a waypoint, which a second drag moves.
+        frame(&mut canvas, &ctx, &mut editor, Vec::new());
+        let line = crate::wire_edit::line(editor.scene_node(&id).unwrap());
+        let lengths: Vec<f32> = line.windows(2).map(|ends| (ends[1].x - ends[0].x).hypot(ends[1].y - ends[0].y)).collect();
+        let mut left = lengths.iter().sum::<f32>() / 2.0;
+        let mut middle = line[0];
+        for (ends, length) in line.windows(2).zip(&lengths) {
+            if left <= *length {
+                middle = Point::new(ends[0].x + (ends[1].x - ends[0].x) * left / length, ends[0].y + (ends[1].y - ends[0].y) * left / length);
+                break;
+            }
+            left -= length;
+        }
+        drag(&mut canvas, &ctx, &mut editor, &[middle, Point::new(400.0, 250.0), Point::new(420.0, 220.0)]);
+        assert_eq!(key(&editor, "via"), Some(serde_json::json!([{ "x": 420.0, "y": 220.0 }])));
+        drag(&mut canvas, &ctx, &mut editor, &[Point::new(420.0, 220.0), Point::new(430.0, 230.0), Point::new(440.0, 240.0)]);
+        assert_eq!(key(&editor, "via"), Some(serde_json::json!([{ "x": 440.0, "y": 240.0 }])));
+        // Each of those was one step to undo.
+        editor.undo();
+        assert_eq!(key(&editor, "via"), Some(serde_json::json!([{ "x": 420.0, "y": 220.0 }])));
+        editor.undo();
+        assert_eq!(key(&editor, "via"), None);
+        // A double click on a waypoint takes it out again.
+        frame(&mut canvas, &ctx, &mut editor, Vec::new());
+        drag(&mut canvas, &ctx, &mut editor, &[middle, Point::new(400.0, 250.0), Point::new(420.0, 220.0)]);
+        assert!(key(&editor, "via").is_some());
+        let view = ScreenRect::from_min_size(Pos2::ZERO, WINDOW);
+        let on = screen(&editor.camera, view, Point::new(420.0, 220.0));
+        for pressed in [true, false, true, false] {
+            let click = egui::Event::PointerButton { pos: on, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
+            frame(&mut canvas, &ctx, &mut editor, vec![click]);
+        }
+        assert_eq!((key(&editor, "via"), editor.selection.clone()), (None, vec![id]));
+    }
 
     #[test]
     fn the_pen_draws_a_path_into_the_frame_under_its_first_point() {

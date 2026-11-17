@@ -157,6 +157,14 @@ fn end(value: Option<&Value>, own_id: &str, parent: &Affine, boxes: &HashMap<Str
 /// diamonds) as path data in the same box as its `geometry`. Never in a file: worked out with the line.
 pub const MARKERS: &str = "markerGeometry";
 
+/// The key under which a connector's scene node carries the points it runs through, in document coordinates:
+/// where it meets its first end, each waypoint, where it meets its last end, as `[[x, y], ..]`. Never in a
+/// file; the canvas puts its handles there.
+pub const POINTS: &str = "connectorPoints";
+/// The key under which a connector's scene node carries its line without dashes and markers, as path data in
+/// document coordinates. Never in a file; the canvas finds the line under the pointer with it.
+pub const LINE: &str = "connectorLine";
+
 /// What sits at an end of the line.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Marker {
@@ -339,7 +347,9 @@ fn dashed(data: &str, pattern: &[f32]) -> String {
 
 fn draw(scene: &mut SceneNode, parent: &Affine, boxes: &HashMap<String, Rect>, vars: Vars<'_>) {
     scene.node.geometry = None;
-    scene.node.extra.remove(MARKERS);
+    for key in [MARKERS, POINTS, LINE] {
+        scene.node.extra.remove(key);
+    }
     scene.local = Rect::ZERO;
     let extra = &scene.node.extra;
     let (Some(from), Some(to)) = (end(extra.get("from"), &scene.id, parent, boxes), end(extra.get("to"), &scene.id, parent, boxes)) else {
@@ -399,6 +409,12 @@ fn draw(scene: &mut SceneNode, parent: &Affine, boxes: &HashMap<String, Rect>, v
         Some(one) => one.as_f64().map(narrow).into_iter().collect(),
         None => Vec::new(),
     };
+    let whole_line = data.clone();
+    let stops: Vec<Value> = std::iter::once(tip0)
+        .chain(via.iter().copied())
+        .chain(std::iter::once(tip1))
+        .map(|p| Value::from(vec![f64::from(p.x), f64::from(p.y)]))
+        .collect();
     if !pattern.is_empty() && pattern.iter().all(|length| *length > 0.01) {
         data = dashed(&data, &pattern);
     }
@@ -410,6 +426,8 @@ fn draw(scene: &mut SceneNode, parent: &Affine, boxes: &HashMap<String, Rect>, v
     let whole = format!("{data}{filled}");
     let Some(bounds) = path::parse(&whole).ok().and_then(|segments| path::bounds(&segments)) else { return };
     scene.node.geometry = Some(data);
+    scene.node.extra.insert(POINTS.to_owned(), Value::Array(stops));
+    scene.node.extra.insert(LINE.to_owned(), Value::String(whole_line));
     if !filled.is_empty() {
         scene.node.extra.insert(MARKERS.to_owned(), Value::String(filled));
     }

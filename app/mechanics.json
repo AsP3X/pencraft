@@ -728,6 +728,95 @@
    "unit": "deg"
   },
   {
+   "name": "zoom rest before the canvas is rebuilt",
+   "group": "canvas",
+   "value": 120,
+   "unit": "ms"
+  },
+  {
+   "name": "view rest before effects further out are baked",
+   "group": "canvas",
+   "value": 300,
+   "unit": "ms"
+  },
+  {
+   "name": "effects baked past the screen at first",
+   "group": "canvas",
+   "value": 0.5,
+   "unit": "screens"
+  },
+  {
+   "name": "effect pictures held while baking further out",
+   "group": "canvas",
+   "value": 32000000,
+   "unit": "px"
+  },
+  {
+   "name": "unused effect pictures kept",
+   "group": "canvas",
+   "value": 16000000,
+   "unit": "px"
+  },
+  {
+   "name": "blur worked out smaller from a width of",
+   "group": "canvas",
+   "value": 8,
+   "unit": "px"
+  },
+  {
+   "name": "connector end handle",
+   "group": "canvas",
+   "value": 10,
+   "unit": "pt"
+  },
+  {
+   "name": "connector waypoint handle",
+   "group": "canvas",
+   "value": 8,
+   "unit": "pt"
+  },
+  {
+   "name": "connector middle dot",
+   "group": "canvas",
+   "value": 6,
+   "unit": "pt"
+  },
+  {
+   "name": "connector handle and line reach",
+   "group": "canvas",
+   "value": 8,
+   "unit": "pt"
+  },
+  {
+   "name": "connector marker size",
+   "group": "canvas",
+   "value": 8,
+   "unit": "units"
+  },
+  {
+   "name": "connector elbow run-out",
+   "group": "canvas",
+   "value": 16,
+   "unit": "units"
+  },
+  {
+   "name": "new connector stroke width",
+   "group": "canvas",
+   "value": 2,
+   "unit": "units"
+  },
+  {
+   "name": "pattern spacing",
+   "group": "canvas",
+   "value": 24,
+   "unit": "units"
+  },
+  {
+   "name": "pattern marks at most",
+   "group": "canvas",
+   "value": 20000
+  },
+  {
    "name": "new path stroke width",
    "group": "canvas",
    "value": 1,

@@ -30,6 +30,8 @@ use crate::{gpu, images};
 pub(super) const REACH: f32 = 3.0;
 /// Most pixels one baked picture has; a larger one is baked coarser and stretched.
 const MAX_PIXELS: f32 = 1_000_000.0;
+/// Most pixels of pictures kept although the last build didn't use them (64 MB).
+const KEPT_PIXELS: usize = 16_000_000;
 /// Longest side of a baked picture in pixels.
 const MAX_SIDE: f32 = 2048.0;
 /// Pictures up to this many pixels are painted at twice the size and halved, for smooth edges.
@@ -120,28 +122,78 @@ pub(super) struct Baked {
     seen: RefCell<Vec<Seen>>,
     /// What baking each material's picture found out, by the picture's key; the layer's id is left empty.
     learned: RefCell<HashMap<u64, Seen>>,
+    /// The part of the document this build bakes pictures for; `None` bakes them all.
+    cover: Cell<Option<Rect>>,
+    /// Whether this build left a picture out because it lies outside `cover`.
+    skipped: Cell<bool>,
+    /// The clear picture that stands in for one left out.
+    blank: RefCell<Option<TextureHandle>>,
 }
 
 impl Baked {
-    /// Starts a build of the display list.
+    /// Starts a build of the display list that bakes every picture.
     pub(super) fn begin(&self) {
-        self.round.set(self.round.get().wrapping_add(1));
-        self.seen.borrow_mut().clear();
+        self.begin_within(None);
     }
 
-    /// Ends a build: pictures it didn't use are let go.
+    /// Starts a build of the display list. With `cover`, only the pictures that reach into that part of the
+    /// document are baked; the others are left clear, and [`Baked::skipped`] says so afterwards.
+    // Human: baking is by far the most of a build (a blur is worked out pixel by pixel on the CPU), and the
+    // pixels grow fourfold with every doubling of the zoom. Zoomed in, most of a design is off screen: its
+    // effects are left until the view comes near them.
+    pub(super) fn begin_within(&self, cover: Option<Rect>) {
+        self.round.set(self.round.get().wrapping_add(1));
+        self.seen.borrow_mut().clear();
+        self.cover.set(cover);
+        self.skipped.set(false);
+    }
+
+    /// How many pixels the pictures held now have between them.
+    pub(super) fn pixels_held(&self) -> usize {
+        self.pictures.borrow().values().map(|picture| picture.pixels.size[0] * picture.pixels.size[1]).sum()
+    }
+
+    /// Whether the build since the last [`Baked::begin_within`] left pictures out.
+    pub(super) fn skipped(&self) -> bool {
+        self.skipped.get()
+    }
+
+    /// Ends a build: pictures it didn't use are let go, the longest unused first, down to [`KEPT_PIXELS`].
+    // Human: the ones kept are those of the zoom step just left and of the part of the canvas just scrolled
+    // away from, so going back to either costs nothing.
     pub(super) fn finish(&self) {
         let round = self.round.get();
-        self.pictures.borrow_mut().retain(|_, picture| picture.round == round);
-        let pictures = self.pictures.borrow();
+        let mut pictures = self.pictures.borrow_mut();
+        let mut unused: Vec<(u64, u64, usize)> = pictures
+            .iter()
+            .filter(|(_, picture)| picture.round != round)
+            .map(|(key, picture)| (*key, picture.round, picture.pixels.size[0] * picture.pixels.size[1]))
+            .collect();
+        unused.sort_by_key(|(_, last, _)| std::cmp::Reverse(*last));
+        let mut kept = 0usize;
+        for (key, _, size) in unused {
+            kept += size;
+            if kept > KEPT_PIXELS {
+                pictures.remove(&key);
+            }
+        }
         self.learned.borrow_mut().retain(|key, _| pictures.contains_key(key));
     }
 
-    /// The texture for `key`, baked with `make` unless an earlier build already did.
-    pub(super) fn texture(&self, ctx: &egui::Context, key: u64, make: impl FnOnce() -> Bitmap) -> TextureId {
+    /// The texture for `key`, baked with `make` unless an earlier build already did. `area` is the part of the
+    /// document the picture shows; one outside what this build covers is not baked and comes back clear.
+    pub(super) fn texture(&self, ctx: &egui::Context, key: u64, area: Rect, make: impl FnOnce() -> Bitmap) -> TextureId {
         if let Some(picture) = self.pictures.borrow_mut().get_mut(&key) {
             picture.round = self.round.get();
             return picture.handle.id();
+        }
+        if self.cover.get().is_some_and(|cover| !cover.intersects(&area)) {
+            self.skipped.set(true);
+            return self
+                .blank
+                .borrow_mut()
+                .get_or_insert_with(|| ctx.load_texture("effect-left-out", ColorImage::filled([1, 1], Color32::TRANSPARENT), TextureOptions::LINEAR))
+                .id();
         }
         // `make` reads other pictures, so nothing is borrowed while it runs.
         let image = make().image();
@@ -415,7 +467,7 @@ impl Builder<'_> {
             let here: Vec<&Item> = inside.iter().filter(|item| reaches(item, &corner).is_some()).collect();
             let Some(grid) = Grid::new(corner, None, 0.0, self.scale, true).filter(|_| !here.is_empty()) else { continue };
             let key = Self::key("corner", &grid, &[(&here, false), (&[outline], true)], &[], Color32::TRANSPARENT);
-            let texture = self.baked.texture(self.ctx, key, || {
+            let texture = self.baked.texture(self.ctx, key, grid.rect(), || {
                 let mut bitmap = grid.bitmap();
                 self.paint(&grid, &here, false, &mut bitmap);
                 let mut bitmap = grid.settle(bitmap);
@@ -665,7 +717,7 @@ impl Builder<'_> {
         }
         let tag = format!("shader-{:016x}", hasher.finish());
         let key = Self::key(&tag, &grid, &[(layer, false), (&behind, false)], &[left, top, right, bottom], self.background);
-        let texture = self.baked.texture(self.ctx, key, || {
+        let texture = self.baked.texture(self.ctx, key, grid.rect(), || {
             let mut object = grid.bitmap();
             self.paint(&grid, layer, false, &mut object);
             let background = uses_background.then(|| {
@@ -805,7 +857,7 @@ impl Builder<'_> {
         let color = color32(shadow.color);
         let cut = !look.opaque;
         let key = Self::key(if cut { "drop-cut" } else { "drop" }, &grid, &[(shape, true)], &[sigma, offset[0], offset[1]], color);
-        let texture = self.baked.texture(self.ctx, key, || {
+        let texture = self.baked.texture(self.ctx, key, grid.rect(), || {
             let mut solid = grid.bitmap();
             self.paint(&grid, shape, true, &mut solid);
             let solid = grid.settle(solid);
@@ -837,7 +889,7 @@ impl Builder<'_> {
         let (sigma, offset) = (sigma * grid.scale, [shadow.offset.x * grid.scale, shadow.offset.y * grid.scale]);
         let color = color32(shadow.color);
         let key = Self::key("inner", &grid, &[(shape, true)], &[sigma, offset[0], offset[1]], color);
-        let texture = self.baked.texture(self.ctx, key, || {
+        let texture = self.baked.texture(self.ctx, key, grid.rect(), || {
             let mut solid = grid.bitmap();
             self.paint(&grid, shape, true, &mut solid);
             let mut solid = grid.settle(solid);
@@ -864,7 +916,7 @@ impl Builder<'_> {
         let grid = Grid::new(expand(&extent_of(layer)?, pad), look.clip, pad, self.scale, sigma * self.scale < 1.0)?;
         let sigma = sigma * grid.scale;
         let key = Self::key("layer", &grid, &[(layer, false)], &[sigma], Color32::TRANSPARENT);
-        let texture = self.baked.texture(self.ctx, key, || {
+        let texture = self.baked.texture(self.ctx, key, grid.rect(), || {
             let mut bitmap = grid.bitmap();
             self.paint(&grid, layer, false, &mut bitmap);
             let mut bitmap = grid.settle(bitmap);
@@ -884,7 +936,7 @@ impl Builder<'_> {
         let behind: Vec<&Item> = behind.iter().copied().filter(|item| extent(item).is_some_and(|e| e.intersects(&area))).collect();
         let sigma = sigma * grid.scale;
         let key = Self::key("backdrop", &grid, &[(&behind, false), (shape, true)], &[sigma], self.background);
-        let texture = self.baked.texture(self.ctx, key, || {
+        let texture = self.baked.texture(self.ctx, key, grid.rect(), || {
             let mut back = grid.coarse().bitmap();
             back.fill(raster::pixel(self.background));
             self.paint(&grid.coarse(), &behind, false, &mut back);

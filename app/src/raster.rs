@@ -16,6 +16,11 @@ const LEAST_SIGMA: f32 = 0.2;
 /// Below this many pixels a blur is worked out exactly; three boxes can't be that narrow.
 const EXACT_BELOW: f32 = 2.0;
 
+/// From this wide (its standard deviation, in pixels) a blur is worked out on a smaller picture.
+const COARSE_FROM: f32 = 8.0;
+/// The smallest that smaller picture is, as a share of the full one's side: an eighth.
+const COARSEST: usize = 8;
+
 /// A rectangle of pixels.
 #[derive(Clone)]
 pub struct Bitmap {
@@ -34,6 +39,15 @@ pub type Span = [f32; 4];
 #[expect(clippy::cast_precision_loss, reason = "bitmaps are a few thousand pixels a side at most")]
 fn coordinate(v: usize) -> f32 {
     v as f32
+}
+
+/// The two of `count` pixels in a row that the place `at` lies between (`None` for one past either end, which
+/// counts as clear), and how far it is from the first to the second, 0–1.
+#[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "the floor is checked to be within 0..count before the cast")]
+fn between(at: f32, count: usize) -> (Option<usize>, Option<usize>, f32) {
+    let low = at.floor();
+    let inside = |v: f32| (v >= 0.0 && v < coordinate(count)).then_some(v as usize);
+    (inside(low), inside(low + 1.0), at - low)
 }
 
 /// The pixel a coordinate falls in, within `0..=limit`.
@@ -235,10 +249,69 @@ impl Bitmap {
     // Human: three box blurs in a row come within a few percent of a true Gaussian and cost the same however
     // wide the blur is (Kovesi, "Fast almost-Gaussian filtering"). A narrow blur, which boxes of whole pixels
     // can't match, is weighed out exactly instead; it has few weights, so that is cheap too.
+    // Human: a wide blur leaves nothing in the picture finer than itself, so it is worked out on a picture
+    // shrunk by up to a quarter of its width (2, 4 or 8 times) and stretched back: the same picture to the
+    // eye for a fraction of the pixels, which is what makes glass and soft shadows cheap when zoomed in.
     pub fn blur(&mut self, sigma: f32) {
         if !sigma.is_finite() || sigma < LEAST_SIGMA || self.w == 0 || self.h == 0 {
             return;
         }
+        let mut step = 1;
+        while sigma >= COARSE_FROM * coordinate(step) && step < COARSEST {
+            step *= 2;
+        }
+        if step > 1 {
+            // Shrinking and stretching blur a little themselves (about a quarter of the step, squared).
+            let scale = coordinate(step);
+            let mut small = self.shrunk(step);
+            small.blur_whole((sigma * sigma - scale * scale / 4.0).max(1.0).sqrt() / scale);
+            self.stretch_from(&small, step);
+            return;
+        }
+        self.blur_whole(sigma);
+    }
+
+    /// The bitmap at a `step`th of its size, each pixel the average of the `step` × `step` it stands for
+    /// (what lies outside counts as clear).
+    fn shrunk(&self, step: usize) -> Bitmap {
+        let (w, h) = (self.w.div_ceil(step), self.h.div_ceil(step));
+        let mut px = vec![CLEAR; w * h];
+        for (y, row) in self.px.chunks(self.w).enumerate() {
+            for (x, pixel) in row.iter().enumerate() {
+                if let Some(sum) = px.get_mut(y / step * w + x / step) {
+                    *sum = [0, 1, 2, 3].map(|c| sum[c] + pixel[c]);
+                }
+            }
+        }
+        let share = 1.0 / coordinate(step * step);
+        for pixel in &mut px {
+            *pixel = pixel.map(|c| c * share);
+        }
+        Bitmap { w, h, px }
+    }
+
+    /// Fills the bitmap from `small`, the same picture at a `step`th of the size, reading between its pixels.
+    fn stretch_from(&mut self, small: &Bitmap, step: usize) {
+        let scale = 1.0 / coordinate(step);
+        // Where each of this bitmap's columns lies among the small one's: the two columns and the share of the second.
+        let across: Vec<(Option<usize>, Option<usize>, f32)> = (0..self.w).map(|x| between((coordinate(x) + 0.5) * scale - 0.5, small.w)).collect();
+        for (y, row) in self.px.chunks_mut(self.w).enumerate() {
+            let (top, bottom, down) = between((coordinate(y) + 0.5) * scale - 0.5, small.h);
+            let line = |at: Option<usize>| at.and_then(|at| small.px.get(at * small.w..(at + 1) * small.w));
+            let (upper, lower) = (line(top), line(bottom));
+            for (pixel, (left, right, along)) in row.iter_mut().zip(&across) {
+                let read = |line: Option<&[Pixel]>, at: &Option<usize>| line.zip(*at).and_then(|(line, at)| line.get(at)).copied().unwrap_or(CLEAR);
+                let (a, b, c, d) = (read(upper, left), read(upper, right), read(lower, left), read(lower, right));
+                *pixel = [0, 1, 2, 3].map(|i| {
+                    let (over, under) = (a[i] + (b[i] - a[i]) * along, c[i] + (d[i] - c[i]) * along);
+                    over + (under - over) * down
+                });
+            }
+        }
+    }
+
+    /// [`Bitmap::blur`] at the bitmap's own size.
+    fn blur_whole(&mut self, sigma: f32) {
         let mut other = vec![CLEAR; self.px.len()];
         if sigma < EXACT_BELOW {
             let weights = bell(sigma);
@@ -388,6 +461,31 @@ mod tests {
     fn square(x0: f32, y0: f32, x1: f32, y1: f32, color: Color32) -> Mesh {
         let corner = |x, y| Vertex { pos: pos2(x, y), uv: WHITE_UV, color };
         Mesh { indices: vec![0, 1, 2, 0, 2, 3], vertices: vec![corner(x0, y0), corner(x1, y0), corner(x1, y1), corner(x0, y1)], ..Default::default() }
+    }
+
+    #[test]
+    fn a_wide_blur_worked_out_small_is_the_same_picture_as_one_worked_out_whole() {
+        // A white square in the middle of a clear picture, blurred wide enough to be worked out at a quarter.
+        let mut whole = Bitmap::new(160, 120);
+        for y in 40..80 {
+            for x in 50..110 {
+                whole.px[y * 160 + x] = [1.0; 4];
+            }
+        }
+        let mut small = whole.clone();
+        whole.blur_whole(20.0);
+        small.blur(20.0);
+        let worst = whole.px.iter().zip(&small.px).map(|(a, b)| (a[3] - b[3]).abs()).fold(0.0, f32::max);
+        // No pixel is off by more than 2 % (5 of the 255 steps a colour has), on a blur 20 pixels wide.
+        assert!(worst < 0.02, "{worst}");
+        // Nothing is lost or gained on the way: the light in the picture is the same.
+        assert!((alpha_sum(&whole) - alpha_sum(&small)).abs() / alpha_sum(&whole) < 0.01);
+        // A narrow blur is worked out whole, as before.
+        let (mut a, mut b) = (Bitmap::new(40, 40), Bitmap::new(40, 40));
+        (a.px[820], b.px[820]) = ([1.0; 4], [1.0; 4]);
+        a.blur(5.0);
+        b.blur_whole(5.0);
+        assert_eq!(a.px, b.px);
     }
 
     fn alpha_sum(bitmap: &Bitmap) -> f32 {

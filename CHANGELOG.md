@@ -9,6 +9,29 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Added
+
+- **A connector tool.** Press C or pick the tool on the rail, press on a
+  layer and pull to another: a connector joins them and follows them from
+  then on. A new connector looks like the ones the design already has.
+- **Handles on a connector.** A selected connector shows a handle at each
+  end and at each waypoint. Drag an end to another layer or to one of its
+  sides, drag a waypoint to move it, pull the dot in the middle of a
+  stretch to add one, and double-click a waypoint to take it out.
+- **Connector settings.** The properties island has a Connector section:
+  the route, what sits at each end, marker size, curvature or corner
+  radius, dashes, and a button that removes the waypoints.
+
+### Changed
+
+- **Zooming no longer stalls on designs with glass, blurs and shadows.**
+  Each time the zoom passed a doubling, Pencraft re-made every effect in
+  the design, which froze the window for up to seconds. It now keeps
+  drawing while you zoom, re-makes only what is on screen once the zoom
+  rests, and fills in the rest while you look.
+- **A connector is picked on its line**, not on the box around it, so the
+  layers it runs between stay easy to click.
+
 ## [0.3.8] - 2026-11-17
 
 Wires that follow their nodes, components with states, and pattern fills.

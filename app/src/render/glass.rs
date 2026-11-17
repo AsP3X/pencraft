@@ -152,15 +152,43 @@ impl Form {
     }
 }
 
+/// How many steps the tables of the colour curves have between 0 and 1.
+const CURVE_STEPS: usize = 4096;
+
+/// A colour curve from 0 to 1, worked out once at [`CURVE_STEPS`] places and read between them.
+// Human: every pixel of every material goes through both curves, and a power is slow to work out: the two
+// were a sixth of the time a design with glass took to draw. Read from the table they are off by less than a
+// ten-thousandth, a twentieth of the smallest step a colour on screen can take.
+struct Curve([f32; CURVE_STEPS + 2]);
+
+impl Curve {
+    fn new(exact: fn(f32) -> f32) -> Curve {
+        #[expect(clippy::cast_precision_loss, reason = "at most 4097, far below f32's exact range")]
+        Curve(std::array::from_fn(|step| exact((step.min(CURVE_STEPS) as f32) / CURVE_STEPS as f32)))
+    }
+
+    fn at(&self, c: f32) -> f32 {
+        #[expect(clippy::cast_precision_loss, reason = "4096 is exact in f32")]
+        let place = if c.is_nan() { 0.0 } else { c.clamp(0.0, 1.0) * CURVE_STEPS as f32 };
+        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "clamped to 0..=4096 just above")]
+        let step = place as usize;
+        #[expect(clippy::cast_precision_loss, reason = "at most 4096")]
+        let part = place - step as f32;
+        let (low, high) = (self.0[step.min(CURVE_STEPS)], self.0[(step + 1).min(CURVE_STEPS + 1)]);
+        low + (high - low) * part
+    }
+}
+
 /// A gamma-encoded channel in linear light.
 fn to_linear(c: f32) -> f32 {
-    if c <= 0.040_45 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+    static TABLE: std::sync::OnceLock<Curve> = std::sync::OnceLock::new();
+    TABLE.get_or_init(|| Curve::new(|c| if c <= 0.040_45 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) })).at(c)
 }
 
 /// A linear-light channel, gamma-encoded.
 fn to_gamma(c: f32) -> f32 {
-    let c = c.clamp(0.0, 1.0);
-    if c <= 0.003_130_8 { c * 12.92 } else { 1.055 * c.powf(1.0 / 2.4) - 0.055 }
+    static TABLE: std::sync::OnceLock<Curve> = std::sync::OnceLock::new();
+    TABLE.get_or_init(|| Curve::new(|c| if c <= 0.003_130_8 { c * 12.92 } else { 1.055 * c.powf(1.0 / 2.4) - 0.055 })).at(c)
 }
 
 /// A premultiplied pixel with its colour run through `curve`.
@@ -417,7 +445,7 @@ impl Builder<'_> {
         let tag = format!("material-{:016x}", hasher.finish());
         let [left, top, right, bottom] = grid.span(&frame);
         let key = Self::key(&tag, &grid, &[(&behind, false), (shape, true)], &[left, top, right, bottom], self.background);
-        let texture = self.baked.texture(self.ctx, key, || {
+        let texture = self.baked.texture(self.ctx, key, grid.rect().union(&back.rect()), || {
             let mut bitmap = back.bitmap();
             bitmap.fill(raster::pixel(self.background));
             self.paint(&back, &behind, false, &mut bitmap);
@@ -601,6 +629,13 @@ mod tests {
     fn the_colour_curves_undo_each_other_and_keep_the_alpha() {
         for v in [0.0, 0.002, 0.2, 0.5, 1.0] {
             assert!((to_gamma(to_linear(v)) - v).abs() < 1e-4);
+        }
+        // Read from their tables the curves are where the formulas put them, also at the steep dark end.
+        for step in 0..=1000u16 {
+            let v = f32::from(step) / 1000.0;
+            let (linear, gamma) = (if v <= 0.040_45 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }, 1.055 * v.powf(1.0 / 2.4) - 0.055);
+            assert!((to_linear(v) - linear).abs() < 1e-4, "{v}");
+            assert!(v <= 0.003_130_8 || (to_gamma(v) - gamma).abs() < 2e-4, "{v}");
         }
         let half = recode([0.25, 0.25, 0.25, 0.5], to_linear);
         assert!((half[3] - 0.5).abs() < 1e-6 && (half[0] - to_linear(0.5) * 0.5).abs() < 1e-6);

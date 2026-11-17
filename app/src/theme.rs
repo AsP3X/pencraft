@@ -192,6 +192,14 @@ pub const ROTATE_DOT: f32 = 5.5;
 pub const ROTATE_DOT_GAP: f32 = 26.0;
 /// How near the rotation handle's dot a press must be to grab it.
 pub const ROTATE_DOT_GRAB: f32 = 12.0;
+/// Width of the round handle at each end of a selected connector.
+pub const WIRE_END: f32 = 10.0;
+/// Width of the square handle of a connector's waypoint.
+pub const WIRE_POINT: f32 = 8.0;
+/// Width of the dot in the middle of a connector's stretch, which adds a waypoint when pulled.
+pub const WIRE_MID: f32 = 6.0;
+/// How near a connector's handle or line a press must be to take it.
+pub const WIRE_REACH: f32 = 8.0;
 /// Width of a path point's dot while drawing with the pen.
 pub const PEN_ANCHOR: f32 = 8.0;
 /// Width of a path handle's square while drawing with the pen.
