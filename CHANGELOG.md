@@ -9,6 +9,42 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-11-17
+
+Wires that follow their nodes, components with states, and pattern fills.
+
+### Added
+
+- **Connectors.** A line between two layers that follows them when they
+  move: a wire in a node editor, an arrow in a flow chart. It runs curved,
+  at right angles or straight, and passes through waypoints you give it, so
+  it can be led around a node. Its look is yours to set: colour and
+  thickness, how far a curve swings, rounded turns, dashes, round or square
+  ends, and an arrow, bar, triangle, dot or diamond at either end. For now
+  an assistant sets connectors up; the canvas has no tool for them yet.
+- **Component states.** A component names its states once (selected,
+  disabled, on), and an instance picks one. A selected row no longer has
+  to be overridden by hand on every screen.
+- **Pattern fills.** A fill can repeat dots, a grid or lines across a
+  layer, cut to its shape: the dot grid of a canvas or a ruled sheet,
+  without a layer for every dot.
+- **A colour variable at less than full strength.** A fill or stroke can
+  use a variable with an opacity, so a tinted badge follows the variable
+  and the theme instead of a colour written out by hand.
+
+### Changed
+
+- **Glass on a plain screen.** When there is nothing behind a glass layer,
+  the assistant is now told to use a plain fill there, and no longer adds a
+  backdrop you didn't ask for.
+
+### Fixed
+
+- **SVG export of paths.** A path layer was written with two `transform`
+  attributes, which some programs refuse to open.
+- **A list of choices is as wide as its button.** The list was two
+  outlines narrower than the button it opens from.
+
 ## [0.3.7] - 2026-11-17
 
 The lists you choose from look like the rest of Pencraft.
@@ -280,7 +316,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.7...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.8...HEAD
+[0.3.8]: https://github.com/AsP3X/pencraft/compare/v0.3.7...v0.3.8
 [0.3.7]: https://github.com/AsP3X/pencraft/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/AsP3X/pencraft/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/AsP3X/pencraft/compare/v0.3.4...v0.3.5
