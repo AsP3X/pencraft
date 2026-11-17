@@ -105,8 +105,53 @@ jobs:
         working-directory: app
         run: cargo test --workspace --locked
 
+      # With the secrets below the app is signed with a Developer ID and
+      # notarised; without them it is signed ad hoc, as before, and Gatekeeper
+      # stops a downloaded copy. docs/RELEASING.md says how to make them.
+      - name: Take the signing certificate and the notary key
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+        run: |
+          if [ -z "$CERTIFICATE" ]; then
+            echo "::warning::No MACOS_CERTIFICATE secret: the Mac app is signed ad hoc and not notarised."
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password=$(uuidgen)
+          printf '%s' "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$keychain"
+          rm "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple: -k "$password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          identity=$(security find-identity -v -p codesigning "$keychain" \
+            | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -n 1)
+          if [ -z "$identity" ]; then
+            echo "::error::MACOS_CERTIFICATE holds no Developer ID Application certificate."
+            exit 1
+          fi
+          printf '%s' "$NOTARY_KEY" > "$RUNNER_TEMP/notary.p8"
+          {
+            echo "PENCRAFT_SIGN_IDENTITY=$identity"
+            echo "PENCRAFT_NOTARY_KEY=$RUNNER_TEMP/notary.p8"
+          } >> "$GITHUB_ENV"
+
       - name: Build the app and the disk image
+        env:
+          PENCRAFT_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          PENCRAFT_NOTARY_ISSUER: ${{ secrets.MACOS_NOTARY_ISSUER }}
         run: ./installer/build-macos.sh
+
+      - name: Throw the signing keychain away
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/notary.p8"
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
 
       - uses: actions/upload-artifact@v7
         with:

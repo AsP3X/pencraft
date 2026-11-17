@@ -9,6 +9,23 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-11-17
+
+The Mac app is signed and checked by Apple.
+
+### Fixed
+
+- **No more "Apple could not verify Pencraft" on the Mac.** A downloaded
+  copy used to be stopped at its first start and had to be allowed in
+  System Settings. Pencraft is now signed with a Developer ID and notarised
+  by Apple, and opens like any other app.
+
+### Changed
+
+- The first start of this version may ask once more for the keychain items
+  that hold your API keys, because the app's signature changed. After this
+  it stays the same from version to version.
+
 ## [0.3.4] - 2026-11-17
 
 An update card that gets out of the way, and updates that can be required.
@@ -202,7 +219,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.4...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.5...HEAD
+[0.3.5]: https://github.com/AsP3X/pencraft/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/AsP3X/pencraft/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/AsP3X/pencraft/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/AsP3X/pencraft/compare/v0.3.1...v0.3.2

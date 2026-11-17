@@ -177,7 +177,8 @@ public repository and point `REPOSITORY` in `app/src/update.rs` at it.
 
 ## Signing
 
-Nothing is signed with a certificate, and the Mac app is not notarised.
+The Windows files are not signed. The Mac app is signed and notarised once
+the repository has the secrets for it.
 
 - **Windows.** The executable and both installers carry no signature.
   SmartScreen shows "Windows protected your PC" for a downloaded file until
@@ -185,13 +186,47 @@ Nothing is signed with a certificate, and the Mac app is not notarised.
   for everyone show "Unknown publisher". Signing needs a code-signing
   certificate; with one, a signing step belongs in `installer\build.ps1`
   after the build and after each installer.
-- **macOS.** The app is signed ad hoc, which Apple Silicon requires to run
-  anything, but that is no Developer ID. A downloaded copy is stopped at its
+- **macOS.** With the secrets below, the release signs the app and the disk
+  image with a Developer ID and the hardened runtime, has Apple notarise the
+  disk image and staples the ticket to it, and a downloaded copy starts
+  without a warning. Without them the app is signed ad hoc, which Apple
+  Silicon requires to run anything, and a downloaded copy is stopped at its
   first start ("Apple could not verify Pencraft is free of malware") until
   the user allows it under **System Settings → Privacy & Security → Open
-  Anyway**. Fixing that needs an Apple Developer account: sign with the
-  Developer ID certificate in `installer/build-macos.sh` instead of `-`, and
-  notarise and staple the disk image.
+  Anyway**. The release build says which of the two it did.
+
+### Signing the Mac app
+
+This needs a paid Apple Developer Program membership; the free account's
+"Apple Development" certificate is not accepted by Gatekeeper. Once:
+
+1. **The certificate.** In Xcode → Settings → Accounts → Manage Certificates,
+   add a **Developer ID Application** certificate (only the account holder
+   can). In Keychain Access, export it with its private key as a `.p12` file
+   with a password.
+2. **The notary key.** In App Store Connect → Users and Access →
+   Integrations → App Store Connect API, make a team key with the
+   **Developer** role and download the `.p8` file. Note the key ID and the
+   issuer ID shown on that page.
+3. **The secrets.** In the repository's settings under Secrets and variables
+   → Actions, or with `gh secret set`:
+
+   | Secret | What it holds |
+   |---|---|
+   | `MACOS_CERTIFICATE` | the `.p12` file, base64 (`base64 -i certificate.p12`) |
+   | `MACOS_CERTIFICATE_PASSWORD` | the password of the `.p12` file |
+   | `MACOS_NOTARY_KEY` | the text of the `.p8` file |
+   | `MACOS_NOTARY_KEY_ID` | the key ID |
+   | `MACOS_NOTARY_ISSUER` | the issuer ID |
+
+The next release is then signed and notarised; a release fails rather than
+publish a disk image Apple did not accept. To do the same by hand, set
+`PENCRAFT_SIGN_IDENTITY` and the notary variables named at the top of
+`installer/build-macos.sh`.
+
+The first signed version asks once more for the keychain items that hold API
+keys, because the app's signature changed. After that the signature stays
+the same from version to version and macOS stops asking after each update.
 
 ## What a release costs
 
