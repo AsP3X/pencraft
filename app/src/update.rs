@@ -286,6 +286,9 @@ pub struct Updates {
     place: Option<Place>,
     /// How far taking the offered release is.
     stage: Stage,
+    /// The sending end of a made-up download's result (`--update-download`), kept so the card goes on
+    /// waiting for it: nothing is ever sent.
+    staged: Option<Sender<Result<Prepared, String>>>,
     answers: Receiver<Found>,
     send: Sender<Found>,
 }
@@ -325,7 +328,7 @@ impl Updates {
     pub fn new(allowed: bool, posed: bool) -> Updates {
         let (send, answers) = channel();
         let (place, stage) = (install::place(), Stage::Offered);
-        let mut updates = Updates { allowed, looked: None, looking: false, asked: false, offered: None, place, stage, answers, send };
+        let mut updates = Updates { allowed, looked: None, looking: false, asked: false, offered: None, place, stage, staged: None, answers, send };
         if posed {
             updates.pose();
         }
@@ -337,6 +340,28 @@ impl Updates {
         let notes = "A sharper canvas, and exports that keep their colours.\n\n### Added\n\n- **Export to PDF.** Every top-level layer becomes a page.\n- Find layers by the text they hold.\n\n### Fixed\n\n- Shadows no longer cut off at the edge of a frame.";
         self.offered =
             Some(Release { version: "9.1.0".to_owned(), notes: notes.to_owned(), download: releases_page(), installer: None, checksums: None });
+    }
+
+    /// Puts the card into the middle of a made-up download that has come `percent` far (`--update-download`):
+    /// at 100 the file is "being made ready". Nothing is fetched. With `live` the download goes on by itself,
+    /// from the start to the end and over again, so the bar can be watched moving; without, it stands where
+    /// it is, for a picture.
+    // Human: a real download only shows in an installed copy that is offered a newer version, which a
+    // development build never is. This is the way to see the bar without one.
+    // Agent: with `live` SPAWNS one thread, which ends when the card's Cancel is clicked or the app quits.
+    pub fn pose_download(&mut self, percent: u8, live: bool) {
+        self.pose();
+        let progress = Arc::new(Progress::of(STAGED_SIZE));
+        progress.arrive(STAGED_SIZE / 100 * u64::from(percent.min(100)));
+        let (keep, result) = channel();
+        self.staged = Some(keep);
+        self.stage = Stage::Fetching { progress: Arc::clone(&progress), result };
+        if live {
+            let started = std::thread::Builder::new().name("staged-download".to_owned()).spawn(move || staged_download(&progress));
+            if let Err(error) = started {
+                log::warn!("the made-up download stands still: {error}");
+            }
+        }
     }
 
     /// Whether it is time to look: at the start, and once a day while the app stays open.
@@ -612,6 +637,46 @@ fn quiet_button(ui: &mut Ui, text: &str, palette: Palette) -> bool {
     ui.painter().text(rect.center(), Align2::CENTER_CENTER, text, FontId::proportional(SIDEBAR_TEXT_SIZE), color);
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, text));
     response.clicked()
+}
+
+/// The size of the made-up download (`--update-download`), about that of a real installer.
+const STAGED_SIZE: u64 = 31_000_000;
+/// How often a piece of the made-up download arrives, and how long its file is "made ready" at the end.
+const STAGED_PIECE: Duration = Duration::from_millis(220);
+/// See [`STAGED_PIECE`].
+const STAGED_READY: Duration = Duration::from_secs(3);
+
+/// How large the made-up download's piece number `step` is: uneven, as a real connection brings them, and
+/// now and then nothing at all.
+fn staged_piece(step: u64) -> u64 {
+    match step % 7 {
+        3 => 0,
+        5 => STAGED_SIZE / 25,
+        odd if odd % 2 == 1 => STAGED_SIZE / 60,
+        _ => STAGED_SIZE / 110,
+    }
+}
+
+/// Lets the made-up download `progress` arrive piece by piece, over and over, until it is told to stop.
+// Agent: BLOCKS its own thread between pieces; WRITES only `progress`.
+fn staged_download(progress: &Progress) {
+    let (mut done, _) = progress.sizes();
+    let mut step = 0;
+    while !progress.stopped() {
+        std::thread::sleep(STAGED_PIECE);
+        step += 1;
+        done = (done + staged_piece(step)).min(STAGED_SIZE);
+        progress.arrive(done);
+        if done == STAGED_SIZE {
+            // The file is "made ready" for a while, then the download starts over.
+            let ready = Instant::now();
+            while ready.elapsed() < STAGED_READY && !progress.stopped() {
+                std::thread::sleep(STAGED_PIECE);
+            }
+            done = 0;
+            progress.arrive(done);
+        }
+    }
 }
 
 /// What the card says over the bar: how far the download is in per cent and megabytes, or that the file is
@@ -1120,5 +1185,31 @@ mod tests {
         assert!((0..400).map(|step| at(f64::from(step) * 0.01)).all(|along| (0.0..=1.0).contains(&along)));
         let progress = Progress::of(10);
         assert_eq!(progress.sizes(), (0, 10));
+    }
+
+    #[test]
+    fn a_made_up_download_stands_where_it_is_asked_to_and_can_be_cancelled() {
+        let mut updates = Updates::new(false, false);
+        updates.pose_download(42, false);
+        let Stage::Fetching { progress, .. } = &updates.stage else { panic!("the card isn't downloading") };
+        assert_eq!(progress.sizes(), (13_020_000, STAGED_SIZE));
+        assert!((progress.fraction() - 0.42).abs() < 0.001 && updates.offered.is_some());
+        // Nothing arrives and nothing ends by itself: the card goes on showing the download.
+        assert_eq!(updates.fetched(), None);
+        assert!(matches!(updates.stage, Stage::Fetching { .. }));
+        // At 100 the file is being made ready; more than that is 100.
+        updates.pose_download(250, false);
+        let Stage::Fetching { progress, .. } = &updates.stage else { panic!("the card isn't downloading") };
+        assert_eq!(progress.sizes(), (STAGED_SIZE, STAGED_SIZE));
+        // The pieces come unevenly, some not at all, and a whole download's worth in a reasonable time.
+        let pieces: Vec<u64> = (1..=7).map(staged_piece).collect();
+        assert!(pieces.contains(&0) && pieces.iter().max() > pieces.iter().filter(|piece| **piece > 0).min());
+        let rounds = STAGED_SIZE / (pieces.iter().sum::<u64>() / 7);
+        assert!((40..160).contains(&rounds), "{rounds}");
+        // A download that was stopped ends at its next piece.
+        let progress = Progress::of(STAGED_SIZE);
+        progress.cancel();
+        staged_download(&progress);
+        assert_eq!(progress.sizes().0, 0);
     }
 }

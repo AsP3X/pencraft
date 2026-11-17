@@ -101,6 +101,9 @@ pub struct Launch {
     pub no_update_check: bool,
     /// `--update-prompt`: the picture shows the card that offers a newer version.
     pub update_prompt: bool,
+    /// `--update-download [PERCENT]`: the card shows a made-up download that has come this far. In a picture
+    /// it stands still; in an ordinary run it goes on by itself, to watch the bar move. Nothing is fetched.
+    pub update_download: Option<u8>,
     /// `--home`: the picture shows the home screen, with the files named on the command line as its recent files.
     pub home: bool,
 }
@@ -111,7 +114,8 @@ impl Launch {
     // nothing nobody asked for. `pencraft mcp` never gets this far.
     #[must_use]
     pub fn looks_for_updates(&self) -> bool {
-        self.screenshot.is_none() && !self.private && !self.background && !self.no_update_check
+        // A made-up download keeps the card to itself: a real answer from GitHub would take its place.
+        self.screenshot.is_none() && !self.private && !self.background && !self.no_update_check && self.update_download.is_none()
     }
 }
 
@@ -235,6 +239,10 @@ impl App {
             home: home::Home::default(),
         };
         app.find_assistants();
+        // Human: a made-up download stands still in a picture and goes on by itself in a window.
+        if let Some(percent) = launch.update_download {
+            app.updates.pose_download(percent, launch.screenshot.is_none());
+        }
         if launch.screenshot.is_none() {
             app.start_link(&cc.egui_ctx);
             app.install_menus(&cc.egui_ctx);

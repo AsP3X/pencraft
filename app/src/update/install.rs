@@ -91,6 +91,17 @@ impl Progress {
         Progress { total: AtomicU64::new(total), ..Progress::default() }
     }
 
+    /// Says that `done` bytes have arrived.
+    pub fn arrive(&self, done: u64) {
+        self.done.store(done, Ordering::Relaxed);
+    }
+
+    /// Whether the download was told to stop.
+    #[must_use]
+    pub fn stopped(&self) -> bool {
+        self.stop.load(Ordering::Relaxed)
+    }
+
     /// How many bytes have arrived, and how many there are in all (0 when that isn't known).
     #[must_use]
     pub fn sizes(&self) -> (u64, u64) {
@@ -111,10 +122,6 @@ impl Progress {
     /// Tells the download to stop. It notices before its next piece.
     pub fn cancel(&self) {
         self.stop.store(true, Ordering::Relaxed);
-    }
-
-    fn stopped(&self) -> bool {
-        self.stop.load(Ordering::Relaxed)
     }
 }
 
@@ -283,7 +290,7 @@ fn download(address: &str, to: &Path, progress: &Progress, token: impl FnOnce() 
             return Err("The download is larger than an installer can be.".to_owned());
         }
         file.write_all(piece.get(..size).unwrap_or_default()).map_err(unwritten)?;
-        progress.done.store(done, Ordering::Relaxed);
+        progress.arrive(done);
     }
     file.flush().map_err(unwritten)
 }

@@ -1,7 +1,7 @@
 //! Pencraft: a canvas design editor for `.pen` files, written in Rust as a Craft app.
 //!
-//! `pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--home] [--export FILE]]`
-//! `pencraft [--background] [--private] [--no-update-check] [--assistant ID] [--ask MESSAGE] [FILE.pen]...` opens the window behind what the user is doing.
+//! `pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--update-download [PERCENT]] [--home] [--export FILE]]`
+//! `pencraft [--background] [--private] [--no-update-check] [--update-download [PERCENT]] [--assistant ID] [--ask MESSAGE] [FILE.pen]...` opens the window behind what the user is doing.
 //! `pencraft mcp` connects an AI client to the running app (Model Context Protocol over standard input and output).
 
 // Human: on Windows a shipped (release) build is a window app: started from the Start menu or the Explorer it
@@ -64,7 +64,7 @@ const MIN_WINDOW_SIZE: [f32; 2] = [560.0, 400.0];
 
 /// How many samples a pixel the window is drawn with (multisample anti-aliasing).
 const SAMPLES: u16 = 4;
-const USAGE: &str = "usage: pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--home] [--export FILE]]\n       pencraft [--background] [--private] [--no-update-check] [--assistant ID] [--ask MESSAGE] [FILE.pen]...\n       pencraft mcp
+const USAGE: &str = "usage: pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--update-download [PERCENT]] [--home] [--export FILE]]\n       pencraft [--background] [--private] [--no-update-check] [--update-download [PERCENT]] [--assistant ID] [--ask MESSAGE] [FILE.pen]...\n       pencraft mcp
        pencraft skills [show NAME [FILE] | install [--project DIR | --dir DIR]]";
 
 fn main() -> ExitCode {
@@ -171,6 +171,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<app::Launch, String>
         private: false,
         no_update_check: false,
         update_prompt: false,
+        update_download: None,
         home: false,
     };
     let mut args = args.peekable();
@@ -196,6 +197,11 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<app::Launch, String>
             "--private" => launch.private = true,
             "--no-update-check" => launch.no_update_check = true,
             "--update-prompt" => launch.update_prompt = true,
+            // Human: how far the made-up download has come may follow, in per cent; without it, 42.
+            "--update-download" => {
+                let percent = args.next_if(|next| next.parse::<u8>().is_ok_and(|percent| percent <= 100)).and_then(|percent| percent.parse().ok());
+                launch.update_download = Some(percent.unwrap_or(42));
+            }
             "--home" => launch.home = true,
             "--ask" => launch.ask = Some(args.next().ok_or("--ask needs a message")?),
             "--assistant" => launch.assistant = Some(args.next().ok_or("--assistant needs an id, like code/claude-opus-5-5")?),
@@ -243,5 +249,11 @@ mod tests {
         assert!(!parse(&["--screenshot", "shot.png"]).looks_for_updates());
         assert!(!parse(&["--screenshot", "shot.png", "--export", "out.svg"]).looks_for_updates());
         assert!(parse(&["--screenshot", "shot.png", "--update-prompt"]).update_prompt);
+        // A made-up download: how far it has come may follow; a file's name after it is still a file.
+        assert_eq!(parse(&["--update-download"]).update_download, Some(42));
+        assert_eq!(parse(&["--screenshot", "shot.png", "--update-download", "80"]).update_download, Some(80));
+        let named = parse(&["--update-download", "a.pen"]);
+        assert_eq!((named.update_download, named.files.len()), (Some(42), 1));
+        assert!(!parse(&["--update-download"]).looks_for_updates());
     }
 }
