@@ -9,6 +9,17 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-11-17
+
+The lists you choose from look like the rest of Pencraft.
+
+### Changed
+
+- **The lists of choices match the app's other menus.** A list such as
+  "Kind" in an image service's form, and the ones in the Generate Image
+  dialog, now shows a tick before the choice in use and a soft fill under
+  the pointer, and is as wide as the button it opens from.
+
 ## [0.3.6] - 2026-11-17
 
 A new settings window, and updates that arrive within minutes.
@@ -269,7 +280,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.6...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.7...HEAD
+[0.3.7]: https://github.com/AsP3X/pencraft/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/AsP3X/pencraft/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/AsP3X/pencraft/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/AsP3X/pencraft/compare/v0.3.3...v0.3.4
