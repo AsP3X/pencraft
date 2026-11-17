@@ -9,6 +9,10 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-11-17
+
+An update card that gets out of the way, and updates that can be required.
+
 ### Added
 
 - **Fold the update card away.** The arrow in its corner shrinks the card to
@@ -198,7 +202,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.3...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.4...HEAD
+[0.3.4]: https://github.com/AsP3X/pencraft/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/AsP3X/pencraft/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/AsP3X/pencraft/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/AsP3X/pencraft/compare/v0.3.0...v0.3.1
