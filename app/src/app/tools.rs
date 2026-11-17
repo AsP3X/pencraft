@@ -435,13 +435,18 @@ impl App {
         // Human: while the chat's request names a phone or a tablet, a phone screen standing bare on the canvas
         // is the first thing to put right. It is judged by the top-level layers the picture shows or lies in,
         // so a picture of the screen inside a device doesn't count as a bare screen.
-        if asked(crate::craft::names_a_device) {
-            let tops: Vec<&SceneNode> = editor.scene.iter().filter(|top| layers.iter().any(|layer| holds(top, &layer.id))).collect();
-            if let Some(note) = crate::review::device_note(&tops) {
-                notes.insert(0, note);
-                notes.truncate(crate::review::MOST_NOTES);
-            }
+        let tops: Vec<&SceneNode> = editor.scene.iter().filter(|top| layers.iter().any(|layer| holds(top, &layer.id))).collect();
+        if asked(crate::craft::names_a_device)
+            && let Some(note) = crate::review::device_note(&tops)
+        {
+            notes.insert(0, note);
         }
+        // Human: a container around a screen is seen best in the picture, and a design made before the app
+        // pointed it out is only ever looked at, not changed, so the review names it too.
+        if let Some(note) = crate::advice::container_note(&tops) {
+            notes.insert(0, note);
+        }
+        notes.truncate(crate::review::MOST_NOTES);
         let mut answer =
             vec![json!({ "type": "image", "data": agent::base64(&png), "mimeType": "image/png" }), json!({ "type": "text", "text": note })];
         answer.extend(crate::craft::with_picture(&notes, crate::review::size(&layers)).map(|said| json!({ "type": "text", "text": said })));

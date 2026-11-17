@@ -15,6 +15,10 @@ const SAME_COLOUR: u8 = 3;
 const COVERS: u8 = 128;
 /// How many layers one piece of advice names.
 const MOST_NAMED: usize = 5;
+/// The most texts a container around a screen has beside it: a caption and a line under it.
+const MOST_CAPTIONS: usize = 2;
+/// The least room a container leaves around the one frame in it on every side.
+const ROOM: f32 = 8.0;
 /// How many pieces of advice one answer carries.
 const MOST_ADVICE: usize = 8;
 
@@ -132,6 +136,54 @@ fn unknown_icons(scene: &SceneNode, changed: bool, touched: &[String], out: &mut
     }
 }
 
+/// Whether `scene` or a layer in it is one of `touched`.
+fn holds_touched(scene: &SceneNode, touched: &[String]) -> bool {
+    touched.contains(&scene.id) || scene.children.iter().any(|child| holds_touched(child, touched))
+}
+
+/// The top-level frame `top` when it is only a container around one screen. Gives the frame in it.
+// Human: the canvas writes a top-level frame's name above it, so a board around a screen puts a box nobody
+// asked for around the work, and a caption on it shows the name twice. Two builds are certain enough to
+// name: a frame and a caption that repeats the container's name or the frame's own, and a frame alone
+// with room around it on every side. A caption that says something else may be a page's heading, and a
+// frame that fills its parent is the screen's own content, so neither is remarked on.
+fn wrapped(top: &SceneNode) -> Option<&SceneNode> {
+    let shown = |layer: &&SceneNode| !matches!(&layer.node.enabled, Some(Flag::Value(false)));
+    let mut inner = top.children.iter().filter(shown).filter(|layer| layer.node.kind != Kind::Text);
+    let screen = inner.next().filter(|layer| matches!(layer.node.kind, Kind::Frame | Kind::Ref))?;
+    if top.node.kind != Kind::Frame || inner.next().is_some() {
+        return None;
+    }
+    let captions: Vec<&str> =
+        top.children.iter().filter(shown).filter(|layer| layer.node.kind == Kind::Text).filter_map(|layer| layer.node.content.as_deref()).collect();
+    let names = [top.node.name.as_deref(), screen.node.name.as_deref()];
+    let repeats = captions.len() <= MOST_CAPTIONS
+        && captions.iter().any(|text| names.iter().flatten().any(|name| !name.trim().is_empty() && text.trim().eq_ignore_ascii_case(name.trim())));
+    let (frame, part) = (top.local, screen.local);
+    let inset = part.x >= ROOM && part.y >= ROOM && frame.w - (part.x + part.w) >= ROOM && frame.h - (part.y + part.h) >= ROOM;
+    (repeats || (captions.is_empty() && inset)).then_some(screen)
+}
+
+/// What to say about the top-level layers of `tops` that are only a container around one screen; `None`
+/// when there is none.
+#[must_use]
+pub fn container_note(tops: &[&SceneNode]) -> Option<String> {
+    let boards: Vec<String> = tops
+        .iter()
+        .filter_map(|top| {
+            wrapped(top)
+                .map(|screen| format!("\"{}\" ({}) around \"{}\" ({})", top.node.display_name(), top.id, screen.node.display_name(), screen.id))
+        })
+        .collect();
+    (!boards.is_empty()).then(|| {
+        let more = if boards.len() > MOST_NAMED { format!(" and {} more", boards.len() - MOST_NAMED) } else { String::new() };
+        format!(
+            "A screen needs no container around it: {}{more}. The canvas already writes a top-level frame's name above it, so the container is a box around the work, and a caption on it shows the name twice. Unless the user asked for a board or a background behind the screen, move the frame inside to the top level at the container's place (a move without `parent`), give it the container's name and theme, and delete the container.",
+            boards.iter().take(MOST_NAMED).map(String::as_str).collect::<Vec<_>>().join("; ")
+        )
+    })
+}
+
 /// Advice on the layers `touched` (and everything in them) after a change, one sentence each; empty when
 /// there is nothing to say.
 // Human: a part shown on a board of its own colour (a white card on a white board) is the mistake this is
@@ -155,6 +207,8 @@ pub fn advice(editor: &Editor, touched: &[String]) -> Vec<String> {
             icons.iter().take(MOST_NAMED).map(String::as_str).collect::<Vec<_>>().join("; ")
         ));
     }
+    let tops: Vec<&SceneNode> = editor.scene.iter().filter(|top| holds_touched(top, touched)).collect();
+    out.extend(container_note(&tops));
     for text in [false, true] {
         let mut backs: Vec<&(String, String, Rgba)> = Vec::new();
         for item in found.iter().filter(|f| f.text == text) {
@@ -235,6 +289,42 @@ mod tests {
         // Without the scrim the white dialog on the white screen is pointed out.
         let bare = json.replace("\"fill\":\"#00000033\"", "\"fill\":\"#00000000\"");
         assert_eq!(advice(&editor(&bare), &["screen".to_owned()]).len(), 1);
+    }
+
+    #[test]
+    fn a_container_that_only_names_the_screen_in_it_is_pointed_out() {
+        let json = r##"{"version":"2.22","children":[
+          {"type":"frame","id":"board","name":"1 · General","x":0,"y":0,"layout":"vertical","fill":"#8b8b90","children":[
+            {"type":"text","id":"caption","content":"1 · General","fill":"#ffffff"},
+            {"type":"frame","id":"win","name":"Settings window","width":200,"height":100,"fill":"#ffffff"}]},
+          {"type":"frame","id":"parts","name":"Parts","x":900,"y":0,"layout":"vertical","fill":"#8b8b90","children":[
+            {"type":"text","id":"title","content":"Parts","fill":"#ffffff"},
+            {"type":"frame","id":"a","width":50,"height":50,"fill":"#ffffff"},
+            {"type":"frame","id":"b","width":50,"height":50,"fill":"#ffffff"}]},
+          {"type":"frame","id":"page","name":"Home","x":1800,"y":0,"layout":"vertical","fill":"#ffffff","children":[
+            {"type":"text","id":"heading","content":"Welcome","fill":"#000000"},
+            {"type":"frame","id":"hero","width":50,"height":50,"fill":"#eeeeee"}]}]}"##;
+        let said = advice(&editor(json), &["win".to_owned(), "parts".to_owned(), "page".to_owned()]);
+        assert_eq!(said.len(), 1, "{said:?}");
+        assert!(said[0].contains("\"1 · General\" (board) around \"Settings window\" (win)"), "{}", said[0]);
+        // A change elsewhere says nothing about it.
+        assert_eq!(advice(&editor(json), &["parts".to_owned()]), Vec::<String>::new());
+        // A caption that repeats the name of the frame in it counts too.
+        let own = json.replace(r#""content":"1 · General""#, r#""content":"Settings window""#);
+        assert_eq!(advice(&editor(&own), &["board".to_owned()]).len(), 1);
+    }
+
+    #[test]
+    fn a_frame_that_only_holds_a_smaller_frame_is_a_container_and_a_screen_with_its_content_is_not() {
+        let json = r##"{"version":"2.22","children":[
+          {"type":"frame","id":"board","name":"General","x":0,"y":0,"layout":"vertical","padding":48,"fill":"#8b8b90","children":[
+            {"type":"frame","id":"win","name":"Settings window","width":200,"height":100,"fill":"#ffffff"}]},
+          {"type":"frame","id":"screen","name":"Home","x":900,"y":0,"width":400,"height":300,"layout":"vertical","fill":"#ffffff","children":[
+            {"type":"frame","id":"content","name":"Content","width":"fill_container","height":"fill_container","fill":"#eeeeee"}]}]}"##;
+        let editor = editor(json);
+        let tops: Vec<&SceneNode> = editor.scene.iter().collect();
+        let said = container_note(&tops).unwrap_or_default();
+        assert!(said.contains("\"General\" (board) around \"Settings window\" (win)") && !said.contains("Home"), "{said}");
     }
 
     #[test]

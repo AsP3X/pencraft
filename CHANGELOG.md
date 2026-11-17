@@ -9,6 +9,15 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Screens no longer come in a box with their name on it twice.** An
+  assistant used to put each screen into a grey container with a caption
+  that repeated the name the canvas already shows above it. Assistants are
+  now told that a screen is a frame of its own, and Pencraft points the
+  container out when one is made anyway, with or without a caption, and
+  again whenever the assistant looks at its work.
+
 ## [0.3.5] - 2026-11-17
 
 The Mac app is signed and checked by Apple.
