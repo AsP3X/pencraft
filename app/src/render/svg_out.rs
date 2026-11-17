@@ -91,6 +91,11 @@ impl Builder<'_> {
             Brush::Solid(c) => color(what, *c),
             // Human: a picture is written as its own `<image>`; here it only keeps the shape from being black.
             Brush::Image { .. } => format!(" {what}=\"none\""),
+            Brush::Pattern(pattern) => {
+                let id = sheet.id("p");
+                let _ = writeln!(sheet.defs, "{}", pattern.svg(&id, &n));
+                format!(" {what}=\"url(#{id})\"")
+            }
             Brush::Gradient { kind, center, size, rotation, stops, opacity } => {
                 let Some(first) = stops.first() else { return format!(" {what}=\"none\"") };
                 let id = sheet.id("g");
@@ -140,6 +145,31 @@ impl Builder<'_> {
         }
     }
 
+    /// Path data of `node` as a `<path` element without its closing `/>`, fitted from the node's view box onto
+    /// its `w` × `h` box.
+    // Human: a path is written in its view box and stretched onto the layer's box. The stretch is worked into
+    // the path's own numbers: the element's one `transform` is the layer's place.
+    #[expect(clippy::unused_self, reason = "reads nothing of the builder, but belongs with its other shape writers")]
+    fn svg_path(&self, node: &pen_doc::Node, data: &str, w: f32, h: f32) -> Option<String> {
+        let segments = pen_doc::path::parse(data).ok()?;
+        let view =
+            node.view_box.map(|v| Rect::new(narrow(v[0]), narrow(v[1]), narrow(v[2]), narrow(v[3]))).or_else(|| pen_doc::path::bounds(&segments))?;
+        let (sx, sy) = (if view.w > 1e-6 { w / view.w } else { 1.0 }, if view.h > 1e-6 { h / view.h } else { 1.0 });
+        let at = |p: pen_doc::geom::Point| format!("{} {}", n((p.x - view.x) * sx), n((p.y - view.y) * sy));
+        let mut data = String::new();
+        for segment in &segments {
+            let _ = match *segment {
+                pen_doc::path::Segment::MoveTo(p) => write!(data, "M{}", at(p)),
+                pen_doc::path::Segment::LineTo(p) => write!(data, "L{}", at(p)),
+                pen_doc::path::Segment::QuadTo(c, p) => write!(data, "Q{} {}", at(c), at(p)),
+                pen_doc::path::Segment::CubicTo(c1, c2, p) => write!(data, "C{} {} {}", at(c1), at(c2), at(p)),
+                pen_doc::path::Segment::Close => write!(data, "Z"),
+            };
+        }
+        let rule = if node.fill_rule.as_deref() == Some("evenodd") { " fill-rule=\"evenodd\"" } else { "" };
+        Some(format!("<path d=\"{data}\"{rule}"))
+    }
+
     /// The outline of `scene`'s own shape as an SVG element without its closing `/>`, or `None` for a layer
     /// that has none (a group, an instance's root).
     fn svg_shape(&self, scene: &SceneNode) -> Option<String> {
@@ -184,24 +214,7 @@ impl Builder<'_> {
                     polygon_points(w, h, count, radius.unwrap_or(0.0).max(0.0)).iter().map(|p| format!("{},{}", n(p[0]), n(p[1]))).collect();
                 format!("<polygon points=\"{}\"", points.join(" "))
             }
-            Kind::Path => {
-                let data = node.geometry.as_deref()?;
-                // Human: a path is written in its view box and stretched onto the layer's box.
-                let view = node
-                    .view_box
-                    .map(|v| Rect::new(narrow(v[0]), narrow(v[1]), narrow(v[2]), narrow(v[3])))
-                    .or_else(|| pen_doc::path::parse(data).ok().and_then(|segments| pen_doc::path::bounds(&segments)))?;
-                let (sx, sy) = (if view.w > 1e-6 { w / view.w } else { 1.0 }, if view.h > 1e-6 { h / view.h } else { 1.0 });
-                let rule = if node.fill_rule.as_deref() == Some("evenodd") { " fill-rule=\"evenodd\"" } else { "" };
-                format!(
-                    "<path d=\"{}\" transform=\"scale({} {}) translate({} {})\" vector-effect=\"non-scaling-stroke\"{rule}",
-                    escape(data),
-                    n(sx),
-                    n(sy),
-                    n(-view.x),
-                    n(-view.y)
-                )
-            }
+            Kind::Path | Kind::Connector => self.svg_path(node, node.geometry.as_deref()?, w, h)?,
             Kind::Line => format!("<line x1=\"0\" y1=\"0\" x2=\"{}\" y2=\"{}\"", n(w), n(h)),
             _ => return None,
         })
@@ -297,7 +310,7 @@ impl Builder<'_> {
             self.svg_material(scene, shape, &transform, sheet);
         }
         if let Some(shape) = &shape {
-            if node.kind != Kind::Line {
+            if !matches!(node.kind, Kind::Line | Kind::Connector) {
                 for brush in &fills {
                     let paint = Self::svg_paint("fill", brush, sheet);
                     let _ = writeln!(sheet.body, "{shape}{paint} transform=\"{transform}\"/>");
@@ -321,9 +334,22 @@ impl Builder<'_> {
             }
             let width = self.stroke_width(scene);
             if width > 0.0 {
+                // Human: a connector's line ends and turns round unless it says otherwise, and the filled shapes
+                // at its ends are a path of their own in the line's colour.
+                let ends = if node.kind == Kind::Connector {
+                    let said = |key: &str| node.extra.get(key).and_then(Value::as_str).unwrap_or("round").to_owned();
+                    format!(" stroke-linecap=\"{}\" stroke-linejoin=\"{}\"", escape(&said("strokeLinecap")), escape(&said("strokeLinejoin")))
+                } else {
+                    String::new()
+                };
+                let markers = node.extra.get(pen_doc::connector::MARKERS).and_then(Value::as_str).and_then(|data| self.svg_path(node, data, w, h));
                 for brush in &strokes {
                     let paint = Self::svg_paint("stroke", brush, sheet);
-                    let _ = writeln!(sheet.body, "{shape} fill=\"none\"{paint} stroke-width=\"{}\" transform=\"{transform}\"/>", n(width));
+                    let _ = writeln!(sheet.body, "{shape} fill=\"none\"{paint} stroke-width=\"{}\"{ends} transform=\"{transform}\"/>", n(width));
+                    if let Some(markers) = &markers {
+                        let paint = Self::svg_paint("fill", brush, sheet);
+                        let _ = writeln!(sheet.body, "{markers}{paint} transform=\"{transform}\"/>");
+                    }
                 }
             }
         }

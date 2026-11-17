@@ -98,9 +98,29 @@ impl Builder<'_> {
         let mut value = serde_json::to_value(target).ok()?;
         let object = value.as_object_mut()?;
         object.remove("reusable");
+        // Human: a component can name `states` (selected, disabled, ...), each the changes that state makes, written
+        // like an instance's own: properties of the root, and `descendants`. An instance picks one with `state`
+        // (or several, applied in order); what the instance itself overrides still wins over the state.
+        let states = object.remove("states");
+        let picked: Vec<&str> = match instance.extra.get("state") {
+            Some(Value::String(name)) => vec![name.as_str()],
+            Some(Value::Array(names)) => names.iter().filter_map(Value::as_str).collect(),
+            _ => Vec::new(),
+        };
+        for name in picked {
+            let Some(state) = states.as_ref().and_then(|states| states.get(name)).and_then(Value::as_object) else { continue };
+            for (key, v) in state {
+                if !SKIPPED.contains(&key.as_str()) {
+                    object.insert(key.clone(), v.clone());
+                }
+            }
+            for (path, change) in state.get("descendants").and_then(Value::as_object).into_iter().flatten() {
+                apply_descendant(object, path, change);
+            }
+        }
         let overrides = serde_json::to_value(instance).ok()?;
         for (key, v) in overrides.as_object()? {
-            if !matches!(key.as_str(), "type" | "ref" | "descendants" | "reusable" | "children") {
+            if !SKIPPED.contains(&key.as_str()) {
                 object.insert(key.clone(), v.clone());
             }
         }
@@ -115,6 +135,9 @@ impl Builder<'_> {
         serde_json::from_value(value).ok()
     }
 }
+
+/// The keys of an instance or a state that are not properties to lay over the component's root.
+const SKIPPED: [&str; 8] = ["type", "id", "ref", "descendants", "reusable", "children", "state", "states"];
 
 fn strip(mut node: Node) -> Node {
     node.children = None;
@@ -261,6 +284,33 @@ mod tests {
         );
         assert_eq!(scene[4].children.len(), 1);
         assert_eq!(scene[4].children[0].node.content.as_deref(), Some("Replaced"));
+    }
+
+    #[test]
+    fn an_instance_takes_a_state_of_its_component_and_its_own_overrides_win() {
+        let doc: Document = serde_json::from_str(
+            r##"{"version":"2.22","children":[
+            {"type":"frame","id":"row","reusable":true,"fill":"#000000","opacity":1,
+             "states":{"selected":{"fill":"#222222","opacity":0.5,"descendants":{"label":{"fill":"#ffffff"}}},
+                       "disabled":{"opacity":0.3}},
+             "children":[{"type":"text","id":"label","content":"Board","fill":"#999999"}]},
+            {"type":"ref","id":"plain","ref":"row"},
+            {"type":"ref","id":"on","ref":"row","state":"selected","opacity":0.8,"descendants":{"label":{"content":"Inbox"}}},
+            {"type":"ref","id":"both","ref":"row","state":["selected","disabled","unknown"]}]}"##,
+        )
+        .unwrap();
+        let scene = build(&doc, &ThemeContext::defaults(&doc));
+        let fill = |node: &SceneNode| serde_json::to_value(&node.node.fill).unwrap();
+        let opacity = |node: &SceneNode| serde_json::to_value(&node.node.opacity).unwrap();
+        // The component and a plain instance show the default.
+        assert_eq!((fill(&scene[0]), fill(&scene[1]), fill(&scene[1].children[0])), ("#000000".into(), "#000000".into(), "#999999".into()));
+        assert!(scene[1].node.extra.is_empty());
+        // The state changes the root and a layer inside; the instance's own opacity and text still apply.
+        let on = &scene[2];
+        assert_eq!((fill(on), opacity(on), fill(&on.children[0])), ("#222222".into(), 0.8.into(), "#ffffff".into()));
+        assert_eq!((on.id.as_str(), on.children[0].node.content.as_deref()), ("on", Some("Inbox")));
+        // Several states apply in order; one the component doesn't have changes nothing.
+        assert_eq!((fill(&scene[3]), opacity(&scene[3])), ("#222222".into(), 0.3.into()));
     }
 
     #[test]

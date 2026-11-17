@@ -30,6 +30,7 @@ use crate::images::{ImageStore, Picture};
 
 mod bake;
 mod glass;
+mod pattern;
 mod svg_out;
 
 pub use bake::Seen;
@@ -327,6 +328,8 @@ enum Brush {
         stops: Vec<(f32, Rgba)>,
         opacity: f32,
     },
+    /// A mark repeated across the layer (see [`pattern`]).
+    Pattern(pattern::Pattern),
     /// A picture. `crop` maps a point of the crop's 0–1 box to the picture's 0–1 coordinates.
     Image {
         picture: Picture,
@@ -372,6 +375,8 @@ impl Brush {
     fn at(&self, u: f32, v: f32) -> Rgba {
         match self {
             Brush::Solid(c) => *c,
+            // Only where a pattern can't be drawn as its marks (a stroke): its colour.
+            Brush::Pattern(pattern) => pattern.color,
             // Human: a picture's own colours come from its texture; the vertex colour only carries the opacity.
             Brush::Image { opacity, .. } => Rgba::WHITE.with_opacity(*opacity),
             Brush::Gradient { kind, center, size, rotation, stops, opacity } => {
@@ -477,7 +482,7 @@ impl Builder<'_> {
         };
         let opacity = number(object.get("opacity")).unwrap_or(1.0);
         match object.get("type").and_then(Value::as_str) {
-            Some("color") => self.vars.color(object.get("color")?.as_str()?, theme).map(Brush::Solid),
+            Some("color") => self.vars.paint_color(object, theme).map(Brush::Solid),
             Some("gradient") => {
                 let kind = match object.get("gradientType").and_then(Value::as_str) {
                     Some("radial") => GradientKind::Radial,
@@ -515,6 +520,10 @@ impl Builder<'_> {
                 };
                 let crop = object.get("transform").and_then(affine_of).and_then(|t| t.invert()).unwrap_or(Affine::IDENTITY);
                 Some(Brush::Image { picture, fit, crop, opacity })
+            }
+            Some("pattern") => {
+                let color = self.vars.paint_color(object, theme)?;
+                Some(Brush::Pattern(pattern::Pattern::read(object, color, &number)))
             }
             Some("mesh_gradient") => {
                 let first = object.get("colors")?.as_array()?.first()?.as_str()?;
@@ -619,6 +628,22 @@ impl Builder<'_> {
                 fill_end = out.len();
                 for brush in &strokes {
                     self.stroke(&shape, brush, scene, opacity, bounds, clip, out);
+                }
+            }
+            // Human: a connector's line was worked out by the layout (`pen_doc::connector`); it is only ever
+            // stroked, since the space an open line encloses is not a shape anybody meant.
+            Kind::Connector => {
+                if let Some(shape) = node.geometry.as_deref().and_then(|g| svg::parse(g).ok()).map(|segments| fit_path(&segments, node, w, h)) {
+                    for brush in &strokes {
+                        self.stroke(&shape, brush, scene, opacity, bounds, clip, out);
+                    }
+                }
+                // The filled shapes at its ends (a triangle, a dot) take the line's colour.
+                let markers = node.extra.get(pen_doc::connector::MARKERS).and_then(Value::as_str);
+                if let Some(shape) = markers.and_then(|g| svg::parse(g).ok()).map(|segments| fit_path(&segments, node, w, h)) {
+                    for brush in &strokes {
+                        out.extend(fill_item(&shape, brush, FillRule::NonZero));
+                    }
                 }
             }
             Kind::Line => {
@@ -823,6 +848,9 @@ impl Builder<'_> {
         FillTessellator::new()
             .tessellate_path(shape, &options, &mut BuffersBuilder::new(&mut buffers, |v: FillVertex| v.position().to_array()))
             .ok()?;
+        if let Brush::Pattern(pattern) = brush {
+            return Some(pattern.mesh(&buffers, size, self.tolerance_for(to_doc), to_doc, opacity));
+        }
         if brush.is_gradient() {
             subdivide(&mut buffers, size.0.max(size.1) / 24.0);
         }
@@ -864,15 +892,20 @@ impl Builder<'_> {
         out: &mut Vec<Item>,
     ) {
         let node = &scene.node;
+        // Human: a connector's line ends and turns round unless it says otherwise; every other stroke is cut
+        // off square and turns in a point, as SVG does.
+        let wire = node.kind == Kind::Connector;
         let cap = match node.extra.get("strokeLinecap").and_then(Value::as_str) {
             Some("round") => LineCap::Round,
             Some("square") => LineCap::Square,
-            _ => LineCap::Butt,
+            None if wire => LineCap::Round,
+            Some(_) | None => LineCap::Butt,
         };
         let join = match node.extra.get("strokeLinejoin").and_then(Value::as_str) {
             Some("round") => LineJoin::Round,
             Some("bevel") => LineJoin::Bevel,
-            _ => LineJoin::Miter,
+            None if wire => LineJoin::Round,
+            Some(_) | None => LineJoin::Miter,
         };
         self.stroke_pen(shape, brush, Pen { width, cap, join }, scene, opacity, bounds, clip, out);
     }

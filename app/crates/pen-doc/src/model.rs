@@ -58,6 +58,8 @@ pub enum Kind {
     Path,
     /// A straight line (older files).
     Line,
+    /// A line between two layers that follows them (see [`crate::connector`]).
+    Connector,
     /// A text block.
     Text,
     /// A sticky note.
@@ -88,6 +90,7 @@ impl Kind {
             Kind::Polygon => "polygon",
             Kind::Path => "path",
             Kind::Line => "line",
+            Kind::Connector => "connector",
             Kind::Text => "text",
             Kind::Note => "note",
             Kind::Icon => "icon",
@@ -116,6 +119,7 @@ impl From<String> for Kind {
             "polygon" => Kind::Polygon,
             "path" => Kind::Path,
             "line" => Kind::Line,
+            "connector" => Kind::Connector,
             "text" => Kind::Text,
             "note" => Kind::Note,
             "icon" => Kind::Icon,

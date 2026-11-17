@@ -48,8 +48,15 @@ Then the variant of liquid glass, one per screen, never both:
 Before placing glass, look at what will be under it. Content runs **behind** bars, edge to edge: a feed
 scrolls under the tab bar and the toolbar, a hero picture continues under the sidebar. Do not give a bar a
 strip of plain background to sit on, and do not put padding in the content frame where the bars are (pad the
-last row instead). If the screen really is flat, say so and use an ordinary fill, or give the content layer
-imagery or colour first. Pencraft's general guide tells you to end a list above a bar and not to let a bar
+last row instead).
+
+If the screen really is flat (a calm tool on one plain ground: a board, an editor, a settings page), there is
+nothing to bend, and the answer is to leave the glass out, not to invent something for it: give that layer an
+ordinary fill, or `frosted` at most, and tell the user which layers you made plain and why. Never add a
+gradient, a colour field, a blob or a picture behind a bar or sidebar only so that the glass has something to
+show; a backdrop is the user's choice, so ask before adding one they did not ask for. Glass stays right on a
+flat screen only where real content passes under it: a toolbar floating over a canvas with nodes and wires,
+a bar over a scrolling list. Pencraft's general guide tells you to end a list above a bar and not to let a bar
 cut a row; under glass bars that rule is reversed on purpose, and the review's remark about it can stand.
 Over a plain text feed, glass has little to bend and reads mostly by its rim and shadow; that is correct,
 but let a picture, a coloured header or a card pass under at least one bar when the content has one.
@@ -202,7 +209,7 @@ Leave the fade out over full-bleed photos, where it would grey the picture. For 
 
 | It looks like | Cause | Fix |
 |---|---|---|
-| A grey box | Nothing behind it, or content stops before the bar | Run the content behind the glass; add imagery or colour to the content layer |
+| A grey box | Nothing behind it, or content stops before the bar | Run the content behind the glass. On a screen that is flat by design, use a plain fill instead; add imagery or colour behind it only when the user asked for it |
 | Muddy, dirty | A `fill` on the glass, a strong tint, or extra blur effects | Remove the fill and the effects; tint only the primary action |
 | Label unreadable | Clear glass over bright media, or a label the same lightness as the glass | Add the 35 % dimming layer, switch to regular, or flip the label colour |
 | Plastic, shiny | `highlight` raised, or stroke and shadow effects added on top | Remove them; the material lights its own rim |

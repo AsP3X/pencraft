@@ -119,6 +119,7 @@ pub fn layout(scene: &mut [SceneNode], vars: Vars<'_>, measure: &Measure<'_>) {
     for root in scene.iter_mut() {
         place(root, &Affine::IDENTITY);
     }
+    crate::connector::route(scene, vars);
 }
 
 /// The text style of a text or note node.
@@ -229,8 +230,9 @@ impl Engine<'_, '_> {
     }
 
     /// Whether a child takes part in its parent's flex layout (enabled and not absolute).
+    // Human: a connector never does: it lies wherever its two ends are.
     fn affects(&self, child: &SceneNode) -> bool {
-        self.enabled(child) && !child.node.is_absolute()
+        self.enabled(child) && !child.node.is_absolute() && child.node.kind != Kind::Connector
     }
 
     /// The flex direction of a node: `Some` only for frames with a horizontal or vertical layout.
@@ -417,7 +419,7 @@ impl Engine<'_, '_> {
     /// The union of a group's children's footprints, in the group's stored coordinates.
     fn children_union(&self, scene: &SceneNode) -> Rect {
         let mut union: Option<Rect> = None;
-        for child in scene.children.iter().filter(|c| self.enabled(c)) {
+        for child in scene.children.iter().filter(|c| self.enabled(c) && c.node.kind != Kind::Connector) {
             let (x, y) = position(&child.node);
             let o = Self::outer(child);
             let r = Rect::new(x + o.x, y + o.y, o.w, o.h);

@@ -164,6 +164,34 @@ pub fn bounds(segments: &[Segment]) -> Option<Rect> {
 }
 
 /// t = 1/16 … 1, enough for a bounding box within a fraction of a unit on icon-sized curves.
+/// The path as runs of straight lines, one per subpath, each curve cut into `steps` pieces.
+#[must_use]
+pub fn flatten(segments: &[Segment], steps: u8) -> Vec<Vec<Point>> {
+    let mut runs: Vec<Vec<Point>> = Vec::new();
+    let at = |i: u8| f32::from(i) / f32::from(steps.max(1));
+    for segment in segments {
+        let current = runs.last().and_then(|run| run.last()).copied().unwrap_or_default();
+        match *segment {
+            Segment::MoveTo(p) => runs.push(vec![p]),
+            Segment::LineTo(p) => runs.last_mut().into_iter().for_each(|run| run.push(p)),
+            Segment::QuadTo(c, p) => {
+                runs.last_mut().into_iter().for_each(|run| run.extend((1..=steps.max(1)).map(|i| quad_at(current, c, p, at(i)))));
+            }
+            Segment::CubicTo(c1, c2, p) => {
+                runs.last_mut().into_iter().for_each(|run| run.extend((1..=steps.max(1)).map(|i| cubic_at(current, c1, c2, p, at(i)))));
+            }
+            Segment::Close => {
+                if let Some(run) = runs.last_mut()
+                    && let Some(first) = run.first().copied()
+                {
+                    run.push(first);
+                }
+            }
+        }
+    }
+    runs
+}
+
 fn sample_steps() -> impl Iterator<Item = f32> {
     (1..=16u8).map(|i| f32::from(i) / 16.0)
 }

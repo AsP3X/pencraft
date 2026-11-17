@@ -5,9 +5,11 @@
 //! - [`scene`]: the document with component instances expanded.
 //! - [`layout`]: flex layout, sizing and transforms.
 //! - [`path`]: SVG path data.
+//! - [`connector`]: lines between layers that follow them.
 //! - [`edit`]: finding and moving nodes by id.
 
 pub mod color;
+pub mod connector;
 pub mod edit;
 pub mod geom;
 pub mod layout;

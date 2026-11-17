@@ -101,9 +101,7 @@ fn radius_of(scene: &SceneNode, vars: Vars<'_>) -> Option<f32> {
 fn solid(scene: &SceneNode, vars: Vars<'_>) -> Option<Rgba> {
     match scene.node.fill.as_ref()?.as_slice().last()? {
         Paint::Solid(text) => vars.color(text, &scene.theme),
-        Paint::Object(object) if object.get("type").and_then(Value::as_str) == Some("color") => {
-            object.get("color").and_then(Value::as_str).and_then(|text| vars.color(text, &scene.theme))
-        }
+        Paint::Object(object) if object.get("type").and_then(Value::as_str) == Some("color") => vars.paint_color(object, &scene.theme),
         Paint::Object(_) => None,
     }
 }
@@ -304,7 +302,7 @@ pub fn check(scenes: &[&SceneNode], vars: Vars<'_>, survey: Option<&Survey>) -> 
             entry["tintOpacity"] = json!((f64::from(seen.tint_opacity) * 100.0).round() / 100.0);
             if pane.material.is_glass() && seen.spread < FLAT_BELOW {
                 problems.push(format!(
-                    "{} has a flat backdrop: there is nothing behind it for the glass to bend, so it reads as a grey box. Put imagery, colour or content behind it, or use a plain fill.",
+                    "{} has a flat backdrop: there is nothing behind it for the glass to bend, so it reads as a grey box. If content belongs under it, run that content behind it; on a screen that is plain by design give this layer a plain fill instead of a material. Don't add a gradient, colour field or picture behind it that the user didn't ask for.",
                     named(pane.scene)
                 ));
             }

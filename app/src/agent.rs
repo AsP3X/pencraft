@@ -38,6 +38,28 @@ Types:
   `sweepAngle` in degrees, counter-clockwise from the right, make it an arc: a spinner, a progress ring),
   `polygon` (`polygonCount`, `cornerRadius`), `line`.
 - `path`: `geometry` (SVG path data), `viewBox` [x, y, width, height], `fillRule`.
+- `connector`: a line between two layers that follows them when they move: a wire in a node editor, an arrow
+  in a flow chart. Never draw those as a `path` with coordinates you worked out. `from` and `to` are each a
+  layer's id, or `{"id":"..","side":"left"|"right"|"top"|"bottom"|"center","at":0..1}` (`side` left out picks
+  the side facing the other end; `at` is how far along the side, 0.5 by default; aim at a pin's own small
+  layer with `"side":"center"`), or a free point `{"x":..,"y":..}` in the parent's coordinates (a wire being
+  dragged). It has no `x`, `y` or size of its own; put it in the same frame as its layers, before them to run
+  under them. A connector to a layer that isn't there draws nothing.
+  Where it runs: `route` is "curved" (default, the S of a node editor), "elbow" (right angles) or "straight".
+  `via` is a list of waypoints the line passes through in order, to lead it around a node or along a lane:
+  each a point `{"x":..,"y":..}` of the parent, or a layer's id (its middle; a small reroute dot the line
+  then follows). Curved runs smoothly through them; straight goes from point to point; with elbow they are
+  the corners: two waypoints that share an `x` or a `y` make a straight run between them, and any other leg
+  turns once (sideways first when the line left a left or right side). Each end faces its nearest waypoint.
+  How it looks is the product's choice, so match the app you are designing, not this default: `stroke`
+  (a gradient runs along the layer's box) and `strokeWidth`; `curvature` (1 by default; 0 is a straight line,
+  2 a wide swing); `cornerRadius` rounds the turns of an elbow or straight route; `stub` is how far an elbow
+  runs out of a layer before it may turn back (16); `dash` is one length or `[drawn, gap, ..]`;
+  `strokeLinecap` and `strokeLinejoin` ("round" by default, "butt"/"miter" for a technical look);
+  `startMarker` and `endMarker` are "arrow" (open), "triangle", "dot", "diamond" (filled, in the stroke's
+  colour) or "bar", sized by `markerSize` (8). For a wire with a casing or a glow, put a wider connector of
+  the same ends and waypoints under it. Give one product's wires one design: make the choices once and
+  repeat them on every connector.
 - `text`: `content`, `fontFamily` (a family installed on this computer, listed at the end of this guide; any
   other is drawn in a stand-in), `fontSize`, `fontWeight` ("100" to "900"; the family's nearest weight is
   drawn), `fontStyle` ("italic"), `underline` and `strikethrough` (true), `lineHeight` (a multiple of the
@@ -62,10 +84,16 @@ a dialog, a menu drawn over its page.
 
 ## Fill and stroke
 A colour is `"#rrggbb"` or `"#rrggbbaa"`. `fill` and `stroke` take one paint or a list (first is at the back).
-A paint is a colour, or an object: `{"type":"gradient","gradientType":"linear"|"radial"|"angular",
+A paint is a colour, or an object: `{"type":"color","color":"$name","opacity":0..1}` (a variable at less than
+full strength, for a tinted badge or a hover: never write the tint out as a hex of its own), `{"type":"gradient","gradientType":"linear"|"radial"|"angular",
 "rotation":deg,"colors":[{"color":"#..","position":0..1}]}` or `{"type":"image","url":"./picture.png",
 "mode":"cover"|"contain"|"stretch"}` (the `url` is a path beside the document or a full path like
-`C:/pictures/a.jpg`). A linear gradient with `rotation` 0 runs upward (position 0 at the bottom, 1 at the
+`C:/pictures/a.jpg`), or `{"type":"pattern","shape":"dots"|"grid"|"lines","color":"$name","opacity":0..1,
+"size":n,"spacing":n or [across, down]}`: a mark repeated across the layer and cut to its shape, for the dot
+grid of a canvas or editor, graph paper, a ruled sheet (`size` is a dot's diameter or a line's thickness;
+`"direction":"vertical"` turns `lines`; `"offset":{"x":..,"y":..}` moves the first mark, which otherwise sits
+half a spacing in). List it after the ground's colour: `"fill":["$canvas",{"type":"pattern",..}]`; two grids
+of different spacing make major and minor lines. Never draw a grid as a layer per dot or line. A linear gradient with `rotation` 0 runs upward (position 0 at the bottom, 1 at the
 top); 180 runs downward. `strokeWidth` is a number or `{"top":..,"right":..,"bottom":..,"left":..}`;
 `strokeAlignment` is "inner" | "center" | "outer".
 
@@ -101,6 +129,12 @@ the `ref` itself (for the component's root) or under `descendants`, keyed by the
 component: `"descendants":{"labelId":{"content":"Cancel"}}`. An entry with a `type` replaces that layer; an
 entry with `children` gives a frame inside the component content of its own (this is how a slot is filled).
 A layer inside an instance is addressed as `instanceId/layerId` in `read_layers` and in an `update`.
+A component that looks different in a state (a selected row, a disabled button, a tab that is on) names its
+`states` once, on the component: `"states":{"selected":{"fill":"$accent-soft","descendants":{"labelId":
+{"fill":"$accent"}}}}`. A state is written like an instance's changes: properties of the root, and
+`descendants`. An instance picks it with `"state":"selected"` (or a list, applied in order); what the instance
+changes itself still wins. Never repeat a state's overrides by hand on every instance. `get_state` lists each
+component's states.
 Look for existing components before building the same thing twice.
 
 ## Pictures
@@ -353,7 +387,12 @@ pub fn state(editor: &Editor) -> Value {
     fn components(nodes: &[Node], out: &mut Vec<Value>) {
         for node in nodes {
             if node.reusable == Some(true) {
-                out.push(json!({ "id": node.id, "name": node.display_name() }));
+                let mut entry = json!({ "id": node.id, "name": node.display_name() });
+                // The states an instance can pick with `state`.
+                if let Some(states) = node.extra.get("states").and_then(Value::as_object).filter(|states| !states.is_empty()) {
+                    entry["states"] = json!(states.keys().collect::<Vec<_>>());
+                }
+                out.push(entry);
             }
             components(node.kids(), out);
         }
@@ -510,6 +549,8 @@ fn layer(editor: &mut Editor, node: Option<&Value>, taken: &mut Vec<String>) -> 
             material_problem(Some(&n.kind), n.material.as_ref()).or_else(|| group_problem(Some(&n.kind), n.extra.get(crate::glass_check::GROUP)));
         if let Some(problem) = problem {
             clash = Some(format!("layer \"{}\": {problem}", n.id));
+        } else if n.kind == Kind::Connector && !(n.extra.contains_key("from") && n.extra.contains_key("to")) {
+            clash = Some(format!("the connector \"{}\" needs a `from` and a `to` (a layer's id, or {{\"id\":..,\"side\":..}})", n.id));
         } else if n.id.contains('/') {
             clash = Some(format!("the id \"{}\" contains a slash", n.id));
         } else if edit::find(&editor.doc, &n.id).is_some() {
@@ -523,7 +564,9 @@ fn layer(editor: &mut Editor, node: Option<&Value>, taken: &mut Vec<String>) -> 
 /// for a layer inside an instance), said so that the model can put it right.
 fn material_problem(kind: Option<&Kind>, material: Option<&Value>) -> Option<String> {
     let material = material.filter(|m| !m.is_null())?;
-    if let Some(kind) = kind.filter(|kind| matches!(kind, Kind::Text | Kind::Icon | Kind::IconFont | Kind::Line | Kind::Group | Kind::Note)) {
+    if let Some(kind) =
+        kind.filter(|kind| matches!(kind, Kind::Text | Kind::Icon | Kind::IconFont | Kind::Line | Kind::Connector | Kind::Group | Kind::Note))
+    {
         let name = kind_name(kind);
         return Some(format!("a {name} can't have a `material`; give the material to a frame, rectangle or ellipse and put the {name} in it"));
     }

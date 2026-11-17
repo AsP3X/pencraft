@@ -37,9 +37,7 @@ fn fill(scene: &SceneNode, vars: Vars<'_>) -> Fill {
     let Some(top) = scene.node.fill.as_ref().and_then(|paints| paints.as_slice().last()) else { return Fill::Clear };
     let colour = match top {
         Paint::Solid(text) => vars.color(text, &scene.theme),
-        Paint::Object(object) if object.get("type").and_then(|t| t.as_str()) == Some("color") => {
-            object.get("color").and_then(|c| c.as_str()).and_then(|text| vars.color(text, &scene.theme))
-        }
+        Paint::Object(object) if object.get("type").and_then(|t| t.as_str()) == Some("color") => vars.paint_color(object, &scene.theme),
         Paint::Object(_) => return Fill::Mixed,
     };
     match colour {
@@ -77,7 +75,7 @@ fn look<'a>(scene: &'a SceneNode, behind: Option<(&'a SceneNode, Rgba)>, changed
     let own = fill(scene, vars);
     if let (true, Fill::Colour(colour), Some((back, back_colour))) = (changed, &own, behind)
         && same(*colour, back_colour)
-        && !matches!(scene.node.kind, Kind::Icon | Kind::Path | Kind::Line)
+        && !matches!(scene.node.kind, Kind::Icon | Kind::Path | Kind::Line | Kind::Connector)
     {
         found.push(Found {
             behind: (back.id.clone(), back.node.display_name(), back_colour),

@@ -118,6 +118,21 @@ impl<'a> Vars<'a> {
         }
     }
 
+    /// The colour of a `{"type":"color","color":..,"opacity":..}` paint: its colour with its `opacity` (a number
+    /// or a `$name`, 1 when left out) laid over the colour's own alpha.
+    // Human: this is how a colour variable is used at less than full strength: `"color":"$amber","opacity":0.12`
+    // is the tint of a badge, and still follows the variable and the theme.
+    #[must_use]
+    pub fn paint_color(&self, paint: &Map<String, Value>, context: &ThemeContext) -> Option<Rgba> {
+        let colour = self.color(paint.get("color")?.as_str()?, context)?;
+        let opacity = match paint.get("opacity") {
+            Some(Value::Number(n)) => n.as_f64().map(narrow),
+            Some(Value::String(s)) => self.number(&Num::Text(s.clone()), context),
+            _ => None,
+        };
+        Some(opacity.map_or(colour, |opacity| colour.with_opacity(opacity.clamp(0.0, 1.0))))
+    }
+
     /// A boolean property's value.
     #[must_use]
     pub fn flag(&self, flag: &Flag, context: &ThemeContext) -> Option<bool> {
@@ -164,6 +179,18 @@ mod tests {
         dark_theme.insert("Mode".into(), Value::from("Dark"));
         let dark = light.with(Some(&dark_theme));
         assert_eq!(vars.color("$--bg", &dark), Some(Rgba::BLACK));
+    }
+
+    #[test]
+    fn a_colour_paint_takes_its_opacity_over_a_variable() {
+        let doc = doc();
+        let vars = Vars::new(&doc);
+        let context = ThemeContext::defaults(&doc);
+        let paint = |json: &str| serde_json::from_str::<Map<String, Value>>(json).unwrap();
+        let tint = vars.paint_color(&paint(r#"{"type":"color","color":"$--bg","opacity":0.5}"#), &context).unwrap();
+        assert_eq!((tint.r, tint.a), (255, 128));
+        assert_eq!(vars.paint_color(&paint(r#"{"type":"color","color":"$--bg"}"#), &context), Some(Rgba::WHITE));
+        assert_eq!(vars.paint_color(&paint(r#"{"type":"color"}"#), &context), None);
     }
 
     #[test]

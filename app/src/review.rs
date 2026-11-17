@@ -166,6 +166,8 @@ struct Seen {
     blocks: Vec<String>,
     /// Frames that hold three or four big figures, each over a small label, side by side.
     stats: Vec<String>,
+    /// Connectors that draw nothing: an end names a layer that isn't there, or they have no stroke.
+    unplugged: Vec<String>,
 }
 
 fn label(scene: &SceneNode) -> String {
@@ -183,9 +185,9 @@ fn paints(scene: &SceneNode, paints: Option<&pen_doc::model::Paints>, vars: Vars
         match paint {
             Paint::Solid(text) => solid.extend(vars.color(text, &scene.theme).map(|colour| (colour, text.starts_with('#')))),
             Paint::Object(object) => match object.get("type").and_then(Value::as_str) {
-                Some("color") => {
+                Some("color" | "pattern") => {
                     let text = object.get("color").and_then(Value::as_str).unwrap_or_default();
-                    solid.extend(vars.color(text, &scene.theme).map(|colour| (colour, text.starts_with('#'))));
+                    solid.extend(vars.paint_color(object, &scene.theme).map(|colour| (colour, text.starts_with('#'))));
                 }
                 Some("gradient") => {
                     let stops = object.get("colors").and_then(Value::as_array).into_iter().flatten();
@@ -331,6 +333,13 @@ fn hairline(scene: &SceneNode, vars: Vars<'_>) -> bool {
 /// Notes the spacing, corners, effects and side strokes of one layer.
 fn measures(scene: &SceneNode, vars: Vars<'_>, seen: &mut Seen) {
     let node = &scene.node;
+    if node.kind == Kind::Connector {
+        // Its corner radius rounds the turns of a line, and is no part of the design's scale of corners.
+        if node.geometry.is_none() || node.stroke.is_none() {
+            seen.unplugged.push(label(scene));
+        }
+        return;
+    }
     if !scene.children.is_empty() {
         seen.spacings.extend(number(scene, node.gap.as_ref(), vars).filter(|gap| *gap > 0.0));
         let sides: &[Num] = match &node.padding {
@@ -839,6 +848,12 @@ fn mistakes(seen: &Seen, installed: &dyn Fn(&str) -> Option<String>, out: &mut V
                 "The font \"{family}\" isn't installed on this computer, so its text is drawn in {shown}. Choose a family from the installed ones (get_guide lists them)."
             ));
         }
+    }
+    if !seen.unplugged.is_empty() {
+        out.push(format!(
+            "Connectors that draw nothing: {}. Give each a `stroke`, and a `from` and `to` that name layers that exist.",
+            named(seen.unplugged.iter().map(String::as_str))
+        ));
     }
     let faint: Vec<String> = seen
         .texts
