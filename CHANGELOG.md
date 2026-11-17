@@ -9,6 +9,48 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-17
+
+More assistants, the web, and settings that do what they say.
+
+### Added
+
+- **The assistant can use the web.** Ask for real content or a real photo: it
+  searches the web, reads a page, finds photos that may be reused (with who
+  made them and under which licence) and puts one on a layer. Nothing needs a
+  key; with a free Pexels or Pixabay key there are more photos to choose
+  from. One switch in Settings → MCP turns the web off.
+- **Connect a provider with its key.** The cards in Settings → Agents now
+  open with everything but the key filled in: OpenAI, xAI, Google Gemini,
+  OpenRouter, DeepSeek, Moonshot, Kimi For Coding, Together, Fireworks, Z.AI,
+  Meta, OpenCode. Their models are loaded from the provider. Any service that
+  speaks the OpenAI chat API works as a custom provider, also a model server
+  on your own computer without a key.
+- **Agent programs on your computer.** Besides Claude Code, the chat can talk
+  to xAI's Grok, and to any other command-line agent you add with its
+  program and arguments. Settings → Agents shows which are installed.
+- **Three new settings pages.** Agent names: call the assistants what you
+  like. Chat: the default assistant, and instructions of your own for every
+  conversation. MCP: the lines to connect an outside AI client, ready to
+  copy, and a switch for every tool an AI model may use.
+
+### Changed
+
+- **Keep writing while the assistant works.** A message sent meanwhile waits
+  its turn and is sent when the assistant is done; with "Always steer
+  messages" on, an API assistant reads it at its next step.
+- **The agent settings work.** Chat text size, the cursor's label (Agent, the
+  model's name, or none) and "Show agent input on dashboard" now do what
+  they say.
+- **The settings window is smaller**, the size it has in the original, and
+  its forms have a way back.
+
+### Fixed
+
+- With a layer selected, the message bar left almost no room to type beside
+  a long assistant name.
+- The Anthropic card said "Connected automatically" although no key was set.
+
 ## [0.3.1] - 2026-11-16
 
 A new home screen.
@@ -124,7 +166,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/AsP3X/pencraft/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/AsP3X/pencraft/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/AsP3X/pencraft/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/AsP3X/pencraft/compare/v0.2.0...v0.2.1
