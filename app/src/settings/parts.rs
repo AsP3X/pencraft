@@ -396,7 +396,8 @@ pub(crate) fn choice_at(ui: &mut Ui, rect: Rect, salt: &str, value: &mut String,
     egui::Popup::menu(&response).gap(4.0).show(|ui| {
         ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
         let font = FontId::proportional(SIDEBAR_TEXT_SIZE - 1.0);
-        let margin = ui.spacing().menu_margin.sum().x;
+        // The list's frame adds its margin and its outline at both sides to what is inside it.
+        let margin = ui.spacing().menu_margin.sum().x + 2.0 * ui.visuals().window_stroke.width;
         let widest = options
             .iter()
             .map(|option| ui.painter().layout_no_wrap((*option).to_owned(), font.clone(), palette.foreground).size().x)
