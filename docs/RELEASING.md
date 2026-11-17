@@ -85,7 +85,7 @@ The look and the card are in `app/src/update.rs`, the download and the
 install in `app/src/update/install.rs`.
 
 1. **Look.** When the app starts, and then as often as Settings → General
-   → Updates → "How often" says (every 6 hours unless changed) while it
+   → Updates → "Check every" says (every 5 minutes unless changed) while it
    stays open, also when the window is left alone, a thread asks
    `https://api.github.com/repos/AsP3X/pencraft/releases/latest`. The window
    never waits for it. The request gives up after 20 seconds.

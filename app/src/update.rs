@@ -38,8 +38,14 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Where GitHub answers questions about repositories.
 const API: &str = "https://api.github.com";
 /// How often the app looks while it stays open, as the settings name the choices; the first is the default.
-pub const EVERY: [(&str, Duration); 3] =
-    [("Every 6 hours", Duration::from_hours(6)), ("Every hour", Duration::from_hours(1)), ("Every day", Duration::from_hours(24))];
+// Human: a look is one small question to GitHub, two when there is a newer release. GitHub answers 60 an hour
+// to one address without a sign-in, so every 5 minutes (at most 24 an hour) stays well inside that.
+pub const EVERY: [(&str, Duration); 4] = [
+    ("Every 5 minutes", Duration::from_mins(5)),
+    ("Every 15 minutes", Duration::from_mins(15)),
+    ("Every hour", Duration::from_hours(1)),
+    ("Every day", Duration::from_hours(24)),
+];
 /// The line in a release's notes that says nobody may stay on an older version.
 pub const REQUIRED: &str = "<!-- required -->";
 /// How many of the latest releases are looked through for a required one the user would otherwise skip over.
@@ -1361,7 +1367,9 @@ mod tests {
         assert!(updates.due(true, day, start + day));
         // How often is the user's choice: an hour is due where a day is not, and an unknown choice is the default.
         assert!(updates.due(true, every("Every hour"), start + Duration::from_hours(2)));
-        assert_eq!((every("Every day"), every("Every 6 hours"), every("whenever")), (day, Duration::from_hours(6), Duration::from_hours(6)));
+        // A choice that is no longer offered ("Every 6 hours", the default before) counts as the default.
+        assert_eq!((every("Every day"), every("Every 15 minutes")), (day, Duration::from_mins(15)));
+        assert_eq!((every("Every 6 hours"), every("whenever")), (Duration::from_mins(5), Duration::from_mins(5)));
         // A window left alone is woken when the next look is due, not before and not never.
         assert_eq!(updates.until_due(true, day, start + Duration::from_hours(23)), Some(Duration::from_hours(1)));
         assert_eq!(updates.until_due(true, day, start + Duration::from_hours(30)), Some(Duration::ZERO));

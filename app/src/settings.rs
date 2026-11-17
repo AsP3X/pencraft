@@ -1300,6 +1300,11 @@ fn general(ui: &mut Ui, prefs: &mut Prefs, facts: &Facts<'_>, palette: Palette, 
             "Asks GitHub when Pencraft starts and while it stays open. A version you answered with Later is offered again at the next look.";
         rows.row("Look for new versions automatically", Some(automatic), Lead::Nothing, |ui| switch(ui, &mut prefs.updates.check, palette));
         let choices: Vec<&str> = crate::update::EVERY.iter().map(|(name, _)| *name).collect();
+        // Human: a choice saved by an earlier version that is no longer offered counts as the default
+        // (`update::every`); the control then shows and saves that.
+        if !choices.contains(&prefs.updates.every.as_str()) {
+            choices[0].clone_into(&mut prefs.updates.every);
+        }
         rows.row("Check every", None, Lead::Nothing, |ui| choice(ui, "update-every", &mut prefs.updates.every, &choices, palette));
     });
 }
