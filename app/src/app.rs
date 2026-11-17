@@ -275,7 +275,7 @@ impl App {
             app.pose_sidebar(name);
         }
         if let Some(text) = launch.ask {
-            app.sidebar.chat_asks.push(crate::sidebar::ChatAsk::Send { shown: text.clone(), told: text, files: launch.attach });
+            app.sidebar.chat_asks.push(crate::sidebar::ChatAsk::Send { shown: text.clone(), pointed: Vec::new(), told: text, files: launch.attach });
         }
         cc.egui_ctx.set_visuals(theme::visuals(app.dark()));
         app
@@ -1351,7 +1351,7 @@ impl App {
         if let Some(sentence) = self.updates.tick(ctx, wanted, &skipped) {
             self.say(sentence);
         }
-        match self.updates.show(ctx, theme::palette(self.dark())) {
+        match self.updates.show(ctx, theme::palette(self.dark()), self.prefs.get().appearance.animations) {
             Some(crate::update::Answer::Get(address)) => {
                 if let Err(problem) = crate::update::open_in_browser(&address) {
                     self.say(problem);

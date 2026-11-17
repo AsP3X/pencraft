@@ -336,6 +336,14 @@ pub const UPDATE_BULLET: f32 = 14.0;
 pub const UPDATE_NOTE_GAP: f32 = 6.0;
 /// Thickness of the bar that shows how far a download is.
 pub const UPDATE_BAR: f32 = 6.0;
+/// How long the download bar takes to glide to where the download is, seconds: the download arrives in
+/// pieces, the bar moves evenly.
+pub const UPDATE_BAR_GLIDE: f32 = 0.35;
+/// How long the light takes to run once over the bar's filled part, and the piece of a bar without a known
+/// length once across, seconds.
+pub const UPDATE_BAR_SWEEP: f32 = 1.5;
+/// How much of the bar the travelling piece takes while the length isn't known, or the file is being checked.
+pub const UPDATE_BAR_PIECE: f32 = 0.3;
 
 /// Least space between the window's edges and the settings window, left and right, and top and bottom (the
 /// original's settings dialog: `w-[calc(100%-2rem)]`, `h-[min(695px,calc(100vh-120px))]`).

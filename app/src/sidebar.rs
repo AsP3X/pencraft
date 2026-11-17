@@ -123,6 +123,8 @@ pub struct Sidebar {
     draft: String,
     /// How far open the sidebar is held, for a picture of the animation's middle; `None` lets it run.
     frozen: Option<f32>,
+    /// What is selected in the document in front, as the message bar's chip shows it; a sent message carries it.
+    selected: Option<(&'static str, String)>,
     /// What the user asked of the chat this frame, for the app to take.
     pub chat_asks: Vec<ChatAsk>,
     /// The files attached to the message being written.
@@ -162,6 +164,8 @@ pub enum ChatAsk {
     Send {
         /// With each pasted layer as its name.
         shown: String,
+        /// The layers it points at: what was selected, and where each pasted layer's name stands in `shown`.
+        pointed: Vec<crate::chat::Pointed>,
         /// With each pasted layer as its id and name.
         told: String,
         /// The files attached to it.
@@ -188,6 +192,7 @@ impl Default for Sidebar {
             wide: false,
             draft: String::new(),
             frozen: None,
+            selected: None,
             chat_asks: Vec::new(),
             attached: Vec::new(),
             chips: Vec::new(),
@@ -327,6 +332,7 @@ impl Sidebar {
         // Human: folded away, the bar stands in the middle of `area`, with or without a selection. While a
         // layer is selected its chip takes the place of the long hint, so the bar is narrower.
         let chip = selection_chip(editor);
+        self.selected.clone_from(&chip);
         // Attached files take room too: with them the bar keeps its full width.
         // Human: the narrower bar still has to leave room to type beside the chip and the assistant's name, which
         // can be long; and once something is typed, or the field is being typed in, the bar takes its full width.
@@ -749,15 +755,19 @@ impl Sidebar {
     /// Sends what is typed: the app takes it. The sidebar stays as it is, folded away or open; folded away, the
     /// line over the message bar says what the assistant is doing.
     fn submit(&mut self) {
-        let text = self.draft.trim().to_owned();
+        // Human: the spaces typed around the message go; a layer's chip at its start or end stays whole.
+        let text = crate::chips::trimmed(&self.draft).to_owned();
         // Human: files alone can be sent too; the assistant is then asked to look at them.
         if text.is_empty() && self.attached.is_empty() {
             return;
         }
-        // Human: the panel shows a pasted layer by its name; the assistant reads its id with the name.
-        let shown = crate::chips::written(&text, &self.chips, |chip| chip.label.clone());
+        // Human: the panel shows a pasted layer as a chip with its name, and what was selected as a chip over
+        // the message; the assistant reads each pasted layer's id with the name, and is told the selection.
+        let (shown, pasted) = crate::chips::shown(&text, &self.chips);
         let told = crate::chips::written(&text, &self.chips, Chip::told);
-        self.chat_asks.push(ChatAsk::Send { shown, told, files: std::mem::take(&mut self.attached) });
+        let selected = self.selected.iter().map(|(icon, name)| crate::chat::Pointed { at: None, icon, name: name.clone() });
+        let pointed = selected.chain(pasted).collect();
+        self.chat_asks.push(ChatAsk::Send { shown, pointed, told, files: std::mem::take(&mut self.attached) });
         self.chips.clear();
         self.draft.clear();
         self.view = View::Chat;
@@ -980,8 +990,14 @@ fn bar_controls(chip: f32, assistant: f32) -> f32 {
     20.0 + (22.0 + 12.0) + (chip + 31.0 + 12.0) + (22.0 + 8.0) + (assistant + 16.0 + 8.0) + (SEND_BUTTON + 8.0)
 }
 
+/// How wide the chip of a layer called `name` is.
+pub fn layer_chip_width(ui: &Ui, name: &str) -> f32 {
+    let font = FontId::proportional(SIDEBAR_TEXT_SIZE - 2.0);
+    ui.painter().layout_no_wrap(chip_text(name), font, Color32::WHITE).size().x + 31.0
+}
+
 /// The selected layer's chip in the message bar: its kind and name in a thin outline.
-fn layer_chip(ui: &mut Ui, icon: &'static str, name: &str, palette: Palette) {
+pub fn layer_chip(ui: &mut Ui, icon: &'static str, name: &str, palette: Palette) {
     let font = FontId::proportional(SIDEBAR_TEXT_SIZE - 2.0);
     let name = chip_text(name);
     let words = ui.painter().layout_no_wrap(name.clone(), font.clone(), palette.muted).size().x;
@@ -1256,7 +1272,7 @@ mod tests {
 
     #[test]
     fn return_sends_with_or_without_ctrl_and_leaves_the_sidebar_as_it_is() {
-        let sent = |text: &str| vec![ChatAsk::Send { shown: text.to_owned(), told: text.to_owned(), files: Vec::new() }];
+        let sent = |text: &str| vec![ChatAsk::Send { shown: text.to_owned(), pointed: Vec::new(), told: text.to_owned(), files: Vec::new() }];
         let ctrl = egui::Modifiers::CTRL | egui::Modifiers::COMMAND;
         // From the bar of the folded sidebar: sent, and the sidebar stays folded away.
         assert_eq!(typed_then_return(false, egui::Modifiers::NONE), (sent("hi"), String::new(), true));

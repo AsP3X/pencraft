@@ -9,6 +9,21 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Changed
+
+- **Sent messages show the layers they point at.** A layer pasted into a
+  message is a chip in the sent message too, as it was while you wrote it,
+  and what was selected when you sent it stands over the message.
+- **The update's download bar moves evenly.** It glides to where the
+  download is instead of jumping, a light runs over it while it works, and
+  it says how many megabytes have arrived. The card fits a narrow window.
+
+### Fixed
+
+- A layer pasted at the very start or end of a message lost its chip when
+  the message was sent: it showed as loose words, and the assistant was not
+  told which layer was meant.
+
 ## [0.3.2] - 2026-11-17
 
 More assistants, the web, and settings that do what they say.

@@ -374,7 +374,7 @@ fn heard(job: &Job<'_>, tell: &dyn Fn(Event) -> bool) -> Vec<Value> {
     for steer in taken {
         blocks.extend(steer.pictures);
         blocks.push(json!({ "type": "text", "text": steer.prompt }));
-        tell(Event::Heard(steer.message.shown));
+        tell(Event::Heard(steer.message));
     }
     blocks
 }
@@ -547,7 +547,7 @@ mod tests {
         assert!(offered["tools"].as_array().is_some_and(|tools| tools.iter().all(|tool| tool["name"] != "screenshot")));
         // A message sent meanwhile is taken once: its pictures, then its words, and the chat is told.
         let picture = json!({ "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "Zm9v" } });
-        let message = Waiting { shown: "Wider".to_owned(), told: "Wider".to_owned(), files: Vec::new() };
+        let message = Waiting { shown: "Wider".to_owned(), told: "Wider".to_owned(), files: Vec::new(), pointed: Vec::new() };
         lock(&inbox).push(Steer { message, prompt: "note\n\nWider".to_owned(), pictures: vec![picture.clone()] });
         let told = std::cell::RefCell::new(Vec::new());
         let tell = |event: Event| {
@@ -556,7 +556,7 @@ mod tests {
         };
         let job = job(false, "m");
         assert_eq!(heard(&job, &tell), vec![picture, json!({ "type": "text", "text": "note\n\nWider" })]);
-        assert_eq!(*told.borrow(), vec![r#"Heard("Wider")"#]);
+        assert!(told.borrow().len() == 1 && told.borrow()[0].starts_with(r#"Heard(Waiting { shown: "Wider""#), "{:?}", told.borrow());
         assert!(heard(&job, &tell).is_empty() && lock(&inbox).is_empty());
     }
 

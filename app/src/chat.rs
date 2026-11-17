@@ -100,6 +100,18 @@ pub enum Role {
     Problem,
 }
 
+/// A layer a message of the user's points at, as the panel shows it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Pointed {
+    /// Where its name stands in the message's text (in bytes): a layer pasted into the sentence. `None` for
+    /// what was selected when the message was sent, which stands over the text.
+    pub at: Option<std::ops::Range<usize>>,
+    /// The icon of its kind, or a stack for several layers.
+    pub icon: &'static str,
+    /// Its name, or "3 layers".
+    pub name: String,
+}
+
 /// One line of the conversation as the panel shows it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Entry {
@@ -107,6 +119,8 @@ pub struct Entry {
     pub role: Role,
     /// What it says.
     pub text: String,
+    /// For a message of the user's: the layers it points at, shown as chips.
+    pub pointed: Vec<Pointed>,
     /// For a note on a tool call: the call it is about.
     pub step: Option<Step>,
 }
@@ -114,14 +128,14 @@ pub struct Entry {
 impl Entry {
     /// A line from `role` saying `text`.
     pub fn new(role: Role, text: impl Into<String>) -> Self {
-        Entry { role, text: text.into(), step: None }
+        Entry { role, text: text.into(), pointed: Vec::new(), step: None }
     }
 
     /// A note on a call of `tool` that is in `state`, saying the tool's usual words and `detail`.
     fn note(tool: &str, state: State, detail: &str) -> Self {
         let text = if state == State::Failed { steps::failed(tool) } else { steps::did(tool) };
         let step = Step { tool: tool.to_owned(), id: String::new(), detail: detail.to_owned(), state, times: 1, named: false };
-        Entry { role: Role::Step, text, step: Some(step) }
+        Entry { role: Role::Step, text, pointed: Vec::new(), step: Some(step) }
     }
 }
 
@@ -158,7 +172,7 @@ pub enum Event {
     /// The API conversation so far, to continue with the next message.
     History(Vec<Value>),
     /// The model was given this message of the user's, written while it worked.
-    Heard(String),
+    Heard(Waiting),
     /// Something went wrong; the run goes on or ends as it says next.
     Problem(String),
     /// The run is over.
@@ -290,6 +304,8 @@ pub struct Waiting {
     pub told: String,
     /// The files attached to it.
     pub files: Vec<PathBuf>,
+    /// The layers it points at, as the panel shows them.
+    pub pointed: Vec<Pointed>,
 }
 
 /// The address messages are posted to for a provider reached at `base`.
@@ -421,7 +437,14 @@ pub fn sample() -> Vec<Entry> {
         step.times = 2;
     }
     vec![
-        Entry::new(Role::User, "Make the middle card stand out a little more."),
+        // The user had the row of cards selected and pasted one card into the sentence.
+        Entry {
+            pointed: vec![
+                Pointed { at: None, icon: "frame", name: "Cards".to_owned() },
+                Pointed { at: Some(5..14), icon: "frame", name: "Interface".to_owned() },
+            ],
+            ..Entry::new(Role::User, "Make Interface stand out a little more.")
+        },
         Entry::new(Role::Assistant, "I'll look at the cards first."),
         Entry::note("get_state", State::Done, ""),
         read,
@@ -443,6 +466,8 @@ pub struct Ask {
     pub text: String,
     /// What the user wrote, as the panel shows it (a pasted layer as its name).
     pub shown: String,
+    /// The layers the message points at, which the panel shows as chips.
+    pub pointed: Vec<Pointed>,
     /// The files attached to the message.
     pub files: Vec<files::Attachment>,
     /// The app's note on the chat's document and the selection.
@@ -719,7 +744,7 @@ impl Chat {
         }
         let prompt = self.prompt_for(&ask);
         let pictures = files::pictures(&ask.files);
-        self.entries.push(Entry::new(Role::User, ask.shown.clone()));
+        self.entries.push(Entry { pointed: ask.pointed.clone(), ..Entry::new(Role::User, ask.shown.clone()) });
         self.fresh = true;
         let (send, events) = channel();
         let stop = Arc::new(AtomicBool::new(false));
@@ -821,9 +846,9 @@ impl Chat {
                 Event::ToolEnd { id, failed } => self.finish(&id, failed),
                 Event::Session(session) => self.session = Some(session),
                 Event::History(history) => self.history = history,
-                Event::Heard(text) => {
+                Event::Heard(message) => {
                     self.fresh = true;
-                    self.entries.push(Entry::new(Role::User, text));
+                    self.entries.push(Entry { pointed: message.pointed, ..Entry::new(Role::User, message.shown) });
                 }
                 Event::Problem(text) => {
                     self.fresh = true;
@@ -980,7 +1005,7 @@ mod tests {
 
     #[test]
     fn a_message_written_meanwhile_is_steered_or_waits_its_turn() {
-        let message = |text: &str| Waiting { shown: text.to_owned(), told: text.to_owned(), files: Vec::new() };
+        let message = |text: &str| Waiting { shown: text.to_owned(), told: text.to_owned(), files: Vec::new(), pointed: Vec::new() };
         // Nothing at work: there is nobody to hand it to.
         assert_eq!(Chat::default().steer(message("a"), "note", &[]), Err(message("a")));
         // Human: the test holds the run's sending end, so the run goes on until the test ends it.
@@ -1001,10 +1026,11 @@ mod tests {
         // The run takes one message and says so; another, handed in too late, goes first among the waiting.
         lock(&inbox).clear();
         chat.steer(message("too late"), "note", &[]).unwrap();
-        send.send(Event::Heard("wider".to_owned())).unwrap();
+        let chip = Pointed { at: Some(0..5), icon: "frame", name: "wider".to_owned() };
+        send.send(Event::Heard(Waiting { pointed: vec![chip.clone()], ..message("wider") })).unwrap();
         send.send(Event::Done).unwrap();
         assert!(chat.poll() && !chat.running());
-        assert_eq!(chat.entries.last().map(|e| (e.role, e.text.as_str())), Some((Role::User, "wider")));
+        assert_eq!(chat.entries.last().map(|e| (e.role, e.text.as_str(), e.pointed.as_slice())), Some((Role::User, "wider", &[chip][..])));
         assert_eq!((chat.next_waiting(), chat.next_waiting(), chat.next_waiting()), (Some(message("too late")), Some(message("then export")), None));
         // Stopping sends none of them.
         let mut chat = with_events(Vec::new());

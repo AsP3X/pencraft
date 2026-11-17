@@ -15,7 +15,7 @@ use crate::theme::{
     self, CHAT_APPEAR, CHAT_BUBBLE_SHARE, CHAT_DOT, CHAT_DOT_GAP, CHAT_DOT_LIFT, CHAT_DOT_PACE, CHAT_GAP, CHAT_ICON_AT_WORK, CHAT_ICON_BREATH,
     CHAT_ICON_BURST, CHAT_ICON_FROM_OWN, CHAT_ICON_LEAST, CHAT_ICON_RING, CHAT_ICON_SETTLE, CHAT_ICON_SHAKE, CHAT_ICON_TAIL, CHAT_ICON_TURN,
     CHAT_NOTE_GAP, CHAT_NOTE_ICON, CHAT_RISE, CHAT_STATUS_HEIGHT, CHAT_STATUS_HOLD, CHAT_STATUS_MORPH, CHAT_STATUS_PAD, CHAT_WRITE_CATCH_UP,
-    CHAT_WRITE_PACE, MESSAGE_TEXT_SIZE, PROBLEM, Palette, SIDEBAR_TEXT_SIZE,
+    CHAT_WRITE_PACE, CHIP_CORNER, CHIP_ICON, CHIP_ICON_AT, MESSAGE_TEXT_SIZE, PROBLEM, Palette, SIDEBAR_TEXT_SIZE,
 };
 
 /// What the panel remembers between frames to move things: it lives in egui's memory, not in the chat.
@@ -178,7 +178,11 @@ fn line(ui: &mut Ui, entry: &Entry, shown: &str, scale: f32, palette: Palette, c
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                 egui::Frame::new().fill(palette.hover).corner_radius(10.0).inner_margin(egui::Margin::symmetric(11, 7)).show(ui, |ui| {
                     ui.set_max_width(width);
-                    ui.add(words(shown, palette.foreground));
+                    if entry.pointed.is_empty() {
+                        ui.add(words(shown, palette.foreground));
+                    } else {
+                        pointing(ui, entry, scale, palette);
+                    }
                 });
             });
         }
@@ -190,6 +194,78 @@ fn line(ui: &mut Ui, entry: &Entry, shown: &str, scale: f32, palette: Palette, c
             ui.add(words(shown, PROBLEM));
         }
     }
+}
+
+/// A message of the user's that points at layers: what was selected as chips over it, and each layer pasted
+/// into the sentence as a chip in its place, as the message box showed them.
+// Human: the chips are drawn the way the message box draws them (an outline, the kind's icon, the name), so
+// a message looks sent as it looked written.
+fn pointing(ui: &mut Ui, entry: &Entry, scale: f32, palette: Palette) {
+    /// Space between two chips of what was selected.
+    const BETWEEN: f32 = 4.0;
+    let font = FontId::proportional(MESSAGE_TEXT_SIZE * scale);
+    let plain = TextFormat { font_id: font.clone(), color: palette.foreground, ..TextFormat::default() };
+    let tinted = TextFormat { font_id: font, color: palette.muted, background: palette.island, ..TextFormat::default() };
+    let mut pasted: Vec<(&std::ops::Range<usize>, &'static str)> = entry
+        .pointed
+        .iter()
+        .filter_map(|layer| layer.at.as_ref().map(|at| (at, layer.icon)))
+        .filter(|(at, _)| entry.text.get(at.start..at.end).is_some())
+        .collect();
+    pasted.sort_by_key(|(at, _)| at.start);
+    let mut job = LayoutJob::default();
+    // Where each chip is in what is laid out, in letters, with its icon.
+    let mut chips = Vec::new();
+    let (mut from, mut letters) = (0, 0);
+    for (at, icon) in pasted {
+        if at.start < from {
+            continue;
+        }
+        let before = &entry.text[from..at.start];
+        job.append(before, 0.0, plain.clone());
+        letters += before.chars().count();
+        let chip = crate::chips::padded(&entry.text[at.start..at.end]);
+        job.append(&chip, 0.0, tinted.clone());
+        chips.push((letters, letters + chip.chars().count(), icon));
+        letters += chip.chars().count();
+        from = at.end;
+    }
+    job.append(&entry.text[from..], 0.0, plain);
+    job.wrap.max_width = ui.available_width();
+    let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
+    let selected: Vec<&crate::chat::Pointed> = entry.pointed.iter().filter(|layer| layer.at.is_none()).collect();
+    // Human: the bubble is as wide as what is in it (the row of chips, or the longest line of the message),
+    // like a message without chips, and no wider than a message may be.
+    let row: f32 = selected.iter().map(|layer| crate::sidebar::layer_chip_width(ui, &layer.name) + BETWEEN).sum::<f32>() - BETWEEN;
+    let words = if entry.text.is_empty() { 0.0 } else { galley.size().x };
+    let width = row.max(words).min(ui.available_width());
+    ui.allocate_ui_with_layout(vec2(width, 0.0), Layout::top_down(Align::Min), |ui| {
+        ui.set_max_width(width);
+        ui.spacing_mut().item_spacing = vec2(BETWEEN, 5.0);
+        if !selected.is_empty() {
+            ui.horizontal(|ui| {
+                for layer in &selected {
+                    crate::sidebar::layer_chip(ui, layer.icon, &layer.name, palette);
+                }
+            });
+        }
+        if entry.text.is_empty() {
+            return;
+        }
+        let (place, _) = ui.allocate_exact_size(galley.size(), Sense::hover());
+        ui.painter().galley(place.min, std::sync::Arc::clone(&galley), palette.foreground);
+        for (start, end, icon) in chips {
+            let (start, end) = (galley.pos_from_cursor(egui::text::CCursor::new(start)), galley.pos_from_cursor(egui::text::CCursor::new(end)));
+            // A chip too long for its line is left as tinted text.
+            if (start.top() - end.top()).abs() > 1.0 {
+                continue;
+            }
+            let chip = egui::Rect::from_min_max(start.left_top(), end.left_bottom()).translate(place.min.to_vec2());
+            ui.painter().rect_stroke(chip, CHIP_CORNER, egui::Stroke::new(1.0, palette.outline), egui::StrokeKind::Inside);
+            let icon_at = egui::Rect::from_center_size(pos2(chip.left() + CHIP_ICON_AT, chip.center().y), Vec2::splat(CHIP_ICON));
+            icons::paint(ui.painter(), icon_at, icon, palette.muted);
+        }
+    });
 }
 
 /// What a note says: what the tool does or did, and in quieter letters what the call was about and how often

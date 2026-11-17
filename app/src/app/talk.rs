@@ -199,7 +199,7 @@ impl App {
                     self.assistant_asked = None;
                     self.prefs.update(|prefs| prefs.agents.chat_model = id);
                 }
-                ChatAsk::Send { shown, told, files } => self.send_chat(shown, told, &files, ctx),
+                ChatAsk::Send { shown, pointed, told, files } => self.send_chat(shown, pointed, told, &files, ctx),
                 ChatAsk::Attach => self.ask_attach(),
             }
         }
@@ -270,16 +270,20 @@ impl App {
     /// at once or to the end of the waiting messages.
     // Human: "Always steer messages" hands a message to a working assistant that can take one (an API
     // assistant, between its steps); without it, or with Claude Code, the message waits for the run to end.
-    fn send_chat(&mut self, shown: String, text: String, paths: &[PathBuf], ctx: &egui::Context) {
+    fn send_chat(&mut self, shown: String, mut pointed: Vec<chat::Pointed>, text: String, paths: &[PathBuf], ctx: &egui::Context) {
         // Human: the panel shows the attached files by name under the message; a message of files alone asks
         // the assistant to look at them.
         let names: Vec<String> = paths.iter().map(|path| files::name(path)).collect();
         let (shown, told) = match (names.is_empty(), text.is_empty()) {
             (true, _) => (shown, text),
-            (false, true) => (format!("Attached: {}", names.join(", ")), "Look at the attached files.".to_owned()),
+            (false, true) => {
+                // No words of the user's are shown, so no pasted layer has a place; what was selected stays.
+                pointed.retain(|layer| layer.at.is_none());
+                (format!("Attached: {}", names.join(", ")), "Look at the attached files.".to_owned())
+            }
             (false, false) => (format!("{shown}\n\nAttached: {}", names.join(", ")), text),
         };
-        let message = Waiting { shown, told, files: paths.to_vec() };
+        let message = Waiting { shown, told, files: paths.to_vec(), pointed };
         let steer = self.prefs.get().agents.always_steer;
         let talk = self.shown_talk();
         let id = talk.id;
@@ -320,7 +324,7 @@ impl App {
 
     /// Starts the run that answers `message` in the chat `id` with the chosen assistant.
     fn start_chat(&mut self, id: u64, message: Waiting, ctx: &egui::Context) {
-        let Waiting { shown, told: text, files: paths } = message;
+        let Waiting { shown, told: text, files: paths, pointed } = message;
         let attached: Result<Vec<files::Attachment>, String> = paths.iter().map(|path| files::read(path)).collect();
         self.find_assistants();
         let refusal = match &attached {
@@ -342,6 +346,7 @@ impl App {
         let ask = Ask {
             text,
             shown,
+            pointed,
             files: attached,
             context: self.chat_context(doc),
             chat: id,

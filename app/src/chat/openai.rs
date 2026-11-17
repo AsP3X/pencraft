@@ -243,7 +243,7 @@ fn heard(job: &Job<'_>, history: &mut Vec<Value>, tell: &dyn Fn(Event) -> bool) 
     let any = !taken.is_empty();
     for steer in taken {
         history.push(user(&steer.prompt, &steer.pictures));
-        tell(Event::Heard(steer.message.shown));
+        tell(Event::Heard(steer.message));
     }
     any
 }
@@ -396,7 +396,7 @@ mod tests {
         assert_eq!(history[0]["content"], json!([{ "type": "text", "text": "Like this" }, { "type": "text", "text": NO_PICTURES }]));
         assert!(!without_pictures(&mut history));
         // A message sent meanwhile joins the conversation once.
-        let message = Waiting { shown: "Wider".to_owned(), told: "Wider".to_owned(), files: Vec::new() };
+        let message = Waiting { shown: "Wider".to_owned(), told: "Wider".to_owned(), files: Vec::new(), pointed: Vec::new() };
         lock(&inbox).push(api::Steer { message, prompt: "note\n\nWider".to_owned(), pictures: Vec::new() });
         assert!(heard(&job, &mut history, &|_| true) && !heard(&job, &mut history, &|_| true));
         assert_eq!(history[2], json!({ "role": "user", "content": "note\n\nWider" }));

@@ -4,6 +4,7 @@
 //! In the text a chip is a short run of characters (its token) that no one types by accident; the message box
 //! draws it as a chip. Sent to the assistant, the token becomes the layers' ids and names.
 
+use crate::chat::Pointed;
 use crate::editor::Editor;
 
 /// The space before a chip's name, where its icon is drawn: this many no-break spaces.
@@ -59,10 +60,7 @@ pub fn chip(editor: &Editor, copied: &[String], text: &str) -> Option<Chip> {
         many => (format!("{} layers", many.len()), "layers"),
     };
     let short: String = if label.chars().count() > MOST_NAME { label.chars().take(MOST_NAME - 1).chain(['…']).collect() } else { label };
-    let token_for = |shown: &str| {
-        let name: String = shown.chars().map(|c| if c.is_whitespace() { HARD_SPACE } else { c }).collect();
-        format!("{}{name}{HARD_SPACE}", HARD_SPACE.to_string().repeat(ICON_ROOM))
-    };
+    let token_for = padded;
     // The same layer pasted twice gets "Card", then "Card 2", so each chip is found again in the text.
     let (label, token) = (1..=MOST_ALIKE)
         .map(|n| if n == 1 { short.clone() } else { format!("{short} {n}") })
@@ -70,6 +68,44 @@ pub fn chip(editor: &Editor, copied: &[String], text: &str) -> Option<Chip> {
         .find(|(token, _)| !text.contains(token))
         .map(|(token, label)| (label, token))?;
     Some(Chip { token, label, icon, layers: found.into_iter().map(|(id, name, _)| (id.to_owned(), name)).collect() })
+}
+
+/// A chip's name as it stands in a line of text: room for its icon in front, and nothing a line can break at.
+#[must_use]
+pub fn padded(name: &str) -> String {
+    let name: String = name.chars().map(|c| if c.is_whitespace() { HARD_SPACE } else { c }).collect();
+    format!("{}{name}{HARD_SPACE}", HARD_SPACE.to_string().repeat(ICON_ROOM))
+}
+
+/// `text` without the spaces and line ends the user typed at its two ends. A chip there stays whole.
+// Human: a chip's token begins and ends with spaces of its own (no-break ones). Trimming those with the
+// rest cut a chip at the start or the end of a message in two: it was no chip any more, showed as loose
+// words, and the assistant was not told which layer it stood for.
+#[must_use]
+pub fn trimmed(text: &str) -> &str {
+    text.trim_matches(|letter: char| letter.is_whitespace() && letter != HARD_SPACE)
+}
+
+/// `text` as the panel shows it once it is sent: every chip as its name, with where each name stands.
+#[must_use]
+pub fn shown(text: &str, chips: &[Chip]) -> (String, Vec<Pointed>) {
+    let mut out = String::new();
+    let mut pointed = Vec::new();
+    let mut from = 0;
+    for (place, index) in places(text, chips) {
+        out.push_str(&text[from..place.start]);
+        let start = out.len();
+        out.push_str(&chips[index].label);
+        pointed.push(Pointed { at: Some(start..out.len()), icon: chips[index].icon, name: chips[index].label.clone() });
+        from = place.end;
+    }
+    out.push_str(&text[from..]);
+    // What is trimmed off the start moves every name that far to the left.
+    let lead = out.len() - out.trim_start().len();
+    for place in pointed.iter_mut().filter_map(|pointed| pointed.at.as_mut()) {
+        *place = place.start.saturating_sub(lead)..place.end.saturating_sub(lead);
+    }
+    (out.trim().to_owned(), pointed)
 }
 
 /// Where the chips are in `text`: each one's place (in bytes) and which chip it is, from left to right.
@@ -183,5 +219,29 @@ mod tests {
         let mut chips = vec![one];
         assert_eq!(settle(&before, &mut text, &mut chips), None);
         assert_eq!((text.as_str(), chips.len()), ("Make it wider", 0));
+    }
+
+    #[test]
+    fn a_chip_at_either_end_of_a_message_stays_a_chip() {
+        let editor = editor();
+        let chip = chip(&editor, &["card".to_owned()], "").unwrap();
+        // As the message box holds it: the chip, the space put after it, and spaces the user typed around.
+        for draft in [format!("  {} ", chip.token), format!("Make this wider {} \n", chip.token), format!(" {} wider", chip.token)] {
+            let text = trimmed(&draft);
+            assert!(text.contains(&chip.token), "{draft:?}");
+            let told = written(text, std::slice::from_ref(&chip), Chip::told);
+            assert!(told.contains("card (\"Card\")"), "{told:?}");
+        }
+        // Shown, the chip is its name, and the panel knows where that name stands.
+        let dot = super::chip(&editor, &["dot".to_owned()], &chip.token).unwrap();
+        let both = [chip.clone(), dot.clone()];
+        let (text, pointed) = shown(trimmed(&format!("  {} wider, then {} ", chip.token, dot.token)), &both);
+        assert_eq!(text, format!("Card wider, then {}", dot.label));
+        assert_eq!(pointed[0], Pointed { at: Some(0..4), icon: chip.icon, name: "Card".to_owned() });
+        assert_eq!(pointed[1].at.clone().map(|at| text[at].to_owned()), Some(dot.label.clone()));
+        let (text, pointed) = shown(trimmed(&format!("Make {} wider", chip.token)), std::slice::from_ref(&chip));
+        assert_eq!((text.as_str(), pointed[0].at.clone()), ("Make Card wider", Some(5..9)));
+        assert_eq!(&text[5..9], "Card");
+        assert_eq!(padded("Top bar").chars().filter(|letter| *letter == ' ').count(), 0);
     }
 }

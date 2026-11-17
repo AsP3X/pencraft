@@ -21,8 +21,9 @@ mod install;
 
 use crate::icons;
 use crate::theme::{
-    CHIP_RADIUS, CONTROL_RADIUS, ICON_SIZE, ISLAND_PADDING, ISLAND_RADIUS, Palette, SIDEBAR_TEXT_SIZE, UPDATE_BADGE, UPDATE_BAR, UPDATE_BULLET,
-    UPDATE_BUTTON_HEIGHT, UPDATE_BUTTON_PADDING, UPDATE_GAP, UPDATE_MARGIN, UPDATE_NOTE_GAP, UPDATE_NOTES_HEIGHT, UPDATE_TITLE_SIZE, UPDATE_WIDTH,
+    CHIP_RADIUS, CONTROL_RADIUS, ICON_SIZE, ISLAND_PADDING, ISLAND_RADIUS, Palette, SIDEBAR_TEXT_SIZE, UPDATE_BADGE, UPDATE_BAR, UPDATE_BAR_GLIDE,
+    UPDATE_BAR_PIECE, UPDATE_BAR_SWEEP, UPDATE_BULLET, UPDATE_BUTTON_HEIGHT, UPDATE_BUTTON_PADDING, UPDATE_GAP, UPDATE_MARGIN, UPDATE_NOTE_GAP,
+    UPDATE_NOTES_HEIGHT, UPDATE_TITLE_SIZE, UPDATE_WIDTH,
 };
 
 /// The GitHub repository whose releases are the updates.
@@ -476,7 +477,7 @@ impl Updates {
     }
 
     /// Draws the card while a newer version is on offer, and gives what the user chose in it.
-    pub fn show(&mut self, ctx: &egui::Context, palette: Palette) -> Option<Answer> {
+    pub fn show(&mut self, ctx: &egui::Context, palette: Palette, animate: bool) -> Option<Answer> {
         if let Stage::Arrived(prepared) = &self.stage {
             let prepared = prepared.clone();
             self.stage = Stage::Ready(prepared.clone());
@@ -494,7 +495,9 @@ impl Updates {
                     .corner_radius(ISLAND_RADIUS)
                     .inner_margin(ISLAND_PADDING)
                     .show(ui, |ui| {
-                        ui.set_width(UPDATE_WIDTH);
+                        // Human: in a narrow window the card takes what there is, and the bar with it.
+                        let room = ui.ctx().content_rect().width() - 2.0 * (UPDATE_MARGIN + ISLAND_PADDING);
+                        ui.set_width(UPDATE_WIDTH.min(room).max(0.0));
                         head(ui, &release.version, palette);
                         if !release.notes.is_empty() {
                             rule(ui, palette);
@@ -503,7 +506,7 @@ impl Updates {
                             });
                         }
                         rule(ui, palette);
-                        click = self.foot(ui, palette);
+                        click = self.foot(ui, palette, animate);
                     });
             });
         self.clicked(click?, ctx)
@@ -511,7 +514,7 @@ impl Updates {
 
     /// Draws the card's last part, which depends on how far taking the update is: the choices, the download's
     /// progress, or the restart. Gives what was clicked.
-    fn foot(&self, ui: &mut Ui, palette: Palette) -> Option<Click> {
+    fn foot(&self, ui: &mut Ui, palette: Palette, animate: bool) -> Option<Click> {
         let mut click = None;
         match &self.stage {
             Stage::Offered => {
@@ -525,19 +528,30 @@ impl Updates {
                 });
             }
             Stage::Fetching { progress, .. } => {
-                let part = progress.fraction();
+                let (done, total) = progress.sizes();
+                let arrived = progress.fraction();
+                // Human: the download arrives in pieces; the bar and the number glide to where it is, so
+                // they move evenly instead of in jumps. With animations off they show it as it is.
+                let part = if animate && total > 0 {
+                    ui.ctx().animate_value_with_time(egui::Id::unique("update-download"), arrived, UPDATE_BAR_GLIDE)
+                } else {
+                    arrived
+                };
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
-                        // Human: after the last piece the file is still checked, and on a Mac unpacked.
-                        let text = if part < 1.0 { format!("Downloading… {:.0} %", part * 100.0) } else { "Getting ready…".to_owned() };
-                        ui.label(RichText::new(text).size(SIDEBAR_TEXT_SIZE).color(palette.muted));
+                        ui.label(RichText::new(said(part, arrived, done, total)).size(SIDEBAR_TEXT_SIZE).color(palette.muted));
                     });
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         click = quiet_button(ui, "Cancel", palette).then_some(Click::Cancel);
                     });
                 });
-                bar(ui, part, palette);
-                ui.ctx().request_repaint_after(GLANCE);
+                // After the last piece the file is still checked, and on a Mac unpacked: no length to show.
+                bar(ui, (total > 0 && arrived < 1.0).then_some(part), palette, animate);
+                if animate {
+                    ui.ctx().request_repaint();
+                } else {
+                    ui.ctx().request_repaint_after(GLANCE);
+                }
             }
             Stage::Arrived(_) | Stage::Ready(_) => {
                 ui.label(RichText::new("Downloaded and checked. Pencraft restarts to install it.").size(SIDEBAR_TEXT_SIZE).color(palette.muted));
@@ -600,14 +614,67 @@ fn quiet_button(ui: &mut Ui, text: &str, palette: Palette) -> bool {
     response.clicked()
 }
 
-/// The bar that shows how far a download is, from 0 to 1.
-fn bar(ui: &mut Ui, part: f32, palette: Palette) {
+/// What the card says over the bar: how far the download is in per cent and megabytes, or that the file is
+/// being made ready. `part` is what the bar shows, `arrived` what has really come.
+fn said(part: f32, arrived: f32, done: u64, total: u64) -> String {
+    // Shown with one decimal: megabytes as tenths, worked out in whole numbers.
+    let megabytes = |bytes: u64| {
+        let tenths = bytes / 100_000;
+        format!("{}.{}", tenths / 10, tenths % 10)
+    };
+    if total == 0 {
+        return if done == 0 { "Downloading…".to_owned() } else { format!("Downloading… {} MB", megabytes(done)) };
+    }
+    // Human: after the last piece the file is still checked, and on a Mac unpacked.
+    if arrived >= 1.0 {
+        return "Getting ready…".to_owned();
+    }
+    format!("Downloading… {:.0} %  ·  {} of {} MB", part * 100.0, megabytes(done), megabytes(total))
+}
+
+/// Where something that goes back and forth once every two `period`s is at `time`: from 0 to 1 and back,
+/// slow at the ends.
+fn back_and_forth(time: f64, period: f32) -> f32 {
+    let turn = (time / f64::from(period)).rem_euclid(2.0);
+    #[expect(clippy::cast_possible_truncation, reason = "a number between 0 and 1")]
+    let along = if turn > 1.0 { 2.0 - turn } else { turn } as f32;
+    along * along * (3.0 - 2.0 * along)
+}
+
+/// The bar that shows how far a download is: `part` from 0 to 1, or `None` while there is no length to show
+/// (the size isn't known, or the file is being checked).
+// Human: a filled part that a light runs over says "at work" also while no new piece arrives; without a
+// length a piece of the bar travels back and forth. With animations off the bar stands still: filled as far
+// as the download is, or dimmed all over while there is no length.
+fn bar(ui: &mut Ui, part: Option<f32>, palette: Palette, animate: bool) {
     ui.add_space(UPDATE_NOTE_GAP);
     let (track, _) = ui.allocate_exact_size(vec2(ui.available_width(), UPDATE_BAR), Sense::hover());
-    ui.painter().rect_filled(track, UPDATE_BAR / 2.0, palette.input);
-    let done = Rect::from_min_size(track.min, vec2(track.width() * part.clamp(0.0, 1.0), UPDATE_BAR));
-    if done.width() >= UPDATE_BAR {
-        ui.painter().rect_filled(done, UPDATE_BAR / 2.0, palette.primary);
+    let round = UPDATE_BAR / 2.0;
+    ui.painter().rect_filled(track, round, palette.input);
+    let now = ui.input(|input| input.time);
+    let Some(part) = part else {
+        if animate {
+            let piece = track.width() * UPDATE_BAR_PIECE;
+            let left = track.left() + (track.width() - piece) * back_and_forth(now, UPDATE_BAR_SWEEP);
+            ui.painter().rect_filled(Rect::from_min_size(egui::pos2(left, track.top()), vec2(piece, UPDATE_BAR)), round, palette.primary);
+        } else {
+            ui.painter().rect_filled(track, round, palette.primary.gamma_multiply(0.45));
+        }
+        return;
+    };
+    let done = Rect::from_min_size(track.min, vec2((track.width() * part.clamp(0.0, 1.0)).max(UPDATE_BAR), UPDATE_BAR));
+    if part <= 0.0 {
+        return;
+    }
+    ui.painter().rect_filled(done, round, palette.primary);
+    if animate {
+        // The light: a soft band that runs from the bar's start to where the download is, again and again.
+        let band = (done.width() * 0.35).clamp(UPDATE_BAR * 2.0, 60.0);
+        #[expect(clippy::cast_possible_truncation, reason = "a number between 0 and 1")]
+        let along = (now / f64::from(UPDATE_BAR_SWEEP)).rem_euclid(1.0) as f32;
+        let left = done.left() - band + (done.width() + band) * along;
+        let light = Rect::from_min_size(egui::pos2(left, done.top()), vec2(band, UPDATE_BAR));
+        ui.painter().with_clip_rect(done.shrink2(vec2(round * 0.5, 0.0))).rect_filled(light, round, palette.primary_text.gamma_multiply(0.28));
     }
 }
 
@@ -805,7 +872,7 @@ mod tests {
         let prepared = Prepared::Setup(std::path::PathBuf::from("pencraft-setup.exe"));
         send.send(Ok(prepared.clone())).unwrap();
         assert_eq!(updates.fetched(), None);
-        assert_eq!(updates.show(&ctx, crate::theme::palette(true)), Some(Answer::Install(prepared.clone())));
+        assert_eq!(updates.show(&ctx, crate::theme::palette(true), false), Some(Answer::Install(prepared.clone())));
         // Human: when the user then keeps the app open, the card waits for a click and downloads nothing again.
         assert!(matches!(updates.stage, Stage::Ready(_)));
         assert!(updates.offered.is_some());
@@ -1023,7 +1090,7 @@ mod tests {
         let ctx = egui::Context::default();
         let draw = |updates: &mut Updates| {
             let mut answer = None;
-            let mut drawn = ctx.run_ui(egui::RawInput::default(), |ui| answer = updates.show(ui.ctx(), crate::theme::palette(true)));
+            let mut drawn = ctx.run_ui(egui::RawInput::default(), |ui| answer = updates.show(ui.ctx(), crate::theme::palette(true), true));
             // The font picture this frame made is for a screen; there is none here.
             drawn.textures_delta.clear();
             answer
@@ -1036,5 +1103,22 @@ mod tests {
         updates.stage = Stage::Ready(Prepared::Setup(std::path::PathBuf::from("pencraft-setup.exe")));
         assert_eq!(draw(&mut updates), None);
         drop(send);
+    }
+
+    #[test]
+    fn the_download_says_how_far_it_is_and_the_bar_moves_evenly() {
+        // Per cent as the bar shows them, megabytes as they have arrived.
+        assert_eq!(said(0.42, 0.5, 15_500_000, 31_000_000), "Downloading… 42 %  ·  15.5 of 31.0 MB");
+        assert_eq!(said(0.99, 1.0, 31_000_000, 31_000_000), "Getting ready…");
+        // A download whose size isn't known says what has come, and nothing before the first piece.
+        assert_eq!((said(0.0, 0.0, 0, 0), said(0.0, 0.0, 2_340_000, 0)), ("Downloading…".to_owned(), "Downloading… 2.3 MB".to_owned()));
+        // The travelling piece goes there and back, slow where it turns, and never leaves the bar.
+        let at = |time: f64| back_and_forth(time, 2.0);
+        assert_eq!((at(0.0), at(2.0), at(4.0)), (0.0, 1.0, 0.0));
+        assert!((at(1.0) - 0.5).abs() < 1e-6 && (at(3.0) - 0.5).abs() < 1e-6);
+        assert!(at(0.2) < 0.1 && at(1.8) > 0.9);
+        assert!((0..400).map(|step| at(f64::from(step) * 0.01)).all(|along| (0.0..=1.0).contains(&along)));
+        let progress = Progress::of(10);
+        assert_eq!(progress.sizes(), (0, 10));
     }
 }

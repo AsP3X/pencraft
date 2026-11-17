@@ -91,6 +91,12 @@ impl Progress {
         Progress { total: AtomicU64::new(total), ..Progress::default() }
     }
 
+    /// How many bytes have arrived, and how many there are in all (0 when that isn't known).
+    #[must_use]
+    pub fn sizes(&self) -> (u64, u64) {
+        (self.done.load(Ordering::Relaxed), self.total.load(Ordering::Relaxed))
+    }
+
     /// How much has arrived, from 0 to 1.
     #[must_use]
     pub fn fraction(&self) -> f32 {
