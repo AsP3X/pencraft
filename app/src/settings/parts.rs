@@ -8,9 +8,9 @@ use egui::{
 use crate::icons;
 use crate::render::BOLD_FAMILY;
 use crate::theme::{
-    CHECKING, CHIP_RADIUS, CONNECTED, FIELD_HEIGHT, Palette, SETTINGS_CARD_RADIUS, SETTINGS_GROUP_GAP, SETTINGS_LINK_ROW, SETTINGS_ROW,
-    SETTINGS_ROW_CONTROL_ROOM, SETTINGS_ROW_PAD, SETTINGS_SEGMENT, SETTINGS_TILE, SETTINGS_TILE_BUTTON, SETTINGS_TITLE_SIZE, SIDEBAR_TEXT_SIZE,
-    SWITCH_SIZE,
+    CHECKING, CHIP_RADIUS, CONNECTED, FIELD_HEIGHT, Palette, RAIL_MENU_ROW, SETTINGS_CARD_RADIUS, SETTINGS_GROUP_GAP, SETTINGS_LINK_ROW,
+    SETTINGS_ROW, SETTINGS_ROW_CONTROL_ROOM, SETTINGS_ROW_PAD, SETTINGS_SEGMENT, SETTINGS_TILE, SETTINGS_TILE_BUTTON, SETTINGS_TITLE_SIZE,
+    SIDEBAR_TEXT_SIZE, SWITCH_SIZE,
 };
 
 /// The bold face at `size`, for titles and headings.
@@ -391,13 +391,38 @@ pub(crate) fn choice_at(ui: &mut Ui, rect: Rect, salt: &str, value: &mut String,
         "chevrons-up-down",
         palette.muted,
     );
-    egui::Popup::menu(&response).show(|ui| {
+    // Human: the list looks like the app's other menus (the tool rail's, the assistant's): a tick before the one
+    // in use and a soft fill under the pointer, and it is at least as wide as the button it opens from.
+    egui::Popup::menu(&response).gap(4.0).show(|ui| {
+        ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
+        let font = FontId::proportional(SIDEBAR_TEXT_SIZE - 1.0);
+        let margin = ui.spacing().menu_margin.sum().x;
+        let widest = options
+            .iter()
+            .map(|option| ui.painter().layout_no_wrap((*option).to_owned(), font.clone(), palette.foreground).size().x)
+            .fold(0.0, f32::max);
+        // 28 before the text, where the tick goes, and 14 after it.
+        let width = (widest + 42.0).max(rect.width() - margin);
         for option in options {
-            if ui.selectable_label(value.as_str() == *option, *option).clicked() {
+            if choice_line(ui, width, value.as_str() == *option, option, &font, palette).clicked() {
                 (*option).clone_into(value);
+                ui.close();
             }
         }
     });
+}
+
+/// One line of a choice's list, `width` wide: a tick before the one in use, and its name.
+fn choice_line(ui: &mut Ui, width: f32, ticked: bool, label: &str, font: &FontId, palette: Palette) -> Response {
+    let (row, response) = ui.allocate_exact_size(vec2(width, RAIL_MENU_ROW), Sense::click());
+    if response.hovered() {
+        ui.painter().rect_filled(row, 6.0, palette.hover);
+    }
+    if ticked {
+        icons::paint(ui.painter(), Rect::from_center_size(pos2(row.left() + 14.0, row.center().y), Vec2::splat(11.0)), "check", palette.muted);
+    }
+    ui.painter().text(pos2(row.left() + 28.0, row.center().y), Align2::LEFT_CENTER, label, font.clone(), palette.foreground);
+    response
 }
 
 /// How much a button stands out.
