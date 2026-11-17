@@ -101,6 +101,10 @@ pub struct Launch {
     pub no_update_check: bool,
     /// `--update-prompt`: the picture shows the card that offers a newer version.
     pub update_prompt: bool,
+    /// `--update-required`: the picture shows the card of a made-up update that is required.
+    pub update_required: bool,
+    /// `--update-collapsed`: the picture shows the card folded away into its pill.
+    pub update_collapsed: bool,
     /// `--update-download [PERCENT]`: the card shows a made-up download that has come this far. In a picture
     /// it stands still; in an ordinary run it goes on by itself, to watch the bar move. Nothing is fetched.
     pub update_download: Option<u8>,
@@ -240,9 +244,11 @@ impl App {
         };
         app.find_assistants();
         // Human: a made-up download stands still in a picture and goes on by itself in a window.
-        if let Some(percent) = launch.update_download {
-            app.updates.pose_download(percent, launch.screenshot.is_none());
-        }
+        app.updates.pose_as(
+            launch.update_download.map(|percent| (percent, launch.screenshot.is_none())),
+            launch.update_required,
+            launch.update_collapsed,
+        );
         if launch.screenshot.is_none() {
             app.start_link(&cc.egui_ctx);
             app.install_menus(&cc.egui_ctx);
@@ -1356,10 +1362,18 @@ impl App {
     /// Takes in what a look for a newer version found, and shows the card that offers one.
     fn update_prompt(&mut self, ctx: &egui::Context) {
         let (wanted, skipped) = (self.prefs.get().updates.check, self.prefs.get().updates.skipped.clone());
-        if let Some(sentence) = self.updates.tick(ctx, wanted, &skipped) {
+        let every = crate::update::every(&self.prefs.get().updates.every);
+        if let Some(sentence) = self.updates.tick(ctx, wanted, every, &skipped) {
             self.say(sentence);
         }
+        // Human: while the question about unsaved designs is open, the card waits: a required update covers the
+        // window, and quitting from it asks that question first.
+        if self.prompt.is_some() {
+            return;
+        }
         match self.updates.show(ctx, theme::palette(self.dark()), self.prefs.get().appearance.animations) {
+            // Human: the usual way out, so every unsaved design is asked about first.
+            Some(crate::update::Answer::Quit) => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             Some(crate::update::Answer::Get(address)) => {
                 if let Err(problem) = crate::update::open_in_browser(&address) {
                     self.say(problem);

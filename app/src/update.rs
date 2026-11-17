@@ -1,10 +1,15 @@
 //! Looks for a newer Pencraft among the releases on GitHub and asks the user whether they want it.
 //!
-//! The look runs on a thread of its own when the app starts and once a day after that. It never holds the
-//! window up, and when GitHub can't be reached nothing is shown: the next look is a day later. A newer version
-//! is offered in a small card with what is new in it; the user takes it, skips that version, or decides later.
-//! Taking it downloads the installer, installs it and starts the new version ([`install`]); a copy that can't
-//! replace itself sends the user to the browser instead.
+//! The look runs on a thread of its own when the app starts and then as often as the settings say, also while
+//! the window is left alone. It never holds the window up, and when GitHub can't be reached nothing is shown:
+//! the next look comes in its turn. A newer version is offered in a small card with what is new in it; the
+//! user takes it, skips that version, decides later (the next look asks again), or folds the card away into a
+//! small pill. Taking it downloads the installer, installs it and starts the new version ([`install`]); a copy
+//! that can't replace itself sends the user to the browser instead.
+//!
+//! A release can be marked as required (a line `<!-- required -->` in its notes). Then everyone on an older
+//! version is asked in the middle of the window, and can't skip, postpone or fold away: only update, or quit.
+//! When the download fails, the user may go on for now, so nobody is locked out of their work by a network.
 
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel};
@@ -21,9 +26,9 @@ mod install;
 
 use crate::icons;
 use crate::theme::{
-    CHIP_RADIUS, CONTROL_RADIUS, ICON_SIZE, ISLAND_PADDING, ISLAND_RADIUS, Palette, SIDEBAR_TEXT_SIZE, UPDATE_BADGE, UPDATE_BAR, UPDATE_BAR_GLIDE,
-    UPDATE_BAR_PIECE, UPDATE_BAR_SWEEP, UPDATE_BULLET, UPDATE_BUTTON_HEIGHT, UPDATE_BUTTON_PADDING, UPDATE_GAP, UPDATE_MARGIN, UPDATE_NOTE_GAP,
-    UPDATE_NOTES_HEIGHT, UPDATE_TITLE_SIZE, UPDATE_WIDTH,
+    CHIP_RADIUS, CONTROL_RADIUS, DIALOG_BACKDROP, ICON_SIZE, ISLAND_PADDING, ISLAND_RADIUS, Palette, SIDEBAR_TEXT_SIZE, UPDATE_BADGE, UPDATE_BAR,
+    UPDATE_BAR_GLIDE, UPDATE_BAR_PIECE, UPDATE_BAR_SWEEP, UPDATE_BULLET, UPDATE_BUTTON_HEIGHT, UPDATE_BUTTON_PADDING, UPDATE_GAP, UPDATE_MARGIN,
+    UPDATE_NOTE_GAP, UPDATE_NOTES_HEIGHT, UPDATE_PILL, UPDATE_PILL_PADDING, UPDATE_TITLE_SIZE, UPDATE_WIDTH,
 };
 
 /// The GitHub repository whose releases are the updates.
@@ -32,8 +37,13 @@ pub const REPOSITORY: &str = "AsP3X/pencraft";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Where GitHub answers questions about repositories.
 const API: &str = "https://api.github.com";
-/// How long the app waits between two looks while it stays open.
-const EVERY: Duration = Duration::from_hours(24);
+/// How often the app looks while it stays open, as the settings name the choices; the first is the default.
+pub const EVERY: [(&str, Duration); 3] =
+    [("Every 6 hours", Duration::from_hours(6)), ("Every hour", Duration::from_hours(1)), ("Every day", Duration::from_hours(24))];
+/// The line in a release's notes that says nobody may stay on an older version.
+pub const REQUIRED: &str = "<!-- required -->";
+/// How many of the latest releases are looked through for a required one the user would otherwise skip over.
+const RECENT: usize = 30;
 /// How long one look may take before it gives up.
 const PATIENCE: Duration = Duration::from_secs(20);
 
@@ -66,6 +76,8 @@ pub struct Release {
     pub installer: Option<ReleaseFile>,
     /// The file with the checksums of the release's files, when the release has one.
     pub checksums: Option<ReleaseFile>,
+    /// Nobody may stay on an older version: this release, or one between it and the running app, says so.
+    pub required: bool,
 }
 
 /// What the user chose in the card.
@@ -77,6 +89,8 @@ pub enum Answer {
     Install(Prepared),
     /// Never offer this version again.
     Skip(String),
+    /// Quit the app: the answer to a required update the user doesn't take now.
+    Quit,
 }
 
 #[derive(Deserialize)]
@@ -88,6 +102,32 @@ struct ApiRelease {
     html_url: String,
     #[serde(default)]
     assets: Vec<ApiAsset>,
+    #[serde(default)]
+    draft: bool,
+    #[serde(default)]
+    prerelease: bool,
+}
+
+/// How long the app waits between two looks, for the settings' choice `name`.
+#[must_use]
+pub fn every(name: &str) -> Duration {
+    EVERY.iter().find(|(known, _)| *known == name).map_or(EVERY[0].1, |(_, every)| *every)
+}
+
+/// Whether notes say their release is required: the marker on a line of its own.
+fn says_required(notes: &str) -> bool {
+    notes.lines().any(|line| line.trim() == REQUIRED)
+}
+
+/// Whether one of the releases GitHub lists in `json` is required and newer than `current`: then the user has
+/// to update even when the latest release itself is an ordinary one.
+// Human: someone three versions behind must not get past a required release because a later one is optional.
+#[must_use]
+pub fn any_required(current: &str, json: &str) -> bool {
+    let Ok(releases) = serde_json::from_str::<Vec<ApiRelease>>(json) else { return false };
+    releases.iter().any(|release| {
+        !release.draft && !release.prerelease && is_newer(&release.tag_name, current) && release.body.as_deref().is_some_and(says_required)
+    })
 }
 
 #[derive(Deserialize)]
@@ -116,9 +156,13 @@ pub fn parse_release(json: &str) -> Result<Release, String> {
         let asset = api.assets.iter().find(|asset| asset.id != 0 && wanted(&asset.name))?;
         Some(ReleaseFile { id: asset.id, name: asset.name.clone(), size: asset.size })
     };
+    let body = api.body.unwrap_or_default();
+    // Human: the marker is for the app; the notes the user reads are without it.
+    let notes: Vec<&str> = body.lines().filter(|line| line.trim() != REQUIRED).collect();
     Ok(Release {
         version: api.tag_name.trim_start_matches(['v', 'V']).to_owned(),
-        notes: api.body.unwrap_or_default().trim().to_owned(),
+        notes: notes.join("\n").trim().to_owned(),
+        required: says_required(&body),
         download,
         installer: file(&is_installer_for_this_system),
         checksums: file(&|name| name == CHECKSUMS),
@@ -271,6 +315,7 @@ pub fn open_in_browser(address: &str) -> Result<(), String> {
 type Found = Result<Option<Release>, String>;
 
 /// The app's knowledge about a newer version, and the card that offers it.
+#[expect(clippy::struct_excessive_bools, reason = "each says one independent thing about the look or the card")]
 pub struct Updates {
     /// Whether this run may look at all: not a picture, a private or a background run.
     allowed: bool,
@@ -286,6 +331,10 @@ pub struct Updates {
     place: Option<Place>,
     /// How far taking the offered release is.
     stage: Stage,
+    /// The card is folded away into its pill.
+    collapsed: bool,
+    /// The last download of the offered release failed: a required update may then be put off.
+    failed: bool,
     /// The sending end of a made-up download's result (`--update-download`), kept so the card goes on
     /// waiting for it: nothing is ever sent.
     staged: Option<Sender<Result<Prepared, String>>>,
@@ -319,6 +368,12 @@ enum Click {
     Later,
     /// Stop the download.
     Cancel,
+    /// Fold the card away into its pill.
+    Collapse,
+    /// Open the card again from its pill.
+    Expand,
+    /// Quit the app instead of taking a required update.
+    Quit,
 }
 
 impl Updates {
@@ -328,7 +383,20 @@ impl Updates {
     pub fn new(allowed: bool, posed: bool) -> Updates {
         let (send, answers) = channel();
         let (place, stage) = (install::place(), Stage::Offered);
-        let mut updates = Updates { allowed, looked: None, looking: false, asked: false, offered: None, place, stage, staged: None, answers, send };
+        let mut updates = Updates {
+            allowed,
+            looked: None,
+            looking: false,
+            asked: false,
+            offered: None,
+            place,
+            stage,
+            collapsed: false,
+            failed: false,
+            staged: None,
+            answers,
+            send,
+        };
         if posed {
             updates.pose();
         }
@@ -338,8 +406,30 @@ impl Updates {
     /// Puts a made-up release into the card.
     fn pose(&mut self) {
         let notes = "A sharper canvas, and exports that keep their colours.\n\n### Added\n\n- **Export to PDF.** Every top-level layer becomes a page.\n- Find layers by the text they hold.\n\n### Fixed\n\n- Shadows no longer cut off at the edge of a frame.";
-        self.offered =
-            Some(Release { version: "9.1.0".to_owned(), notes: notes.to_owned(), download: releases_page(), installer: None, checksums: None });
+        self.offered = Some(Release {
+            version: "9.1.0".to_owned(),
+            notes: notes.to_owned(),
+            download: releases_page(),
+            installer: None,
+            checksums: None,
+            required: false,
+        });
+    }
+
+    /// Sets the card up as the command line asks, for a picture or to watch it: in the middle of a made-up
+    /// `download` (how far in per cent, and whether it goes on by itself: `--update-download`), as the card of
+    /// an update that is `required` (`--update-required`), and `collapsed` into its pill (`--update-collapsed`).
+    pub fn pose_as(&mut self, download: Option<(u8, bool)>, required: bool, collapsed: bool) {
+        if let Some((percent, live)) = download {
+            self.pose_download(percent, live);
+        }
+        if (required || collapsed) && self.offered.is_none() {
+            self.pose();
+        }
+        if let Some(release) = self.offered.as_mut().filter(|_| required) {
+            release.required = true;
+        }
+        self.collapsed = collapsed;
     }
 
     /// Puts the card into the middle of a made-up download that has come `percent` far (`--update-download`):
@@ -349,7 +439,7 @@ impl Updates {
     // Human: a real download only shows in an installed copy that is offered a newer version, which a
     // development build never is. This is the way to see the bar without one.
     // Agent: with `live` SPAWNS one thread, which ends when the card's Cancel is clicked or the app quits.
-    pub fn pose_download(&mut self, percent: u8, live: bool) {
+    fn pose_download(&mut self, percent: u8, live: bool) {
         self.pose();
         let progress = Arc::new(Progress::of(STAGED_SIZE));
         progress.arrive(STAGED_SIZE / 100 * u64::from(percent.min(100)));
@@ -364,9 +454,15 @@ impl Updates {
         }
     }
 
-    /// Whether it is time to look: at the start, and once a day while the app stays open.
-    fn due(&self, wanted: bool, now: Instant) -> bool {
-        self.allowed && wanted && !self.looking && self.looked.is_none_or(|last| now.duration_since(last) >= EVERY)
+    /// Whether it is time to look: at the start, and then once every `every` while the app stays open.
+    fn due(&self, wanted: bool, every: Duration, now: Instant) -> bool {
+        self.allowed && wanted && !self.looking && self.looked.is_none_or(|last| now.duration_since(last) >= every)
+    }
+
+    /// How long until the next look is due, counted from `now`; `None` when none is coming.
+    fn until_due(&self, wanted: bool, every: Duration, now: Instant) -> Option<Duration> {
+        let last = self.looked.filter(|_| self.allowed && wanted && !self.looking)?;
+        Some(every.saturating_sub(now.duration_since(last)))
     }
 
     /// Takes in what a look found. `skipped` is the version the user never wants offered. Gives a sentence for
@@ -376,8 +472,15 @@ impl Updates {
         let asked = std::mem::take(&mut self.asked);
         match found {
             Ok(Some(release)) => {
-                // Human: a download under way or done is not thrown away by the daily look.
-                if matches!(self.stage, Stage::Offered) && (asked || release.version != skipped) {
+                // Human: a download under way or done is not thrown away by a later look. A required release
+                // is offered whatever was skipped. A card the user folded away stays folded for the same
+                // release, and opens again for another one or one that has become required.
+                if matches!(self.stage, Stage::Offered) && (asked || release.required || release.version != skipped) {
+                    let same = self.offered.as_ref().is_some_and(|shown| shown.version == release.version && shown.required == release.required);
+                    if !same {
+                        self.collapsed = false;
+                        self.failed = false;
+                    }
                     self.offered = Some(release);
                 }
                 None
@@ -398,8 +501,19 @@ impl Updates {
         let (send, ctx) = (self.send.clone(), ctx.clone());
         let work = move || {
             let address = format!("{API}/repos/{REPOSITORY}/releases/latest");
+            let mut found = latest(VERSION, &|token| get(&address, token), token);
+            // Human: the newest release may be an ordinary one while a required one lies between it and this
+            // copy. The list of recent releases says so; when it can't be had, the update stays optional.
+            if let Ok(Some(release)) = &mut found
+                && !release.required
+            {
+                let list = format!("{API}/repos/{REPOSITORY}/releases?per_page={RECENT}");
+                let listed = |sign_in: Option<&str>| get(&list, sign_in).ok().filter(|(status, _)| *status == 200);
+                let answer = listed(None).or_else(|| token().and_then(|token| listed(Some(&token))));
+                release.required = answer.is_some_and(|(_, body)| any_required(VERSION, &body));
+            }
             // Human: the app may have quit meanwhile; then nobody waits for the answer.
-            let _ = send.send(latest(VERSION, &|token| get(&address, token), token));
+            let _ = send.send(found);
             ctx.request_repaint();
         };
         if let Err(error) = std::thread::Builder::new().name("update-check".to_owned()).spawn(work) {
@@ -416,15 +530,21 @@ impl Updates {
         self.asked = true;
     }
 
-    /// Once a frame: takes in a finished look and starts one when it is time. `wanted` is the setting,
-    /// `skipped` the version the user never wants offered. Gives a sentence to show the user, if there is one.
-    pub fn tick(&mut self, ctx: &egui::Context, wanted: bool, skipped: &str) -> Option<String> {
+    /// Once a frame: takes in a finished look and starts one when it is time. `wanted` and `every` are the
+    /// settings (whether to look, and how often), `skipped` the version the user never wants offered. Gives a
+    /// sentence to show the user, if there is one.
+    // Human: a window that is left alone draws no frames, and would never look again. So the next look's time
+    // is given to the window as the latest moment to draw the next frame.
+    pub fn tick(&mut self, ctx: &egui::Context, wanted: bool, every: Duration, skipped: &str) -> Option<String> {
         let mut say = None;
         while let Ok(found) = self.answers.try_recv() {
             say = self.take(found, skipped).or(say);
         }
-        if self.due(wanted, Instant::now()) {
+        let now = Instant::now();
+        if self.due(wanted, every, now) {
             self.look(ctx);
+        } else if let Some(wait) = self.until_due(wanted, every, now) {
+            ctx.request_repaint_after(wait.max(Duration::from_secs(1)));
         }
         self.fetched().or(say)
     }
@@ -469,6 +589,7 @@ impl Updates {
             Err(error) => {
                 log::info!("update download: {error}");
                 self.stage = Stage::Offered;
+                self.failed = true;
                 Some(format!("The update couldn't be downloaded. {error}"))
             }
         }
@@ -483,16 +604,34 @@ impl Updates {
                 self.fetch(ctx);
                 None
             }
+            // Human: a copy that can't replace itself sends the user to the browser. An ordinary offer is done
+            // with that; a required one stays, since the old version is still the one running.
+            (Click::Take, Stage::Offered) if self.offered.as_ref().is_some_and(|release| release.required) => {
+                self.offered.as_ref().map(|release| Answer::Get(release.download.clone()))
+            }
             (Click::Take, Stage::Offered) => self.offered.take().map(|release| Answer::Get(release.download)),
             (Click::Skip, _) => {
                 self.stage = Stage::Offered;
+                self.collapsed = false;
                 self.offered.take().map(|release| Answer::Skip(release.version))
             }
+            // Human: "Later" takes the card away until the next look, which asks again.
             (Click::Later, _) => {
                 self.offered = None;
                 self.stage = Stage::Offered;
+                self.collapsed = false;
+                self.failed = false;
                 None
             }
+            (Click::Collapse, _) => {
+                self.collapsed = true;
+                None
+            }
+            (Click::Expand, _) => {
+                self.collapsed = false;
+                None
+            }
+            (Click::Quit, _) => Some(Answer::Quit),
             (Click::Cancel, Stage::Fetching { progress, .. }) => {
                 progress.cancel();
                 self.stage = Stage::Offered;
@@ -509,46 +648,131 @@ impl Updates {
             return Some(Answer::Install(prepared));
         }
         let release = self.offered.as_ref()?;
+        let frame = egui::Frame::new()
+            .fill(palette.island)
+            .stroke(Stroke::new(1.0, palette.outline))
+            .corner_radius(ISLAND_RADIUS)
+            .inner_margin(ISLAND_PADDING);
         let mut click = None;
-        egui::Area::new(egui::Id::unique("update"))
-            .anchor(Align2::RIGHT_BOTTOM, vec2(-UPDATE_MARGIN, -UPDATE_MARGIN))
-            .order(egui::Order::Foreground)
-            .show(ctx, |ui| {
-                egui::Frame::new()
-                    .fill(palette.island)
-                    .stroke(Stroke::new(1.0, palette.outline))
-                    .corner_radius(ISLAND_RADIUS)
-                    .inner_margin(ISLAND_PADDING)
-                    .show(ui, |ui| {
-                        // Human: in a narrow window the card takes what there is, and the bar with it.
-                        let room = ui.ctx().content_rect().width() - 2.0 * (UPDATE_MARGIN + ISLAND_PADDING);
-                        ui.set_width(UPDATE_WIDTH.min(room).max(0.0));
-                        head(ui, &release.version, palette);
-                        if !release.notes.is_empty() {
-                            rule(ui, palette);
-                            egui::ScrollArea::vertical().max_height(UPDATE_NOTES_HEIGHT).auto_shrink([false, true]).show(ui, |ui| {
-                                notes(ui, &release.notes, palette);
-                            });
-                        }
-                        rule(ui, palette);
-                        click = self.foot(ui, palette, animate);
-                    });
-            });
+        if release.required {
+            // Human: a required update is asked in the middle of the window, over everything, and the rest
+            // waits for the answer. Escape and a click beside it change nothing.
+            let id = egui::Id::unique("update-required");
+            egui::Modal::new(id)
+                .area(egui::Modal::default_area(id).fade_in(false))
+                .frame(frame)
+                .backdrop_color(egui::Color32::from_black_alpha(DIALOG_BACKDROP))
+                .show(ctx, |ui| click = self.card(ui, release, palette, animate));
+        } else if self.collapsed {
+            egui::Area::new(egui::Id::unique("update-pill"))
+                .anchor(Align2::RIGHT_BOTTOM, vec2(-UPDATE_MARGIN, -UPDATE_MARGIN))
+                .order(egui::Order::Foreground)
+                .show(ctx, |ui| click = self.pill(ui, release, palette, animate));
+        } else {
+            egui::Area::new(egui::Id::unique("update"))
+                .anchor(Align2::RIGHT_BOTTOM, vec2(-UPDATE_MARGIN, -UPDATE_MARGIN))
+                .order(egui::Order::Foreground)
+                .show(ctx, |ui| {
+                    frame.show(ui, |ui| click = self.card(ui, release, palette, animate));
+                });
+        }
         self.clicked(click?, ctx)
+    }
+
+    /// Draws the card: its head, what is new, and its last part. Gives what was clicked.
+    fn card(&self, ui: &mut Ui, release: &Release, palette: Palette, animate: bool) -> Option<Click> {
+        // Human: in a narrow window the card takes what there is, and the bar with it.
+        let room = ui.ctx().content_rect().width() - 2.0 * (UPDATE_MARGIN + ISLAND_PADDING);
+        ui.set_width(UPDATE_WIDTH.min(room).max(0.0));
+        let mut click = head(ui, release, palette).then_some(Click::Collapse);
+        if !release.notes.is_empty() {
+            rule(ui, palette);
+            egui::ScrollArea::vertical().max_height(UPDATE_NOTES_HEIGHT).auto_shrink([false, true]).show(ui, |ui| {
+                notes(ui, &release.notes, palette);
+            });
+        }
+        rule(ui, palette);
+        click = self.foot(ui, palette, animate).or(click);
+        click
+    }
+
+    /// What the folded card says in a few words: the offer, how far the download is, or that it is ready.
+    fn in_short(&self, release: &Release) -> String {
+        match &self.stage {
+            Stage::Offered => format!("Pencraft {} is available", release.version),
+            Stage::Fetching { progress, .. } => {
+                let (done, total) = progress.sizes();
+                let arrived = progress.fraction();
+                if total == 0 || arrived >= 1.0 { said(arrived, arrived, done, total) } else { format!("Downloading… {:.0} %", arrived * 100.0) }
+            }
+            Stage::Arrived(_) | Stage::Ready(_) => "Restart to update".to_owned(),
+        }
+    }
+
+    /// Draws the folded card: a pill with an icon and a few words, and a thin bar under them while a download
+    /// runs. A click opens the card again.
+    // Human: the card covers a corner of the canvas. Folded away it still says that there is an update, and
+    // how far its download is, without being in the way.
+    fn pill(&self, ui: &mut Ui, release: &Release, palette: Palette, animate: bool) -> Option<Click> {
+        let text = self.in_short(release);
+        let words = ui.painter().layout_no_wrap(text.clone(), FontId::proportional(SIDEBAR_TEXT_SIZE), palette.foreground);
+        let size = vec2(UPDATE_PILL_PADDING * 2.0 + ICON_SIZE + UPDATE_NOTE_GAP + words.size().x, UPDATE_PILL);
+        let (pill, response) = ui.allocate_exact_size(size, Sense::click());
+        let on = response.hovered() || response.has_focus();
+        ui.painter().rect(
+            pill,
+            UPDATE_PILL / 2.0,
+            if on { palette.hover } else { palette.island },
+            Stroke::new(1.0, palette.outline),
+            egui::StrokeKind::Inside,
+        );
+        let icon = Rect::from_center_size(egui::pos2(pill.left() + UPDATE_PILL_PADDING + ICON_SIZE / 2.0, pill.center().y), Vec2::splat(ICON_SIZE));
+        icons::paint(ui.painter(), icon, "download", palette.foreground);
+        ui.painter().galley(egui::pos2(icon.right() + UPDATE_NOTE_GAP, pill.center().y - words.size().y / 2.0), words, palette.foreground);
+        if let Stage::Fetching { progress, .. } = &self.stage {
+            // The download's bar, as a hairline along the pill's lower edge.
+            let (_, total) = progress.sizes();
+            let line = Rect::from_min_max(
+                egui::pos2(pill.left() + UPDATE_PILL / 2.0, pill.bottom() - 3.0),
+                egui::pos2(pill.right() - UPDATE_PILL / 2.0, pill.bottom() - 1.0),
+            );
+            ui.painter().rect_filled(line, 1.0, palette.input);
+            let part = if total > 0 { progress.fraction() } else { 0.0 };
+            ui.painter().rect_filled(Rect::from_min_size(line.min, vec2(line.width() * part, line.height())), 1.0, palette.primary);
+            ui.ctx().request_repaint_after(if animate { GLANCE } else { GLANCE * 5 });
+        }
+        response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &text));
+        response.on_hover_text("Show the update").clicked().then_some(Click::Expand)
     }
 
     /// Draws the card's last part, which depends on how far taking the update is: the choices, the download's
     /// progress, or the restart. Gives what was clicked.
     fn foot(&self, ui: &mut Ui, palette: Palette, animate: bool) -> Option<Click> {
         let mut click = None;
+        let required = self.offered.as_ref().is_some_and(|release| release.required);
         match &self.stage {
             Stage::Offered => {
                 let take = if self.installable().is_some() { "Update and restart" } else { "Download" };
+                if self.failed {
+                    let why =
+                        if required { "The download didn't work. Try again, or go on for now." } else { "The download didn't work. Try again." };
+                    ui.label(RichText::new(why).size(SIDEBAR_TEXT_SIZE).color(palette.muted));
+                    ui.add_space(UPDATE_NOTE_GAP);
+                }
                 ui.horizontal(|ui| {
                     click = primary(ui, take, palette).then_some(Click::Take);
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        click = quiet_button(ui, "Skip this version", palette).then_some(Click::Skip).or(click);
-                        click = quiet_button(ui, "Later", palette).then_some(Click::Later).or(click);
+                        if required {
+                            // Human: a required update is taken or the app is left. Only when its download
+                            // failed may the user go on, so a network that is down locks nobody out.
+                            click = quiet_button(ui, "Quit Pencraft", palette).then_some(Click::Quit).or(click);
+                            if self.failed {
+                                click = quiet_button(ui, "Not now", palette).then_some(Click::Later).or(click);
+                            }
+                        } else {
+                            click = quiet_button(ui, "Skip this version", palette).then_some(Click::Skip).or(click);
+                            click = quiet_button(ui, "Later", palette).then_some(Click::Later).or(click);
+                        }
                     });
                 });
             }
@@ -584,7 +808,8 @@ impl Updates {
                 ui.horizontal(|ui| {
                     click = primary(ui, "Restart to update", palette).then_some(Click::Take);
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        click = quiet_button(ui, "Later", palette).then_some(Click::Later).or(click);
+                        let (other, does) = if required { ("Quit Pencraft", Click::Quit) } else { ("Later", Click::Later) };
+                        click = quiet_button(ui, other, palette).then_some(does).or(click);
                     });
                 });
             }
@@ -593,18 +818,33 @@ impl Updates {
     }
 }
 
-/// The card's head: an icon, the new version, and the one that is running.
-fn head(ui: &mut Ui, version: &str, palette: Palette) {
+/// The card's head: an icon, the new version and the one that is running, and for an update that isn't
+/// required the button that folds the card away. Gives whether that button was clicked.
+fn head(ui: &mut Ui, release: &Release, palette: Palette) -> bool {
+    let mut fold = false;
     ui.horizontal(|ui| {
         let (badge, _) = ui.allocate_exact_size(Vec2::splat(UPDATE_BADGE), Sense::hover());
         ui.painter().rect_filled(badge, CHIP_RADIUS, palette.hover);
         icons::paint(ui.painter(), Rect::from_center_size(badge.center(), Vec2::splat(ICON_SIZE)), "download", palette.foreground);
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
-            ui.label(RichText::new(format!("Pencraft {version} is available")).size(UPDATE_TITLE_SIZE).color(palette.foreground).strong());
-            ui.label(RichText::new(format!("You have {VERSION}")).size(SIDEBAR_TEXT_SIZE).color(palette.muted));
+            let (title, under) = if release.required {
+                (format!("Pencraft {} is required", release.version), format!("You have {VERSION}. This update has to be installed to go on."))
+            } else {
+                (format!("Pencraft {} is available", release.version), format!("You have {VERSION}"))
+            };
+            ui.label(RichText::new(title).size(UPDATE_TITLE_SIZE).color(palette.foreground).strong());
+            ui.label(RichText::new(under).size(SIDEBAR_TEXT_SIZE).color(palette.muted));
         });
+        if !release.required {
+            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                fold = crate::sidebar::icon_button(ui, "chevron-down", Vec2::splat(UPDATE_BUTTON_HEIGHT - 4.0), false, palette)
+                    .on_hover_text("Fold away")
+                    .clicked();
+            });
+        }
     });
+    fold
 }
 
 /// A thin line across the card, with room above and below.
@@ -842,7 +1082,14 @@ mod tests {
     }"#;
 
     fn release(version: &str) -> Release {
-        Release { version: version.to_owned(), notes: "- New things".to_owned(), download: releases_page(), installer: None, checksums: None }
+        Release {
+            version: version.to_owned(),
+            notes: "- New things".to_owned(),
+            download: releases_page(),
+            installer: None,
+            checksums: None,
+            required: false,
+        }
     }
 
     /// An offered release this copy could install itself, with a download under way that `send` ends.
@@ -892,7 +1139,17 @@ mod tests {
 
         // A release without files or notes still reads, and leads to the list of releases.
         let bare = parse_release(r#"{"tag_name": "v9.2.0"}"#).unwrap();
-        assert_eq!(bare, Release { version: "9.2.0".to_owned(), notes: String::new(), download: releases_page(), installer: None, checksums: None });
+        assert_eq!(
+            bare,
+            Release {
+                version: "9.2.0".to_owned(),
+                notes: String::new(),
+                download: releases_page(),
+                installer: None,
+                checksums: None,
+                required: false
+            }
+        );
         assert!(parse_release("not json").is_err());
     }
 
@@ -1070,20 +1327,116 @@ mod tests {
     }
 
     #[test]
-    fn the_app_looks_at_the_start_and_once_a_day_and_never_in_a_quiet_run() {
+    fn the_app_looks_at_the_start_and_then_every_so_often_and_never_in_a_quiet_run() {
         let start = Instant::now();
+        let day = Duration::from_hours(24);
         let mut updates = Updates::new(true, false);
-        assert!(updates.due(true, start));
+        assert!(updates.due(true, day, start));
+        // Before the first look there is nothing to wait for: it is due.
+        assert_eq!(updates.until_due(true, day, start), None);
         // The setting switches it off.
-        assert!(!updates.due(false, start));
+        assert!(!updates.due(false, day, start));
         updates.looked = Some(start);
         updates.looking = true;
-        assert!(!updates.due(true, start + EVERY));
+        assert!(!updates.due(true, day, start + day));
         updates.looking = false;
-        assert!(!updates.due(true, start + Duration::from_hours(23)));
-        assert!(updates.due(true, start + EVERY));
+        assert!(!updates.due(true, day, start + Duration::from_hours(23)));
+        assert!(updates.due(true, day, start + day));
+        // How often is the user's choice: an hour is due where a day is not, and an unknown choice is the default.
+        assert!(updates.due(true, every("Every hour"), start + Duration::from_hours(2)));
+        assert_eq!((every("Every day"), every("Every 6 hours"), every("whenever")), (day, Duration::from_hours(6), Duration::from_hours(6)));
+        // A window left alone is woken when the next look is due, not before and not never.
+        assert_eq!(updates.until_due(true, day, start + Duration::from_hours(23)), Some(Duration::from_hours(1)));
+        assert_eq!(updates.until_due(true, day, start + Duration::from_hours(30)), Some(Duration::ZERO));
+        assert_eq!(updates.until_due(false, day, start), None);
         // A picture, a private or a background run never looks.
-        assert!(!Updates::new(false, false).due(true, start));
+        let quiet = Updates::new(false, false);
+        assert!(!quiet.due(true, day, start) && quiet.until_due(true, day, start).is_none());
+    }
+
+    #[test]
+    fn a_required_release_is_found_in_its_notes_or_among_those_skipped_over() {
+        let json = |tag: &str, body: &str| {
+            format!(r#"{{"tag_name":"{tag}","html_url":"","body":{},"assets":[]}}"#, serde_json::Value::String(body.to_owned()))
+        };
+        // The marker on a line of its own says so, and is not part of what the user reads.
+        let marked = parse_release(&json("v9.2.0", "Safer saves.\n\n<!-- required -->\n\n- A fix")).unwrap();
+        assert!(marked.required);
+        assert_eq!(marked.notes, "Safer saves.\n\n\n- A fix");
+        let plain = parse_release(&json("v9.2.0", "We talk about <!-- required --> here, in a sentence.")).unwrap();
+        assert!(!plain.required && plain.notes.contains("required"));
+        // A newer release that is required counts though the newest is not; older ones, drafts and
+        // pre-releases don't.
+        let list = |entries: &[(&str, &str, &str)]| {
+            let all: Vec<String> = entries.iter().map(|(tag, body, more)| format!(r#"{{"tag_name":"{tag}","body":"{body}"{more}}}"#)).collect();
+            format!("[{}]", all.join(","))
+        };
+        assert!(any_required("9.0.0", &list(&[("v9.2.0", "- New", ""), ("v9.1.0", "<!-- required -->", ""), ("v9.0.0", "- Old", "")])));
+        assert!(!any_required("9.1.0", &list(&[("v9.2.0", "- New", ""), ("v9.1.0", "<!-- required -->", "")])));
+        assert!(!any_required(
+            "9.0.0",
+            &list(&[("v9.1.0", "<!-- required -->", r#","draft":true"#), ("v9.2.0-rc.1", "<!-- required -->", r#","prerelease":true"#)])
+        ));
+        assert!(!any_required("9.0.0", "not a list") && !any_required("9.0.0", "[]"));
+    }
+
+    #[test]
+    fn a_required_update_cant_be_skipped_or_put_off_unless_its_download_failed() {
+        let ctx = egui::Context::default();
+        let mut updates = Updates::new(true, false);
+        let required = Release { required: true, ..release("9.1.0") };
+        // It is offered though that version was skipped.
+        assert_eq!(updates.take(Ok(Some(required.clone())), "9.1.0"), None);
+        assert!(updates.offered.as_ref().is_some_and(|release| release.required));
+        // A copy that can't install it itself is sent to the browser, and the card stays.
+        updates.place = None;
+        assert_eq!(updates.clicked(Click::Take, &ctx), Some(Answer::Get(required.download.clone())));
+        assert!(updates.offered.is_some());
+        // Not taking it means leaving the app.
+        assert_eq!(updates.clicked(Click::Quit, &ctx), Some(Answer::Quit));
+        // A download that failed lets the user go on for now; the next look asks again.
+        let (send, result) = channel();
+        updates.stage = Stage::Fetching { progress: Arc::new(Progress::of(3)), result };
+        send.send(Err("offline".to_owned())).unwrap();
+        assert!(updates.fetched().is_some_and(|said| said.contains("offline")) && updates.failed);
+        assert_eq!(updates.clicked(Click::Later, &ctx), None);
+        assert!(updates.offered.is_none() && !updates.failed);
+        assert_eq!(updates.take(Ok(Some(required)), ""), None);
+        assert!(updates.offered.is_some());
+    }
+
+    #[test]
+    fn the_card_folds_away_and_opens_again_for_something_new() {
+        let ctx = egui::Context::default();
+        let mut updates = Updates::new(true, false);
+        assert_eq!(updates.take(Ok(Some(release("9.1.0"))), ""), None);
+        assert_eq!(updates.clicked(Click::Collapse, &ctx), None);
+        assert!(updates.collapsed && updates.offered.is_some());
+        // Folded, it says in a few words what there is.
+        let shown = updates.offered.clone().unwrap();
+        assert_eq!(updates.in_short(&shown), "Pencraft 9.1.0 is available");
+        // The next look finds the same release: the card stays folded.
+        assert_eq!(updates.take(Ok(Some(release("9.1.0"))), ""), None);
+        assert!(updates.collapsed);
+        // Another release, or the same one become required, opens it again.
+        assert_eq!(updates.take(Ok(Some(release("9.2.0"))), ""), None);
+        assert!(!updates.collapsed);
+        updates.collapsed = true;
+        assert_eq!(updates.take(Ok(Some(Release { required: true, ..release("9.2.0") })), ""), None);
+        assert!(!updates.collapsed);
+        // A click on the pill opens the card; "Later" takes it away until the next look, unfolded.
+        updates.collapsed = true;
+        assert_eq!(updates.clicked(Click::Expand, &ctx), None);
+        assert!(!updates.collapsed);
+        updates.collapsed = true;
+        assert_eq!(updates.clicked(Click::Later, &ctx), None);
+        assert!(updates.offered.is_none() && !updates.collapsed);
+        // Posed for a picture: folded, and required.
+        let mut posed = Updates::new(false, false);
+        posed.pose_as(Some((40, false)), true, true);
+        assert!(posed.collapsed && posed.offered.as_ref().is_some_and(|release| release.required));
+        let shown = posed.offered.clone().unwrap();
+        assert_eq!(posed.in_short(&shown), "Downloading… 40 %");
     }
 
     #[test]
@@ -1190,7 +1543,7 @@ mod tests {
     #[test]
     fn a_made_up_download_stands_where_it_is_asked_to_and_can_be_cancelled() {
         let mut updates = Updates::new(false, false);
-        updates.pose_download(42, false);
+        updates.pose_as(Some((42, false)), false, false);
         let Stage::Fetching { progress, .. } = &updates.stage else { panic!("the card isn't downloading") };
         assert_eq!(progress.sizes(), (13_020_000, STAGED_SIZE));
         assert!((progress.fraction() - 0.42).abs() < 0.001 && updates.offered.is_some());
@@ -1198,7 +1551,7 @@ mod tests {
         assert_eq!(updates.fetched(), None);
         assert!(matches!(updates.stage, Stage::Fetching { .. }));
         // At 100 the file is being made ready; more than that is 100.
-        updates.pose_download(250, false);
+        updates.pose_as(Some((250, false)), false, false);
         let Stage::Fetching { progress, .. } = &updates.stage else { panic!("the card isn't downloading") };
         assert_eq!(progress.sizes(), (STAGED_SIZE, STAGED_SIZE));
         // The pieces come unevenly, some not at all, and a whole download's worth in a reasonable time.

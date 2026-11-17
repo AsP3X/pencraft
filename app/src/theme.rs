@@ -336,6 +336,10 @@ pub const UPDATE_BULLET: f32 = 14.0;
 pub const UPDATE_NOTE_GAP: f32 = 6.0;
 /// Thickness of the bar that shows how far a download is.
 pub const UPDATE_BAR: f32 = 6.0;
+/// Height of the pill the update card folds away into; its ends are half circles.
+pub const UPDATE_PILL: f32 = 34.0;
+/// Space between the pill's ends and what is in it.
+pub const UPDATE_PILL_PADDING: f32 = 13.0;
 /// How long the download bar takes to glide to where the download is, seconds: the download arrives in
 /// pieces, the bar moves evenly.
 pub const UPDATE_BAR_GLIDE: f32 = 0.35;

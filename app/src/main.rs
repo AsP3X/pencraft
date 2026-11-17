@@ -1,6 +1,6 @@
 //! Pencraft: a canvas design editor for `.pen` files, written in Rust as a Craft app.
 //!
-//! `pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--update-download [PERCENT]] [--home] [--export FILE]]`
+//! `pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--update-required] [--update-collapsed] [--update-download [PERCENT]] [--home] [--export FILE]]`
 //! `pencraft [--background] [--private] [--no-update-check] [--update-download [PERCENT]] [--assistant ID] [--ask MESSAGE] [FILE.pen]...` opens the window behind what the user is doing.
 //! `pencraft mcp` connects an AI client to the running app (Model Context Protocol over standard input and output).
 
@@ -64,7 +64,7 @@ const MIN_WINDOW_SIZE: [f32; 2] = [560.0, 400.0];
 
 /// How many samples a pixel the window is drawn with (multisample anti-aliasing).
 const SAMPLES: u16 = 4;
-const USAGE: &str = "usage: pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--update-download [PERCENT]] [--home] [--export FILE]]\n       pencraft [--background] [--private] [--no-update-check] [--update-download [PERCENT]] [--assistant ID] [--ask MESSAGE] [FILE.pen]...\n       pencraft mcp
+const USAGE: &str = "usage: pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--update-required] [--update-collapsed] [--update-download [PERCENT]] [--home] [--export FILE]]\n       pencraft [--background] [--private] [--no-update-check] [--update-download [PERCENT]] [--assistant ID] [--ask MESSAGE] [FILE.pen]...\n       pencraft mcp
        pencraft skills [show NAME [FILE] | install [--project DIR | --dir DIR]]";
 
 fn main() -> ExitCode {
@@ -172,6 +172,8 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<app::Launch, String>
         no_update_check: false,
         update_prompt: false,
         update_download: None,
+        update_required: false,
+        update_collapsed: false,
         home: false,
     };
     let mut args = args.peekable();
@@ -197,6 +199,8 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<app::Launch, String>
             "--private" => launch.private = true,
             "--no-update-check" => launch.no_update_check = true,
             "--update-prompt" => launch.update_prompt = true,
+            "--update-required" => launch.update_required = true,
+            "--update-collapsed" => launch.update_collapsed = true,
             // Human: how far the made-up download has come may follow, in per cent; without it, 42.
             "--update-download" => {
                 let percent = args.next_if(|next| next.parse::<u8>().is_ok_and(|percent| percent <= 100)).and_then(|percent| percent.parse().ok());
@@ -255,5 +259,7 @@ mod tests {
         let named = parse(&["--update-download", "a.pen"]);
         assert_eq!((named.update_download, named.files.len()), (Some(42), 1));
         assert!(!parse(&["--update-download"]).looks_for_updates());
+        let posed = parse(&["--screenshot", "shot.png", "--update-required", "--update-collapsed"]);
+        assert!(posed.update_required && posed.update_collapsed);
     }
 }

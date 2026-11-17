@@ -13,6 +13,9 @@ and publishes it; installed copies of Pencraft then find it on their own.
    `## [1.2.3] - YYYY-MM-DD`, and a link for it at the end of the file. The
    section becomes the release notes, and it is what people read in the app
    before they download the update.
+   If nobody should stay on an older version (a fix for lost work, a file
+   format older copies would damage), add a line that says only
+   `<!-- required -->` to the section. See "Required updates" below.
 3. Commit, and push to `master`. Wait for CI to pass.
 4. Tag that commit and push the tag:
 
@@ -54,13 +57,36 @@ see it: the app asks GitHub for the latest full release. A tag like
 If a build fails, nothing is published. Fix the problem on `master`, then
 move the tag: `git tag -f v1.2.3`, `git push -f origin v1.2.3`.
 
+## Required updates
+
+Most updates are optional: the card offers them, and the user takes them,
+skips that version, says "Later" (the next look asks again) or folds the
+card away into a small pill.
+
+A release whose notes have the line `<!-- required -->` is required. Every
+copy older than it then asks in the middle of its window and waits for the
+answer: update, or quit. The version can't be skipped, put off or folded
+away. This also holds when a newer, ordinary release has come out since:
+the app looks through the last 30 releases for a required one it would
+otherwise skip over. The line is a comment, so GitHub doesn't show it, and
+the app leaves it out of the notes it shows.
+
+Two things keep a required update from locking anyone out of their work:
+quitting from the card asks about unsaved designs like any quit, and when
+the download fails the card offers "Not now", which lets the user go on
+until the next look.
+
+Use it rarely. It can't be taken back for a copy that has already seen it,
+other than by publishing a newer release.
+
 ## How updating works
 
 The look and the card are in `app/src/update.rs`, the download and the
 install in `app/src/update/install.rs`.
 
-1. **Look.** When the app starts, and once every 24 hours while it stays
-   open, a thread asks
+1. **Look.** When the app starts, and then as often as Settings → General
+   → Updates → "How often" says (every 6 hours unless changed) while it
+   stays open, also when the window is left alone, a thread asks
    `https://api.github.com/repos/AsP3X/pencraft/releases/latest`. The window
    never waits for it. The request gives up after 20 seconds.
 2. **Compare.** The tag is read as three numbers. If it is a higher version

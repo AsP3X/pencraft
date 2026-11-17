@@ -248,15 +248,17 @@ pub struct AgentName {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Updates {
-    /// Ask GitHub for a newer version when the app starts and once a day.
+    /// Ask GitHub for a newer version when the app starts and then every so often.
     pub check: bool,
+    /// How often, as the settings window names the choices ([`crate::update::EVERY`]).
+    pub every: String,
     /// The version the user chose not to be offered again; empty for none.
     pub skipped: String,
 }
 
 impl Default for Updates {
     fn default() -> Self {
-        Updates { check: true, skipped: String::new() }
+        Updates { check: true, every: crate::update::EVERY[0].0.to_owned(), skipped: String::new() }
     }
 }
 

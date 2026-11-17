@@ -9,6 +9,19 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Added
+
+- **Fold the update card away.** The arrow in its corner shrinks the card to
+  a small pill that still says there is an update, and how far its download
+  is. A click opens it again.
+- **Choose how often Pencraft looks for a new version**: every hour, every
+  6 hours or every day (Settings → General → Updates). It now also looks
+  while the window is left alone, and a version answered with "Later" is
+  offered again at the next look.
+- **Required updates.** A release can be marked as required. It then asks
+  in the middle of the window and can't be skipped or put off: update, or
+  quit. If its download fails you can go on for now.
+
 ## [0.3.3] - 2026-11-17
 
 Messages keep their layers, and a download bar that moves evenly.

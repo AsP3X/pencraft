@@ -802,8 +802,13 @@ fn general(ui: &mut Ui, prefs: &mut Prefs, palette: Palette) {
     row(ui, "Animations & effects", Some("Turn off to save GPU/CPU."), palette, |ui| switch(ui, &mut prefs.appearance.animations, palette));
 
     section(ui, "Updates");
-    let updates = format!("When Pencraft starts and once a day, ask GitHub whether there is a newer version than {}.", crate::update::VERSION);
+    let updates =
+        format!("When Pencraft starts and then every so often, ask GitHub whether there is a newer version than {}.", crate::update::VERSION);
     row(ui, "Look for new versions", Some(&updates), palette, |ui| switch(ui, &mut prefs.updates.check, palette));
+    divider(ui, palette);
+    let often = "Also while Pencraft stays open. A version you answered with Later is offered again at the next look.";
+    let choices: Vec<&str> = crate::update::EVERY.iter().map(|(name, _)| *name).collect();
+    row(ui, "How often", Some(often), palette, |ui| choice(ui, "update-every", &mut prefs.updates.every, &choices, palette));
 
     section(ui, "Canvas");
     let canvas = &mut prefs.canvas;
