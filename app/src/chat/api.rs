@@ -1,10 +1,12 @@
-//! Answering by calling a provider's Messages API directly, with the user's key.
+//! Answering by calling a provider's Messages API directly, with the user's key. What the two API engines
+//! share (the connection, running a tool, the user's messages sent meanwhile) is here too.
 //!
 //! One message can take many requests: the model answers with words and tool calls, the app runs the tools
 //! and sends their results back, until the model has nothing more to do. Answers are streamed, so the words
 //! appear as they are written.
 
 use std::io::{BufRead, BufReader};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Sender, channel};
 use std::time::Duration;
@@ -12,12 +14,13 @@ use std::time::Duration;
 use craft_ai_core::SecretString;
 use serde_json::{Value, json};
 
-use super::{Event, KeySource, MODELS};
+use super::{Event, KeySource, MODELS, Waiting};
+use crate::app::lock;
 use crate::link::Call;
 use crate::secrets::{Keychain, Vault};
 
 /// The API version the requests are written for.
-const VERSION: &str = "2026-10-21";
+pub(super) const VERSION: &str = "2026-10-21";
 /// The most the model may write in one answer. Streaming keeps a long answer from timing out.
 const MAX_TOKENS: u32 = 64_000;
 /// How hard the model thinks: enough for design work, quick enough for a chat.
@@ -27,16 +30,29 @@ const FALLBACK_BETA: &str = "server-side-fallback-2026-07-01";
 /// The models that take the `fallbacks` field.
 const WITH_FALLBACK: [&str; 3] = ["claude-opus-5-5", "claude-fable-5-2", "claude-sonnet-5-5"];
 /// The most requests one message may take, so a model going in circles ends.
-const MOST_ROUNDS: usize = 80;
+pub(super) const MOST_ROUNDS: usize = 80;
 /// How long a tool may take before the model is told it didn't answer.
 const TOOL_PATIENCE: Duration = Duration::from_secs(130);
 /// How often a request the provider couldn't take just now (too many requests, overloaded) is sent again.
 const RETRIES: u32 = 2;
 /// The name the model's cursor on the canvas gets.
-const CURSOR_NAME: &str = "Claude";
+const CURSOR_NAME: &str = "Assistant";
 
 /// The most output tokens of a single question's answer ([`once`]).
 const ONCE_TOKENS: u32 = 4000;
+
+/// A message of the user's for a run that is already going.
+pub struct Steer {
+    /// The message, to show once the model has it, or to send later if the run ends first.
+    pub message: Waiting,
+    /// What the model reads: the app's note and the message.
+    pub prompt: String,
+    /// The pictures attached to it, as content blocks.
+    pub pictures: Vec<Value>,
+}
+
+/// The messages handed to a run that it hasn't taken yet, oldest first.
+pub type Inbox = Mutex<Vec<Steer>>;
 
 /// One message to answer.
 pub struct Job<'a> {
@@ -48,6 +64,10 @@ pub struct Job<'a> {
     pub model: &'a str,
     /// Where the key is.
     pub key: &'a KeySource,
+    /// What the user wants kept to in every conversation (the settings' custom instructions).
+    pub instructions: &'a str,
+    /// The tools the user has turned off, which the model isn't offered.
+    pub off: &'a [String],
     /// The user's message, with the app's note before it.
     pub prompt: &'a str,
     /// The pictures attached to it, as content blocks.
@@ -60,11 +80,14 @@ pub struct Job<'a> {
     pub wake: &'a (dyn Fn() + Send + Sync),
     /// The chat's id in the app, which its tool calls carry.
     pub chat: u64,
+    /// Messages the user sends while the model works.
+    pub steering: &'a Inbox,
 }
 
 /// The key for `source`.
-fn key(source: &KeySource) -> Result<SecretString, String> {
+pub(super) fn key(source: &KeySource) -> Result<SecretString, String> {
     match source {
+        KeySource::None => Err("This provider has no API key; add one in Settings → Agents.".to_owned()),
         KeySource::Environment => std::env::var("ANTHROPIC_API_KEY")
             .ok()
             .filter(|key| !key.trim().is_empty())
@@ -79,8 +102,8 @@ fn key(source: &KeySource) -> Result<SecretString, String> {
 /// The tools as the API takes them.
 // Human: the tools' inputs are streamed as they are written (a whole board of layers is a long input), so
 // the app checks each input itself before running the tool.
-fn tools(official: bool) -> Value {
-    let all = crate::agent::tools();
+fn tools(official: bool, off: &[String]) -> Value {
+    let all = crate::agent::tools_without(off);
     all.as_array()
         .into_iter()
         .flatten()
@@ -103,8 +126,8 @@ fn request(job: &Job<'_>, history: &[Value]) -> Value {
         "model": job.model,
         "max_tokens": MAX_TOKENS,
         "stream": true,
-        "system": super::brief(true),
-        "tools": tools(job.official),
+        "system": super::brief(true, job.instructions),
+        "tools": tools(job.official, job.off),
         "messages": history,
     });
     if job.official {
@@ -197,13 +220,57 @@ impl Turn {
 }
 
 /// What the provider said went wrong, from an answer that isn't a stream.
-fn refusal_of(status: u16, body: &str) -> String {
+pub(super) fn refusal_of(status: u16, body: &str) -> String {
     let said = serde_json::from_str::<Value>(body).ok().and_then(|value| value.pointer("/error/message").and_then(Value::as_str).map(str::to_owned));
     let said = said.unwrap_or_else(|| body.chars().take(300).collect());
     match status {
         401 | 403 => format!("The provider didn't accept the API key ({status}): {said}"),
         404 => format!("The provider doesn't know this address or model (404): {said}"),
         _ => format!("The provider answered with an error ({status}): {said}"),
+    }
+}
+
+/// The connection requests are sent over.
+pub(super) fn agent() -> ureq::Agent {
+    ureq::Agent::config_builder()
+        .http_status_as_error(false)
+        .timeout_connect(Some(Duration::from_secs(20)))
+        .timeout_recv_response(Some(Duration::from_secs(300)))
+        .build()
+        .into()
+}
+
+/// Posts the JSON `text` to `url` and gives the answer once the provider has accepted the request.
+///
+/// # Errors
+/// The provider's status (0 when it wasn't reached) with a sentence for the user.
+// Agent: BLOCKS until the provider answers; sleeps between the tries of a request it couldn't take just now.
+pub(super) fn post(
+    agent: &ureq::Agent,
+    url: &str,
+    headers: &[(&str, &str)],
+    text: &str,
+    stop: &AtomicBool,
+) -> Result<ureq::http::Response<ureq::Body>, (u16, String)> {
+    let mut attempt = 0;
+    loop {
+        let mut request = agent.post(url).header("content-type", "application/json");
+        for (name, value) in headers {
+            request = request.header(*name, *value);
+        }
+        let mut response = request.send(text).map_err(|error| (0, format!("The provider couldn't be reached: {error}")))?;
+        let status = response.status().as_u16();
+        if status == 200 {
+            return Ok(response);
+        }
+        // Human: "too many requests" and "overloaded" pass; the same request is sent again after a moment.
+        if (status == 429 || status >= 500) && attempt < RETRIES && !stop.load(Ordering::Relaxed) {
+            attempt += 1;
+            std::thread::sleep(Duration::from_secs(u64::from(attempt) * 3));
+            continue;
+        }
+        let said = response.body_mut().read_to_string().unwrap_or_default();
+        return Err((status, refusal_of(status, &said)));
     }
 }
 
@@ -217,31 +284,11 @@ fn ask(
     stop: &AtomicBool,
     tell: &dyn Fn(Event) -> bool,
 ) -> Result<Turn, String> {
-    let text = body.to_string();
-    let mut attempt = 0;
-    let mut response = loop {
-        let mut request = agent
-            .post(job.endpoint)
-            .header("content-type", "application/json")
-            .header("anthropic-version", VERSION)
-            .header("x-api-key", key.expose());
-        if body.get("fallbacks").is_some() {
-            request = request.header("anthropic-beta", FALLBACK_BETA);
-        }
-        let mut response = request.send(text.as_str()).map_err(|error| format!("The provider couldn't be reached: {error}"))?;
-        let status = response.status().as_u16();
-        if status == 200 {
-            break response;
-        }
-        // Human: "too many requests" and "overloaded" pass; the same request is sent again after a moment.
-        if (status == 429 || status >= 500) && attempt < RETRIES && !stop.load(Ordering::Relaxed) {
-            attempt += 1;
-            std::thread::sleep(Duration::from_secs(u64::from(attempt) * 3));
-            continue;
-        }
-        let said = response.body_mut().read_to_string().unwrap_or_default();
-        return Err(refusal_of(status, &said));
-    };
+    let mut headers = vec![("anthropic-version", VERSION), ("x-api-key", key.expose())];
+    if body.get("fallbacks").is_some() {
+        headers.push(("anthropic-beta", FALLBACK_BETA));
+    }
+    let mut response = post(agent, job.endpoint, &headers, &body.to_string(), stop).map_err(|(_, said)| said)?;
     let mut turn = Turn::default();
     for line in BufReader::new(response.body_mut().as_reader()).lines() {
         if stop.load(Ordering::Relaxed) {
@@ -289,17 +336,21 @@ pub fn once(endpoint: &str, source: &KeySource, model: &str, system: &str, conte
     Ok(answer["content"].as_array().into_iter().flatten().filter_map(|block| block["text"].as_str()).collect::<Vec<_>>().join(""))
 }
 
-/// Runs one tool on the main thread and gives its result as the API takes it.
-fn use_tool(job: &Job<'_>, id: &str, name: &str, input: &Value) -> Value {
+/// Runs one tool on the main thread and gives what it answered: text and picture items, or what went wrong.
+pub(super) fn call_tool(job: &Job<'_>, name: &str, input: &Value) -> Result<Vec<Value>, String> {
     let (reply, answered) = channel();
     let call = Call { tool: name.to_owned(), arguments: input.clone(), client: CURSOR_NAME.to_owned(), chat: Some(job.chat), reply };
-    let result = if job.tools.send(call).is_ok() {
+    if job.tools.send(call).is_ok() {
         (job.wake)();
         answered.recv_timeout(TOOL_PATIENCE).unwrap_or_else(|_| Err("Pencraft didn't answer in time.".to_owned()))
     } else {
         Err("Pencraft is closing.".to_owned())
-    };
-    match result {
+    }
+}
+
+/// Runs one tool and gives its result as the API takes it.
+fn use_tool(job: &Job<'_>, id: &str, name: &str, input: &Value) -> Value {
+    match call_tool(job, name, input) {
         Ok(content) => {
             // A picture travels as base64 with its kind; everything else is text.
             let content: Vec<Value> = content
@@ -315,9 +366,24 @@ fn use_tool(job: &Job<'_>, id: &str, name: &str, input: &Value) -> Value {
     }
 }
 
+/// Takes the messages the user sent while the model worked, as content blocks for the next request, and tells
+/// the chat that the model has them now.
+fn heard(job: &Job<'_>, tell: &dyn Fn(Event) -> bool) -> Vec<Value> {
+    let taken = std::mem::take(&mut *lock(job.steering));
+    let mut blocks = Vec::new();
+    for steer in taken {
+        blocks.extend(steer.pictures);
+        blocks.push(json!({ "type": "text", "text": steer.prompt }));
+        tell(Event::Heard(steer.message.shown));
+    }
+    blocks
+}
+
 /// Answers `job`, telling the chat what the model says and does. Returns when the model is done.
 // Human: every tool result of one answer goes back in one message, and the model's answer goes back exactly
 // as it came. A stopped run leaves the conversation as it was before the message.
+// Human: a message the user sends meanwhile goes to the model with the next request: after the tool results
+// when it is using tools, or as a new message when it was about to finish.
 pub fn run(job: &Job<'_>, stop: &AtomicBool, tell: &dyn Fn(Event) -> bool) {
     let key = match key(job.key) {
         Ok(key) => key,
@@ -326,12 +392,7 @@ pub fn run(job: &Job<'_>, stop: &AtomicBool, tell: &dyn Fn(Event) -> bool) {
             return;
         }
     };
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .http_status_as_error(false)
-        .timeout_connect(Some(Duration::from_secs(20)))
-        .timeout_recv_response(Some(Duration::from_secs(300)))
-        .build()
-        .into();
+    let agent = agent();
     let mut history = job.history.clone();
     history.push(json!({ "role": "user", "content": super::files::content(job.prompt, job.pictures) }));
     for _ in 0..MOST_ROUNDS {
@@ -364,8 +425,9 @@ pub fn run(job: &Job<'_>, stop: &AtomicBool, tell: &dyn Fn(Event) -> bool) {
                     tell(Event::ToolEnd { id: id.to_owned(), failed: result["is_error"] == true });
                     results.push(result);
                 }
-                history.push(json!({ "role": "user", "content": results }));
                 tell(Event::Break);
+                results.extend(heard(job, tell));
+                history.push(json!({ "role": "user", "content": results }));
             }
             // The provider paused a long answer; asking again continues it.
             Some("pause_turn") => {}
@@ -377,7 +439,13 @@ pub fn run(job: &Job<'_>, stop: &AtomicBool, tell: &dyn Fn(Event) -> bool) {
                 tell(Event::Problem("The answer was cut off at its length limit. Ask for the rest, or for smaller steps.".to_owned()));
                 break;
             }
-            _ => break,
+            _ => {
+                let more = heard(job, tell);
+                if more.is_empty() {
+                    break;
+                }
+                history.push(json!({ "role": "user", "content": more }));
+            }
         }
     }
     tell(Event::History(history));
@@ -433,17 +501,21 @@ mod tests {
     #[test]
     fn requests_carry_anthropics_extras_only_to_anthropic() {
         let (tools, _calls) = channel();
+        let inbox = Inbox::default();
         let job = |official: bool, model: &'static str| Job {
             endpoint: "",
             official,
             model,
             key: &KeySource::Environment,
+            instructions: "",
+            off: &[],
             prompt: "",
             pictures: &[],
             history: Vec::new(),
             tools: &tools,
             wake: &|| {},
             chat: 1,
+            steering: &inbox,
         };
         let history = [json!({ "role": "user", "content": "hi" })];
         let own = request(&job(true, "claude-opus-5-5"), &history);
@@ -469,6 +541,23 @@ mod tests {
         let other = request(&job(false, "claude-opus-5-5"), &history);
         assert!(other.get("fallbacks").is_none() && other.get("output_config").is_none() && other.get("cache_control").is_none());
         assert!(other["tools"][0].get("eager_input_streaming").is_none());
+        let fewer = Job { off: &["screenshot".to_owned()], ..job(true, "claude-opus-5-5") };
+        let offered = request(&fewer, &history);
+        assert!(offered["tools"].as_array().is_some_and(|tools| tools.len() + 1 == own["tools"].as_array().map_or(0, Vec::len)));
+        assert!(offered["tools"].as_array().is_some_and(|tools| tools.iter().all(|tool| tool["name"] != "screenshot")));
+        // A message sent meanwhile is taken once: its pictures, then its words, and the chat is told.
+        let picture = json!({ "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "Zm9v" } });
+        let message = Waiting { shown: "Wider".to_owned(), told: "Wider".to_owned(), files: Vec::new() };
+        lock(&inbox).push(Steer { message, prompt: "note\n\nWider".to_owned(), pictures: vec![picture.clone()] });
+        let told = std::cell::RefCell::new(Vec::new());
+        let tell = |event: Event| {
+            told.borrow_mut().push(format!("{event:?}"));
+            true
+        };
+        let job = job(false, "m");
+        assert_eq!(heard(&job, &tell), vec![picture, json!({ "type": "text", "text": "note\n\nWider" })]);
+        assert_eq!(*told.borrow(), vec![r#"Heard("Wider")"#]);
+        assert!(heard(&job, &tell).is_empty() && lock(&inbox).is_empty());
     }
 
     #[test]

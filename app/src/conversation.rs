@@ -44,7 +44,7 @@ pub fn forget(ctx: &egui::Context, key: u64) {
 /// Draws the conversation of the chat `key`. `animate` is the user's "Animations & effects" setting.
 // Human: the newest line stays in view while the assistant writes, unless the user has scrolled up to read.
 // Agent: MAIN-THREAD; asks for another frame while something moves or the assistant is at work.
-pub fn show(ui: &mut Ui, chat: &Chat, key: u64, palette: Palette, animate: bool) {
+pub fn show(ui: &mut Ui, chat: &Chat, key: u64, scale: f32, palette: Palette, animate: bool) {
     let now = ui.input(|input| input.time);
     let step = ui.input(|input| input.stable_dt).min(0.1);
     let mut motion: Motion = ui.data(|data| data.get_temp(motion_id(key))).unwrap_or_default();
@@ -95,7 +95,7 @@ pub fn show(ui: &mut Ui, chat: &Chat, key: u64, palette: Palette, animate: bool)
             ui.add_space((1.0 - arrived) * CHAT_RISE);
             ui.scope(|ui| {
                 ui.set_opacity(arrived);
-                line(ui, still_at_work.as_ref().unwrap_or(entry), shown, palette, clock);
+                line(ui, still_at_work.as_ref().unwrap_or(entry), shown, scale, palette, clock);
             });
         }
         if chat.running() && !chat.entries.last().is_some_and(at_work) {
@@ -103,6 +103,23 @@ pub fn show(ui: &mut Ui, chat: &Chat, key: u64, palette: Palette, animate: bool)
             // Human: under its own words the dots alone say that more is coming.
             let label = if chat.entries.last().is_some_and(|entry| entry.role == Role::Assistant) { "" } else { "Thinking…" };
             waiting(ui, label, now, palette, animate);
+        }
+        // Human: a message written while the assistant works stands greyed at the end until the assistant
+        // has taken it: at its next step when it is steered, or when the run is over.
+        for (text, steered) in chat.pending() {
+            ui.add_space(CHAT_GAP);
+            let width = ui.available_width() * CHAT_BUBBLE_SHARE;
+            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                egui::Frame::new().fill(palette.hover).corner_radius(10.0).inner_margin(egui::Margin::symmetric(11, 7)).show(ui, |ui| {
+                    ui.set_max_width(width);
+                    ui.add(egui::Label::new(RichText::new(&text).size(MESSAGE_TEXT_SIZE * scale).color(palette.muted)).wrap());
+                });
+            });
+            ui.add_space(CHAT_NOTE_GAP);
+            let says = if steered { "Goes to the assistant at its next step" } else { "Queued until the assistant is done" };
+            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                ui.add(egui::Label::new(RichText::new(says).size((SIDEBAR_TEXT_SIZE - 1.0) * scale).color(palette.muted)).selectable(false));
+            });
         }
         ui.add_space(12.0);
     });
@@ -152,8 +169,9 @@ fn at_work(entry: &Entry) -> bool {
 }
 
 /// One line of the conversation; `shown` is as much of its text as shows.
-fn line(ui: &mut Ui, entry: &Entry, shown: &str, palette: Palette, clock: Option<Clock>) {
-    let words = |text: &str, color: Color32| egui::Label::new(RichText::new(text).size(MESSAGE_TEXT_SIZE).color(color)).wrap();
+/// `scale` is how much larger than small the text is (the settings' chat text size).
+fn line(ui: &mut Ui, entry: &Entry, shown: &str, scale: f32, palette: Palette, clock: Option<Clock>) {
+    let words = |text: &str, color: Color32| egui::Label::new(RichText::new(text).size(MESSAGE_TEXT_SIZE * scale).color(color)).wrap();
     match entry.role {
         Role::User => {
             let width = ui.available_width() * CHAT_BUBBLE_SHARE;
@@ -167,7 +185,7 @@ fn line(ui: &mut Ui, entry: &Entry, shown: &str, palette: Palette, clock: Option
         Role::Assistant => {
             ui.add(words(shown, palette.foreground));
         }
-        Role::Step => note(ui, entry, palette, clock),
+        Role::Step => note(ui, entry, scale, palette, clock),
         Role::Problem => {
             ui.add(words(shown, PROBLEM));
         }
@@ -176,8 +194,8 @@ fn line(ui: &mut Ui, entry: &Entry, shown: &str, palette: Palette, clock: Option
 
 /// What a note says: what the tool does or did, and in quieter letters what the call was about and how often
 /// it was made.
-fn note_words(entry: &Entry, palette: Palette) -> LayoutJob {
-    let font = FontId::proportional(SIDEBAR_TEXT_SIZE - 1.0);
+fn note_words(entry: &Entry, scale: f32, palette: Palette) -> LayoutJob {
+    let font = FontId::proportional((SIDEBAR_TEXT_SIZE - 1.0) * scale);
     let quiet = palette.muted.gamma_multiply(0.7);
     let mut text = LayoutJob::default();
     let mut say = |words: &str, color: Color32| text.append(words, 0.0, TextFormat { font_id: font.clone(), color, ..TextFormat::default() });
@@ -304,12 +322,12 @@ fn note_icon(ui: &Ui, slot: egui::Rect, entry: &Entry, palette: Palette, clock: 
 }
 
 /// A note on what the assistant did: its icon and its words on one line.
-fn note(ui: &mut Ui, entry: &Entry, palette: Palette, clock: Option<Clock>) {
+fn note(ui: &mut Ui, entry: &Entry, scale: f32, palette: Palette, clock: Option<Clock>) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 7.0;
         let (slot, _) = ui.allocate_exact_size(Vec2::splat(CHAT_NOTE_ICON), Sense::hover());
         note_icon(ui, slot, entry, palette, clock);
-        ui.add(egui::Label::new(note_words(entry, palette)).truncate().selectable(false));
+        ui.add(egui::Label::new(note_words(entry, scale, palette)).truncate().selectable(false));
     });
 }
 
@@ -443,7 +461,7 @@ const LEAD_GAP: f32 = 7.0;
 fn face_words(face: &Face, palette: Palette) -> LayoutJob {
     let quiet = |text: &str, color: Color32| LayoutJob::simple_singleline(text.to_owned(), FontId::proportional(SIDEBAR_TEXT_SIZE - 1.0), color);
     match face {
-        Face::Tool(entry) => note_words(entry, palette),
+        Face::Tool(entry) => note_words(entry, 1.0, palette),
         Face::Waiting(label) => quiet(label, palette.muted),
         Face::Answered => quiet("Done  ·  click to read the reply", palette.muted),
         Face::Problem(text) => quiet(text, PROBLEM),

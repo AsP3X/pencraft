@@ -10,9 +10,31 @@ its chat belongs to (the one in front when you send); what you have selected is 
 
 - **Claude Code** (when the `claude` program is installed): uses your Claude sign-in, no key needed. If it
   fails to answer, run `claude` once in a terminal to check that it is signed in.
-- **Anthropic API**: start Pencraft with `ANTHROPIC_API_KEY` set, or add a provider in Settings → Agents with
-  the API "Anthropic Messages", the address `https://api.anthropic.com` and your key (kept in the keychain).
-- **Another provider that speaks the Anthropic Messages API**: add it the same way with its own address.
+- **Grok** (when xAI's `grok` program is installed): uses your Grok sign-in (`grok login`). Grok takes its tool
+  servers from its own settings, so add Pencraft there once: Settings → Agents → Grok → "Add Pencraft to
+  Grok" (it runs `grok mcp add pencraft -- <pencraft> mcp`). Only that server's tools are approved for the
+  chat. Grok reaches Pencraft the way an outside client does, so it works on the design in front, and pictures
+  attached to a message are not passed on to it.
+- **Any other command-line agent** (Codex, Gemini CLI, OpenCode and the like): Settings → Agents → "Add
+  command-line agent". Give its program and the arguments that make it answer one prompt and exit, with
+  `{prompt}` where the message goes (for example `exec {prompt}`); what it prints is shown as its answer. Add
+  `pencraft mcp` to that program's own MCP servers (Settings → MCP has the lines) and allow it to use them
+  without asking. Such a program keeps no session here, so each message retells the conversation so far.
+- **Anthropic API**: start Pencraft with `ANTHROPIC_API_KEY` set, or click the Anthropic card in Settings →
+  Agents and enter your key (kept in the keychain).
+- **Another known provider** (OpenAI, xAI, Google Gemini, OpenRouter, DeepSeek, Moonshot, Kimi For Coding,
+  Together, Fireworks, Z.AI, Meta, OpenCode Zen and Go): click its card in Settings → Agents. Its address and
+  API type are filled in; enter your key, press "Load models from provider", click the models you want, and
+  save. The card then says "Ready in the chat" and its models are in the assistant menu.
+- **Any other provider**: "Add custom provider", with the API type "OpenAI Completions" (what most providers
+  and local model servers such as Ollama speak; a key is optional there) or "Anthropic Messages".
+
+Settings → Agents lists the agent programs under "Agents on this computer": whether each is installed, where
+it is (a path of your own if it isn't found by itself), which models it is offered with, and a switch to take
+it out of the chat's menu. Cursor and GitHub Copilot have no API another app can use with a key, so their
+cards can't be connected; the "OpenAI Responses" API type and the two sign-in buttons don't work yet either.
+A model that reads no pictures still works: the screenshots the assistant takes to check its work are then
+left out. Finished designs are reviewed only with Claude Code and providers that speak the Messages API.
 
 To point at layers in the middle of a sentence, copy them on the canvas (⌘C) and paste into the message
 box (⌘V): they become a chip, and the assistant works on exactly those layers.
@@ -31,6 +53,13 @@ and corners, with the status bar, the Dynamic Island or camera and the home indi
 or "no device" to get the bare screen.
 
 The send button turns into a stop button while the assistant works. "New" starts a new chat.
+
+You can keep writing while the assistant works. A message sent meanwhile shows greyed at the end of the chat
+and is sent when the assistant is done. With Settings → General → Agents → "Always steer messages" on, an API
+assistant gets it at its next step instead (after the tool it is using), so you can correct it on the way; a
+command-line agent reads its message only when it starts, so there the message still waits. Stopping sends
+none of the waiting messages. "Chat text size" sets the size of the conversation's text, and "Show agent input
+on dashboard" decides whether the home screen has its box to describe a design in.
 
 Every open design has a chat of its own: switching tabs switches the chat, and a message half written in one
 waits there. The chats work side by side. An assistant at work in one design keeps to that design while you
@@ -74,8 +103,10 @@ A client that speaks MCP over HTTP can skip `pencraft mcp`: the address and the 
 
 - If Pencraft isn't running, `pencraft mcp` starts it behind your other windows, without taking the keyboard.
 - Pencraft doesn't need to be in front. It answers while it is behind other windows, minimised or hidden.
-- When you look at it, you see the model work: every layer it touches flashes, and a cursor with the model's
-  name moves to where it is working. A change's description shows at the bottom of the window.
+- When you look at it, you see the model work: every layer it touches flashes, and a cursor moves to where it
+  is working. The cursor is labelled "Agent"; Settings → General → Agents → "Agent cursor label" changes that
+  to the model's name (the chat's model, or the name an outside client gave) or to nothing, and "Agent cursor
+  size" makes it larger. A change's description shows at the bottom of the window.
 - Each `edit_layers` call is one undo step: ⌘Z takes back what the model just did.
 - Nothing is saved unless the model calls `save_document` or you save.
 
@@ -95,7 +126,34 @@ A client that speaks MCP over HTTP can skip `pencraft mcp`: the address and the 
 | `save_document` | Saves the document, or saves it under a new path |
 | `export_layers` | Writes layers to a PNG, JPEG, WebP, PDF or SVG file |
 | `generate_image` | Has an image model make a picture from a description and gives back the file to use in an image fill, or puts it on a layer. Needs an image service (see Pictures) |
+| `search_web` | Web results for a query: titles, addresses and the lines under them |
+| `read_web_page` | A web page as plain text, to take real content from it |
+| `search_images` | Photos and illustrations that may be reused, each with its maker, licence and credit line |
+| `download_image` | Fetches a picture into the `images` folder beside the document, for an image fill |
 | `edit_image` | Has an image model change a picture by an instruction (a layer's picture, layers as they look, or a picture file), or make one that goes by up to four reference pictures; puts the result in place of the layer's picture or beside the layers drawn. Needs a Google Gemini service (see Pictures) |
+
+## The web
+
+Ask the assistant for real content or a real photo ("use a real picture of the Elbphilharmonie here") and it
+searches, fetches the picture into the `images` folder beside your `.pen` file, and fills the layer with it.
+The picture is filed in `images/credits.json` like a generated one, with the address it came from and its
+credit line. A document that has no file yet keeps the picture in Pencraft's own folder until it is saved.
+
+- Nothing needs a key. Web results come from DuckDuckGo's plain page, pictures from Openverse and Wikimedia
+  Commons. Your queries go to those services, and a fetched page or picture to its own site.
+- More pictures with a free key of your own: Settings → MCP → "Picture sources" takes a Pexels and a Pixabay
+  API key (kept in the keychain). Their stock photos then appear in every picture search beside the others.
+- Pictures found this way may be reused under the licence each result names, and each result says how to
+  credit it. Check the licence before you publish: some forbid commercial use or changes.
+- A site may limit how often it is asked ("429"). Pencraft waits a few seconds and asks again, twice; after
+  that the assistant is told to take a picture from another site. Every search mixes pictures from all
+  sources for that reason. Wikimedia's pictures are fetched as its standard 1920-wide copies, not as the
+  originals, as Wikimedia asks of apps. Pencraft never pretends to be a browser to get more.
+- A layer never loads a web address itself; only pictures fetched through `download_image` are shown.
+- Addresses on this computer or its local network are never fetched, also not when a site sends the request
+  on to one. What a page says is given to the assistant as information; it is told not to take instructions
+  from it.
+- Settings → MCP → "Let AI models use the web" turns the four tools off together; each also has its own switch.
 
 ## Pictures
 
@@ -212,6 +270,17 @@ A model gets a skill in one of two ways, with the same text either way:
   `pencraft skills show liquid-glass` prints one.
 
 The skill still needs Pencraft's tools to do anything: connect the client as described above.
+
+## Settings for assistants
+
+- **Agent names**: your own name for each assistant (shown in the chat's menu and, with the cursor label set to
+  the model's name, beside its cursor), and what a cursor labelled "Agent" says instead.
+- **Chat**: the default assistant, and custom instructions every conversation is given with the app's own
+  brief (your brand, your taste, the language to answer in). They apply from the next message.
+- **MCP**: whether the local server runs and where, the lines above with this copy's path ready to copy, the
+  web switch and picture sources, and a switch for every tool. A tool that is off isn't offered to any client
+  or to the chat, and a call to it is refused. A client that is already connected keeps the list it was given
+  until it asks again (most do when they reconnect); the chat's next message has the new list.
 
 ## Safety
 

@@ -334,8 +334,16 @@ impl App {
             Ok(server) => {
                 log::info!("AI tools: listening on 127.0.0.1:{}", server.port);
                 self.link = Some(server);
+                self.tell_link();
             }
             Err(error) => log::warn!("AI tools: the local server didn't start: {error}"),
+        }
+    }
+
+    /// Tells the local server which tools the settings turn off, so it leaves them out of its list.
+    fn tell_link(&self) {
+        if let Some(server) = &self.link {
+            *lock(&server.off) = self.prefs.get().agents.tools_off();
         }
     }
 
@@ -1320,11 +1328,18 @@ impl App {
     fn settings_window(&mut self, ctx: &egui::Context) {
         let dark = self.dark();
         let mut prefs = self.prefs.get().clone();
-        let notice = self.settings.show(ctx, &mut prefs, dark);
+        let facts = crate::settings::Facts { assistants: &self.assistants, port: self.link.as_ref().map(|server| server.port) };
+        let notice = self.settings.show(ctx, &mut prefs, &facts, dark);
         if prefs.appearance.dark != dark {
             ctx.set_visuals(theme::visuals(prefs.appearance.dark));
         }
+        // Human: a provider connected or an assistant renamed shows in the chat's menu at once.
+        let assistants_changed = prefs.agents != self.prefs.get().agents;
         self.prefs.update(|p| *p = prefs);
+        if assistants_changed {
+            self.find_assistants();
+            self.tell_link();
+        }
         if let Some(sentence) = notice {
             self.say(sentence);
         }
@@ -1474,6 +1489,7 @@ impl eframe::App for App {
         if self.poll_chats() {
             ctx.request_repaint();
         }
+        self.send_waiting(ctx);
         self.log_chats();
         // Last, so it sees the app's CancelClose.
         craft_quit::on_close_request(ctx);

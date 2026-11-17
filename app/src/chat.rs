@@ -1,7 +1,8 @@
 //! The chat with an AI model inside the app: what was said, and the run that answers the user's last message.
 //!
-//! A message is answered by one of two engines, on a thread of its own: the Claude Code program installed on
-//! this computer ([`code`]), or a provider's API called directly with the user's key ([`api`]). Either way the
+//! A message is answered by one of these engines, on a thread of its own: an agent program installed on this
+//! computer (Claude Code or Grok in [`code`], any other in [`plain`]), or a provider's API called directly with
+//! the user's key ([`api`] for the Messages API, [`openai`] for Chat Completions). Either way the
 //! model works on the document through the same tools as any outside AI client ([`crate::agent`]), run on the
 //! main thread, so the user sees the same flashes and cursor on the canvas.
 
@@ -15,12 +16,15 @@ use serde_json::Value;
 
 use crate::app::lock;
 use crate::link::Call;
-use crate::prefs::Agents;
+use crate::prefs::{AgentName, Agents, CustomProvider, LocalAgent};
 
 pub mod api;
+pub mod catalog;
 pub mod code;
 pub mod critic;
 pub mod files;
+pub mod openai;
+pub mod plain;
 pub mod steps;
 
 use steps::{State, Step};
@@ -33,8 +37,19 @@ pub const MODELS: [(&str, &str); 4] =
 const ANTHROPIC: &str = "https://api.anthropic.com";
 /// The environment variable an Anthropic API key is read from when no provider with a key is set up.
 const KEY_VARIABLE: &str = "ANTHROPIC_API_KEY";
-/// The API type of a custom provider (as the settings window names it) that the chat can talk to.
-const MESSAGES_API: &str = "Anthropic Messages";
+/// The API types of a provider, as the settings window names them, that the chat can talk to.
+pub const MESSAGES_API: &str = "Anthropic Messages";
+/// See [`MESSAGES_API`].
+pub const COMPLETIONS_API: &str = "OpenAI Completions";
+/// The kinds of command-line agent, as the settings window names them: Anthropic's Claude Code, xAI's Grok,
+/// and any other program that takes a prompt and prints its answer.
+pub const KIND_CLAUDE: &str = "Claude Code";
+/// See [`KIND_CLAUDE`].
+pub const KIND_GROK: &str = "Grok";
+/// See [`KIND_CLAUDE`].
+pub const KIND_PLAIN: &str = "Other (prints its answer)";
+/// Every kind, in the order the settings window offers them.
+pub const KINDS: [&str; 3] = [KIND_CLAUDE, KIND_GROK, KIND_PLAIN];
 /// How many earlier messages are retold to an engine that wasn't there for them.
 const RETOLD: usize = 24;
 
@@ -48,6 +63,7 @@ Before the first layer, note for yourself what the user named, piece by piece; b
 Reuse the document's variables and components instead of making new ones for the same thing. Make what was asked for and nothing around it: a thing the user asks for (a dog, a logo, a button) gets no backdrop, board or coloured frame behind it unless the user asks for one or the thing itself is one, like a screen, a page or a card; keep its parts together in a group or a frame without a fill. \
 A mock of a phone or tablet app is the exception the other way: its screen always stands inside the device it is for (the body, the screen's corners, the status bar, the Dynamic Island or camera, the home indicator), as \"A screen on a device\" below says, unless the user asks for the screen alone. \
 A layer id followed by its name in quotes and brackets inside a message, like card2 (\"Card\"), is a layer the user pasted into the message to point at it: work on exactly those layers. \
+For real facts or wording use search_web and read_web_page; for a real photo use search_images, then download_image, and put the url it returns into an image fill. \
 Each message from the user starts with a note from the app in <pencraft_context> tags saying which document this chat works on (your tools work on it unless a call names another) and what is selected; \"this\" or \"the selection\" means those layers. \
 Keep replies short and plain: a few sentences on what you made and what to look at, without lists of ids. The chat panel shows your words exactly as you write them, so use no Markdown of any kind: no asterisks for bold, no bullet or numbered lists, no headings, no backticks, no tables. \
 If a request is unclear in a way that changes the design, ask one short question instead of guessing.";
@@ -58,13 +74,17 @@ If a request is unclear in a way that changes the design, ask one short question
 const PLAIN: &str = "One more time, because it is easy to forget after a long piece of work: your reply to the user is a few plain sentences. No Markdown: no asterisks, no lists, no headings, no backticks.";
 
 /// The brief with how to design and which fonts are installed: what an engine is told on top of what it is.
+/// `instructions` is what the user wants kept to in every conversation (the settings' custom instructions).
 #[must_use]
-pub fn brief(guide: bool) -> String {
+pub fn brief(guide: bool, instructions: &str) -> String {
     // Human: an engine that can't call get_guide by itself (the API) is given the document guide here.
     let guide = if guide { crate::agent::GUIDE } else { "" };
+    let instructions = instructions.trim();
+    let own =
+        if instructions.is_empty() { String::new() } else { format!("The user's standing instructions for every conversation:\n{instructions}\n") };
     // Human: which skills there are is said on both routes; a model that never calls get_guide would not
     // learn of them otherwise.
-    format!("{BRIEF}\n\n{}\n{}\n{}\n{guide}\n{PLAIN}", crate::skills::index(), crate::craft::CRAFT, crate::craft::fonts())
+    format!("{BRIEF}\n\n{}\n{}\n{}\n{guide}\n{own}{PLAIN}", crate::skills::index(), crate::craft::CRAFT, crate::craft::fonts())
 }
 
 /// Who a line of the conversation is from.
@@ -137,6 +157,8 @@ pub enum Event {
     Session(String),
     /// The API conversation so far, to continue with the next message.
     History(Vec<Value>),
+    /// The model was given this message of the user's, written while it worked.
+    Heard(String),
     /// Something went wrong; the run goes on or ends as it says next.
     Problem(String),
     /// The run is over.
@@ -150,20 +172,57 @@ pub enum KeySource {
     Environment,
     /// The keychain, under this name.
     Keychain(String),
+    /// The provider takes requests without a key (a model server on this computer).
+    None,
+}
+
+/// The shape of an API's requests and answers.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Wire {
+    /// Anthropic's Messages API.
+    #[default]
+    Messages,
+    /// The Chat Completions API `OpenAI` introduced.
+    Completions,
+}
+
+impl Wire {
+    /// The wire a provider with the API type `api` speaks, if the chat knows it.
+    #[must_use]
+    pub fn of(api: &str) -> Option<Wire> {
+        match api {
+            MESSAGES_API => Some(Wire::Messages),
+            COMPLETIONS_API => Some(Wire::Completions),
+            _ => None,
+        }
+    }
 }
 
 /// What answers a message.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Engine {
-    /// The Claude Code program at `program`, with the user's own sign-in.
+    /// Claude Code or Grok at `program`, with the user's own sign-in.
     Code {
+        /// Which of the two it is.
+        flavor: code::Flavor,
         /// Where the program is.
         program: PathBuf,
-        /// The model it is asked to use.
+        /// The model it is asked to use; empty for the program's own default.
         model: String,
     },
-    /// A provider's Messages API, called directly.
+    /// Any other command-line agent, which takes a prompt and prints its answer.
+    Plain {
+        /// Where the program is.
+        program: PathBuf,
+        /// Its arguments, with `{prompt}` and `{model}` to fill in.
+        arguments: String,
+        /// The model it is asked to use; empty for the program's own default.
+        model: String,
+    },
+    /// A provider's API, called directly.
     Api {
+        /// The shape of its requests.
+        wire: Wire,
         /// The address messages are posted to.
         endpoint: String,
         /// Whether that is Anthropic's own API (which takes Anthropic's newer request fields).
@@ -180,10 +239,57 @@ pub enum Engine {
 pub struct Choice {
     /// The name the choice is remembered by in the settings.
     pub id: String,
-    /// What the menu and the message box show.
+    /// What the menu and the message box show: the user's name for it, or `plain`.
     pub label: String,
+    /// Who provides it and which model it is, as the app names it.
+    pub plain: String,
     /// What answers when it is chosen.
     pub engine: Engine,
+}
+
+impl Choice {
+    /// The model's name alone, without who provides it: what its cursor on the canvas can be labelled with.
+    #[must_use]
+    pub fn model_name(&self) -> &str {
+        self.label.rsplit(" · ").next().unwrap_or(&self.label)
+    }
+}
+
+/// Gives every assistant in `all` the name the user chose for it, if any.
+pub fn rename(all: &mut [Choice], names: &[AgentName]) {
+    for choice in all {
+        let own = names.iter().find(|name| name.id == choice.id).map(|name| name.name.trim()).filter(|name| !name.is_empty());
+        choice.label = own.unwrap_or(&choice.plain).to_owned();
+    }
+}
+
+/// How the chat reaches `provider`: its wire and where its key is. `None` when it can't: an API the chat
+/// doesn't speak, or the Messages API without a key.
+// Human: a Chat Completions provider may have no key: model servers on one's own computer take none.
+fn reach(provider: &CustomProvider) -> Option<(Wire, KeySource)> {
+    let wire = Wire::of(&provider.api)?;
+    match (&provider.key_ref, wire) {
+        (Some(name), _) => Some((wire, KeySource::Keychain(name.clone()))),
+        (None, Wire::Completions) => Some((wire, KeySource::None)),
+        (None, Wire::Messages) => None,
+    }
+}
+
+/// Whether the chat can talk to `provider`.
+#[must_use]
+pub fn usable(provider: &CustomProvider) -> bool {
+    reach(provider).is_some() && !provider.models.is_empty()
+}
+
+/// A message of the user's that hasn't gone to an assistant yet.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Waiting {
+    /// As the panel shows it.
+    pub shown: String,
+    /// As the assistant reads it.
+    pub told: String,
+    /// The files attached to it.
+    pub files: Vec<PathBuf>,
 }
 
 /// The address messages are posted to for a provider reached at `base`.
@@ -198,35 +304,93 @@ fn is_anthropic(base: &str) -> bool {
     base.contains("://api.anthropic.com")
 }
 
-/// The assistants the user can pick from: Claude Code when it is installed (`claude` is where), Anthropic's API
-/// when a key is in the environment (`key_in_environment`), and every custom provider that speaks the Messages API.
+/// The command a program of `kind` is usually installed as; `None` for a kind that has no usual one.
 #[must_use]
-pub fn choices(agents: &Agents, claude: Option<&Path>, key_in_environment: bool) -> Vec<Choice> {
+pub fn usual_command(kind: &str) -> Option<&'static str> {
+    match kind {
+        KIND_CLAUDE => Some("claude"),
+        KIND_GROK => Some("grok"),
+        _ => None,
+    }
+}
+
+/// The command `agent` is looked for as: what the user wrote, or its kind's usual command.
+#[must_use]
+pub fn command_of(agent: &LocalAgent) -> Option<&str> {
+    Some(agent.program.trim()).filter(|program| !program.is_empty()).or_else(|| usual_command(&agent.kind))
+}
+
+/// The choices one command-line agent gives, with its program at `program`: one per model.
+// Human: Claude Code keeps the ids it always had ("code/<model>"), so the assistant remembered in the
+// settings is still found; every other program is known by its name there.
+fn local_choices(agent: &LocalAgent, program: &Path) -> Vec<Choice> {
+    let named: Vec<(String, String)> = agent.models.iter().map(|model| (model.clone(), model.clone())).collect();
+    let models = match (named.is_empty(), agent.kind.as_str()) {
+        (false, _) => named,
+        (true, KIND_CLAUDE) => MODELS.iter().map(|(id, name)| ((*id).to_owned(), (*name).to_owned())).collect(),
+        (true, _) => vec![(String::new(), String::new())],
+    };
+    models
+        .into_iter()
+        .map(|(model, shown)| {
+            let plain = if shown.is_empty() { agent.name.clone() } else { format!("{} · {shown}", agent.name) };
+            let id = match (agent.kind.as_str(), agent.name.as_str()) {
+                (KIND_CLAUDE, KIND_CLAUDE) => format!("code/{model}"),
+                _ => format!("cli/{}/{}", agent.name, if model.is_empty() { "default" } else { &model }),
+            };
+            let program = program.to_path_buf();
+            let engine = match agent.kind.as_str() {
+                KIND_CLAUDE => Engine::Code { flavor: code::Flavor::Claude, program, model },
+                KIND_GROK => Engine::Code { flavor: code::Flavor::Grok, program, model },
+                _ => Engine::Plain { program, arguments: agent.arguments.clone(), model },
+            };
+            Choice { id, label: plain.clone(), plain, engine }
+        })
+        .collect()
+}
+
+/// The assistants the user can pick from: every command-line agent of the settings whose program is installed
+/// (`find` says where a command is), Anthropic's API when a key is in the environment (`key_in_environment`),
+/// and every provider set up in the settings that speaks an API the chat knows.
+#[must_use]
+pub fn choices(agents: &Agents, find: &dyn Fn(&str) -> Option<PathBuf>, key_in_environment: bool) -> Vec<Choice> {
     // Human: with a key in the environment, `ANTHROPIC_BASE_URL` says where it belongs, as it does for
     // Anthropic's own tools; without it that is Anthropic's API.
     let base = std::env::var("ANTHROPIC_BASE_URL").ok().filter(|base| !base.trim().is_empty()).unwrap_or_else(|| ANTHROPIC.to_owned());
     let mut out = Vec::new();
-    if let Some(program) = claude {
-        out.extend(MODELS.map(|(model, name)| Choice {
-            id: format!("code/{model}"),
-            label: format!("Claude Code · {name}"),
-            engine: Engine::Code { program: program.to_path_buf(), model: model.to_owned() },
-        }));
+    for agent in agents.local.iter().filter(|agent| !agent.off && !agent.name.trim().is_empty()) {
+        if let Some(program) = command_of(agent).and_then(find) {
+            out.extend(local_choices(agent, &program));
+        }
     }
     if key_in_environment {
         out.extend(MODELS.map(|(model, name)| Choice {
             id: format!("api/anthropic/{model}"),
             label: format!("Anthropic API · {name}"),
-            engine: Engine::Api { endpoint: endpoint(&base), official: is_anthropic(&base), model: model.to_owned(), key: KeySource::Environment },
+            plain: format!("Anthropic API · {name}"),
+            engine: Engine::Api {
+                wire: Wire::Messages,
+                endpoint: endpoint(&base),
+                official: is_anthropic(&base),
+                model: model.to_owned(),
+                key: KeySource::Environment,
+            },
         }));
     }
-    for provider in agents.providers.iter().filter(|p| p.api == MESSAGES_API) {
-        let Some(key) = provider.key_ref.clone() else { continue };
-        let official = is_anthropic(&provider.base_url);
-        out.extend(provider.models.iter().map(|model| Choice {
-            id: format!("api/{}/{}", provider.name, model.id),
-            label: format!("{} · {}", provider.name, MODELS.iter().find(|(id, _)| *id == model.id).map_or(model.id.as_str(), |(_, name)| name)),
-            engine: Engine::Api { endpoint: endpoint(&provider.base_url), official, model: model.id.clone(), key: KeySource::Keychain(key.clone()) },
+    for provider in &agents.providers {
+        let Some((wire, key)) = reach(provider) else { continue };
+        let (endpoint, official) = match wire {
+            Wire::Messages => (endpoint(&provider.base_url), is_anthropic(&provider.base_url)),
+            Wire::Completions => (openai::endpoint(&provider.base_url), false),
+        };
+        out.extend(provider.models.iter().map(|model| {
+            let plain = format!("{} · {}", provider.name, MODELS.iter().find(|(id, _)| *id == model.id).map_or(model.id.as_str(), |(_, name)| name));
+            Choice {
+                id: format!("api/{}/{}", provider.name, model.id),
+                label: plain.clone(),
+                plain,
+                engine: Engine::Api { wire, endpoint: endpoint.clone(), official, model: model.id.clone(), key: key.clone() },
+            }
         }));
     }
     out
@@ -287,6 +451,13 @@ pub struct Ask {
     pub chat: u64,
     /// What answers.
     pub engine: Engine,
+    /// What the user wants kept to in every conversation (the settings' custom instructions).
+    pub instructions: String,
+    /// The tools the user has turned off, which an API model isn't offered (Claude Code asks the app's
+    /// server, which leaves them out itself).
+    pub off: Vec<String>,
+    /// The answering model's name, for its cursor on the canvas.
+    pub model: String,
     /// Where tool calls go to be run on the main thread.
     pub tools: Sender<Call>,
     /// Gets the app's attention after an event or a tool call.
@@ -297,12 +468,87 @@ pub struct Ask {
     pub review: bool,
 }
 
+/// One message for an engine, with where the conversation is.
+struct Said<'a> {
+    /// The message, with the app's note before it.
+    prompt: &'a str,
+    /// The pictures attached to it, as content blocks.
+    pictures: &'a [Value],
+    /// The session to continue, with a program that keeps one.
+    session: Option<String>,
+    /// The conversation so far, as an API takes it.
+    history: Vec<Value>,
+    /// Where messages the user sends meanwhile wait for an API run.
+    inbox: &'a api::Inbox,
+}
+
+/// Has the engine of `ask` answer `said`. Returns when the engine is done.
+// Agent: BLOCKS for the whole answer; runs on the chat's thread.
+fn answer(ask: &Ask, said: Said<'_>, flag: &AtomicBool, held: &Mutex<Option<Child>>, tell: &dyn Fn(Event) -> bool) {
+    match &ask.engine {
+        Engine::Plain { program, arguments, model } => {
+            if !said.pictures.is_empty() {
+                tell(Event::Problem("This program is given the message without its pictures.".to_owned()));
+            }
+            plain::run(&plain::Job { program, arguments, model, instructions: &ask.instructions, prompt: said.prompt }, flag, held, tell);
+        }
+        Engine::Code { flavor, program, model } => {
+            code::run(
+                &code::Job {
+                    flavor: *flavor,
+                    program,
+                    model,
+                    instructions: &ask.instructions,
+                    prompt: said.prompt,
+                    pictures: said.pictures,
+                    session: said.session.as_deref(),
+                    server: ask.server.as_ref(),
+                    chat: ask.chat,
+                },
+                flag,
+                held,
+                tell,
+            );
+        }
+        Engine::Api { wire, endpoint, official, model, key } => {
+            let run = match wire {
+                Wire::Messages => api::run,
+                Wire::Completions => openai::run,
+            };
+            run(
+                &api::Job {
+                    endpoint,
+                    official: *official,
+                    model,
+                    key,
+                    instructions: &ask.instructions,
+                    off: &ask.off,
+                    prompt: said.prompt,
+                    pictures: said.pictures,
+                    history: said.history,
+                    tools: &ask.tools,
+                    wake: &*ask.wake,
+                    chat: ask.chat,
+                    steering: said.inbox,
+                },
+                flag,
+                tell,
+            );
+        }
+    }
+}
+
 /// A run in progress.
 struct Run {
     events: Receiver<Event>,
     stop: Arc<AtomicBool>,
     /// The Claude Code program while it runs, so stopping can end it.
     child: Arc<Mutex<Option<Child>>>,
+    /// The answering model's name.
+    model: String,
+    /// Where a message for the run goes while it works; `None` for an engine that takes none (Claude Code
+    /// reads its one message when it starts).
+    steering: Option<Arc<api::Inbox>>,
 }
 
 /// The conversation and its run.
@@ -313,10 +559,16 @@ pub struct Chat {
     run: Option<Run>,
     /// The model's next words start a new entry.
     fresh: bool,
-    /// The Claude Code session the conversation is in, if that engine has answered.
+    /// The session the conversation is in with a program that keeps one (Claude Code, Grok), if it has answered.
     session: Option<String>,
+    /// The program `session` belongs to.
+    session_of: PathBuf,
     /// The API conversation, if that engine has answered.
     history: Vec<Value>,
+    /// The API whose shape `history` has.
+    wire: Wire,
+    /// Messages written while the assistant worked, oldest first; each is sent when the run before it is over.
+    pub waiting: Vec<Waiting>,
 }
 
 impl Chat {
@@ -324,6 +576,46 @@ impl Chat {
     #[must_use]
     pub fn running(&self) -> bool {
         self.run.is_some()
+    }
+
+    /// The name of the model that is answering, while one is.
+    #[must_use]
+    pub fn answering(&self) -> Option<&str> {
+        self.run.as_ref().map(|run| run.model.as_str())
+    }
+
+    /// Whether the assistant at work takes a further message while it works.
+    #[must_use]
+    pub fn steers(&self) -> bool {
+        self.run.as_ref().is_some_and(|run| run.steering.is_some())
+    }
+
+    /// Hands the assistant at work a further message, which it reads at its next step.
+    ///
+    /// # Errors
+    /// The message, when nothing is at work that takes one.
+    // Human: the message shows greyed until the assistant has taken it; one the run ends without taking is
+    // sent like any waiting message.
+    pub fn steer(&mut self, message: Waiting, context: &str, files: &[files::Attachment]) -> Result<(), Waiting> {
+        let Some(inbox) = self.run.as_ref().and_then(|run| run.steering.as_ref()) else { return Err(message) };
+        let prompt = files::written(&format!("{context}\n\n{}", message.told), files);
+        lock(inbox).push(api::Steer { message, prompt, pictures: files::pictures(files) });
+        Ok(())
+    }
+
+    /// The messages that haven't gone to an assistant yet, as the panel shows them, each with whether the
+    /// assistant at work takes it at its next step (otherwise it waits for the run to end).
+    #[must_use]
+    pub fn pending(&self) -> Vec<(String, bool)> {
+        let steered =
+            self.run.as_ref().and_then(|run| run.steering.as_ref()).map(|inbox| lock(inbox).iter().map(|s| s.message.shown.clone()).collect());
+        let steered: Vec<String> = steered.unwrap_or_default();
+        steered.into_iter().map(|text| (text, true)).chain(self.waiting.iter().map(|waiting| (waiting.shown.clone(), false))).collect()
+    }
+
+    /// The waiting message whose turn it is, once nothing is being answered.
+    pub fn next_waiting(&mut self) -> Option<Waiting> {
+        (!self.running() && !self.waiting.is_empty()).then(|| self.waiting.remove(0))
     }
 
     /// Forgets the conversation and ends its run.
@@ -339,7 +631,8 @@ impl Chat {
     }
 
     /// Ends the run, if there is one.
-    // Human: stopping is immediate for the user; the engine's thread notices on its own and winds up.
+    // Human: stopping is immediate for the user; the engine's thread notices on its own and winds up. Messages
+    // that were waiting for the run are not sent after it: stopping would otherwise start the next answer.
     pub fn stop(&mut self) {
         let Some(run) = self.run.take() else { return };
         run.stop.store(true, Ordering::Relaxed);
@@ -349,7 +642,14 @@ impl Chat {
             let _ = child.wait();
         }
         self.settle();
-        self.entries.push(Entry::new(Role::Step, "Stopped"));
+        let unsent = self.waiting.len() + run.steering.map_or(0, |inbox| lock(&inbox).len());
+        self.waiting.clear();
+        let text = match unsent {
+            0 => "Stopped".to_owned(),
+            1 => "Stopped; the waiting message wasn't sent".to_owned(),
+            many => format!("Stopped; the {many} waiting messages weren't sent"),
+        };
+        self.entries.push(Entry::new(Role::Step, text));
     }
 
     /// What earlier turns an engine that wasn't there for them is told, with the app's note.
@@ -367,18 +667,33 @@ impl Chat {
         format!("{context}\n<earlier_conversation>\n{}\n</earlier_conversation>", said[from..].join("\n"))
     }
 
-    /// Sends the user's message and starts the run that answers it.
-    // Human: a conversation can move from one engine to the other; the engine that takes over is told what
-    // was said so far, since each keeps its own record.
-    // Agent: SPAWNS the run's thread; it ends by itself, or soon after `stop`.
-    pub fn send(&mut self, ask: Ask) {
-        if self.running() {
-            return;
+    /// Whether `engine` was there for the conversation so far. One that wasn't starts its own record of it.
+    // Human: each API keeps the conversation in its own shape; moving to a provider with the other one starts
+    // its record anew. Likewise a session belongs to the program that made it; another program starts its own.
+    fn knows(&mut self, engine: &Engine) -> bool {
+        if let Engine::Api { wire, .. } = engine
+            && *wire != self.wire
+        {
+            self.wire = *wire;
+            self.history.clear();
         }
-        let known = match &ask.engine {
+        if let Engine::Code { program, .. } = engine
+            && *program != self.session_of
+        {
+            self.session_of.clone_from(program);
+            self.session = None;
+        }
+        match engine {
             Engine::Code { .. } => self.session.is_some(),
             Engine::Api { .. } => !self.history.is_empty(),
-        };
+            Engine::Plain { .. } => false,
+        }
+    }
+
+    /// The message of `ask` as its engine reads it: the app's note (with what was said so far, for an engine
+    /// that wasn't there), starting points for a design's look, and the user's words with their attached text.
+    fn prompt_for(&mut self, ask: &Ask) -> String {
+        let known = self.knows(&ask.engine);
         // Human: attached text files travel inside the message, pictures beside it.
         // Human: a conversation's first message also carries three starting points for a design's look.
         // Human: a request that names what to follow has its look; worlds to choose from would pull it away.
@@ -391,7 +706,18 @@ impl Chat {
         // Human: any message that names a phone or a tablet, not only the first, is reminded that a screen for
         // it is shown in the device; left alone the model draws the screen bare.
         let device = if crate::craft::names_a_device(&ask.text) { format!("{}\n", crate::craft::DEVICE_NOTE) } else { String::new() };
-        let prompt = files::written(&format!("{}\n{dealt}{device}\n{}", self.retold(&ask.context, known), ask.text), &ask.files);
+        files::written(&format!("{}\n{dealt}{device}\n{}", self.retold(&ask.context, known), ask.text), &ask.files)
+    }
+
+    /// Sends the user's message and starts the run that answers it.
+    // Human: a conversation can move from one engine to the other; the engine that takes over is told what
+    // was said so far, since each keeps its own record.
+    // Agent: SPAWNS the run's thread; it ends by itself, or soon after `stop`.
+    pub fn send(&mut self, ask: Ask) {
+        if self.running() {
+            return;
+        }
+        let prompt = self.prompt_for(&ask);
         let pictures = files::pictures(&ask.files);
         self.entries.push(Entry::new(Role::User, ask.shown.clone()));
         self.fresh = true;
@@ -400,6 +726,11 @@ impl Chat {
         let child = Arc::new(Mutex::new(None));
         let kept = Mutex::new((self.session.clone(), self.history.clone()));
         let (flag, held) = (stop.clone(), child.clone());
+        let model = ask.model.clone();
+        // Human: an API run asks the model again after every tool it used, and can hand it a new message of
+        // the user's then; a program is given its one message when it starts.
+        let steering = matches!(ask.engine, Engine::Api { .. }).then(|| Arc::new(api::Inbox::default()));
+        let inbox = steering.clone().unwrap_or_default();
         let started = std::thread::Builder::new().name("chat".to_owned()).spawn(move || {
             let tell = |event: Event| {
                 // Human: the run remembers where the conversation is, so a review's follow-up continues it.
@@ -415,41 +746,15 @@ impl Chat {
             };
             let answer = |prompt: &str, pictures: &[Value]| {
                 let (session, history) = lock(&kept).clone();
-                match &ask.engine {
-                    Engine::Code { program, model } => {
-                        code::run(
-                            &code::Job { program, model, prompt, pictures, session: session.as_deref(), server: ask.server.as_ref(), chat: ask.chat },
-                            &flag,
-                            &held,
-                            &tell,
-                        );
-                    }
-                    Engine::Api { endpoint, official, model, key } => {
-                        api::run(
-                            &api::Job {
-                                endpoint,
-                                official: *official,
-                                model,
-                                key,
-                                prompt,
-                                pictures,
-                                history,
-                                tools: &ask.tools,
-                                wake: &*ask.wake,
-                                chat: ask.chat,
-                            },
-                            &flag,
-                            &tell,
-                        );
-                    }
-                }
+                answer(&ask, Said { prompt, pictures, session, history, inbox: &inbox }, &flag, &held, &tell);
             };
             answer(&prompt, &pictures);
             // Human: a model finds its own design good. So what it made is shown to a reviewer that didn't
             // make it, and what the reviewer wants changed goes back to the assistant, twice at most.
             // After the reviews of the design comes one proofreading of its execution, when the last review
             // still asked for changes.
-            for round in 0..if ask.review { critic::ROUNDS + 1 } else { 0 } {
+            // An engine the reviewer can't speak through gets no review.
+            for round in 0..if ask.review && critic::can_judge(&ask.engine) { critic::ROUNDS + 1 } else { 0 } {
                 if flag.load(Ordering::Relaxed) {
                     break;
                 }
@@ -472,7 +777,7 @@ impl Chat {
             tell(Event::Done);
         });
         match started {
-            Ok(_) => self.run = Some(Run { events, stop, child }),
+            Ok(_) => self.run = Some(Run { events, stop, child, model, steering }),
             Err(error) => self.entries.push(Entry::new(Role::Problem, format!("The assistant couldn't be started: {error}"))),
         }
     }
@@ -516,6 +821,10 @@ impl Chat {
                 Event::ToolEnd { id, failed } => self.finish(&id, failed),
                 Event::Session(session) => self.session = Some(session),
                 Event::History(history) => self.history = history,
+                Event::Heard(text) => {
+                    self.fresh = true;
+                    self.entries.push(Entry::new(Role::User, text));
+                }
                 Event::Problem(text) => {
                     self.fresh = true;
                     self.entries.push(Entry::new(Role::Problem, text));
@@ -524,7 +833,11 @@ impl Chat {
             }
         }
         if over {
-            self.run = None;
+            // Human: a message handed to the run that it ended without taking goes first among the waiting ones.
+            if let Some(inbox) = self.run.take().and_then(|run| run.steering) {
+                let unheard: Vec<Waiting> = std::mem::take(&mut *lock(&inbox)).into_iter().map(|steer| steer.message).collect();
+                self.waiting.splice(0..0, unheard);
+            }
             self.settle();
         }
         changed
@@ -599,7 +912,13 @@ mod tests {
         for event in events {
             send.send(event).unwrap();
         }
-        let run = Run { events: receive, stop: Arc::new(AtomicBool::new(false)), child: Arc::new(Mutex::new(None)) };
+        let run = Run {
+            events: receive,
+            stop: Arc::new(AtomicBool::new(false)),
+            child: Arc::new(Mutex::new(None)),
+            model: "Opus 5.5".to_owned(),
+            steering: Some(Arc::new(api::Inbox::default())),
+        };
         Chat { entries: vec![Entry::new(Role::User, "Make a card")], run: Some(run), fresh: true, ..Chat::default() }
     }
 
@@ -660,9 +979,83 @@ mod tests {
     }
 
     #[test]
+    fn a_message_written_meanwhile_is_steered_or_waits_its_turn() {
+        let message = |text: &str| Waiting { shown: text.to_owned(), told: text.to_owned(), files: Vec::new() };
+        // Nothing at work: there is nobody to hand it to.
+        assert_eq!(Chat::default().steer(message("a"), "note", &[]), Err(message("a")));
+        // Human: the test holds the run's sending end, so the run goes on until the test ends it.
+        let (send, receive) = channel();
+        let mut chat = with_events(Vec::new());
+        if let Some(run) = &mut chat.run {
+            run.events = receive;
+        }
+        send.send(Event::Text("Working".to_owned())).unwrap();
+        assert!(chat.steers() && chat.answering() == Some("Opus 5.5"));
+        chat.steer(message("wider"), "note", &[]).unwrap();
+        chat.waiting.push(message("then export"));
+        assert_eq!(chat.pending(), vec![("wider".to_owned(), true), ("then export".to_owned(), false)]);
+        // While the run goes on nothing is sent after it.
+        assert!(chat.poll() && chat.running() && chat.next_waiting().is_none());
+        let inbox = chat.run.as_ref().and_then(|run| run.steering.clone()).unwrap();
+        assert_eq!(lock(&inbox)[0].prompt, "note\n\nwider");
+        // The run takes one message and says so; another, handed in too late, goes first among the waiting.
+        lock(&inbox).clear();
+        chat.steer(message("too late"), "note", &[]).unwrap();
+        send.send(Event::Heard("wider".to_owned())).unwrap();
+        send.send(Event::Done).unwrap();
+        assert!(chat.poll() && !chat.running());
+        assert_eq!(chat.entries.last().map(|e| (e.role, e.text.as_str())), Some((Role::User, "wider")));
+        assert_eq!((chat.next_waiting(), chat.next_waiting(), chat.next_waiting()), (Some(message("too late")), Some(message("then export")), None));
+        // Stopping sends none of them.
+        let mut chat = with_events(Vec::new());
+        chat.steer(message("a"), "note", &[]).unwrap();
+        chat.waiting.push(message("b"));
+        chat.stop();
+        assert!(chat.waiting.is_empty() && chat.pending().is_empty());
+        assert_eq!(chat.entries.last().map(|e| e.text.as_str()), Some("Stopped; the 2 waiting messages weren't sent"));
+    }
+
+    #[test]
+    fn command_line_agents_are_offered_when_their_program_is_installed() {
+        // Command-line agents: Grok with its own default model, another program with the models named for it,
+        // one that is turned off, and one whose program isn't installed.
+        let mut agents = Agents::default();
+        agents.local.push(LocalAgent {
+            name: "Codex".to_owned(),
+            kind: KIND_PLAIN.to_owned(),
+            program: "/opt/codex".to_owned(),
+            models: vec!["gpt".to_owned()],
+            arguments: "exec {prompt}".to_owned(),
+            off: false,
+        });
+        agents.local.push(LocalAgent { name: "Second Grok".to_owned(), off: true, ..LocalAgent::known(KIND_GROK) });
+        agents.local.push(LocalAgent {
+            name: "Gone".to_owned(),
+            kind: KIND_PLAIN.to_owned(),
+            program: "nowhere".to_owned(),
+            ..LocalAgent::default()
+        });
+        let found = |command: &str| ["claude", "grok", "/opt/codex"].contains(&command).then(|| PathBuf::from(command));
+        let all = choices(&agents, &found, false);
+        let ids: Vec<&str> = all.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids[..4], ["code/claude-opus-5-5", "code/claude-fable-5-2", "code/claude-sonnet-5-5", "code/claude-haiku-5-5"]);
+        assert_eq!(ids[4..], ["cli/Grok/default", "cli/Codex/gpt"]);
+        assert_eq!((all[4].label.as_str(), all[5].label.as_str()), ("Grok", "Codex · gpt"));
+        assert_eq!(all[4].engine, Engine::Code { flavor: code::Flavor::Grok, program: PathBuf::from("grok"), model: String::new() });
+        assert_eq!(
+            all[5].engine,
+            Engine::Plain { program: PathBuf::from("/opt/codex"), arguments: "exec {prompt}".to_owned(), model: "gpt".to_owned() }
+        );
+        assert_eq!((command_of(&agents.local[0]), command_of(&agents.local[2])), (Some("claude"), Some("/opt/codex")));
+    }
+
+    #[test]
     fn the_assistants_offered_follow_what_is_installed_and_set_up() {
         let mut agents = Agents::default();
-        assert_eq!(choices(&agents, None, false), Vec::new());
+        agents.local.clear();
+        assert_eq!(choices(&agents, &|_| None, true).len(), 4);
+        let mut agents = Agents::default();
+        assert_eq!(choices(&agents, &|_| None, false), Vec::new());
         let model = |id: &str| ProviderModel { id: id.to_owned(), ..ProviderModel::default() };
         agents.providers = vec![
             CustomProvider {
@@ -681,15 +1074,34 @@ mod tests {
             },
             CustomProvider {
                 name: "Other API".to_owned(),
-                api: "OpenAI Completions".to_owned(),
+                api: "OpenAI Responses".to_owned(),
                 base_url: "https://y.example.com".to_owned(),
                 models: vec![model("m")],
                 key_ref: Some("k2".to_owned()),
             },
+            CustomProvider {
+                name: "Local".to_owned(),
+                api: COMPLETIONS_API.to_owned(),
+                base_url: "http://localhost:11434/v1/".to_owned(),
+                models: vec![model("llama")],
+                key_ref: None,
+            },
         ];
-        let all = choices(&agents, Some(Path::new("/bin/claude")), true);
+        assert_eq!(agents.providers.iter().map(usable).collect::<Vec<_>>(), [true, false, false, true]);
+        let claude = |command: &str| (command == "claude").then(|| PathBuf::from("/bin/claude"));
+        let all = choices(&agents, &claude, true);
         let labels: Vec<&str> = all.iter().map(|c| c.label.as_str()).collect();
-        assert_eq!(labels.len(), 10);
+        assert_eq!(labels.len(), 11);
+        assert_eq!(
+            all[10].engine,
+            Engine::Api {
+                wire: Wire::Completions,
+                endpoint: "http://localhost:11434/v1/chat/completions".to_owned(),
+                official: false,
+                model: "llama".to_owned(),
+                key: KeySource::None
+            }
+        );
         assert_eq!(
             (labels[0], labels[4], labels[8], labels[9]),
             ("Claude Code · Opus 5.5", "Anthropic API · Opus 5.5", "Mine · Opus 5.5", "Mine · other")
@@ -697,6 +1109,7 @@ mod tests {
         assert_eq!(
             all[8].engine,
             Engine::Api {
+                wire: Wire::Messages,
                 endpoint: "https://llm.example.com/v1/messages".to_owned(),
                 official: false,
                 model: "claude-opus-5-5".to_owned(),
@@ -707,5 +1120,20 @@ mod tests {
         // What was chosen is found again; anything else falls back to the first.
         assert_eq!(chosen(&all, "api/Mine/other").map(|c| c.label.as_str()), Some("Mine · other"));
         assert_eq!(chosen(&all, "gone").map(|c| c.id.as_str()), Some("code/claude-opus-5-5"));
+        assert_eq!((all[0].model_name(), all[9].model_name()), ("Opus 5.5", "other"));
+        // The user's own name takes the place of the app's, in the menu and beside the cursor; none gives it back.
+        let mut all = all;
+        let own = |name: &str| vec![AgentName { id: "api/Mine/other".to_owned(), name: name.to_owned() }];
+        rename(&mut all, &own(" Otto "));
+        assert_eq!(
+            (all[9].label.as_str(), all[9].model_name(), all[9].plain.as_str(), all[0].label.as_str()),
+            ("Otto", "Otto", "Mine · other", "Claude Code · Opus 5.5")
+        );
+        rename(&mut all, &own("  "));
+        assert_eq!(all[9].label, "Mine · other");
+        // The user's standing instructions go into the brief, just before its last reminder; none adds nothing.
+        assert!(!brief(false, "  ").contains("standing instructions"));
+        let own = brief(false, " Use our brand colours. ");
+        assert!(own.contains("every conversation:\nUse our brand colours.\n") && own.ends_with(PLAIN));
     }
 }

@@ -168,6 +168,16 @@ pub const CHAT_DOT_GAP: f32 = 3.0;
 pub const CHAT_DOT_LIFT: f32 = 3.0;
 /// How fast the dots rise and fall, in radians a second.
 pub const CHAT_DOT_PACE: f32 = 6.0;
+/// How much larger the chat's text is at the settings' Medium and Large sizes.
+pub const CHAT_TEXT_MEDIUM: f32 = 1.15;
+/// See [`CHAT_TEXT_MEDIUM`].
+pub const CHAT_TEXT_LARGE: f32 = 1.3;
+/// The most height the list of a provider's models takes in the provider form before it scrolls.
+pub const OFFERED_MODELS_HEIGHT: f32 = 150.0;
+/// Room kept free at the right of a settings row for its control, where the row's second line ends.
+pub const SETTINGS_ROW_CONTROL_ROOM: f32 = 64.0;
+/// Width of a name's text field on the settings' Agent names page.
+pub const SETTINGS_NAME_FIELD: f32 = 240.0;
 /// Width of the assistant menu.
 pub const ASSISTANT_MENU_WIDTH: f32 = 240.0;
 /// Size of a resize handle on screen, points.
@@ -327,14 +337,15 @@ pub const UPDATE_NOTE_GAP: f32 = 6.0;
 /// Thickness of the bar that shows how far a download is.
 pub const UPDATE_BAR: f32 = 6.0;
 
-/// Space between the window's edge and the settings window (the user's settings design).
-pub const SETTINGS_MARGIN: f32 = 8.0;
-/// Largest size of the settings window.
-pub const SETTINGS_MAX: [f32; 2] = [1600.0, 1000.0];
-/// Corner radius of the settings window.
-pub const SETTINGS_RADIUS: f32 = 16.0;
-/// Width of the settings window's list of pages.
-pub const SETTINGS_NAV_WIDTH: f32 = 208.0;
+/// Least space between the window's edges and the settings window, left and right, and top and bottom (the
+/// original's settings dialog: `w-[calc(100%-2rem)]`, `h-[min(695px,calc(100vh-120px))]`).
+pub const SETTINGS_MARGIN: [f32; 2] = [16.0, 60.0];
+/// Largest size of the settings window (the original's: `max-w-[1100px]`, `h-[min(695px,…)]`).
+pub const SETTINGS_MAX: [f32; 2] = [1100.0, 695.0];
+/// Corner radius of the settings window (the original's settings dialog: `rounded-3xl`, 24 px).
+pub const SETTINGS_RADIUS: f32 = 24.0;
+/// Width of the list of pages at the settings window's left (the original's: `sm:w-[232px]`).
+pub const SETTINGS_NAV_WIDTH: f32 = 232.0;
 /// Height of a page's entry in that list.
 pub const SETTINGS_NAV_ROW: f32 = 32.0;
 /// Size of a settings page's title.
@@ -402,7 +413,9 @@ pub const ACTIONS_TOP: f32 = 96.0;
 pub const ACTIONS_RADIUS: f32 = 14.0;
 /// Width of a menu opened from the properties island, such as the kinds of effect.
 pub const PROPS_MENU_WIDTH: f32 = 160.0;
-/// Width of the message bar while a layer is selected: the layer's chip takes the place of the long hint.
+/// The least room for typing in the message bar while a layer is selected and nothing is typed yet.
+pub const MESSAGE_BAR_TYPING_ROOM: f32 = 150.0;
+/// The least width of the message bar while a layer is selected: the layer's chip takes the place of the long hint.
 pub const MESSAGE_BAR_SELECTED_WIDTH: f32 = 408.0;
 /// Height of the selected layer's chip in the message bar.
 pub const SELECTION_CHIP_HEIGHT: f32 = 21.0;

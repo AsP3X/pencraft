@@ -52,6 +52,7 @@ mod skills;
 mod theme;
 mod tool_icons;
 mod update;
+mod web;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -181,7 +182,10 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<app::Launch, String>
             }
             "--dark" => launch.dark = true,
             "--sidebar" => launch.sidebar = Some(args.next().ok_or("--sidebar needs a view: history, chat, layers or hidden")?),
-            "--settings" => launch.settings = Some(args.next().ok_or("--settings needs a page: general, agents, provider, images or image-service")?),
+            "--settings" => {
+                launch.settings =
+                    Some(args.next().ok_or("--settings needs a page: general, agents, provider, cli, names, chat, mcp, images or image-service")?);
+            }
             "--actions" => launch.actions = true,
             "--generate-image" => launch.generate_image = true,
             "--background" => launch.background = true,

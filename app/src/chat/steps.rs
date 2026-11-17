@@ -49,7 +49,7 @@ struct Words {
 }
 
 /// The tools the app gives a model, as the chat names them.
-const TOOLS: [Words; 15] = [
+const TOOLS: [Words; 19] = [
     Words {
         tool: "get_state",
         icon: "eye",
@@ -88,6 +88,10 @@ const TOOLS: [Words; 15] = [
         failed: "Couldn't generate the picture",
     },
     Words { tool: "edit_image", icon: "wand-sparkles", doing: "Editing a picture", did: "Edited a picture", failed: "Couldn't edit the picture" },
+    Words { tool: "search_web", icon: "search", doing: "Searching the web", did: "Searched the web", failed: "Couldn't search the web" },
+    Words { tool: "read_web_page", icon: "globe", doing: "Reading a web page", did: "Read a web page", failed: "Couldn't read the web page" },
+    Words { tool: "search_images", icon: "image", doing: "Looking for pictures", did: "Looked for pictures", failed: "Couldn't look for pictures" },
+    Words { tool: "download_image", icon: "download", doing: "Fetching a picture", did: "Fetched a picture", failed: "Couldn't fetch the picture" },
     // Human: not a tool the model calls: the app has a reviewer look at a finished design ([`super::critic`]).
     Words {
         tool: "review_design",
@@ -187,6 +191,12 @@ pub fn detail(tool: &str, input: &Value) -> String {
         },
         "open_document" | "save_document" | "export_layers" => path(),
         "generate_image" => quoted(input.get("prompt")),
+        "search_web" | "search_images" => quoted(input.get("query")),
+        // Human: a page or a picture is told by the site it is on; its whole address is too long for a note.
+        "read_web_page" | "download_image" => {
+            let url = input.get("url").and_then(Value::as_str).unwrap_or_default();
+            url.split_once("://").map_or(url, |(_, rest)| rest).split(['/', '?', '#']).next().unwrap_or_default().to_owned()
+        }
         "edit_image" => quoted(input.get("instruction")),
         _ => String::new(),
     }
@@ -232,6 +242,14 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn the_web_tools_say_what_was_searched_for_and_which_site_was_read() {
+        assert_eq!(detail("search_web", &json!({ "query": "Winterdom opening hours" })), "“Winterdom opening hours”");
+        assert_eq!(detail("read_web_page", &json!({ "url": "https://www.hamburg.de/freizeit/dom?x=1" })), "www.hamburg.de");
+        assert_eq!(detail("download_image", &json!({ "url": "https://live.staticflickr.com/1/2_b.jpg", "name": "hall" })), "live.staticflickr.com");
+        assert_eq!((did("search_images"), failed("download_image")), ("Looked for pictures".to_owned(), "Couldn't fetch the picture".to_owned()));
+    }
 
     #[test]
     fn every_tool_the_app_offers_has_words_and_a_bundled_icon() {

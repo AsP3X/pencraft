@@ -240,7 +240,8 @@ Per axis, widths first then heights: fit content (x), fill container (x), fit co
 | While the user drags | `edit_layers` and `select_layers` wait up to 10 s for the drag to end, then answer "try again" | Pencraft's own rule |
 | Flash on a touched layer | 1.2 s in `rgb(96, 125, 255)`: a 2-point outline that starts 12 points outside and closes in, a 10 % wash, and a band of light sweeping down; all fading | times estimated |
 | Model's cursor | an arrow with the client's name on a pill, travelling 0.45 s to the middle of what the model touched, read or pictured; stays 8 s after the last call, fades in 0.5 s | times estimated |
-| Cursor settings | size Small 1×, Medium 1.35×, Large 1.7×; label "None" hides the name | factors estimated |
+| Settings window | at most 1100 × 695; in a smaller window it keeps 16 free at the left and right and 60 at the top and bottom; corner radius 24; the list of pages is 232 wide | the original's settings dialog: `w-[calc(100%-2rem)] max-w-[1100px]`, `h-[min(695px,calc(100vh-120px))]`, `rounded-3xl`, `sm:w-[232px]` |
+| Cursor settings | size Small 1×, Medium 1.35×, Large 1.7×; label "Agent" (or the user's own word for it), the model's name, or none | factors estimated |
 | Switch | Settings → Agents → "Let AI models work on documents", on by default; off answers every call with an error | Pencraft's own rule |
 
 ## Chat with an assistant

@@ -23,6 +23,8 @@ pub(super) const BUSY_PATIENCE: Duration = Duration::from_secs(10);
 const SERVICES_OFF: &str = "Generating and editing pictures is turned off for AI models in Pencraft's settings.";
 /// The longest side of a picture given to a model, pixels: larger ones are drawn at a smaller scale.
 const MOST_PICTURE_SIDE: f32 = 2000.0;
+/// What the model's cursor is labelled with when the settings name nothing else.
+const AGENT_NAME: &str = "Agent";
 /// How many parts of a design the reviewer is shown enlarged, and the fewest layers such a part holds.
 const MOST_PARTS: usize = 4;
 /// See [`MOST_PARTS`].
@@ -128,6 +130,23 @@ impl App {
         }
         self.settle_fonts(ctx);
         for (call, since) in calls {
+            let on = self.prefs.get().agents.tools;
+            // Human: a tool the user turned off in the settings is neither offered nor run.
+            if on && self.prefs.get().agents.tools_off().contains(&call.tool) {
+                let refused = format!("The tool `{}` is turned off in Pencraft's settings (MCP). Go on without it.", call.tool);
+                // A client that stopped waiting has gone; there is no one to tell.
+                let _ = call.reply.send(Err(refused));
+                continue;
+            }
+            // Human: the web can be slow; its tools answer from a thread of their own, and the window goes on
+            // meanwhile. A picture goes beside the document the call is about.
+            if on && crate::web::is_web(&call.tool) {
+                let file = self.document(&call).ok().and_then(|tab| self.tabs.get(tab)).and_then(|editor| editor.path.clone());
+                let wake = ctx.clone();
+                let keyed = self.prefs.get().agents.picture_keys.clone();
+                crate::web::answer(call, file, keyed, move || wake.request_repaint());
+                continue;
+            }
             // Human: a picture takes up to a minute, made or changed; its call is kept and answered when the
             // picture is there.
             if PICTURING.contains(&call.tool.as_str()) && self.prefs.get().agents.tools {
@@ -237,8 +256,14 @@ impl App {
     }
 
     /// The name shown beside the model's cursor, as the settings want it.
-    fn cursor_label(&self, client: &str) -> String {
-        if self.prefs.get().agents.cursor_label == "None" { String::new() } else { client.to_owned() }
+    // Human: "Agent" for every model, or the model's own name: the chat's assistant is known by its model, an
+    // outside client by the name it introduced itself with.
+    fn cursor_label(&self, call: &Call) -> String {
+        match self.prefs.get().agents.cursor_label.as_str() {
+            "None" => String::new(),
+            "Model name" => call.chat.and_then(|id| self.talk(id)).and_then(|talk| talk.chat.answering()).unwrap_or(&call.client).to_owned(),
+            _ => Some(self.prefs.get().agents.agent_label.trim()).filter(|label| !label.is_empty()).unwrap_or(AGENT_NAME).to_owned(),
+        }
     }
 
     /// Does one tool call and gives its answer's content.
@@ -288,7 +313,7 @@ impl App {
     /// The document a call is about, laid out, with its tab and the name for the model's cursor.
     fn laid_out(&mut self, call: &Call, ctx: &egui::Context) -> Result<(usize, &mut Editor, String), String> {
         let tab = self.document(call)?;
-        let label = self.cursor_label(&call.client);
+        let label = self.cursor_label(call);
         let editor = self.tabs.get_mut(tab).ok_or("The document was closed.")?;
         editor.refresh(&text_measure(ctx));
         Ok((tab, editor, label))
@@ -317,7 +342,7 @@ impl App {
     // (`App::fill_picture`), so two documents of the same name can't be mistaken for each other.
     pub(super) fn edit_in(&mut self, tab: usize, call: &Call, ctx: &egui::Context) -> Result<Vec<Value>, String> {
         let args = &call.arguments;
-        let label = self.cursor_label(&call.client);
+        let label = self.cursor_label(call);
         self.tabs.get_mut(tab).ok_or("The document was closed.")?.refresh(&text_measure(ctx));
         let editing = self.canvas.editing.clone();
         let view = self.canvas_view;

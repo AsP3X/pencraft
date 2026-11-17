@@ -154,6 +154,34 @@ pub struct Agents {
     pub review: bool,
     /// Providers the user added. Their API keys are in the keychain, not here.
     pub providers: Vec<CustomProvider>,
+    /// What an assistant's cursor says when its label is "Agent".
+    pub agent_label: String,
+    /// The user's own names for assistants.
+    pub names: Vec<AgentName>,
+    /// What the user wants the chat's assistant to keep to in every conversation.
+    pub instructions: String,
+    /// The tools (by name) AI models may not use.
+    pub disabled_tools: Vec<String>,
+    /// The assistants that are command-line programs on this computer.
+    pub local: Vec<LocalAgent>,
+    /// AI models may search the web, read pages and fetch pictures through the app's tools.
+    pub web: bool,
+    /// The stock photo sites (by name, [`crate::web::KEYED`]) the user has given a key for. The keys are in
+    /// the keychain, not here.
+    pub picture_keys: Vec<String>,
+}
+
+impl Agents {
+    /// The tools AI models are not offered and may not use: those turned off one by one, and the web tools
+    /// while the web is turned off.
+    #[must_use]
+    pub fn tools_off(&self) -> Vec<String> {
+        let mut off = self.disabled_tools.clone();
+        if !self.web {
+            off.extend(crate::web::TOOLS.map(str::to_owned));
+        }
+        off
+    }
 }
 
 impl Default for Agents {
@@ -169,8 +197,51 @@ impl Default for Agents {
             ideas: true,
             review: true,
             providers: Vec::new(),
+            agent_label: "Agent".to_owned(),
+            names: Vec::new(),
+            instructions: String::new(),
+            disabled_tools: Vec::new(),
+            local: vec![LocalAgent::known(crate::chat::KIND_CLAUDE), LocalAgent::known(crate::chat::KIND_GROK)],
+            web: true,
+            picture_keys: Vec::new(),
         }
     }
+}
+
+/// An assistant that is a command-line program on this computer.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LocalAgent {
+    /// What the user calls it.
+    pub name: String,
+    /// Which program it is, as the settings window names the kinds ([`crate::chat::KINDS`]).
+    pub kind: String,
+    /// The program: its full path, or its command's name to look for; empty for the kind's usual command.
+    pub program: String,
+    /// The models it is offered with; none offers the program's own default (Claude Code: the current models).
+    pub models: Vec<String>,
+    /// For a program of the plain kind: its arguments, with `{prompt}` and `{model}` to fill in.
+    pub arguments: String,
+    /// Not offered in the chat.
+    pub off: bool,
+}
+
+impl LocalAgent {
+    /// The entry a known program starts with: named after its kind, found by its usual command.
+    #[must_use]
+    pub fn known(kind: &str) -> LocalAgent {
+        LocalAgent { name: kind.to_owned(), kind: kind.to_owned(), ..LocalAgent::default() }
+    }
+}
+
+/// The user's own name for one assistant.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AgentName {
+    /// The assistant, as [`crate::chat::Choice::id`] names it.
+    pub id: String,
+    /// What the user calls it.
+    pub name: String,
 }
 
 /// Looking for newer versions of the app.

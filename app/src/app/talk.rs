@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use craft_dialogs::FileDialog;
 
 use super::{App, Then};
-use crate::chat::{self, Ask, Chat, files};
+use crate::chat::{self, Ask, Chat, Waiting, files};
 use crate::sidebar::{ChatAsk, Look, Writing};
 
 /// One conversation: the chat of one open document, or of the home screen.
@@ -50,7 +50,7 @@ pub(super) fn home(talks: &[Talk], chat: Option<u64>) -> Home {
 }
 
 /// What the user is told when there is nobody to answer.
-const NO_ASSISTANT: &str = "No assistant is set up. Install Claude Code and sign in (run `claude` in a terminal once), or add a provider with the \"Anthropic Messages\" API and a key in Settings → Agents, or start Pencraft with ANTHROPIC_API_KEY set.";
+const NO_ASSISTANT: &str = "No assistant is set up. Install Claude Code or Grok and sign in (run `claude` or `grok` in a terminal once), or connect a provider with its API key in Settings → Agents, or start Pencraft with ANTHROPIC_API_KEY set.";
 /// What the user is told when the tools are turned off.
 const TOOLS_OFF: &str = "The assistant works on the document through Pencraft's AI tools, which are turned off. Turn on \"Let AI models work on documents\" in Settings → Agents.";
 
@@ -61,6 +61,11 @@ pub(super) fn look<'a>(talk: &'a Talk, prefs: &crate::prefs::Prefs, assistants: 
     Look {
         dark: prefs.appearance.dark,
         ideas: prefs.agents.ideas,
+        chat_text: match prefs.agents.chat_text_size.as_str() {
+            "Medium" => crate::theme::CHAT_TEXT_MEDIUM,
+            "Large" => crate::theme::CHAT_TEXT_LARGE,
+            _ => 1.0,
+        },
         chat: &talk.chat,
         chat_id: talk.id,
         assistants,
@@ -70,11 +75,13 @@ pub(super) fn look<'a>(talk: &'a Talk, prefs: &crate::prefs::Prefs, assistants: 
 }
 
 impl App {
-    /// Looks up which assistants there are: Claude Code if it is installed, and the providers with a key.
+    /// Looks up which assistants there are: the command-line agents that are installed, and the providers.
     // Agent: READS the folders of PATH and the environment; fast enough for a click.
     pub(super) fn find_assistants(&mut self) {
-        let claude = crate::settings::program("claude");
-        self.assistants = chat::choices(&self.prefs.get().agents, claude.as_deref(), chat::key_in_environment());
+        let agents = &self.prefs.get().agents;
+        let mut found = chat::choices(agents, &crate::settings::locate, chat::key_in_environment());
+        chat::rename(&mut found, &agents.names);
+        self.assistants = found;
     }
 
     /// The assistant the chat talks to.
@@ -259,53 +266,97 @@ impl App {
         }
     }
 
-    /// Sends the user's message to the chosen assistant.
+    /// Takes a message the user sent: it goes to the chosen assistant, or, while one is at work, to that one
+    /// at once or to the end of the waiting messages.
+    // Human: "Always steer messages" hands a message to a working assistant that can take one (an API
+    // assistant, between its steps); without it, or with Claude Code, the message waits for the run to end.
     fn send_chat(&mut self, shown: String, text: String, paths: &[PathBuf], ctx: &egui::Context) {
         // Human: the panel shows the attached files by name under the message; a message of files alone asks
         // the assistant to look at them.
         let names: Vec<String> = paths.iter().map(|path| files::name(path)).collect();
-        let (shown, text) = match (names.is_empty(), text.is_empty()) {
+        let (shown, told) = match (names.is_empty(), text.is_empty()) {
             (true, _) => (shown, text),
             (false, true) => (format!("Attached: {}", names.join(", ")), "Look at the attached files.".to_owned()),
             (false, false) => (format!("{shown}\n\nAttached: {}", names.join(", ")), text),
         };
-        let attached: Result<Vec<files::Attachment>, String> = paths.iter().map(|path| files::read(path)).collect();
-        let attached = match attached {
-            Ok(attached) => attached,
-            Err(why) => {
-                self.shown_talk().chat.refuse(shown, &why);
-                return;
-            }
-        };
-        self.find_assistants();
-        let refusal = if !self.prefs.get().agents.tools {
-            Some(TOOLS_OFF)
-        } else if self.assistant().is_none() {
-            Some(NO_ASSISTANT)
-        } else {
-            None
-        };
-        if let Some(why) = refusal {
-            self.shown_talk().chat.refuse(shown, why);
-            return;
-        }
-        let Some(engine) = self.assistant().map(|choice| choice.engine.clone()) else { return };
-        let wake = ctx.clone();
+        let message = Waiting { shown, told, files: paths.to_vec() };
+        let steer = self.prefs.get().agents.always_steer;
         let talk = self.shown_talk();
-        let (chat, doc) = (talk.id, talk.doc);
+        let id = talk.id;
+        if !talk.chat.running() {
+            self.start_chat(id, message, ctx);
+        } else if steer && talk.chat.steers() {
+            self.steer_chat(id, message);
+        } else {
+            talk.chat.waiting.push(message);
+        }
+    }
+
+    /// Hands `message` to the assistant at work in the chat `id`; if it can't take it any more, the message
+    /// waits its turn.
+    fn steer_chat(&mut self, id: u64, message: Waiting) {
+        let attached: Result<Vec<files::Attachment>, String> = message.files.iter().map(|path| files::read(path)).collect();
+        match attached {
+            Ok(attached) => {
+                let context = self.chat_context(self.talk(id).and_then(|talk| talk.doc));
+                if let Some(talk) = self.talks.iter_mut().find(|talk| talk.id == id)
+                    && let Err(message) = talk.chat.steer(message, &context, &attached)
+                {
+                    talk.chat.waiting.push(message);
+                }
+            }
+            Err(why) => self.say(why),
+        }
+    }
+
+    /// Sends the waiting message whose turn it is in each chat, once its assistant is done with the one before.
+    // Agent: MAIN-THREAD; runs from `logic`, so a queue is worked off also while the window is hidden.
+    pub(super) fn send_waiting(&mut self, ctx: &egui::Context) {
+        let next: Vec<(u64, Waiting)> = self.talks.iter_mut().filter_map(|talk| talk.chat.next_waiting().map(|message| (talk.id, message))).collect();
+        for (id, message) in next {
+            self.start_chat(id, message, ctx);
+        }
+    }
+
+    /// Starts the run that answers `message` in the chat `id` with the chosen assistant.
+    fn start_chat(&mut self, id: u64, message: Waiting, ctx: &egui::Context) {
+        let Waiting { shown, told: text, files: paths } = message;
+        let attached: Result<Vec<files::Attachment>, String> = paths.iter().map(|path| files::read(path)).collect();
+        self.find_assistants();
+        let refusal = match &attached {
+            Err(why) => Some(why.clone()),
+            Ok(_) if !self.prefs.get().agents.tools => Some(TOOLS_OFF.to_owned()),
+            Ok(_) if self.assistant().is_none() => Some(NO_ASSISTANT.to_owned()),
+            Ok(_) => None,
+        };
+        let picked = self.assistant().map(|choice| (choice.engine.clone(), choice.model_name().to_owned()));
+        let (Ok(attached), None, Some((engine, model))) = (attached, &refusal, picked) else {
+            if let (Some(why), Some(talk)) = (refusal, self.talks.iter_mut().find(|talk| talk.id == id)) {
+                talk.chat.refuse(shown, &why);
+            }
+            return;
+        };
+        let wake = ctx.clone();
+        let doc = self.talk(id).and_then(|talk| talk.doc);
+        let agents = &self.prefs.get().agents;
         let ask = Ask {
             text,
             shown,
             files: attached,
             context: self.chat_context(doc),
-            chat,
+            chat: id,
             engine,
+            instructions: agents.instructions.clone(),
+            off: agents.tools_off(),
+            model,
             tools: self.tool_send.clone(),
             wake: Arc::new(move || wake.request_repaint()),
             server: self.link.as_ref().map(|server| (server.port, server.token.clone())),
-            review: self.prefs.get().agents.review,
+            review: agents.review,
         };
-        self.shown_talk().chat.send(ask);
+        if let Some(talk) = self.talks.iter_mut().find(|talk| talk.id == id) {
+            talk.chat.send(ask);
+        }
     }
 }
 

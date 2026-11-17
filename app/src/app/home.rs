@@ -144,6 +144,7 @@ impl App {
         self.picture_one(&ctx);
         let assistant = self.assistant().map(|choice| choice.label.clone());
         let ideas = self.prefs.get().agents.ideas;
+        let describe = self.prefs.get().agents.input_on_dashboard;
         let now = SystemTime::now();
         let mut act = None;
         let home = &mut self.home;
@@ -157,10 +158,17 @@ impl App {
                     ui.set_width(width);
                     ui.add_space(HOME_TOP);
                     let bold = FontFamily::Name(crate::render::BOLD_FAMILY.into());
-                    words(ui, "What are you designing?", FontId::new(HOME_TITLE_SIZE, bold), palette.foreground);
-                    ui.add_space(HOME_TITLE_GAP);
-                    home.describe(ui, assistant.as_deref(), ideas, palette, &mut act);
-                    ui.add_space(HOME_SECTION_GAP);
+                    // Human: the settings can take the box away ("Show agent input on dashboard"); the home
+                    // screen then starts at the designs to begin from.
+                    if describe {
+                        words(ui, "What are you designing?", FontId::new(HOME_TITLE_SIZE, bold), palette.foreground);
+                        ui.add_space(HOME_TITLE_GAP);
+                        home.describe(ui, assistant.as_deref(), ideas, palette, &mut act);
+                        ui.add_space(HOME_SECTION_GAP);
+                    } else {
+                        words(ui, "Start a design", FontId::new(HOME_TITLE_SIZE, bold), palette.foreground);
+                        ui.add_space(HOME_TITLE_GAP);
+                    }
                     words(ui, "Start from", FontId::proportional(SIDEBAR_TITLE_SIZE), palette.foreground);
                     ui.add_space(HOME_SECTION_TITLE_GAP);
                     home.starts(ui, width, palette, &mut act);

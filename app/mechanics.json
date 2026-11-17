@@ -757,6 +757,40 @@
    "value": 10
   },
   {
+   "name": "settings window largest size (width, height)",
+   "group": "controls",
+   "value": [
+    1100,
+    695
+   ],
+   "unit": "pt",
+   "source": "index.js settings dialog `max-w-[1100px]`, `h-[min(695px,calc(100vh-120px))]`"
+  },
+  {
+   "name": "settings window least margin (sides, top and bottom)",
+   "group": "controls",
+   "value": [
+    16,
+    60
+   ],
+   "unit": "pt",
+   "source": "index.js settings dialog `w-[calc(100%-2rem)]`, `calc(100vh-120px)`"
+  },
+  {
+   "name": "settings window corner radius",
+   "group": "controls",
+   "value": 24,
+   "unit": "pt",
+   "source": "index.js settings dialog `rounded-3xl`"
+  },
+  {
+   "name": "settings window page list width",
+   "group": "controls",
+   "value": 232,
+   "unit": "pt",
+   "source": "index.js settings dialog `sm:w-[232px]`"
+  },
+  {
    "name": "find layers width",
    "group": "controls",
    "value": 300,

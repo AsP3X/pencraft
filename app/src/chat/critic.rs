@@ -11,7 +11,8 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use super::Engine;
+use super::code::Flavor;
+use super::{Engine, Wire};
 use crate::link::Call;
 
 /// How many times a design is reviewed and sent back at most.
@@ -95,11 +96,20 @@ pub fn judge(engine: &Engine, asked: &str, mut picture: Vec<Value>, proof: bool,
     let brief = if proof { PROOF } else { BRIEF };
     picture.push(json!({ "type": "text", "text": format!("The user asked for:\n{asked}") }));
     let answer = match engine {
-        Engine::Code { program, model } => super::code::once(program, model, brief, &picture, child)?,
-        Engine::Api { endpoint, model, key, .. } => super::api::once(endpoint, key, model, brief, &picture)?,
+        Engine::Code { flavor: Flavor::Claude, program, model } => super::code::once(program, model, brief, &picture, child)?,
+        Engine::Api { wire: Wire::Messages, endpoint, model, key, .. } => super::api::once(endpoint, key, model, brief, &picture)?,
+        // No reviewer speaks through the other engines; the design goes to the user as it is.
+        _ => return Ok(None),
     };
     log::info!("review: {}", answer.trim());
     Ok(changes(&answer))
+}
+
+/// Whether a reviewer can be asked through `engine`: Claude Code and the Messages API take the one question
+/// with a picture that a review is.
+#[must_use]
+pub fn can_judge(engine: &Engine) -> bool {
+    matches!(engine, Engine::Code { flavor: Flavor::Claude, .. } | Engine::Api { wire: Wire::Messages, .. })
 }
 
 /// The message that brings the reviewer's `changes` to the assistant.

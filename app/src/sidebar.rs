@@ -15,10 +15,10 @@ use crate::editor::{Editor, Tool};
 use crate::icons;
 use crate::theme::{
     self, ASSISTANT_MENU_WIDTH, CHAT_STATUS_GAP, CHAT_STATUS_STAY, CHIP_CORNER, CHIP_HEIGHT, CHIP_ICON, CHIP_ICON_AT, CHIP_RADIUS, COMPOSER_HEIGHT,
-    ICON_SIZE, IDEA_ROW, IDEA_ROW_GAP, ISLAND_GAP, ISLAND_PADDING, ISLAND_RADIUS, MESSAGE_BAR_HEIGHT, MESSAGE_BAR_SELECTED_WIDTH, MESSAGE_BAR_WIDTH,
-    MESSAGE_TEXT_SIZE, Palette, RAIL_ACTIVE, RAIL_ARROW_STEP, RAIL_MENU_ROW, RAIL_MENU_WIDTH, RAIL_STEP, RAIL_WIDTH, SELECTION_CHIP_HEIGHT,
-    SEND_BUTTON, SIDEBAR_ANIMATION, SIDEBAR_GROW_START, SIDEBAR_HEADER_PADDING, SIDEBAR_ROW, SIDEBAR_SLIDE_END, SIDEBAR_TEXT_SIZE,
-    SIDEBAR_TITLE_SIZE, SIDEBAR_WIDE_WIDTH, SIDEBAR_WIDTH, ZOOM_ISLAND,
+    ICON_SIZE, IDEA_ROW, IDEA_ROW_GAP, ISLAND_GAP, ISLAND_PADDING, ISLAND_RADIUS, MESSAGE_BAR_HEIGHT, MESSAGE_BAR_SELECTED_WIDTH,
+    MESSAGE_BAR_TYPING_ROOM, MESSAGE_BAR_WIDTH, MESSAGE_TEXT_SIZE, Palette, RAIL_ACTIVE, RAIL_ARROW_STEP, RAIL_MENU_ROW, RAIL_MENU_WIDTH, RAIL_STEP,
+    RAIL_WIDTH, SELECTION_CHIP_HEIGHT, SEND_BUTTON, SIDEBAR_ANIMATION, SIDEBAR_GROW_START, SIDEBAR_HEADER_PADDING, SIDEBAR_ROW, SIDEBAR_SLIDE_END,
+    SIDEBAR_TEXT_SIZE, SIDEBAR_TITLE_SIZE, SIDEBAR_WIDE_WIDTH, SIDEBAR_WIDTH, ZOOM_ISLAND,
 };
 
 /// Said when a chat control is used: the chat has no assistant behind it in this version.
@@ -97,6 +97,8 @@ pub struct Look<'a> {
     pub dark: bool,
     /// Show the row of ideas under the message bar while nothing is typed.
     pub ideas: bool,
+    /// How much larger than its small size the conversation's text is.
+    pub chat_text: f32,
     /// The chat the panel shows: the one of the document in front.
     pub chat: &'a Chat,
     /// That chat's id, by which what moves in its conversation is remembered.
@@ -326,7 +328,19 @@ impl Sidebar {
         // layer is selected its chip takes the place of the long hint, so the bar is narrower.
         let chip = selection_chip(editor);
         // Attached files take room too: with them the bar keeps its full width.
-        let wanted = if chip.is_some() && self.attached.is_empty() { MESSAGE_BAR_SELECTED_WIDTH } else { MESSAGE_BAR_WIDTH };
+        // Human: the narrower bar still has to leave room to type beside the chip and the assistant's name, which
+        // can be long; and once something is typed, or the field is being typed in, the bar takes its full width.
+        let wanted = match &chip {
+            Some((_, name)) if self.attached.is_empty() => {
+                let typing = !self.draft.is_empty() || ctx.memory(|memory| memory.has_focus(egui::Id::unique("message-field")));
+                let measure =
+                    |text: String, size: f32| ctx.fonts_mut(|fonts| fonts.layout_no_wrap(text, FontId::proportional(size), Color32::WHITE)).size().x;
+                let taken =
+                    bar_controls(measure(chip_text(name), SIDEBAR_TEXT_SIZE - 2.0), measure(look.assistant.to_owned(), SIDEBAR_TEXT_SIZE - 1.0));
+                if typing { MESSAGE_BAR_WIDTH } else { (taken + MESSAGE_BAR_TYPING_ROOM).clamp(MESSAGE_BAR_SELECTED_WIDTH, MESSAGE_BAR_WIDTH) }
+            }
+            _ => MESSAGE_BAR_WIDTH,
+        };
         let space = area;
         let width = wanted.min(space.width() - 2.0 * ISLAND_GAP);
         let bottom = area.bottom() - ISLAND_GAP;
@@ -475,7 +489,7 @@ impl Sidebar {
                     crate::conversation::forget(ui.ctx(), look.chat_id);
                     self.start_of_chat(ui, palette);
                 }
-                View::Chat => crate::conversation::show(ui, look.chat, look.chat_id, palette, look.animate),
+                View::Chat => crate::conversation::show(ui, look.chat, look.chat_id, look.chat_text, palette, look.animate),
                 View::Layers => {
                     ui.add_space(8.0);
                     crate::panels::layers(ui, editor, dark);
@@ -529,9 +543,10 @@ impl Sidebar {
         let text = Rect::from_min_max(composer.min + vec2(ISLAND_PADDING, 17.0), pos2(composer.right() - ISLAND_PADDING, controls.top() - 2.0));
         ui.scope_builder(UiBuilder::new().max_rect(text), |ui| {
             egui::ScrollArea::vertical().id_salt("message").max_height(text.height()).show(ui, |ui| {
-                // Human: Return sends, alone or with ⌘ (Ctrl on Windows); ⇧Return starts a new line.
+                // Human: Return sends, alone or with ⌘ (Ctrl on Windows); ⇧Return starts a new line. While the
+                // assistant works, what is sent waits its turn or goes to the assistant at once, as the settings say.
                 let edit = self.message_field(ui, true, HINT, f32::INFINITY, editor, look, notice);
-                if edit.has_focus() && send_pressed(ui) && !look.chat.running() {
+                if edit.has_focus() && send_pressed(ui) {
                     self.submit();
                 }
             });
@@ -577,7 +592,7 @@ impl Sidebar {
                     let edit = self.message_field(ui, false, hint, field.width(), editor, look, notice);
                     // Human: the one-line field doesn't give up the keyboard for Return with ⌘ or Ctrl held, so the
                     // keys are looked at here, not whether the field was left.
-                    if (edit.has_focus() || edit.lost_focus()) && send_pressed(ui) && !look.chat.running() {
+                    if (edit.has_focus() || edit.lost_focus()) && send_pressed(ui) {
                         self.submit();
                     }
                 });
@@ -953,10 +968,22 @@ fn selection_chip(editor: &Editor) -> Option<(&'static str, String)> {
     }
 }
 
+/// A layer's name as its chip in the message bar shows it: cut short when it is long.
+fn chip_text(name: &str) -> String {
+    if name.chars().count() > 22 { name.chars().take(21).chain(['…']).collect() } else { name.to_owned() }
+}
+
+/// The width everything in the message bar but the text field takes, with a selection's chip whose text is
+/// `chip` wide and an assistant's name that is `assistant` wide: the bar's ends, the attach button, the chip,
+/// mode, the assistant's name with its arrow, and send, each with its gap.
+fn bar_controls(chip: f32, assistant: f32) -> f32 {
+    20.0 + (22.0 + 12.0) + (chip + 31.0 + 12.0) + (22.0 + 8.0) + (assistant + 16.0 + 8.0) + (SEND_BUTTON + 8.0)
+}
+
 /// The selected layer's chip in the message bar: its kind and name in a thin outline.
 fn layer_chip(ui: &mut Ui, icon: &'static str, name: &str, palette: Palette) {
     let font = FontId::proportional(SIDEBAR_TEXT_SIZE - 2.0);
-    let name: String = if name.chars().count() > 22 { name.chars().take(21).chain(['…']).collect() } else { name.to_owned() };
+    let name = chip_text(name);
     let words = ui.painter().layout_no_wrap(name.clone(), font.clone(), palette.muted).size().x;
     let (chip, _) = ui.allocate_exact_size(vec2(words + 31.0, SELECTION_CHIP_HEIGHT), Sense::hover());
     ui.painter().rect_stroke(chip, 4.0, Stroke::new(1.0, palette.outline), StrokeKind::Inside);
@@ -1204,7 +1231,8 @@ mod tests {
         };
         let chat = Chat::default();
         let mut drawn = ctx.run_ui(input, |ui| {
-            let look = Look { dark: false, ideas: false, chat: &chat, chat_id: 1, assistants: &[], assistant: "Test", animate: false };
+            let look =
+                Look { dark: false, ideas: false, chat_text: 1.0, chat: &chat, chat_id: 1, assistants: &[], assistant: "Test", animate: false };
             sidebar.show(ui.ctx(), area, if open { 1.0 } else { 0.0 }, editor, look);
         });
         // The font picture this frame made is for a screen; there is none here.
@@ -1292,6 +1320,15 @@ mod tests {
         // It never goes backwards on the way.
         let lefts: Vec<f32> = (0..=20u8).map(|i| Pose::at(f32::from(i) / 20.0, bar, docked).rect.left()).collect();
         assert!(lefts.windows(2).all(|pair| pair[1] <= pair[0]));
+    }
+
+    #[test]
+    fn the_bar_with_a_selection_leaves_room_to_type() {
+        // A short chip and a short name fit the narrow bar with room to spare; a long name asks for more.
+        assert!(bar_controls(60.0, 70.0) + MESSAGE_BAR_TYPING_ROOM < MESSAGE_BAR_WIDTH);
+        assert!(bar_controls(90.0, 150.0) + MESSAGE_BAR_TYPING_ROOM > MESSAGE_BAR_SELECTED_WIDTH);
+        assert_eq!(bar_controls(0.0, 0.0), 179.0);
+        assert_eq!((chip_text("Card"), chip_text(&"n".repeat(30)).chars().count()), ("Card".to_owned(), 22));
     }
 
     #[test]

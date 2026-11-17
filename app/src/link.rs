@@ -66,6 +66,8 @@ pub struct Server {
     pub port: u16,
     /// The secret a caller must show.
     pub token: String,
+    /// The tools the user has turned off, which clients aren't told of; the app keeps it as the settings say.
+    pub off: Arc<Mutex<Vec<String>>>,
 }
 
 /// Where the server's address and secret are written: `~/.pencraft/agent.json`.
@@ -110,7 +112,14 @@ pub fn start(send: Sender<Call>, wake: impl Fn() + Send + Sync + 'static) -> std
             }
         }
     })?;
-    let shared = Arc::new(Shared { token: token.clone(), send: Mutex::new(send), client: Mutex::new("AI".to_owned()), wake: Box::new(wake) });
+    let off = Arc::new(Mutex::new(Vec::new()));
+    let shared = Arc::new(Shared {
+        token: token.clone(),
+        send: Mutex::new(send),
+        client: Mutex::new("AI".to_owned()),
+        off: off.clone(),
+        wake: Box::new(wake),
+    });
     std::thread::Builder::new().name("ai-link".to_owned()).spawn(move || {
         for stream in listener.incoming().flatten() {
             let shared = shared.clone();
@@ -118,7 +127,7 @@ pub fn start(send: Sender<Call>, wake: impl Fn() + Send + Sync + 'static) -> std
             let _ = std::thread::Builder::new().name("ai-link-client".to_owned()).spawn(move || serve(stream, &shared));
         }
     })?;
-    Ok(Server { port, token })
+    Ok(Server { port, token, off })
 }
 
 /// Writes where this app's server is, and its secret, into the address file.
@@ -163,6 +172,8 @@ struct Shared {
     send: Mutex<Sender<Call>>,
     /// The name the last client gave when it introduced itself.
     client: Mutex<String>,
+    /// The tools the user has turned off.
+    off: Arc<Mutex<Vec<String>>>,
     wake: Box<dyn Fn() + Send + Sync>,
 }
 
@@ -284,7 +295,7 @@ fn answer(message: &Value, chat: Option<u64>, shared: &Shared) -> Option<Value> 
             })
         }
         Some("ping") => json!({}),
-        Some("tools/list") => json!({ "tools": crate::agent::tools() }),
+        Some("tools/list") => json!({ "tools": crate::agent::tools_without(&lock(&shared.off)) }),
         Some("tools/call") => {
             let Some(tool) = params.get("name").and_then(Value::as_str) else { return Some(failure(id, -32602, "tools/call needs the tool's name")) };
             let (reply, answered) = channel();
@@ -455,7 +466,8 @@ mod tests {
 
     fn shared() -> (Shared, Receiver<Call>) {
         let (send, calls) = channel();
-        (Shared { token: "secret".to_owned(), send: Mutex::new(send), client: Mutex::new("AI".to_owned()), wake: Box::new(|| {}) }, calls)
+        let off = Arc::new(Mutex::new(Vec::new()));
+        (Shared { token: "secret".to_owned(), send: Mutex::new(send), client: Mutex::new("AI".to_owned()), off, wake: Box::new(|| {}) }, calls)
     }
 
     #[test]
@@ -467,6 +479,11 @@ mod tests {
         assert!(answer(&json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }), None, &shared).is_none());
         let list = answer(&json!({ "jsonrpc": "2.0", "id": "a", "method": "tools/list" }), None, &shared).unwrap();
         assert!(list["result"]["tools"].as_array().is_some_and(|tools| tools.len() >= 9) && list["id"] == "a");
+        // A tool the user turned off is left out of the list from then on.
+        lock(&shared.off).push("export_layers".to_owned());
+        let fewer = answer(&json!({ "jsonrpc": "2.0", "id": "b", "method": "tools/list" }), None, &shared).unwrap();
+        let names: Vec<&str> = fewer["result"]["tools"].as_array().unwrap().iter().filter_map(|tool| tool["name"].as_str()).collect();
+        assert!(names.len() >= 8 && !names.contains(&"export_layers") && names.contains(&"edit_layers"));
         assert_eq!(answer(&json!({ "jsonrpc": "2.0", "id": 2, "method": "nope" }), None, &shared).unwrap()["error"]["code"], -32601);
     }
 
