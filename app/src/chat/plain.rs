@@ -126,6 +126,9 @@ mod tests {
         assert_eq!(arguments("", "hi", ""), (Vec::new(), false));
     }
 
+    // Human: the test's stand-in program is the shell, which only Unix has at this path; Windows is covered by
+    // the test of the arguments above, which is the part that differs by nothing.
+    #[cfg(unix)]
     #[test]
     fn a_program_prints_its_answer_and_a_failing_one_says_why() {
         let told = std::cell::RefCell::new(Vec::new());
