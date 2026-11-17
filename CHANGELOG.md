@@ -9,6 +9,10 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-11-17
+
+Messages keep their layers, and a download bar that moves evenly.
+
 ### Changed
 
 - **Sent messages show the layers they point at.** A layer pasted into a
@@ -181,7 +185,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/AsP3X/pencraft/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/AsP3X/pencraft/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/AsP3X/pencraft/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/AsP3X/pencraft/compare/v0.2.1...v0.3.0
