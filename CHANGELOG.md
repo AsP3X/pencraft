@@ -9,6 +9,10 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-11-17
+
+Draw and edit connectors on the canvas, and zoom without stalls.
+
 ### Added
 
 - **A connector tool.** Press C or pick the tool on the rail, press on a
@@ -339,7 +343,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.8...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.9...HEAD
+[0.3.9]: https://github.com/AsP3X/pencraft/compare/v0.3.8...v0.3.9
 [0.3.8]: https://github.com/AsP3X/pencraft/compare/v0.3.7...v0.3.8
 [0.3.7]: https://github.com/AsP3X/pencraft/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/AsP3X/pencraft/compare/v0.3.5...v0.3.6
