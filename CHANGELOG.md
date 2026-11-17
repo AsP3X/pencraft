@@ -9,6 +9,47 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-11-17
+
+A new settings window, and updates that arrive within minutes.
+
+### Added
+
+- **Search the settings.** A field over the list of pages finds a setting,
+  a tool or a provider by its name and takes you to its page.
+- **Follow the computer's look.** Theme now offers System beside Light and
+  Dark (Settings → General).
+- **Check now.** The Updates card says when Pencraft last looked for a new
+  version and looks again at a click.
+- **Test connection** in a provider's form asks the provider for its models
+  and says whether it answered.
+- **Turn all on** brings back every tool that was switched off
+  (Settings → Permissions).
+
+### Changed
+
+- **The settings window is rebuilt.** Seven pages in three groups: General
+  and Canvas; Assistants, Chat and Images; Permissions and MCP. Every
+  setting is in one place only, in a card with the ones it belongs to, and
+  its switch sits close to its name.
+- **Assistants** lists the ones you have set up first, with their state,
+  then the providers you can add, in a grid you can search. An assistant's
+  names are now in its own form.
+- **Permissions** holds everything AI may do: work on your documents, use
+  the web, make pictures, and each tool. **MCP** keeps the server and how
+  to connect an app, one app at a time.
+- The keys for Pexels and Pixabay moved to Settings → Images.
+- A form's buttons stay in a bar under it, which says what is still missing.
+- **Pencraft looks for a new version every 5 minutes** instead of every
+  6 hours. You can choose 15 minutes, an hour or a day instead; a saved
+  "Every 6 hours" becomes 5 minutes.
+- Switches are larger.
+
+### Removed
+
+- The Language and "Default SVG generation provider" choices, which had
+  only one option each, and the two sign-in buttons that did nothing yet.
+
 ### Fixed
 
 - **Screens no longer come in a box with their name on it twice.** An
@@ -228,7 +269,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.5...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.6...HEAD
+[0.3.6]: https://github.com/AsP3X/pencraft/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/AsP3X/pencraft/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/AsP3X/pencraft/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/AsP3X/pencraft/compare/v0.3.2...v0.3.3
