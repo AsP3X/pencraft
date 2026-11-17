@@ -30,8 +30,10 @@ pub struct Prefs {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Appearance {
-    /// Dark instead of light.
+    /// Dark instead of light. While `follow_system` is on, the app sets this to what the computer shows.
     pub dark: bool,
+    /// Take the look from the computer's own appearance instead of the choice above.
+    pub follow_system: bool,
     /// The interface language; "System" follows the computer.
     pub language: String,
     /// Animations and effects in the interface.
@@ -40,7 +42,8 @@ pub struct Appearance {
 
 impl Default for Appearance {
     fn default() -> Self {
-        Appearance { dark: false, language: "System".to_owned(), animations: true }
+        // Human: following the computer is off at first, so a look chosen in an earlier version stays chosen.
+        Appearance { dark: false, follow_system: false, language: "System".to_owned(), animations: true }
     }
 }
 

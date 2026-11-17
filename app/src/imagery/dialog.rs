@@ -13,7 +13,7 @@ use crate::settings::{caption, choice_at, row, switch};
 use crate::theme::{
     ACCENT, CHIP_RADIUS, DIALOG_BACKDROP, DIALOG_BUTTON, DIALOG_GAP, DIALOG_PADDING, DIALOG_TITLE_SIZE, FIELD_HEIGHT, FIELD_MARGIN, GENERATE_LINES,
     GENERATE_WIDTH, ON_ACCENT, PIECE_CHIP_PADDING, PIECE_CROSS, PIECE_CROSS_OUT, PIECE_GAP, PIECE_SIDE, PIECE_TEXT, PIECE_TOGGLE, PROBLEM, Palette,
-    SETTINGS_RADIUS, SIDEBAR_TEXT_SIZE,
+    SETTINGS_RADIUS,
 };
 
 /// The size choice's words for a picture of about 1024 pixels, and of about 2048.
@@ -452,7 +452,7 @@ impl Dialog {
             });
             return;
         }
-        caption(ui, "Description");
+        caption(ui, "Description", palette);
         let field = egui::Frame::new()
             .stroke(Stroke::new(1.0, palette.outline))
             .corner_radius(CHIP_RADIUS)
@@ -669,9 +669,9 @@ fn primary(text: &str, palette: Palette) -> egui::Button<'_> {
 
 /// A choice as wide as its column with its name over it; the name also tells it apart from the others.
 fn labelled(ui: &mut Ui, name: &str, value: &mut String, options: &[&str], palette: Palette) {
-    caption(ui, name);
+    caption(ui, name, palette);
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), FIELD_HEIGHT), Sense::hover());
-    choice_at(ui, rect, name, value, options, FontId::proportional(SIDEBAR_TEXT_SIZE), palette);
+    choice_at(ui, rect, name, value, options, palette);
 }
 
 #[cfg(test)]

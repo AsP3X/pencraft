@@ -176,8 +176,8 @@ pub const CHAT_TEXT_LARGE: f32 = 1.3;
 pub const OFFERED_MODELS_HEIGHT: f32 = 150.0;
 /// Room kept free at the right of a settings row for its control, where the row's second line ends.
 pub const SETTINGS_ROW_CONTROL_ROOM: f32 = 64.0;
-/// Width of a name's text field on the settings' Agent names page.
-pub const SETTINGS_NAME_FIELD: f32 = 240.0;
+/// Width of a name's text field at the right of a settings row.
+pub const SETTINGS_NAME_FIELD: f32 = 200.0;
 /// Width of the assistant menu.
 pub const ASSISTANT_MENU_WIDTH: f32 = 240.0;
 /// Size of a resize handle on screen, points.
@@ -248,6 +248,8 @@ pub struct Palette {
     pub primary_text: Color32,
     /// Edges of islands and of the outlined buttons on them (the user's sidebar design).
     pub outline: Color32,
+    /// The cards the settings window groups its rows in, a step lighter than the island they lie on.
+    pub card: Color32,
 }
 
 /// The light palette (`:root`).
@@ -263,6 +265,7 @@ pub const LIGHT: Palette = Palette {
     primary: Color32::from_rgb(0x18, 0x18, 0x1b),
     primary_text: Color32::from_rgb(0xfa, 0xfa, 0xfa),
     outline: Color32::from_rgb(0xe4, 0xe4, 0xe7),
+    card: Color32::from_rgb(0xff, 0xff, 0xff),
 };
 
 /// The dark palette (`.dark`).
@@ -278,6 +281,7 @@ pub const DARK: Palette = Palette {
     primary: Color32::from_rgb(0xfa, 0xfa, 0xfa),
     primary_text: Color32::from_rgb(0x18, 0x18, 0x1b),
     outline: Color32::from_rgb(0x3a, 0x3a, 0x3e),
+    card: Color32::from_rgb(0x2e, 0x2e, 0x32),
 };
 
 /// The palette for an appearance.
@@ -362,22 +366,34 @@ pub const SETTINGS_NAV_WIDTH: f32 = 232.0;
 pub const SETTINGS_NAV_ROW: f32 = 32.0;
 /// Size of a settings page's title.
 pub const SETTINGS_TITLE_SIZE: f32 = 20.0;
-/// Size of a settings section's title.
-pub const SETTINGS_SECTION_SIZE: f32 = 14.0;
-/// Height of a settings row; one with a second line of text is taller.
-pub const SETTINGS_ROW: f32 = 44.0;
-/// Height of a settings row with a second line of text.
-pub const SETTINGS_TALL_ROW: f32 = 56.0;
-/// Height of the settings window's small controls: choices, the appearance switch.
-pub const SETTINGS_CONTROL: f32 = 25.0;
+/// Height of a settings row with one line of text; one with more text is as tall as that asks for.
+pub const SETTINGS_ROW: f32 = 46.0;
+/// Height of a settings row that leads somewhere: a provider, a service.
+pub const SETTINGS_LINK_ROW: f32 = 54.0;
+/// Space between a settings card's left and right edges and what is in its rows.
+pub const SETTINGS_ROW_PAD: f32 = 16.0;
+/// Corner radius of a settings card.
+pub const SETTINGS_CARD_RADIUS: f32 = 12.0;
+/// Space above a card's heading.
+pub const SETTINGS_GROUP_GAP: f32 = 26.0;
+/// Most width of a settings page: a row's name and its control stay within one glance.
+pub const SETTINGS_PAGE_WIDTH: f32 = 620.0;
+/// Space between the list of pages and the page.
+pub const SETTINGS_PAGE_INSET: f32 = 40.0;
+/// Height of the bar under a settings form that holds its buttons.
+pub const SETTINGS_FOOTER: f32 = 60.0;
+/// Height of one choice of a segmented control.
+pub const SETTINGS_SEGMENT: f32 = 26.0;
 /// Size of an on/off switch.
-pub const SWITCH_SIZE: [f32; 2] = [25.0, 14.0];
-/// Height of a provider's card in the settings window.
-pub const PROVIDER_CARD: f32 = 66.0;
-/// Corner radius of a provider's card.
-pub const PROVIDER_RADIUS: f32 = 12.0;
-/// Side of the square in front of a provider's name.
-pub const PROVIDER_TILE: f32 = 32.0;
+pub const SWITCH_SIZE: [f32; 2] = [32.0, 18.0];
+/// Side of the square in front of a row's name in the settings window.
+pub const SETTINGS_TILE: f32 = 30.0;
+/// Height of a tile to click in the settings' grid of providers.
+pub const SETTINGS_TILE_BUTTON: f32 = 52.0;
+/// How many providers the grid shows before "Show more".
+pub const SETTINGS_PROVIDERS_SHOWN: usize = 8;
+/// How many tools the Permissions page shows before "Show all".
+pub const SETTINGS_TOOLS_SHOWN: usize = 6;
 /// Height of a text field in the settings window.
 pub const FIELD_HEIGHT: f32 = 30.0;
 /// Colour of a provider that is connected (the design's green state pill).

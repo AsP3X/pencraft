@@ -314,6 +314,17 @@ pub fn open_in_browser(address: &str) -> Result<(), String> {
 /// What one look found: a newer release, nothing newer, or why it couldn't look.
 type Found = Result<Option<Release>, String>;
 
+/// What is known about a newer version, as the settings window says it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Seen {
+    /// A look is under way.
+    pub looking: bool,
+    /// How long ago the last look started; `None` when there was none in this run.
+    pub ago: Option<Duration>,
+    /// The newer version that is offered, if one is.
+    pub offered: Option<String>,
+}
+
 /// The app's knowledge about a newer version, and the card that offers it.
 #[expect(clippy::struct_excessive_bools, reason = "each says one independent thing about the look or the card")]
 pub struct Updates {
@@ -520,6 +531,12 @@ impl Updates {
             log::info!("update check: no thread to look on: {error}");
             self.looking = false;
         }
+    }
+
+    /// What the settings window says about a newer version.
+    #[must_use]
+    pub fn seen(&self) -> Seen {
+        Seen { looking: self.looking, ago: self.looked.map(|at| at.elapsed()), offered: self.offered.as_ref().map(|release| release.version.clone()) }
     }
 
     /// Looks now because the user asked to, whatever the setting says; the answer is always said.

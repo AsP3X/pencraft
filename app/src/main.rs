@@ -186,8 +186,10 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<app::Launch, String>
             "--dark" => launch.dark = true,
             "--sidebar" => launch.sidebar = Some(args.next().ok_or("--sidebar needs a view: history, chat, layers or hidden")?),
             "--settings" => {
-                launch.settings =
-                    Some(args.next().ok_or("--settings needs a page: general, agents, provider, cli, names, chat, mcp, images or image-service")?);
+                launch.settings = Some(
+                    args.next()
+                        .ok_or("--settings needs a page: general, canvas, agents, provider, cli, chat, images, image-service, permissions or mcp")?,
+                );
             }
             "--actions" => launch.actions = true,
             "--generate-image" => launch.generate_image = true,

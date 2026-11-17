@@ -1,6 +1,7 @@
-//! The settings window, after the user's settings design: a list of pages on the left, the chosen page on the
-//! right. General holds the interface and canvas settings; Agents lists the assistant providers and lets the
-//! user describe a provider of their own; Agent names, Chat and MCP hold what their names say.
+//! The settings window: a list of pages on the left, in three groups, and the chosen page on the right. Every
+//! setting is on one page only, in a card with the settings it belongs to. General and Canvas are about the
+//! app; Assistants, Chat and Images about the AI models; Permissions and MCP about what they may do and how
+//! other apps reach them. A field over the list of pages finds a setting by its name.
 //!
 //! The chat talks to Claude Code when it is installed and to custom providers that speak the Messages API;
 //! the other known providers can't be connected yet. A custom provider's API key goes to the operating system's
@@ -8,8 +9,9 @@
 
 use std::path::PathBuf;
 use std::sync::mpsc;
+use std::time::Duration;
 
-use egui::{Align, Align2, Color32, FontId, Layout, Margin, Rect, Response, RichText, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2, pos2, vec2};
+use egui::{Align, Align2, FontId, Layout, Rect, RichText, Sense, Stroke, Ui, UiBuilder, Vec2, pos2, vec2};
 
 use crate::chat::catalog;
 use crate::icons;
@@ -17,15 +19,22 @@ use craft_ai_core::SecretString;
 
 use crate::chat::Choice;
 use crate::chat::{KIND_CLAUDE, KIND_GROK, KIND_PLAIN, KINDS};
-use crate::prefs::{AgentName, Agents, CustomProvider, ImageService, Images, LocalAgent, Prefs, ProviderModel};
+use crate::prefs::{AgentName, Agents, Appearance, CustomProvider, ImageService, Images, LocalAgent, Prefs, ProviderModel};
 use crate::secrets::{self, Keychain, Vault};
-use crate::sidebar::{icon_button, text_button};
+use crate::sidebar::icon_button;
 use crate::theme::{
-    self, CHECKING, CHIP_RADIUS, CONNECTED, DIALOG_BACKDROP, FIELD_HEIGHT, ICON_SIZE, OFFERED_MODELS_HEIGHT, PROVIDER_CARD, PROVIDER_RADIUS,
-    PROVIDER_TILE, Palette, SETTINGS_CONTROL, SETTINGS_MARGIN, SETTINGS_MAX, SETTINGS_NAME_FIELD, SETTINGS_NAV_ROW, SETTINGS_NAV_WIDTH,
-    SETTINGS_RADIUS, SETTINGS_ROW, SETTINGS_ROW_CONTROL_ROOM, SETTINGS_SECTION_SIZE, SETTINGS_TALL_ROW, SETTINGS_TITLE_SIZE, SIDEBAR_TEXT_SIZE,
-    SWITCH_SIZE,
+    self, CHIP_RADIUS, DIALOG_BACKDROP, FIELD_HEIGHT, ICON_SIZE, OFFERED_MODELS_HEIGHT, Palette, SETTINGS_FOOTER, SETTINGS_MARGIN, SETTINGS_MAX,
+    SETTINGS_NAME_FIELD, SETTINGS_NAV_ROW, SETTINGS_NAV_WIDTH, SETTINGS_PAGE_INSET, SETTINGS_PAGE_WIDTH, SETTINGS_PROVIDERS_SHOWN, SETTINGS_RADIUS,
+    SETTINGS_TOOLS_SHOWN, SIDEBAR_TEXT_SIZE,
 };
+
+mod parts;
+
+use parts::{
+    Kind, Lead, Segment, Tone, about, button, card, choice, field, heading, heading_with, hint, link_state, note, pill, pill_at, search_field,
+    segmented, sized_field, strong, tile_button, title, warning, wide_choice,
+};
+pub(crate) use parts::{caption, choice_at, row, switch};
 
 /// Said when a provider is chosen that has no API another app can use with a key.
 const NO_KEY_API: &str = " has no API that other apps can use with a key, so it can't be connected.";
@@ -57,16 +66,27 @@ const PROVIDERS: [(&str, &str, bool); 16] = [
     ("OpenCode Zen", "Multiple models*, e.g. Claude Opus 5.5 · Claude Sonnet 5.5 · Claude Haiku 5.5", true),
 ];
 
-/// What the "Always steer messages" row says under its name.
-const STEER_HINT: &str = "Send messages to running agents that support steering (API providers) at once instead of queueing them.";
-/// What the "Show agent input on dashboard" row says under its name.
-const DASHBOARD_HINT: &str = "A message box on the home screen; what you send starts a new design.";
-/// What the "Show ideas under the message bar" row says under its name.
-const IDEAS_HINT: &str = "A row of ideas under the message bar of an empty document while the sidebar is folded and nothing is typed.";
-/// What the "Let AI models work on documents" row says under its name.
-const TOOLS_HINT: &str = "AI clients on this computer can read and change open documents through `pencraft mcp`, also in the background.";
-/// The longest a tool's description is on the MCP page, characters.
+/// What the "Send while the assistant is working" row says under its name.
+const STEER_HINT: &str =
+    "A message reaches a running assistant at once instead of waiting in the queue. Only assistants connected by API key can be steered.";
+/// What the "Message box on the home screen" row says under its name.
+const DASHBOARD_HINT: &str = "What you send there starts a new design.";
+/// What the "Ideas under the message bar" row says under its name.
+const IDEAS_HINT: &str = "Shown in an empty document while the sidebar is folded and nothing is typed.";
+/// What the "Let AI work on my documents" row says under its name.
+const TOOLS_HINT: &str = "The chat and AI apps on this computer can read and change open documents through `pencraft mcp`, also in the background. Off: every tool call is refused.";
+/// What the "Have finished designs reviewed" row says under its name.
+const REVIEW_HINT: &str = "A second model that didn't make the design judges a picture of it like a strict art director, and the assistant works in what it wants changed. Up to two rounds; a design takes longer and costs more.";
+/// What the "Generate and edit pictures" row says under its name.
+const PICTURES_HINT: &str = "With the generate_image and edit_image tools, which send your pictures to the image service. Each one costs money on your key. The Generate Image dialog works either way.";
+/// The longest a tool's description is on the Permissions page, characters.
 const MOST_TOOL_WORDS: usize = 96;
+/// What the theme control calls following the computer's appearance.
+const THEME_SYSTEM: &str = "System";
+/// What the theme control calls the light appearance.
+const THEME_LIGHT: &str = "Light";
+/// What the theme control calls the dark appearance.
+const THEME_DARK: &str = "Dark";
 
 /// What the settings window shows of the running app.
 pub struct Facts<'a> {
@@ -74,35 +94,111 @@ pub struct Facts<'a> {
     pub assistants: &'a [Choice],
     /// The port the local server for AI clients listens on; `None` when it isn't running.
     pub port: Option<u16>,
+    /// What is known about a newer version.
+    pub update: crate::update::Seen,
 }
 
 /// A page of the settings window.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Page {
-    /// Interface and canvas.
+    /// The window's look, and updates.
     #[default]
     General,
-    /// Assistant providers.
+    /// How the canvas behaves.
+    Canvas,
+    /// The assistants: agent programs and providers.
     Agents,
-    /// Image model services.
-    Images,
-    /// Names of assistants.
-    AgentNames,
     /// The chat.
     Chat,
-    /// Tool servers.
+    /// Image model services and stock photo sites.
+    Images,
+    /// What AI models may do.
+    Permissions,
+    /// The tool server other AI apps reach Pencraft through.
     Mcp,
 }
 
-/// The pages in the order of the list: page, icon, name.
-const PAGES: [(Page, &str, &str); 6] = [
-    (Page::General, "settings", "General"),
-    (Page::Agents, "sparkle", "Agents"),
-    (Page::Images, "image", "Images"),
-    (Page::AgentNames, "tag", "Agent names"),
-    (Page::Chat, "message-square", "Chat"),
-    (Page::Mcp, "terminal", "MCP"),
+/// One entry of the list of pages: the page, its icon, its name.
+type Entry = (Page, &'static str, &'static str);
+
+/// The pages in the order of the list, in their groups: the group's name, then its pages.
+const PAGES: [(&str, &[Entry]); 3] = [
+    ("Pencraft", &[(Page::General, "settings", "General"), (Page::Canvas, "frame", "Canvas")]),
+    ("AI", &[(Page::Agents, "sparkles", "Assistants"), (Page::Chat, "message-square", "Chat"), (Page::Images, "image", "Images")]),
+    ("Access", &[(Page::Permissions, "shield-check", "Permissions"), (Page::Mcp, "terminal", "MCP")]),
 ];
+
+/// What the search field finds: the page, the card's heading, and the setting's name, as the page shows them.
+// Agent: a row added to a page MUST be added here too, or the search doesn't find it. Tools and providers are
+// added by `finds`, from their own lists.
+const INDEX: &[(Page, &str, &str)] = &[
+    (Page::General, "Appearance", "Theme"),
+    (Page::General, "Appearance", "Animations and effects"),
+    (Page::General, "Updates", "Check now"),
+    (Page::General, "Updates", "Look for new versions automatically"),
+    (Page::General, "Updates", "Check every"),
+    (Page::Canvas, "Grid and snapping", "Show pixel grid"),
+    (Page::Canvas, "Grid and snapping", "Snap to pixel grid"),
+    (Page::Canvas, "Grid and snapping", "Snap to objects"),
+    (Page::Canvas, "Zoom", "Zoom with the scroll wheel"),
+    (Page::Canvas, "Zoom", "Invert zoom direction"),
+    (Page::Canvas, "Nudge", "Arrow keys"),
+    (Page::Canvas, "Nudge", "Shift + arrow keys"),
+    (Page::Canvas, "AI cursors", "Cursor size"),
+    (Page::Canvas, "AI cursors", "Cursor label"),
+    (Page::Canvas, "AI cursors", "Label text"),
+    (Page::Canvas, "Import", "Include HTML metadata when importing pages"),
+    (Page::Agents, "Your assistants", "Assistant names"),
+    (Page::Agents, "Add an assistant", "Command-line agent"),
+    (Page::Agents, "Add an assistant", "Custom provider"),
+    (Page::Agents, "Add an assistant", "API key"),
+    (Page::Chat, "Default assistant", "Answers in the chat"),
+    (Page::Chat, "Custom instructions", "Custom instructions"),
+    (Page::Chat, "Conversation", "Text size"),
+    (Page::Chat, "Conversation", "Send while the assistant is working"),
+    (Page::Chat, "Conversation", "Have finished designs reviewed"),
+    (Page::Chat, "Starting a design", "Message box on the home screen"),
+    (Page::Chat, "Starting a design", "Ideas under the message bar"),
+    (Page::Images, "Image generation", "Add image service"),
+    (Page::Images, "Image generation", "Use by default"),
+    (Page::Images, "Photo search", "Openverse and Wikimedia Commons"),
+    (Page::Images, "Photo search", "Pexels"),
+    (Page::Images, "Photo search", "Pixabay"),
+    (Page::Permissions, "Permissions", "Let AI work on my documents"),
+    (Page::Permissions, "AI may also", "Use the web"),
+    (Page::Permissions, "AI may also", "Generate and edit pictures"),
+    (Page::Mcp, "Server", "Pencraft MCP server"),
+    (Page::Mcp, "Server", "Address"),
+    (Page::Mcp, "Connect an AI app", "Claude Code"),
+    (Page::Mcp, "Connect an AI app", "Codex"),
+    (Page::Mcp, "Connect an AI app", "Cursor, Claude Desktop and others"),
+];
+
+/// The list entry of `page`.
+fn entry(page: Page) -> Entry {
+    PAGES.iter().flat_map(|(_, pages)| pages.iter()).find(|(known, ..)| *known == page).copied().unwrap_or(PAGES[0].1[0])
+}
+
+/// What the search for `query` finds: the page, the card's heading and the setting's name, in the pages' order.
+fn finds(query: &str) -> Vec<(Page, String, String)> {
+    let query = query.trim().to_lowercase();
+    if query.is_empty() {
+        return Vec::new();
+    }
+    let hit = |text: &str| text.to_lowercase().contains(&query);
+    let own = |page: Page, card: &str, name: &str| (page, card.to_owned(), name.to_owned());
+    let mut found: Vec<(Page, String, String)> = INDEX
+        .iter()
+        .filter(|(page, card, name)| hit(name) || hit(card) || hit(entry(*page).2))
+        .map(|(page, card, name)| own(*page, card, name))
+        .collect();
+    found.extend(PROVIDERS.iter().filter(|(name, ..)| hit(name)).map(|(name, ..)| own(Page::Agents, "Add an assistant", name)));
+    let tools = crate::agent::tools();
+    let names = tools.as_array().into_iter().flatten().filter_map(|tool| tool["name"].as_str());
+    found.extend(names.filter(|name| hit(name) || hit("tools")).map(|name| own(Page::Permissions, "Tools", name)));
+    found.sort_by_key(|(page, ..)| PAGES.iter().flat_map(|(_, pages)| pages.iter()).position(|(known, ..)| known == page));
+    found
+}
 
 /// One model row of the custom provider form, as typed.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -143,7 +239,6 @@ struct Form {
     models: Vec<ModelRow>,
     /// The models the provider said it has, once asked.
     offered: Vec<String>,
-    advanced: bool,
 }
 
 impl Form {
@@ -158,7 +253,6 @@ impl Form {
             forget_key: false,
             models: vec![ModelRow::empty()],
             offered: Vec::new(),
-            advanced: false,
         }
     }
 
@@ -358,7 +452,7 @@ impl CliForm {
     }
 }
 
-/// What a provider's card says about its connection.
+/// What a card says about a provider, an agent program, a service or the tool server.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Link {
     /// Nothing is set up.
@@ -377,45 +471,107 @@ enum Link {
     Missing,
     /// A command-line agent the user doesn't want offered in the chat.
     Off,
+    /// An image service that has no key yet.
+    NoKey,
 }
 
 impl Link {
     fn words(self) -> &'static str {
         match self {
             Link::NotConnected => "Not connected",
-            Link::Checking => "Checking status...",
-            Link::Ready => "Ready in the chat",
+            Link::Checking => "Checking…",
+            // Human: an installed agent program that is turned on is offered in the chat, like a provider
+            // that is set up; both say the same.
+            Link::Ready | Link::Installed => "Ready",
             Link::Running => "Running",
             Link::Stopped => "Not running",
-            Link::Installed => "Installed",
             Link::Missing => "Not installed",
             Link::Off => "Turned off",
+            Link::NoKey => "No key yet",
+        }
+    }
+
+    fn tone(self) -> Tone {
+        match self {
+            Link::NotConnected | Link::Stopped | Link::Missing | Link::Off | Link::NoKey => Tone::Quiet,
+            Link::Checking => Tone::Busy,
+            Link::Ready | Link::Running | Link::Installed => Tone::Good,
         }
     }
 }
 
+/// A state pill with its right edge at `right`.
+fn status(ui: &Ui, right: egui::Pos2, link: Link, palette: Palette) {
+    pill_at(ui, right, link.words(), link.tone(), palette);
+}
+
 /// The connection state of the provider called `name`: ready once it is set up with what the chat needs to
 /// reach it (for most, an API key).
-// Human: a provider's card is about its API only. That Claude Code is installed shows on its own card under
-// "Agents on this computer", not on Anthropic's card here, which would then claim a key that was never set.
+// Human: a provider's card is about its API only. That Claude Code is installed shows on its own row under
+// "Your assistants", not on Anthropic's, which would then claim a key that was never set.
 fn provider_link(name: &str, prefs: &Prefs) -> Link {
     let ready = prefs.agents.providers.iter().any(|provider| provider.name == name && crate::chat::usable(provider));
     if ready { Link::Ready } else { Link::NotConnected }
+}
+
+/// Whether the assistant the app calls `plain` ("Claude Code · Opus 5.5") belongs to the agent program or
+/// provider called `name`.
+fn owns(name: &str, plain: &str) -> bool {
+    plain.strip_prefix(name).is_some_and(|rest| rest.is_empty() || rest.starts_with(" · "))
+}
+
+/// "1 model", "3 models".
+fn counted(count: usize, one: &str) -> String {
+    if count == 1 { format!("1 {one}") } else { format!("{count} {one}s") }
+}
+
+/// How long ago something was, in words.
+fn ago(time: Duration) -> String {
+    match time.as_secs() {
+        0..60 => "just now".to_owned(),
+        seconds @ 60..3600 => format!("{} ago", counted(usize::try_from(seconds / 60).unwrap_or(usize::MAX), "minute")),
+        seconds => format!("{} ago", counted(usize::try_from(seconds / 3600).unwrap_or(usize::MAX), "hour")),
+    }
+}
+
+/// What the Updates card says about a newer version.
+fn update_line(seen: &crate::update::Seen) -> String {
+    match (seen.looking, &seen.offered, seen.ago) {
+        (true, ..) => "Looking for a newer version…".to_owned(),
+        (false, Some(version), _) => format!("Pencraft {version} is available."),
+        (false, None, Some(time)) => format!("Last checked {}.", ago(time)),
+        (false, None, None) => "Not checked yet since Pencraft started.".to_owned(),
+    }
 }
 
 /// What a provider says about its models, once it has answered.
 type Models = Result<Vec<String>, String>;
 
 /// The settings window's state.
+#[expect(clippy::struct_excessive_bools, reason = "each says one independent thing about what the window shows")]
 pub struct Settings {
     /// Whether the window shows.
     pub open: bool,
+    /// The user asked to look for a newer version now; the app takes this away and looks.
+    pub check_now: bool,
     page: Page,
-    /// The custom provider form, when it is open on the Agents page.
+    /// What is typed into the search field over the list of pages.
+    query: String,
+    /// What is typed into the search field over the providers.
+    provider_query: String,
+    /// Every provider shows, not only the first few.
+    all_providers: bool,
+    /// Every tool shows, not only the first few.
+    all_tools: bool,
+    /// The AI app the MCP page shows the setup for, as [`client_setups`] names it.
+    client: String,
+    /// The stock photo site (its place in [`crate::web::KEYED`]) whose key is being typed.
+    picture_editing: Option<usize>,
+    /// The custom provider form, when it is open on the Assistants page.
     form: Option<Form>,
     /// The image service form, when it is open on the Images page.
     image_form: Option<ImageForm>,
-    /// The command-line agent form, when it is open on the Agents page.
+    /// The command-line agent form, when it is open on the Assistants page.
     cli: Option<CliForm>,
     /// The search for the command-line agents' programs, while it runs.
     search: Option<mpsc::Receiver<Vec<(String, bool)>>>,
@@ -423,10 +579,12 @@ pub struct Settings {
     installed: Option<Vec<(String, bool)>>,
     /// Adding Pencraft to an agent program's MCP servers, while that runs; it answers with what to tell the user.
     hooking: Option<mpsc::Receiver<String>>,
-    /// What is typed into the stock photo sites' key fields on the MCP page, in the order of [`crate::web::KEYED`].
+    /// What is typed into the stock photo sites' key fields, in the order of [`crate::web::KEYED`].
     picture_drafts: [String; 2],
     /// The question to a provider which models it has, while it is out.
     loading: Option<mpsc::Receiver<Models>>,
+    /// That question was asked to test the connection, so its answer is said.
+    testing: bool,
     /// Where API keys are kept.
     vault: Box<dyn Vault>,
 }
@@ -435,7 +593,14 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             open: false,
+            check_now: false,
             page: Page::default(),
+            query: String::new(),
+            provider_query: String::new(),
+            all_providers: false,
+            all_tools: false,
+            client: client_setups("pencraft")[0].0.to_owned(),
+            picture_editing: None,
             form: None,
             image_form: None,
             cli: None,
@@ -444,25 +609,36 @@ impl Default for Settings {
             hooking: None,
             picture_drafts: [String::new(), String::new()],
             loading: None,
+            testing: false,
             vault: Box::new(Keychain),
         }
     }
 }
 
+/// What a click in the list of assistants opens.
+enum Open {
+    /// The command-line agent at this place.
+    Local(usize),
+    /// The saved provider at this place.
+    Provider(usize),
+}
+
 impl Settings {
-    /// Opens the window on the page called `name` on the command line (`--settings`): `general`, `agents`,
-    /// `provider` for the custom provider form, `cli` for the command-line agent form, `names`, `chat`, `mcp`,
-    /// `images`, or `image-service` for the image service form.
+    /// Opens the window on the page called `name` on the command line (`--settings`): `general`, `canvas`,
+    /// `agents`, `provider` for the custom provider form, `cli` for the command-line agent form, `chat`,
+    /// `images`, `image-service` for the image service form, `permissions` or `mcp`.
     pub fn open_named(&mut self, name: &str) {
         self.open = true;
         self.page = match name {
             "general" => Page::General,
+            "canvas" => Page::Canvas,
             "images" | "image-service" => Page::Images,
-            "names" => Page::AgentNames,
             "chat" => Page::Chat,
+            "permissions" => Page::Permissions,
             "mcp" => Page::Mcp,
             _ => Page::Agents,
         };
+        self.query.clear();
         self.form = (name == "provider").then(Form::new);
         self.cli = (name == "cli").then(CliForm::new);
         self.image_form = (name == "image-service").then(ImageForm::new);
@@ -537,9 +713,18 @@ impl Settings {
     pub fn open_general(&mut self) {
         self.open = true;
         self.page = Page::General;
+        self.query.clear();
+        self.leave_forms();
+        self.installed = None;
+    }
+
+    /// Closes whatever form is open, without saving it.
+    fn leave_forms(&mut self) {
         self.form = None;
         self.image_form = None;
-        self.installed = None;
+        self.cli = None;
+        self.loading = None;
+        self.picture_editing = None;
     }
 
     /// Draws the window when it is open and applies changes to `prefs`. Returns a sentence to tell the user, if
@@ -564,36 +749,52 @@ impl Settings {
         let modal = egui::Modal::new(id)
             .area(egui::Modal::default_area(id).fade_in(false))
             .frame(frame)
-            .backdrop_color(Color32::from_black_alpha(DIALOG_BACKDROP))
+            .backdrop_color(egui::Color32::from_black_alpha(DIALOG_BACKDROP))
             .show(ctx, |ui| {
                 let (window, _) = ui.allocate_exact_size(size, Sense::hover());
-                self.pages(ui, window, palette);
-                let close = Rect::from_min_size(pos2(window.right() - 40.0, window.top() + 18.0), Vec2::splat(26.0));
-                let page = Rect::from_min_max(
-                    pos2(window.left() + SETTINGS_NAV_WIDTH + 29.0, window.top() + 1.0),
-                    pos2(window.right() - 14.0, window.bottom() - 1.0),
-                );
+                self.pages(ui, window, facts, palette);
+                let searching = !self.query.trim().is_empty();
+                // Human: a form's buttons stay in a bar under the page, so they are there however far the
+                // form is scrolled.
+                let form = !searching && (self.form.is_some() || self.cli.is_some() || self.image_form.is_some());
+                let bar = if form { SETTINGS_FOOTER } else { 0.0 };
+                let area = Rect::from_min_max(pos2(window.left() + SETTINGS_NAV_WIDTH + 1.0, window.top() + 1.0), window.max - vec2(1.0, 1.0));
+                let page = Rect::from_min_max(pos2(area.left() + SETTINGS_PAGE_INSET, area.top()), pos2(area.right() - 13.0, area.bottom() - bar));
                 ui.scope_builder(UiBuilder::new().max_rect(page), |ui| {
                     ui.set_clip_rect(page.intersect(ui.clip_rect()));
-                    egui::ScrollArea::vertical()
-                        .id_salt(("settings-page", self.page, self.form.is_some() || self.image_form.is_some() || self.cli.is_some()))
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            // Human: room on the right for the close cross and the scroll bar.
-                            ui.set_max_width(page.width() - 24.0);
+                    egui::ScrollArea::vertical().id_salt(("settings-page", self.page, form, searching)).auto_shrink([false, false]).show(ui, |ui| {
+                        // Human: room on the right for the close cross and the scroll bar.
+                        ui.set_max_width((page.width() - 40.0).min(SETTINGS_PAGE_WIDTH));
+                        ui.spacing_mut().item_spacing.y = 0.0;
+                        ui.add_space(30.0);
+                        if searching {
+                            self.results(ui, palette);
+                        } else {
                             match self.page {
-                                Page::General => general(ui, prefs, palette),
-                                Page::Agents => self.agents(ui, prefs, palette, &mut notice),
-                                Page::Images => self.images(ui, prefs, palette, &mut notice),
-                                Page::AgentNames => agent_names(ui, &mut prefs.agents, facts, palette),
+                                Page::General => general(ui, prefs, facts, palette, &mut self.check_now),
+                                Page::Canvas => canvas_page(ui, prefs, palette),
+                                Page::Agents => self.agents(ui, prefs, facts, palette, &mut notice),
                                 Page::Chat => chat_page(ui, &mut prefs.agents, facts, palette),
+                                Page::Images => self.images(ui, prefs, palette, &mut notice),
+                                Page::Permissions => self.permissions(ui, prefs, palette),
                                 Page::Mcp => {
-                                    mcp_page(ui, &mut prefs.agents, facts, self.vault.as_ref(), &mut self.picture_drafts, palette, &mut notice);
+                                    if mcp_page(ui, prefs, facts, &mut self.client, palette, &mut notice) {
+                                        self.page = Page::Permissions;
+                                    }
                                 }
                             }
-                            ui.add_space(28.0);
-                        });
+                        }
+                        ui.add_space(36.0);
+                    });
                 });
+                if form {
+                    let bar = Rect::from_min_max(pos2(area.left(), area.bottom() - bar), area.max);
+                    ui.painter().hline(bar.x_range(), bar.top(), Stroke::new(1.0, palette.outline));
+                    let inner = Rect::from_min_max(pos2(bar.left() + SETTINGS_PAGE_INSET, bar.top()), pos2(bar.right() - 20.0, bar.bottom()));
+                    let buttons = UiBuilder::new().max_rect(inner).layout(Layout::right_to_left(Align::Center));
+                    ui.scope_builder(buttons, |ui| self.footer(ui, prefs, palette, &mut notice));
+                }
+                let close = Rect::from_min_size(pos2(window.right() - 44.0, window.top() + 16.0), Vec2::splat(28.0));
                 ui.scope_builder(UiBuilder::new().max_rect(close), |ui| {
                     if icon_button(ui, "x", close.size(), false, palette).on_hover_text("Close").clicked() {
                         self.open = false;
@@ -606,265 +807,568 @@ impl Settings {
         notice
     }
 
-    /// The list of pages on the left.
-    fn pages(&mut self, ui: &mut Ui, window: Rect, palette: Palette) {
+    /// The left of the window: its name, the search field, the list of pages in their groups, and the version.
+    fn pages(&mut self, ui: &mut Ui, window: Rect, facts: &Facts<'_>, palette: Palette) {
         let line = window.left() + SETTINGS_NAV_WIDTH;
-        ui.painter().vline(line, window.y_range().shrink(1.0), Stroke::new(1.0, palette.outline.gamma_multiply(0.7)));
-        ui.painter().text(window.min + vec2(29.0, 40.0), Align2::LEFT_CENTER, "Settings", FontId::proportional(15.0), palette.foreground);
-        let mut top = window.top() + 64.0;
-        for (page, icon, name) in PAGES {
-            let row = Rect::from_min_size(pos2(window.left() + 18.0, top), vec2(SETTINGS_NAV_WIDTH - 36.0, SETTINGS_NAV_ROW));
-            top = row.bottom() + 1.5;
-            let response = ui.interact(row, ui.scope_id().with(("settings-page", name)), Sense::click());
-            let active = self.page == page;
-            if active || response.hovered() {
-                ui.painter().rect_filled(
-                    row,
-                    CHIP_RADIUS,
-                    if active { palette.hover.gamma_multiply(0.6) } else { palette.hover.gamma_multiply(0.3) },
+        ui.painter().vline(line, window.y_range().shrink(1.0), Stroke::new(1.0, palette.outline));
+        let inner = Rect::from_min_max(pos2(window.left() + 14.0, window.top() + 22.0), pos2(line - 14.0, window.bottom() - 18.0));
+        ui.painter().text(pos2(inner.left() + 10.0, inner.top() + 14.0), Align2::LEFT_CENTER, "Settings", strong(15.0), palette.foreground);
+        let search = Rect::from_min_size(pos2(inner.left(), inner.top() + 44.0), vec2(inner.width(), FIELD_HEIGHT));
+        ui.scope_builder(UiBuilder::new().max_rect(search), |ui| {
+            search_field(ui, &mut self.query, "Search settings", palette);
+        });
+        let searching = !self.query.trim().is_empty();
+        let mut top = search.bottom() + 16.0;
+        let mut go = None;
+        for (group, pages) in PAGES {
+            ui.painter().text(pos2(inner.left() + 10.0, top + 11.0), Align2::LEFT_CENTER, group, strong(11.0), palette.muted);
+            top += 24.0;
+            for &(page, icon, name) in pages {
+                let row = Rect::from_min_size(pos2(inner.left(), top), vec2(inner.width(), SETTINGS_NAV_ROW));
+                top = row.bottom() + 2.0;
+                let response = ui.interact(row, ui.scope_id().with(("settings-page", name)), Sense::click());
+                let active = self.page == page && !searching;
+                if active || response.hovered() {
+                    ui.painter().rect_filled(row, CHIP_RADIUS, if active { palette.hover } else { palette.hover.gamma_multiply(0.5) });
+                }
+                let color = if active || response.hovered() { palette.foreground } else { palette.muted };
+                icons::paint(
+                    ui.painter(),
+                    Rect::from_center_size(pos2(row.left() + 17.0, row.center().y), Vec2::splat(ICON_SIZE - 1.0)),
+                    icon,
+                    color,
                 );
+                ui.painter().text(pos2(row.left() + 35.0, row.center().y), Align2::LEFT_CENTER, name, FontId::proportional(SIDEBAR_TEXT_SIZE), color);
+                if response.clicked() {
+                    go = Some(page);
+                }
             }
-            let color = if active || response.hovered() { palette.foreground } else { palette.muted };
-            icons::paint(ui.painter(), Rect::from_center_size(pos2(row.left() + 17.0, row.center().y), Vec2::splat(ICON_SIZE - 2.0)), icon, color);
-            ui.painter().text(pos2(row.left() + 32.0, row.center().y), Align2::LEFT_CENTER, name, FontId::proportional(SIDEBAR_TEXT_SIZE), color);
-            if response.clicked() {
-                self.page = page;
-                self.form = None;
-                self.image_form = None;
-                self.cli = None;
-            }
+            top += 14.0;
+        }
+        if let Some(page) = go {
+            self.page = page;
+            self.query.clear();
+            self.leave_forms();
+        }
+        let foot = pos2(inner.left() + 10.0, inner.bottom() - 8.0);
+        let version = format!("Pencraft {}", crate::update::VERSION);
+        ui.painter().text(foot, Align2::LEFT_CENTER, version, FontId::proportional(11.5), palette.muted);
+        if facts.update.offered.is_some() {
+            let right = pos2(inner.right() - 10.0, foot.y);
+            ui.painter().text(right, Align2::RIGHT_CENTER, "Update available", FontId::proportional(11.5), palette.foreground);
         }
     }
 
-    /// The Agents page: the providers, or the custom provider form.
-    fn agents(&mut self, ui: &mut Ui, prefs: &mut Prefs, palette: Palette, notice: &mut Option<String>) {
+    /// What the search field found, in the page's place; a click goes to the setting's page.
+    fn results(&mut self, ui: &mut Ui, palette: Palette) {
+        let found = finds(&self.query);
+        title(ui, "Search", palette);
+        about(ui, &format!("{} for “{}”", counted(found.len(), "setting"), self.query.trim()), palette);
+        ui.add_space(18.0);
+        if found.is_empty() {
+            ui.label(RichText::new("No setting has that in its name.").color(palette.muted));
+            return;
+        }
+        let mut go = None;
+        card(ui, palette, |rows| {
+            for (page, group, name) in &found {
+                let (_, icon, page_name) = entry(*page);
+                if rows.link(Lead::Icon(icon), name, &format!("{page_name} › {group}"), None).clicked() {
+                    go = Some(*page);
+                }
+            }
+        });
+        if let Some(page) = go {
+            self.page = page;
+            self.query.clear();
+            self.leave_forms();
+        }
+    }
+
+    /// The bar under a form: what is still missing on the left, the form's buttons on the right.
+    // Agent: laid out from the right. WRITES prefs and the keychain on Save and Remove.
+    fn footer(&mut self, ui: &mut Ui, prefs: &mut Prefs, palette: Palette, notice: &mut Option<String>) {
+        ui.spacing_mut().item_spacing.x = 8.0;
+        let Settings { form, cli, image_form, loading, testing, installed, vault, .. } = self;
+        let vault: &dyn Vault = &**vault;
+        let mut finished = false;
+        if let Some(open) = form {
+            let provider = open.provider();
+            let label = if open.index.is_some() { "Save provider" } else { "Add provider" };
+            if button(ui, label, None, Kind::Primary, provider.is_some(), palette).clicked()
+                && let Some(provider) = provider
+            {
+                match save_provider(open, provider, prefs, vault) {
+                    Ok(()) => finished = true,
+                    Err(why) => *notice = Some(why),
+                }
+            }
+            let busy = loading.is_some();
+            let test = if busy && *testing { "Testing…" } else { "Test connection" };
+            if button(ui, test, None, Kind::Outline, !busy && !open.base_url.trim().is_empty(), palette).clicked() {
+                match ask_models(open, vault, ui.ctx()) {
+                    Ok(answer) => {
+                        *loading = Some(answer);
+                        *testing = true;
+                    }
+                    Err(why) => *notice = Some(why),
+                }
+            }
+            if let Some(index) = open.index
+                && button(ui, "Remove", None, Kind::Quiet, true, palette).clicked()
+            {
+                match remove_provider(index, prefs, vault) {
+                    Ok(()) => finished = true,
+                    Err(why) => *notice = Some(why),
+                }
+            }
+            finished |= button(ui, "Cancel", None, Kind::Quiet, true, palette).clicked();
+            missing(ui, open.missing(), palette);
+        } else if let Some(open) = cli {
+            let agent = open.agent(&prefs.agents.local);
+            let label = if open.index.is_some() { "Save agent" } else { "Add agent" };
+            if button(ui, label, None, Kind::Primary, agent.is_some(), palette).clicked()
+                && let Some(agent) = agent
+            {
+                match open.index.and_then(|index| prefs.agents.local.get_mut(index)) {
+                    Some(saved) => *saved = agent,
+                    None => prefs.agents.local.push(agent),
+                }
+                finished = true;
+            }
+            if let Some(index) = open.index
+                && button(ui, "Remove", None, Kind::Quiet, true, palette).clicked()
+            {
+                if index < prefs.agents.local.len() {
+                    prefs.agents.local.remove(index);
+                }
+                finished = true;
+            }
+            finished |= button(ui, "Cancel", None, Kind::Quiet, true, palette).clicked();
+            missing(ui, open.missing(&prefs.agents.local), palette);
+        } else if let Some(open) = image_form {
+            let service = open.service(&prefs.images);
+            let label = if open.index.is_some() { "Save service" } else { "Add service" };
+            if button(ui, label, None, Kind::Primary, service.is_some(), palette).clicked()
+                && let Some(service) = service
+            {
+                match save_image_service(open, service, prefs, vault) {
+                    Ok(()) => finished = true,
+                    Err(why) => *notice = Some(why),
+                }
+            }
+            if let Some(index) = open.index
+                && button(ui, "Remove", None, Kind::Quiet, true, palette).clicked()
+            {
+                match remove_image_service(index, prefs, vault) {
+                    Ok(()) => finished = true,
+                    Err(why) => *notice = Some(why),
+                }
+            }
+            finished |= button(ui, "Cancel", None, Kind::Quiet, true, palette).clicked();
+            missing(ui, open.missing(&prefs.images), palette);
+        }
+        if finished {
+            *form = None;
+            *cli = None;
+            *image_form = None;
+            *loading = None;
+            // What is installed is looked up again, for the rows.
+            *installed = None;
+        }
+    }
+
+    /// The Assistants page: the assistants that are set up and the ones to add, or the form for one.
+    fn agents(&mut self, ui: &mut Ui, prefs: &mut Prefs, facts: &Facts<'_>, palette: Palette, notice: &mut Option<String>) {
         if let Some(form) = &mut self.form {
-            if provider_form(ui, form, prefs, self.vault.as_ref(), &mut self.loading, palette, notice) {
+            if provider_form(ui, form, prefs, facts, self.vault.as_ref(), &mut self.loading, &mut self.testing, palette, notice) {
                 self.form = None;
                 self.loading = None;
             }
             return;
         }
         if let Some(form) = &mut self.cli {
-            if cli_form(ui, form, &mut prefs.agents, &mut self.hooking, palette, notice) {
+            if cli_form(ui, form, &mut prefs.agents, facts, &mut self.hooking, palette, notice) {
                 self.cli = None;
-                // What is installed is looked up again, for the cards.
+                // What is installed is looked up again, for the rows.
                 self.installed = None;
             }
             return;
         }
-        title(ui, "Connect your AI provider");
-        ui.add_space(8.0);
-        let about =
-            "Pencraft uses the agent programs installed on this computer with their own sign-in, and connects any other provider with its API key.";
-        ui.scope(|ui| {
-            ui.set_max_width(450.0);
-            ui.add(egui::Label::new(RichText::new(about).size(SIDEBAR_TEXT_SIZE + 0.5).color(palette.muted)).wrap());
-        });
-        ui.add_space(20.0);
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 11.0;
-            ui.spacing_mut().button_padding = vec2(14.0, 9.0);
-            let chatgpt = egui::Button::new(RichText::new("Sign in with ChatGPT").size(SIDEBAR_TEXT_SIZE).color(palette.primary_text))
-                .fill(palette.primary.gamma_multiply(0.85))
-                .corner_radius(CHIP_RADIUS);
-            let copilot = egui::Button::new(RichText::new("Sign in with GitHub Copilot").size(SIDEBAR_TEXT_SIZE))
-                .fill(Color32::TRANSPARENT)
-                .stroke(Stroke::new(1.0, palette.outline))
-                .corner_radius(CHIP_RADIUS);
-            if ui.add(chatgpt).clicked() || ui.add(copilot).clicked() {
-                *notice = Some("Signing in isn't available yet.".to_owned());
-            }
-        });
-        ui.add_space(26.0);
-        ui.label(RichText::new("Agents on this computer").size(SETTINGS_SECTION_SIZE));
-        ui.add_space(10.0);
-        ui.spacing_mut().item_spacing.y = 7.5;
-        // Human: the command-line agents: each card says whether its program is installed, and opens its
-        // settings (where the program is, its models, whether the chat offers it).
+        title(ui, "Assistants", palette);
+        about(ui, "The AI models that design with you. Set up as many as you like and switch between them in the chat.", palette);
+        heading(ui, "Your assistants", palette);
+        // Human: the agent programs come first, each saying whether its program is installed; the providers
+        // set up with a key follow. A click opens its settings.
+        let default = crate::chat::chosen(facts.assistants, &prefs.agents.chat_model).map(|choice| choice.plain.clone());
+        let tag = |name: &str| default.as_deref().filter(|plain| owns(name, plain)).map(|_| "Default");
         let local: Vec<(String, String, Link)> = prefs
             .agents
             .local
             .iter()
             .map(|agent| {
                 let command = crate::chat::command_of(agent).unwrap_or("no program set");
-                (agent.name.clone(), format!("{} · {command}", agent.kind), self.local_link(agent))
+                (agent.name.clone(), format!("On this computer · {command}"), self.local_link(agent))
             })
             .collect();
-        for (index, (name, line, link)) in local.iter().enumerate() {
-            if provider_card(ui, name, line, false, Some(*link), palette).clicked()
-                && let Some(agent) = prefs.agents.local.get(index)
-            {
-                self.cli = Some(CliForm::of(index, agent));
-            }
-        }
-        if provider_card(ui, "Add command-line agent", "", false, None, palette).clicked() {
-            self.cli = Some(CliForm::new());
-        }
-        ui.add_space(18.5);
-        ui.label(RichText::new("Setup providers").size(SETTINGS_SECTION_SIZE));
-        ui.add_space(2.5);
-        for (name, models, sample) in PROVIDERS {
-            if provider_card(ui, name, models, sample, Some(provider_link(name, prefs)), palette).clicked() {
-                *notice = self.open_known(name, prefs);
-            }
-        }
-        // Human: the user's own providers follow; one saved under a known provider's name is that card above.
-        let saved: Vec<(usize, String, String, Link)> = prefs
+        let saved: Vec<(String, String, Link)> = prefs
             .agents
             .providers
             .iter()
-            .enumerate()
-            .filter(|(_, p)| PROVIDERS.iter().all(|(known, ..)| *known != p.name))
-            .map(|(index, p)| {
-                let link = if crate::chat::usable(p) { Link::Ready } else { Link::NotConnected };
-                (index, p.name.clone(), p.models.iter().map(|m| m.id.as_str()).collect::<Vec<_>>().join(" · "), link)
+            .map(|provider| {
+                (provider.name.clone(), format!("API key · {}", counted(provider.models.len(), "model")), provider_link(&provider.name, prefs))
             })
             .collect();
-        for (index, name, models, link) in &saved {
-            if provider_card(ui, name, models, false, Some(*link), palette).clicked()
-                && let Some(provider) = prefs.agents.providers.get(*index)
-            {
-                self.loading = None;
-                self.form = Some(Form::of(*index, provider));
+        let mut open = None;
+        card(ui, palette, |rows| {
+            for (index, (name, line, link)) in local.iter().enumerate() {
+                let row = rows.link(Lead::Letter(name), name, line, tag(name));
+                status(rows.ui, link_state(row.rect), *link, palette);
+                if row.clicked() {
+                    open = Some(Open::Local(index));
+                }
             }
+            for (index, (name, line, link)) in saved.iter().enumerate() {
+                let row = rows.link(Lead::Letter(name), name, line, tag(name));
+                status(rows.ui, link_state(row.rect), *link, palette);
+                if row.clicked() {
+                    open = Some(Open::Provider(index));
+                }
+            }
+            if local.is_empty() && saved.is_empty() {
+                rows.block(|ui| {
+                    ui.label(RichText::new("No assistant is set up yet. Add one below.").color(palette.muted));
+                });
+            }
+        });
+        match open {
+            Some(Open::Local(index)) => self.cli = prefs.agents.local.get(index).map(|agent| CliForm::of(index, agent)),
+            Some(Open::Provider(index)) => {
+                self.loading = None;
+                self.form = prefs.agents.providers.get(index).map(|provider| Form::of(index, provider));
+            }
+            None => {}
         }
-        if provider_card(ui, "Add custom provider", "", false, None, palette).clicked() {
-            self.loading = None;
-            self.form = Some(Form::new());
-        }
-        ui.add_space(6.0);
-        let footnote =
-            "*Not all models from each provider are supported by Pencraft, we are working on validating and adding more models as they fit.";
-        ui.add(egui::Label::new(RichText::new(footnote).small().color(palette.muted.gamma_multiply(0.8))).wrap());
+        self.offered_assistants(ui, prefs, palette, notice);
     }
 
-    /// The Images page: the image model services, or the form for one.
+    /// The Assistants page's second half: a field to search the known providers, the providers as tiles, and
+    /// the two kinds the user describes themselves.
+    fn offered_assistants(&mut self, ui: &mut Ui, prefs: &Prefs, palette: Palette, notice: &mut Option<String>) {
+        heading(ui, "Add an assistant", palette);
+        hint(ui, "Agent programs use their own sign-in. Every other provider connects with your API key, kept in the system keychain.", palette);
+        search_field(ui, &mut self.provider_query, &format!("Search {} providers", PROVIDERS.len()), palette);
+        ui.add_space(8.0);
+        let query = self.provider_query.trim().to_lowercase();
+        // Human: a provider that is set up is in the list above, not offered again.
+        let offered: Vec<(&str, &str)> = PROVIDERS
+            .iter()
+            .filter(|(name, ..)| prefs.agents.providers.iter().all(|provider| provider.name != *name))
+            .filter(|(name, models, _)| query.is_empty() || name.to_lowercase().contains(&query) || models.to_lowercase().contains(&query))
+            .map(|(name, models, _)| (*name, *models))
+            .collect();
+        let shown = if self.all_providers || !query.is_empty() { offered.len() } else { offered.len().min(SETTINGS_PROVIDERS_SHOWN) };
+        ui.spacing_mut().item_spacing.x = 8.0;
+        let mut picked = None;
+        for pair in offered[..shown].chunks(2) {
+            ui.columns(2, |columns| {
+                for (column, (name, models)) in columns.iter_mut().zip(pair) {
+                    if tile_button(column, Lead::Letter(name), name, models, true, palette).clicked() {
+                        picked = Some(*name);
+                    }
+                }
+            });
+            ui.add_space(8.0);
+        }
+        ui.columns(2, |columns| {
+            if tile_button(&mut columns[0], Lead::Icon("terminal"), "Command-line agent", "A program on this computer", false, palette).clicked() {
+                self.cli = Some(CliForm::new());
+            }
+            if tile_button(&mut columns[1], Lead::Icon("server"), "Custom provider", "OpenAI or Anthropic compatible API", false, palette).clicked() {
+                self.loading = None;
+                self.form = Some(Form::new());
+            }
+        });
+        if shown < offered.len() {
+            ui.add_space(8.0);
+            let more = format!("Show {}", counted(offered.len() - shown, "more provider"));
+            if button(ui, &more, Some("chevron-down"), Kind::Quiet, true, palette).clicked() {
+                self.all_providers = true;
+            }
+        }
+        ui.add_space(10.0);
+        let footnote =
+            "*Not all models from each provider are supported by Pencraft, we are working on validating and adding more models as they fit.";
+        ui.add(egui::Label::new(RichText::new(footnote).size(11.0).color(palette.muted)).wrap());
+        if let Some(name) = picked {
+            *notice = self.open_known(name, prefs);
+        }
+    }
+
+    /// The Images page: the image model services and the stock photo sites, or the form for a service.
     fn images(&mut self, ui: &mut Ui, prefs: &mut Prefs, palette: Palette, notice: &mut Option<String>) {
         if let Some(form) = &mut self.image_form {
-            if image_form(ui, form, prefs, self.vault.as_ref(), palette, notice) {
+            if image_form(ui, form, prefs, palette) {
                 self.image_form = None;
             }
             return;
         }
-        title(ui, "Images");
-        ui.add_space(8.0);
-        let about =
-            "Image model services make pictures from a description. Add the ones you have an API key for; each picture is paid for on that key.";
-        ui.scope(|ui| {
-            ui.set_max_width(450.0);
-            ui.add(egui::Label::new(RichText::new(about).size(SIDEBAR_TEXT_SIZE + 0.5).color(palette.muted)).wrap());
-        });
-        section(ui, "Services");
-        ui.spacing_mut().item_spacing.y = 7.5;
-        let saved: Vec<(String, String)> = prefs.images.services.iter().map(|s| (s.name.clone(), service_about(s))).collect();
-        for (index, (name, about)) in saved.iter().enumerate() {
-            if provider_card(ui, name, about, false, None, palette).clicked()
-                && let Some(service) = prefs.images.services.get(index)
-            {
-                self.image_form = Some(ImageForm::of(index, service));
-            }
-        }
-        if provider_card(ui, "Add image service", "", false, None, palette).clicked() {
-            self.image_form = Some(ImageForm::new());
-        }
+        title(ui, "Images", palette);
+        heading(ui, "Image generation", palette);
+        hint(
+            ui,
+            "Services that make pictures from a description. Add the ones you have an API key for; each picture is paid for on that key.",
+            palette,
+        );
         let ready = crate::imagery::ready(&prefs.images, &|name| std::env::var(name).ok());
-        // Human: a service from the environment has no card: it is set where Pencraft was started, not here.
-        for line in ready.iter().filter_map(environment_line) {
-            ui.label(RichText::new(line).color(palette.muted));
-        }
-        section(ui, "Use");
+        let saved: Vec<(String, String, Link)> = prefs
+            .images
+            .services
+            .iter()
+            .map(|service| {
+                let usable = ready.iter().any(|ready| ready.name == service.name);
+                (service.name.clone(), service_about(service), if usable { Link::Ready } else { Link::NoKey })
+            })
+            .collect();
         // Human: the choice offers the services that can be used now. An empty default means "the first service
         // that works"; a saved default that can't be used now shows as that too, but stays saved until the
         // person picks another, so a key that comes back brings it back.
-        let usable: Vec<String> = ready.into_iter().map(|r| r.name).collect();
+        let usable: Vec<String> = ready.iter().map(|ready| ready.name.clone()).collect();
         let names: Vec<&str> = std::iter::once(ANY_SERVICE).chain(usable.iter().map(String::as_str)).collect();
         let shown = shown_default(&usable, &prefs.images.default);
         let mut chosen = shown.clone();
-        row(ui, "Default service", None, palette, |ui| choice(ui, "image-default", &mut chosen, &names, palette));
+        let mut open = None;
+        card(ui, palette, |rows| {
+            for (index, (name, line, link)) in saved.iter().enumerate() {
+                let row = rows.link(Lead::Letter(name), name, line, None);
+                status(rows.ui, link_state(row.rect), *link, palette);
+                if row.clicked() {
+                    open = Some(Some(index));
+                }
+            }
+            // Human: a service from the environment can't be opened: it is set where Pencraft was started, not here.
+            for (name, line) in ready.iter().filter_map(environment_line) {
+                rows.row(name, Some(&line), Lead::Letter(name), |ui| pill(ui, Link::Ready.words(), Tone::Good, palette));
+            }
+            if rows.link(Lead::Icon("plus"), "Add image service", "", None).clicked() {
+                open = Some(None);
+            }
+            rows.row("Use by default", None, Lead::Nothing, |ui| choice(ui, "image-default", &mut chosen, &names, palette));
+        });
         if chosen != shown {
             prefs.images.default = if chosen == ANY_SERVICE { String::new() } else { chosen };
         }
-        divider(ui, palette);
-        let cost = "AI models may make pictures with the generate_image tool and change them with edit_image, which sends your pictures to the service. Each one costs money on your key. The Generate Image dialog works either way.";
-        row(ui, "Let the assistant generate and edit pictures", Some(cost), palette, |ui| switch(ui, &mut prefs.images.assistant, palette));
+        match open {
+            Some(Some(index)) => self.image_form = prefs.images.services.get(index).map(|service| ImageForm::of(index, service)),
+            Some(None) => self.image_form = Some(ImageForm::new()),
+            None => {}
+        }
+        self.picture_sources(ui, &mut prefs.agents, palette, notice);
+    }
+
+    /// Where assistants look for stock photos: the two sources that need no key, and a row for each stock photo
+    /// site, which takes a key.
+    // Agent: WRITES the keychain first and the settings only after that worked, so the settings never name a key
+    // that isn't there.
+    fn picture_sources(&mut self, ui: &mut Ui, agents: &mut Agents, palette: Palette, notice: &mut Option<String>) {
+        heading(ui, "Photo search", palette);
+        let why = "Where assistants look for stock photos. With a free key of your own, these sites are searched too, so there is more to choose from. Keys are kept in your system's keychain.";
+        hint(ui, why, palette);
+        let Settings { picture_drafts, picture_editing, vault, .. } = self;
+        card(ui, palette, |rows| {
+            rows.row("Openverse and Wikimedia Commons", Some("Free to search, no key needed."), Lead::Icon("globe"), |ui| {
+                pill(ui, "Always on", Tone::Good, palette);
+            });
+            for (index, ((name, key_name, where_from), draft)) in crate::web::KEYED.iter().zip(picture_drafts.iter_mut()).enumerate() {
+                let saved = agents.picture_keys.iter().any(|known| known == name);
+                let editing = *picture_editing == Some(index);
+                let said = if saved { "Key saved in your keychain.".to_owned() } else { format!("Free key at {where_from}") };
+                rows.row(name, Some(&said), Lead::Letter(name), |ui| {
+                    if editing {
+                        if button(ui, "Cancel", None, Kind::Quiet, true, palette).clicked() {
+                            draft.clear();
+                            *picture_editing = None;
+                        }
+                        if button(ui, "Save", None, Kind::Primary, !draft.trim().is_empty(), palette).clicked() {
+                            match vault.put(key_name, &SecretString::new(draft.trim())) {
+                                Ok(()) => {
+                                    draft.clear();
+                                    *picture_editing = None;
+                                    if !saved {
+                                        agents.picture_keys.push((*name).to_owned());
+                                    }
+                                }
+                                Err(why) => *notice = Some(format!("The key couldn't be saved in the keychain: {why}")),
+                            }
+                        }
+                        sized_field(ui, draft, "API key", 170.0, true, true, palette);
+                    } else if saved {
+                        if button(ui, "Forget", None, Kind::Quiet, true, palette).clicked() {
+                            match vault.forget(key_name) {
+                                Ok(()) => agents.picture_keys.retain(|known| known != name),
+                                Err(why) => *notice = Some(format!("The key couldn't be removed from the keychain: {why}")),
+                            }
+                        }
+                        if button(ui, "Replace", None, Kind::Outline, true, palette).clicked() {
+                            *picture_editing = Some(index);
+                        }
+                    } else if button(ui, "Add key", Some("key-round"), Kind::Outline, true, palette).clicked() {
+                        *picture_editing = Some(index);
+                    }
+                });
+            }
+        });
+    }
+
+    /// The Permissions page: everything AI models may do, for the chat and for every connected app.
+    fn permissions(&mut self, ui: &mut Ui, prefs: &mut Prefs, palette: Palette) {
+        title(ui, "Permissions", palette);
+        about(ui, "One place for everything AI is allowed to do. It holds for the chat and for every connected app.", palette);
+        ui.add_space(18.0);
+        card(ui, palette, |rows| {
+            rows.row("Let AI work on my documents", Some(TOOLS_HINT), Lead::Strong("shield-check"), |ui| {
+                switch(ui, &mut prefs.agents.tools, palette);
+            });
+        });
+        heading(ui, "AI may also", palette);
+        card(ui, palette, |rows| {
+            let web = "Search the web, read pages and fetch pictures. Queries go to DuckDuckGo and your photo sources.";
+            rows.row("Use the web", Some(web), Lead::Icon("globe"), |ui| switch(ui, &mut prefs.agents.web, palette));
+            rows.row("Generate and edit pictures", Some(PICTURES_HINT), Lead::Icon("image"), |ui| switch(ui, &mut prefs.images.assistant, palette));
+        });
+        let tools = crate::agent::tools();
+        let all: Vec<(&str, &str)> =
+            tools.as_array().into_iter().flatten().filter_map(|tool| Some((tool["name"].as_str()?, tool["description"].as_str()?))).collect();
+        let disabled = &mut prefs.agents.disabled_tools;
+        let off = all.iter().filter(|(name, _)| disabled.iter().any(|known| known == name)).count();
+        heading_with(ui, "Tools", palette, |ui| {
+            if off > 0 && button(ui, "Turn all on", None, Kind::Quiet, true, palette).clicked() {
+                disabled.clear();
+            }
+            ui.label(RichText::new(format!("{} of {} on", all.len() - off, all.len())).size(12.0).color(palette.muted));
+        });
+        hint(ui, "A tool that is off isn't offered to any assistant or app, and a call to it is refused.", palette);
+        let shown = if self.all_tools { all.len() } else { all.len().min(SETTINGS_TOOLS_SHOWN) };
+        card(ui, palette, |rows| {
+            rows.mono = true;
+            for (name, description) in &all[..shown] {
+                let before = !disabled.iter().any(|known| known == name);
+                let mut on = before;
+                rows.row(name, Some(&tool_words(description)), Lead::Nothing, |ui| switch(ui, &mut on, palette));
+                if on != before {
+                    disabled.retain(|known| known != name);
+                    if !on {
+                        disabled.push((*name).to_owned());
+                    }
+                }
+            }
+            if shown < all.len() && rows.more(&format!("Show all {} tools", all.len())).clicked() {
+                self.all_tools = true;
+            }
+        });
     }
 }
 
-/// The General page.
-fn general(ui: &mut Ui, prefs: &mut Prefs, palette: Palette) {
-    title(ui, "General");
-    section(ui, "Interface");
-    row(ui, "Appearance", None, palette, |ui| appearance_switch(ui, &mut prefs.appearance.dark, palette));
-    divider(ui, palette);
-    row(ui, "Language", None, palette, |ui| choice(ui, "language", &mut prefs.appearance.language, &["System"], palette));
-    divider(ui, palette);
-    row(ui, "Animations & effects", Some("Turn off to save GPU/CPU."), palette, |ui| switch(ui, &mut prefs.appearance.animations, palette));
-
-    section(ui, "Updates");
-    let updates =
-        format!("When Pencraft starts and then every so often, ask GitHub whether there is a newer version than {}.", crate::update::VERSION);
-    row(ui, "Look for new versions", Some(&updates), palette, |ui| switch(ui, &mut prefs.updates.check, palette));
-    divider(ui, palette);
-    let often = "Also while Pencraft stays open. A version you answered with Later is offered again at the next look.";
-    let choices: Vec<&str> = crate::update::EVERY.iter().map(|(name, _)| *name).collect();
-    row(ui, "How often", Some(often), palette, |ui| choice(ui, "update-every", &mut prefs.updates.every, &choices, palette));
-
-    section(ui, "Canvas");
-    let canvas = &mut prefs.canvas;
-    row(ui, "Show pixel grid", None, palette, |ui| switch(ui, &mut canvas.show_pixel_grid, palette));
-    divider(ui, palette);
-    row(ui, "Snap to pixel grid", None, palette, |ui| switch(ui, &mut canvas.snap_to_pixels, palette));
-    divider(ui, palette);
-    row(ui, "Snap to objects", None, palette, |ui| switch(ui, &mut canvas.snap_to_objects, palette));
-    divider(ui, palette);
-    row(ui, "Use scroll wheel to zoom", None, palette, |ui| switch(ui, &mut canvas.wheel_zooms, palette));
-    divider(ui, palette);
-    row(ui, "Invert zoom direction", None, palette, |ui| switch(ui, &mut canvas.invert_zoom, palette));
-
-    section(ui, "Custom nudge amount");
-    ui.label(RichText::new("How far selected objects move with the arrow keys").color(palette.muted));
-    ui.add_space(4.0);
-    row(ui, "Small nudge", None, palette, |ui| pixels(ui, &mut canvas.small_nudge));
-    divider(ui, palette);
-    row(ui, "Big nudge", None, palette, |ui| pixels(ui, &mut canvas.big_nudge));
-
-    section(ui, "Import & generation");
-    let generation = &mut prefs.generation;
-    row(ui, "Include HTML metadata when importing pages", None, palette, |ui| switch(ui, &mut generation.html_metadata, palette));
-    divider(ui, palette);
-    row(ui, "Default SVG generation provider", None, palette, |ui| choice(ui, "svg-provider", &mut generation.svg_provider, &["Pencraft"], palette));
-
-    section(ui, "Agents");
-    let agents = &mut prefs.agents;
-    row(ui, "Let AI models work on documents", Some(TOOLS_HINT), palette, |ui| switch(ui, &mut agents.tools, palette));
-    divider(ui, palette);
-    let review = "When the assistant has finished a design, a second model that didn't make it judges a picture of it like a strict art director, and the assistant works in what it wants changed. Up to two rounds; a design takes longer and costs more.";
-    row(ui, "Have designs reviewed", Some(review), palette, |ui| switch(ui, &mut agents.review, palette));
-    divider(ui, palette);
-    row(ui, "Always steer messages", Some(STEER_HINT), palette, |ui| switch(ui, &mut agents.always_steer, palette));
-    divider(ui, palette);
-    row(ui, "Chat text size", None, palette, |ui| choice(ui, "chat-text", &mut agents.chat_text_size, &["Small", "Medium", "Large"], palette));
-    divider(ui, palette);
-    row(ui, "Agent cursor size", None, palette, |ui| {
-        choice(ui, "cursor-size", &mut agents.cursor_size, &["Small (Default)", "Medium", "Large"], palette);
-    });
-    divider(ui, palette);
-    row(ui, "Agent cursor label", None, palette, |ui| {
-        choice(ui, "cursor-label", &mut agents.cursor_label, &["Agent (Default)", "Model name", "None"], palette);
-    });
-    divider(ui, palette);
-    row(ui, "Show agent input on dashboard", Some(DASHBOARD_HINT), palette, |ui| switch(ui, &mut agents.input_on_dashboard, palette));
-    divider(ui, palette);
-    row(ui, "Show ideas under the message bar", Some(IDEAS_HINT), palette, |ui| switch(ui, &mut agents.ideas, palette));
+/// What a form's bar says is still missing, left of its buttons.
+fn missing(ui: &mut Ui, what: Option<&str>, palette: Palette) {
+    if let Some(what) = what {
+        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+            ui.add(egui::Label::new(RichText::new(what).size(12.0).color(palette.muted)).truncate());
+        });
+    }
 }
 
-/// A paragraph under a page's title saying what the page is for.
-fn about(ui: &mut Ui, text: &str, palette: Palette) {
-    ui.add_space(8.0);
-    ui.scope(|ui| {
-        ui.set_max_width(520.0);
-        ui.add(egui::Label::new(RichText::new(text).size(SIDEBAR_TEXT_SIZE + 0.5).color(palette.muted)).wrap());
+/// The General page: the window's look, and updates.
+fn general(ui: &mut Ui, prefs: &mut Prefs, facts: &Facts<'_>, palette: Palette, check_now: &mut bool) {
+    title(ui, "General", palette);
+    heading(ui, "Appearance", palette);
+    card(ui, palette, |rows| {
+        rows.row("Theme", None, Lead::Nothing, |ui| theme_choice(ui, &mut prefs.appearance, palette));
+        rows.row("Animations and effects", Some("Turn off to save GPU and CPU."), Lead::Nothing, |ui| {
+            switch(ui, &mut prefs.appearance.animations, palette);
+        });
+    });
+    heading(ui, "Updates", palette);
+    card(ui, palette, |rows| {
+        let icon = if facts.update.offered.is_some() { "circle-arrow-up" } else { "circle-check" };
+        rows.row(&format!("Pencraft {}", crate::update::VERSION), Some(&update_line(&facts.update)), Lead::Icon(icon), |ui| {
+            if button(ui, "Check now", None, Kind::Outline, !facts.update.looking, palette).clicked() {
+                *check_now = true;
+            }
+        });
+        let automatic =
+            "Asks GitHub when Pencraft starts and while it stays open. A version you answered with Later is offered again at the next look.";
+        rows.row("Look for new versions automatically", Some(automatic), Lead::Nothing, |ui| switch(ui, &mut prefs.updates.check, palette));
+        let choices: Vec<&str> = crate::update::EVERY.iter().map(|(name, _)| *name).collect();
+        rows.row("Check every", None, Lead::Nothing, |ui| choice(ui, "update-every", &mut prefs.updates.every, &choices, palette));
+    });
+}
+
+/// The System / Light / Dark control.
+fn theme_choice(ui: &mut Ui, appearance: &mut Appearance, palette: Palette) {
+    let before = match (appearance.follow_system, appearance.dark) {
+        (true, _) => THEME_SYSTEM,
+        (false, true) => THEME_DARK,
+        (false, false) => THEME_LIGHT,
+    };
+    let mut chosen = before.to_owned();
+    let options = [
+        Segment { value: THEME_SYSTEM, shown: THEME_SYSTEM, icon: Some("monitor") },
+        Segment { value: THEME_LIGHT, shown: THEME_LIGHT, icon: Some("sun") },
+        Segment { value: THEME_DARK, shown: THEME_DARK, icon: Some("moon") },
+    ];
+    segmented(ui, "theme", &mut chosen, &options, palette);
+    if chosen != before {
+        follow_theme(appearance, &chosen);
+    }
+}
+
+/// Sets the appearance to what the theme control's choice `chosen` means.
+// Human: with System the app sets `dark` to what the computer shows, frame by frame; here it stays as it is.
+fn follow_theme(appearance: &mut Appearance, chosen: &str) {
+    appearance.follow_system = chosen == THEME_SYSTEM;
+    if !appearance.follow_system {
+        appearance.dark = chosen == THEME_DARK;
+    }
+}
+
+/// The Canvas page: grid, snapping, zoom, nudging, the assistants' cursors, and importing.
+fn canvas_page(ui: &mut Ui, prefs: &mut Prefs, palette: Palette) {
+    title(ui, "Canvas", palette);
+    let canvas = &mut prefs.canvas;
+    heading(ui, "Grid and snapping", palette);
+    card(ui, palette, |rows| {
+        rows.row("Show pixel grid", None, Lead::Nothing, |ui| switch(ui, &mut canvas.show_pixel_grid, palette));
+        rows.row("Snap to pixel grid", None, Lead::Nothing, |ui| switch(ui, &mut canvas.snap_to_pixels, palette));
+        rows.row("Snap to objects", None, Lead::Nothing, |ui| switch(ui, &mut canvas.snap_to_objects, palette));
+    });
+    heading(ui, "Zoom", palette);
+    card(ui, palette, |rows| {
+        let wheel = crate::keys::text("Off: the wheel scrolls, and ⌘ + wheel zooms.");
+        rows.row("Zoom with the scroll wheel", Some(&wheel), Lead::Nothing, |ui| switch(ui, &mut canvas.wheel_zooms, palette));
+        rows.row("Invert zoom direction", None, Lead::Nothing, |ui| switch(ui, &mut canvas.invert_zoom, palette));
+    });
+    heading(ui, "Nudge", palette);
+    hint(ui, "How far selected objects move.", palette);
+    card(ui, palette, |rows| {
+        rows.row("Arrow keys", None, Lead::Nothing, |ui| pixels(ui, &mut canvas.small_nudge));
+        rows.row("Shift + arrow keys", None, Lead::Nothing, |ui| pixels(ui, &mut canvas.big_nudge));
+    });
+    let agents = &mut prefs.agents;
+    heading(ui, "AI cursors", palette);
+    card(ui, palette, |rows| {
+        let sizes = [Segment { value: "Small (Default)", shown: "Small", icon: None }, Segment::plain("Medium"), Segment::plain("Large")];
+        rows.row("Cursor size", None, Lead::Nothing, |ui| segmented(ui, "cursor-size", &mut agents.cursor_size, &sizes, palette));
+        let labels = [Segment { value: "Agent (Default)", shown: "Agent", icon: None }, Segment::plain("Model name"), Segment::plain("None")];
+        let says = "What an assistant's cursor says while it works on the canvas.";
+        rows.row("Cursor label", Some(says), Lead::Nothing, |ui| segmented(ui, "cursor-label", &mut agents.cursor_label, &labels, palette));
+        rows.row("Label text", Some("What a cursor says while its label is Agent."), Lead::Nothing, |ui| {
+            sized_field(ui, &mut agents.agent_label, "Agent", 160.0, false, false, palette);
+        });
+    });
+    heading(ui, "Import", palette);
+    card(ui, palette, |rows| {
+        rows.row("Include HTML metadata when importing pages", None, Lead::Nothing, |ui| switch(ui, &mut prefs.generation.html_metadata, palette));
     });
 }
 
@@ -876,79 +1380,99 @@ fn set_name(names: &mut Vec<AgentName>, id: &str, name: String) {
     }
 }
 
-/// The Agent names page: what the assistants are called in the chat's menu and beside their cursor.
-fn agent_names(ui: &mut Ui, agents: &mut Agents, facts: &Facts<'_>, palette: Palette) {
-    title(ui, "Agent names");
-    about(
-        ui,
-        "Call the assistants what you like. A name shows in the chat's assistant menu, and beside the assistant's cursor on the canvas when the cursor label is set to the model's name.",
-        palette,
-    );
-    section(ui, "On the canvas");
-    let label = "What a cursor says while its label is set to Agent.";
-    row(ui, "Cursor label", Some(label), palette, |ui| name_field(ui, &mut agents.agent_label, "Agent", palette));
-    section(ui, "Assistants");
-    if facts.assistants.is_empty() {
-        ui.label(RichText::new("No assistant is set up yet. Connect one on the Agents page.").color(palette.muted));
+/// The names the user gives the assistants of the agent program or provider called `owner`, as a card under
+/// its form. Nothing shows while it has no assistant in the chat.
+// Human: names are kept when typed, not with the form's Save: they belong to the assistants, which are there
+// whatever the form says.
+fn names_card(ui: &mut Ui, owner: Option<&str>, agents: &mut Agents, facts: &Facts<'_>, palette: Palette) {
+    let Some(owner) = owner else { return };
+    let own: Vec<&Choice> = facts.assistants.iter().filter(|choice| owns(owner, &choice.plain)).collect();
+    if own.is_empty() {
+        return;
     }
-    for (index, choice) in facts.assistants.iter().enumerate() {
-        if index > 0 {
-            divider(ui, palette);
+    heading(ui, "Names in Pencraft", palette);
+    let why = "Call the models what you like. A name shows in the chat's assistant menu, and beside the cursor on the canvas when the cursor label is the model's name.";
+    hint(ui, why, palette);
+    card(ui, palette, |rows| {
+        for choice in own {
+            let before = agents.names.iter().find(|name| name.id == choice.id).map(|name| name.name.clone()).unwrap_or_default();
+            let mut name = before.clone();
+            rows.row(&choice.plain, Some(&choice.id), Lead::Nothing, |ui| {
+                sized_field(ui, &mut name, &choice.plain, SETTINGS_NAME_FIELD, false, false, palette);
+            });
+            if name != before {
+                set_name(&mut agents.names, &choice.id, name);
+            }
         }
-        let before = agents.names.iter().find(|name| name.id == choice.id).map(|name| name.name.clone()).unwrap_or_default();
-        let mut name = before.clone();
-        row(ui, &choice.plain, Some(&choice.id), palette, |ui| name_field(ui, &mut name, &choice.plain, palette));
-        if name != before {
-            set_name(&mut agents.names, &choice.id, name);
-        }
-    }
+    });
 }
 
 /// The Chat page: who answers, what every conversation is told, and how the conversation behaves.
 fn chat_page(ui: &mut Ui, agents: &mut Agents, facts: &Facts<'_>, palette: Palette) {
-    title(ui, "Chat");
-    section(ui, "Assistant");
-    let labels: Vec<&str> = facts.assistants.iter().map(|choice| choice.label.as_str()).collect();
-    let before = crate::chat::chosen(facts.assistants, &agents.chat_model).map_or("No assistant", |choice| choice.label.as_str()).to_owned();
-    let mut picked = before.clone();
-    let who = "Who answers in the chat. The menu beside the send button changes it too.";
-    row(ui, "Default assistant", Some(who), palette, |ui| choice(ui, "default-assistant", &mut picked, &labels, palette));
-    if picked != before
-        && let Some(choice) = facts.assistants.iter().find(|choice| choice.label == picked)
-    {
-        agents.chat_model.clone_from(&choice.id);
-    }
+    title(ui, "Chat", palette);
+    heading(ui, "Default assistant", palette);
+    card(ui, palette, |rows| {
+        if facts.assistants.is_empty() {
+            rows.row("Answers in the chat", Some("No assistant is set up yet. Add one on the Assistants page."), Lead::Nothing, |_| {});
+            return;
+        }
+        let labels: Vec<&str> = facts.assistants.iter().map(|choice| choice.label.as_str()).collect();
+        let before = crate::chat::chosen(facts.assistants, &agents.chat_model).map_or("No assistant", |choice| choice.label.as_str()).to_owned();
+        let mut picked = before.clone();
+        let who = "The menu beside the send button changes it too.";
+        rows.row("Answers in the chat", Some(who), Lead::Nothing, |ui| choice(ui, "default-assistant", &mut picked, &labels, palette));
+        if picked != before
+            && let Some(choice) = facts.assistants.iter().find(|choice| choice.label == picked)
+        {
+            agents.chat_model.clone_from(&choice.id);
+        }
+    });
 
-    section(ui, "Custom instructions");
-    ui.label(
-        RichText::new("What the assistant should keep to in every conversation: your brand, your taste, how it should answer.").color(palette.muted),
-    );
+    heading(ui, "Custom instructions", palette);
+    hint(ui, "What every conversation should keep to: your brand, your taste, how the assistant should answer.", palette);
+    let frame = egui::Frame::new()
+        .fill(palette.card)
+        .stroke(Stroke::new(1.0, palette.outline))
+        .corner_radius(theme::SETTINGS_CARD_RADIUS)
+        .inner_margin(egui::Margin::symmetric(12, 10));
+    let example =
+        RichText::new("For example: Use our brand colours #0f172a and #f97316. Answer in German.").color(palette.muted.gamma_multiply(0.75));
+    ui.add(egui::TextEdit::multiline(&mut agents.instructions).frame(frame).hint_text(example).desired_rows(5).desired_width(ui.available_width()));
     ui.add_space(6.0);
-    let frame = egui::Frame::new().stroke(Stroke::new(1.0, palette.outline)).corner_radius(CHIP_RADIUS).inner_margin(Margin::symmetric(11, 7));
-    let hint = RichText::new("For example: Use our brand colours #0f172a and #f97316. Answer in German.").color(palette.muted.gamma_multiply(0.75));
-    ui.add(egui::TextEdit::multiline(&mut agents.instructions).frame(frame).hint_text(hint).desired_rows(5).desired_width(ui.available_width()));
-    ui.add_space(2.0);
-    ui.label(RichText::new("They apply from the next message you send.").color(palette.muted));
+    ui.horizontal(|ui| {
+        ui.add_space(4.0);
+        ui.label(RichText::new("Applies from the next message you send.").size(12.0).color(palette.muted));
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.add_space(4.0);
+            ui.label(RichText::new(counted(agents.instructions.chars().count(), "character")).size(12.0).color(palette.muted));
+        });
+    });
 
-    section(ui, "Conversation");
-    row(ui, "Chat text size", None, palette, |ui| choice(ui, "chat-text", &mut agents.chat_text_size, &["Small", "Medium", "Large"], palette));
-    divider(ui, palette);
-    row(ui, "Always steer messages", Some(STEER_HINT), palette, |ui| switch(ui, &mut agents.always_steer, palette));
-    divider(ui, palette);
-    row(ui, "Show agent input on dashboard", Some(DASHBOARD_HINT), palette, |ui| switch(ui, &mut agents.input_on_dashboard, palette));
-    divider(ui, palette);
-    row(ui, "Show ideas under the message bar", Some(IDEAS_HINT), palette, |ui| switch(ui, &mut agents.ideas, palette));
+    heading(ui, "Conversation", palette);
+    card(ui, palette, |rows| {
+        let sizes = [Segment::plain("Small"), Segment::plain("Medium"), Segment::plain("Large")];
+        rows.row("Text size", None, Lead::Nothing, |ui| segmented(ui, "chat-text", &mut agents.chat_text_size, &sizes, palette));
+        rows.row("Send while the assistant is working", Some(STEER_HINT), Lead::Nothing, |ui| switch(ui, &mut agents.always_steer, palette));
+        rows.row("Have finished designs reviewed", Some(REVIEW_HINT), Lead::Nothing, |ui| switch(ui, &mut agents.review, palette));
+    });
+    heading(ui, "Starting a design", palette);
+    card(ui, palette, |rows| {
+        rows.row("Message box on the home screen", Some(DASHBOARD_HINT), Lead::Nothing, |ui| switch(ui, &mut agents.input_on_dashboard, palette));
+        rows.row("Ideas under the message bar", Some(IDEAS_HINT), Lead::Nothing, |ui| switch(ui, &mut agents.ideas, palette));
+    });
 }
 
-/// How an AI client is told to start Pencraft's tool server at `program`: who it is for, and what to paste.
+/// How an AI app is told to start Pencraft's tool server at `program`: the app, where the lines go, and what
+/// to paste.
 // Human: the same three ways AI.md describes, with this copy of the app's own path filled in.
-fn client_setups(program: &str) -> [(&'static str, String); 3] {
+fn client_setups(program: &str) -> [(&'static str, &'static str, String); 3] {
     let quoted = serde_json::to_string(program).unwrap_or_else(|_| format!("\"{program}\""));
     [
-        ("Claude Code (run in a terminal)", format!("claude mcp add pencraft -- {quoted} mcp")),
-        ("Codex (~/.codex/config.toml)", format!("[mcp_servers.pencraft]\ncommand = {quoted}\nargs = [\"mcp\"]")),
+        ("Claude Code", "Run in a terminal", format!("claude mcp add pencraft -- {quoted} mcp")),
+        ("Codex", "Add to ~/.codex/config.toml", format!("[mcp_servers.pencraft]\ncommand = {quoted}\nargs = [\"mcp\"]")),
         (
-            "Cursor, Claude Desktop and most others (their MCP settings file)",
+            "Cursor, Claude Desktop and others",
+            "Add to the app's MCP settings file",
             format!("{{ \"mcpServers\": {{ \"pencraft\": {{ \"command\": {quoted}, \"args\": [\"mcp\"] }} }} }}"),
         ),
     ]
@@ -960,327 +1484,276 @@ fn tool_words(description: &str) -> String {
     if first.chars().count() > MOST_TOOL_WORDS { first.chars().take(MOST_TOOL_WORDS - 1).chain(['…']).collect() } else { first.to_owned() }
 }
 
-/// The MCP page: the tool server AI clients reach the app through, how to connect one, and which tools they get.
-fn mcp_page(
-    ui: &mut Ui,
-    agents: &mut Agents,
-    facts: &Facts<'_>,
-    vault: &dyn Vault,
-    drafts: &mut [String; 2],
-    palette: Palette,
-    notice: &mut Option<String>,
-) {
-    title(ui, "MCP");
-    about(
-        ui,
-        "Pencraft is an MCP server: AI clients on this computer work on your open documents through its tools. The chat inside Pencraft uses the same tools.",
-        palette,
-    );
-    section(ui, "Server");
-    row(ui, "Let AI models work on documents", Some(TOOLS_HINT), palette, |ui| switch(ui, &mut agents.tools, palette));
-    divider(ui, palette);
-    let (link, said) = match facts.port {
-        Some(port) if agents.tools => {
-            (Link::Running, format!("http://127.0.0.1:{port}/mcp on this computer only; the secret to show is in ~/.pencraft/agent.json"))
-        }
-        Some(_) => (Link::Stopped, "Listening, but every tool call is refused while the switch above is off.".to_owned()),
-        None => (Link::Stopped, "It didn't start; restart Pencraft.".to_owned()),
-    };
-    row(ui, "Local server", Some(&said), palette, |ui| status(ui, ui.max_rect().right_center(), link, palette));
-    divider(ui, palette);
-    let web = "Search the web, read pages and fetch pictures. Queries go to DuckDuckGo and the picture sources below.";
-    row(ui, "Let AI models use the web", Some(web), palette, |ui| switch(ui, &mut agents.web, palette));
-    picture_sources(ui, agents, vault, drafts, palette, notice);
+/// What the MCP page says connected apps may do, in a line.
+fn allowed_line(prefs: &Prefs) -> String {
+    let tools = crate::agent::tools();
+    let all = tools.as_array().map_or(0, Vec::len);
+    let on = all.saturating_sub(prefs.agents.disabled_tools.len());
+    let word = |on: bool| if on { "on" } else { "off" };
+    if prefs.agents.tools {
+        format!("{on} of {all} tools on · web {} · pictures {}", word(prefs.agents.web), word(prefs.images.assistant))
+    } else {
+        "Nothing: AI may not work on your documents.".to_owned()
+    }
+}
 
-    section(ui, "Connect a client");
-    ui.label(
-        RichText::new("The client starts `pencraft mcp` and talks to it. If Pencraft isn't running, that starts it in the background.")
-            .color(palette.muted),
-    );
-    let program = std::env::current_exe().map_or_else(|_| "pencraft".to_owned(), |path| path.display().to_string());
-    for (who, setup) in client_setups(&program) {
-        ui.add_space(10.0);
-        ui.horizontal(|ui| {
-            ui.add(egui::Label::new(RichText::new(who).size(SIDEBAR_TEXT_SIZE)).selectable(false));
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui.small_button("Copy").clicked() {
-                    ui.ctx().copy_text(setup.clone());
+/// The MCP page: the tool server other AI apps reach Pencraft through, and how to connect one. Returns whether
+/// the row that leads to the Permissions page was clicked.
+fn mcp_page(ui: &mut Ui, prefs: &Prefs, facts: &Facts<'_>, client: &mut String, palette: Palette, notice: &mut Option<String>) -> bool {
+    title(ui, "MCP", palette);
+    let what = "Pencraft is an MCP server: other AI apps on this computer can work on your open documents with the same tools the chat uses.";
+    about(ui, what, palette);
+    heading(ui, "Server", palette);
+    let (link, said) = match facts.port {
+        Some(_) if prefs.agents.tools => (Link::Running, "On this computer only."),
+        Some(_) => (Link::Stopped, "Listening, but every tool call is refused while AI may not work on your documents."),
+        None => (Link::Stopped, "It didn't start; restart Pencraft."),
+    };
+    card(ui, palette, |rows| {
+        rows.row("Pencraft MCP server", Some(said), Lead::Icon("terminal"), |ui| pill(ui, link.words(), link.tone(), palette));
+        let Some(port) = facts.port else { return };
+        let mut copied = |rows: &mut parts::Rows<'_>, name: &str, more: Option<&str>, value: String| {
+            rows.row(name, more, Lead::Nothing, |ui| {
+                if icon_button(ui, "copy", Vec2::splat(26.0), false, palette).on_hover_text("Copy").clicked() {
+                    ui.ctx().copy_text(value.clone());
                     *notice = Some("Copied.".to_owned());
                 }
+                ui.label(RichText::new(&value).monospace().size(12.0).color(palette.muted));
             });
-        });
-        ui.add_space(2.0);
-        egui::Frame::new().stroke(Stroke::new(1.0, palette.outline)).corner_radius(CHIP_RADIUS).inner_margin(Margin::symmetric(11, 7)).show(
-            ui,
-            |ui| {
+        };
+        copied(rows, "Address", None, format!("http://127.0.0.1:{port}/mcp"));
+        copied(rows, "Secret", Some("An app that uses the address shows the secret from this file."), "~/.pencraft/agent.json".to_owned());
+    });
+
+    heading(ui, "Connect an AI app", palette);
+    let program = std::env::current_exe().map_or_else(|_| "pencraft".to_owned(), |path| path.display().to_string());
+    let setups = client_setups(&program);
+    card(ui, palette, |rows| {
+        rows.block(|ui| {
+            let tabs: Vec<Segment<'_>> = setups.iter().map(|(app, ..)| Segment::plain(app)).collect();
+            segmented(ui, "mcp-client", client, &tabs, palette);
+            let (_, how, setup) = setups.iter().find(|(app, ..)| *app == client.as_str()).unwrap_or(&setups[0]);
+            ui.add_space(12.0);
+            egui::Frame::new().fill(palette.hover).corner_radius(10.0).inner_margin(egui::Margin::symmetric(12, 10)).show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                ui.add(egui::Label::new(RichText::new(&setup).monospace()).wrap());
-            },
-        );
-    }
-
-    section(ui, "Tools");
-    ui.label(
-        RichText::new("Turn off what AI models shouldn't do. This holds for every client and for the chat: a tool that is off isn't offered, and a call to it is refused.")
-            .color(palette.muted),
-    );
-    ui.add_space(4.0);
-    let tools = crate::agent::tools();
-    for (index, tool) in tools.as_array().into_iter().flatten().enumerate() {
-        let (Some(name), Some(description)) = (tool["name"].as_str(), tool["description"].as_str()) else { continue };
-        if index > 0 {
-            divider(ui, palette);
-        }
-        let before = !agents.disabled_tools.iter().any(|off| off == name);
-        let mut on = before;
-        row(ui, name, Some(&tool_words(description)), palette, |ui| switch(ui, &mut on, palette));
-        if on != before {
-            agents.disabled_tools.retain(|off| off != name);
-            if !on {
-                agents.disabled_tools.push(name.to_owned());
-            }
-        }
-    }
-}
-
-/// Where pictures are searched: the two sources that need no key, and a key field for each stock photo site.
-// Agent: WRITES the keychain first and the settings only after that worked, so the settings never name a key
-// that isn't there.
-fn picture_sources(ui: &mut Ui, agents: &mut Agents, vault: &dyn Vault, drafts: &mut [String; 2], palette: Palette, notice: &mut Option<String>) {
-    section(ui, "Picture sources");
-    let about = "Openverse and Wikimedia Commons are searched without a key. With a free key of your own these stock photo sites are searched too, so there are more pictures to choose from when one site is busy. Keys are kept in your system's keychain.";
-    ui.add(egui::Label::new(RichText::new(about).color(palette.muted)).wrap());
-    for ((name, key_name, where_from), draft) in crate::web::KEYED.iter().zip(drafts.iter_mut()) {
-        let saved = agents.picture_keys.iter().any(|known| known == name);
-        ui.add_space(8.0);
-        caption(ui, &format!("{name} API key"));
-        ui.horizontal(|ui| {
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if saved && ui.add(egui::Button::new("Forget").corner_radius(CHIP_RADIUS).min_size(vec2(64.0, FIELD_HEIGHT))).clicked() {
-                    match vault.forget(key_name) {
-                        Ok(()) => agents.picture_keys.retain(|known| known != name),
-                        Err(why) => *notice = Some(format!("The key couldn't be removed from the keychain: {why}")),
-                    }
-                }
-                let save = egui::Button::new("Save").corner_radius(CHIP_RADIUS).min_size(vec2(64.0, FIELD_HEIGHT));
-                if ui.add_enabled(!draft.trim().is_empty(), save).clicked() {
-                    match vault.put(key_name, &SecretString::new(draft.trim())) {
-                        Ok(()) => {
-                            draft.clear();
-                            if !saved {
-                                agents.picture_keys.push((*name).to_owned());
-                            }
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(*how).size(12.0).color(palette.muted));
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if button(ui, "Copy", Some("copy"), Kind::Outline, true, palette).clicked() {
+                            ui.ctx().copy_text(setup.clone());
+                            *notice = Some("Copied.".to_owned());
                         }
-                        Err(why) => *notice = Some(format!("The key couldn't be saved in the keychain: {why}")),
-                    }
-                }
-                let hint = if saved { "Saved - type a new key to replace it".to_owned() } else { format!("Free at {where_from}") };
-                field(ui, draft, &hint, true, true, palette);
+                    });
+                });
+                ui.add_space(6.0);
+                ui.add(egui::Label::new(RichText::new(setup).monospace().size(12.0)).wrap());
             });
+            ui.add_space(12.0);
+            let starts = "The app starts `pencraft mcp` and talks to it. If Pencraft isn't running, that starts it in the background.";
+            ui.add(egui::Label::new(RichText::new(starts).size(12.0).color(palette.muted)).wrap());
         });
+    });
+    ui.add_space(theme::SETTINGS_GROUP_GAP);
+    card(ui, palette, |rows| rows.link(Lead::Icon("shield-check"), "What connected apps may do", &allowed_line(prefs), None).clicked())
+}
+
+/// A number of pixels.
+fn pixels(ui: &mut Ui, value: &mut f32) {
+    ui.add(egui::DragValue::new(value).range(1.0..=1000.0).speed(0.2).max_decimals(0).suffix(" px"));
+}
+
+/// The way back from a form to the page called `to`, at the form's top. Returns whether it was clicked.
+// Human: a form takes the page's place, so it needs a way back that doesn't save.
+fn back(ui: &mut Ui, to: &str, palette: Palette) -> bool {
+    let clicked = button(ui, to, Some("chevron-left"), Kind::Quiet, true, palette).on_hover_text("Back without saving").clicked();
+    ui.add_space(8.0);
+    clicked
+}
+
+impl Form {
+    /// What still keeps the form from being saved, as its bar says it; `None` when it can be.
+    fn missing(&self) -> Option<&'static str> {
+        match (self.name.trim().is_empty(), self.base_url.trim().is_empty()) {
+            (true, true) => Some("Name and base URL are still missing."),
+            (true, false) => Some("A name is still missing."),
+            (false, true) => Some("The base URL is still missing."),
+            (false, false) if self.provider().is_none() => Some("Every model needs an ID of its own and both token counts."),
+            (false, false) => None,
+        }
     }
 }
 
-/// A short outlined text field at the right of a settings row.
-fn name_field(ui: &mut Ui, text: &mut String, hint: &str, palette: Palette) {
-    let frame = egui::Frame::new().stroke(Stroke::new(1.0, palette.outline)).corner_radius(CHIP_RADIUS).inner_margin(Margin::symmetric(11, 6));
-    let hint = RichText::new(hint).color(palette.muted.gamma_multiply(0.75));
-    ui.add(egui::TextEdit::singleline(text).frame(frame).hint_text(hint).desired_width(SETTINGS_NAME_FIELD));
+impl CliForm {
+    /// What still keeps the form from being saved, as its bar says it; `None` when it can be.
+    fn missing(&self, others: &[LocalAgent]) -> Option<&'static str> {
+        if self.agent(others).is_some() {
+            None
+        } else if self.name.trim().is_empty() {
+            Some("A name is still missing.")
+        } else if self.name.contains('/') {
+            Some("The name can't have a / in it.")
+        } else if crate::chat::command_of(&LocalAgent { kind: self.kind.clone(), program: self.program.trim().to_owned(), ..LocalAgent::default() })
+            .is_none()
+        {
+            Some("The program is still missing.")
+        } else {
+            Some("Another agent has this name already.")
+        }
+    }
 }
 
-/// The custom provider form. Returns `true` when it is finished: the provider was saved or removed.
+impl ImageForm {
+    /// What still keeps the form from being saved, as its bar says it; `None` when it can be.
+    fn missing(&self, images: &Images) -> Option<&'static str> {
+        if self.service(images).is_some() {
+            None
+        } else if self.name.trim().is_empty() {
+            Some("A name is still missing.")
+        } else if crate::imagery::Kind::named(&self.kind).is_none() {
+            Some("Pick a kind of service.")
+        } else {
+            Some("Another service has this name already.")
+        }
+    }
+}
+
+/// The custom provider form. Returns `true` when it was left by its way back; its buttons are in the bar
+/// under the page ([`Settings::footer`]).
+#[expect(clippy::too_many_arguments, reason = "the form, what it changes, and the question to the provider that is out")]
 fn provider_form(
     ui: &mut Ui,
     form: &mut Form,
     prefs: &mut Prefs,
+    facts: &Facts<'_>,
     vault: &dyn Vault,
     loading: &mut Option<mpsc::Receiver<Models>>,
+    testing: &mut bool,
     palette: Palette,
     notice: &mut Option<String>,
 ) -> bool {
-    let mut finished = back(ui, palette);
-    // The header: a picture, the name, what the form is for, the state.
-    let (header, _) = ui.allocate_exact_size(vec2(ui.available_width(), 50.0), Sense::hover());
-    let tile = Rect::from_min_size(header.min, Vec2::splat(50.0));
-    ui.painter().rect_filled(tile, PROVIDER_RADIUS, palette.hover.gamma_multiply(0.6));
-    icons::paint(ui.painter(), Rect::from_center_size(tile.center(), Vec2::splat(26.0)), "server", palette.foreground);
-    let name = if form.name.trim().is_empty() { "Custom provider" } else { form.name.trim() };
-    ui.painter().text(
-        pos2(tile.right() + 13.0, header.top() + 14.0),
-        Align2::LEFT_CENTER,
-        name,
-        FontId::proportional(SETTINGS_TITLE_SIZE),
-        palette.foreground,
-    );
-    let purpose = "Connect any OpenAI or Anthropic compatible API";
-    ui.painter().text(
-        pos2(tile.right() + 13.0, header.top() + 40.0),
-        Align2::LEFT_CENTER,
-        purpose,
-        FontId::proportional(SIDEBAR_TEXT_SIZE),
-        palette.muted,
-    );
-    let ready = form.index.and_then(|index| prefs.agents.providers.get(index)).is_some_and(crate::chat::usable);
-    status(ui, pos2(header.right(), header.center().y), if ready { Link::Ready } else { Link::NotConnected }, palette);
-
-    section(ui, "Provider");
-    ui.columns(2, |columns| {
-        caption(&mut columns[0], "Name");
-        field(&mut columns[0], &mut form.name, "My provider", false, false, palette);
-        caption(&mut columns[1], "API type");
-        wide_choice(&mut columns[1], &mut form.api, &API_TYPES, palette);
+    take_models(form, loading, testing, notice);
+    let left = back(ui, "Assistants", palette);
+    let saved = form.index.and_then(|index| prefs.agents.providers.get(index));
+    let owner = saved.map(|provider| provider.name.clone());
+    let link = if saved.is_some_and(crate::chat::usable) { Link::Ready } else { Link::NotConnected };
+    title(ui, if saved.is_some() { "Provider" } else { "Add provider" }, palette);
+    ui.add_space(18.0);
+    let name = if form.name.trim().is_empty() { "Custom provider".to_owned() } else { form.name.trim().to_owned() };
+    card(ui, palette, |rows| {
+        rows.row(&name, Some("Any OpenAI or Anthropic compatible API"), Lead::Icon("server"), |ui| pill(ui, link.words(), link.tone(), palette));
     });
-    if crate::chat::Wire::of(&form.api).is_none() {
-        ui.add_space(2.0);
-        ui.label(RichText::new("The chat can't talk to this API type yet; the provider is kept but not offered there.").color(CHECKING));
-    }
-    ui.add_space(8.0);
-    caption(ui, "Base URL");
-    field(ui, &mut form.base_url, "https://api.example.com/v1", true, false, palette);
-    if unprotected(&form.base_url) {
-        ui.add_space(2.0);
-        ui.label(RichText::new("This address isn't encrypted: the key and your messages could be read on the way.").color(CHECKING));
-    }
 
-    section(ui, "Authentication & models");
-    key_field(ui, form, palette);
-    ui.add_space(8.0);
-    model_rows(ui, form, palette);
-    ui.add_space(8.0);
-    offered_models(ui, form, vault, loading, palette, notice);
-    ui.add_space(12.0);
-    // Advanced: nothing to set yet, but the row opens as in the design.
-    let (advanced, response) = ui.allocate_exact_size(vec2(ui.available_width(), 37.0), Sense::click());
-    ui.painter().rect_stroke(advanced, CHIP_RADIUS, Stroke::new(1.0, palette.outline), StrokeKind::Inside);
-    ui.painter().text(
-        pos2(advanced.left() + 12.0, advanced.center().y),
-        Align2::LEFT_CENTER,
-        "Advanced",
-        FontId::proportional(SIDEBAR_TEXT_SIZE),
-        palette.foreground,
-    );
-    let arrow = if form.advanced { "chevron-down" } else { "chevron-right" };
-    icons::paint(ui.painter(), Rect::from_center_size(pos2(advanced.right() - 18.0, advanced.center().y), Vec2::splat(12.0)), arrow, palette.muted);
-    if response.clicked() {
-        form.advanced = !form.advanced;
-    }
-    if form.advanced {
-        ui.add_space(6.0);
-        ui.label(RichText::new("No advanced options yet.").color(palette.muted));
-    }
-    ui.add_space(16.0);
-    let provider = form.provider();
-    ui.horizontal(|ui| {
-        let label = if form.index.is_some() { "Save provider" } else { "Add provider" };
-        let save = egui::Button::new(RichText::new(label).color(palette.primary_text))
-            .fill(palette.primary)
-            .corner_radius(CHIP_RADIUS)
-            .min_size(vec2(92.0, FIELD_HEIGHT));
-        if ui.add_enabled(provider.is_some(), save).clicked()
-            && let Some(provider) = provider
-        {
-            match save_provider(form, provider, prefs, vault) {
-                Ok(()) => finished = true,
-                Err(why) => *notice = Some(why),
+    heading(ui, "1 · Connection", palette);
+    card(ui, palette, |rows| {
+        rows.block(|ui| {
+            ui.spacing_mut().item_spacing.x = 12.0;
+            ui.columns(2, |columns| {
+                caption(&mut columns[0], "Name", palette);
+                field(&mut columns[0], &mut form.name, "My provider", false, false, palette);
+                caption(&mut columns[1], "API type", palette);
+                wide_choice(&mut columns[1], &mut form.api, &API_TYPES, palette);
+            });
+            if crate::chat::Wire::of(&form.api).is_none() {
+                warning(ui, "The chat can't talk to this API type yet; the provider is kept but not offered there.");
             }
-        }
-        if let Some(index) = form.index
-            && ui.add(egui::Button::new("Remove").corner_radius(CHIP_RADIUS).min_size(vec2(72.0, FIELD_HEIGHT))).clicked()
-        {
-            match remove_provider(index, prefs, vault) {
-                Ok(()) => finished = true,
-                Err(why) => *notice = Some(why),
+            ui.add_space(14.0);
+            caption(ui, "Base URL", palette);
+            field(ui, &mut form.base_url, "https://api.example.com/v1", true, false, palette);
+            if unprotected(&form.base_url) {
+                warning(ui, "This address isn't encrypted: the key and your messages could be read on the way.");
             }
-        }
+            ui.add_space(14.0);
+            caption(ui, "API key", palette);
+            let saved = form.key_ref.is_some() && !form.forget_key;
+            field(ui, &mut form.key, if saved { "Saved - type a new key to replace it" } else { "Optional" }, true, true, palette);
+            let help = "Leave blank if the endpoint needs no key. Kept in your system's keychain, never in the settings file.";
+            key_help(ui, help, saved && form.key.is_empty(), &mut form.forget_key, palette);
+        });
     });
-    finished
+
+    heading(ui, "2 · Models", palette);
+    hint(ui, "Each model appears under this provider in the chat's model picker.", palette);
+    card(ui, palette, |rows| {
+        rows.block(|ui| {
+            model_rows(ui, form, palette);
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                if button(ui, "Add model", Some("plus"), Kind::Outline, true, palette).clicked() {
+                    form.models.push(ModelRow::empty());
+                }
+                // Human: model names change often and differ by provider, so the form asks instead of guessing them.
+                let busy = loading.is_some();
+                let load = if busy && !*testing { "Loading…" } else { "Load from provider" };
+                if button(ui, load, Some("download"), Kind::Outline, !busy && !form.base_url.trim().is_empty(), palette).clicked() {
+                    match ask_models(form, vault, ui.ctx()) {
+                        Ok(answer) => {
+                            form.offered.clear();
+                            *loading = Some(answer);
+                            *testing = false;
+                        }
+                        Err(why) => *notice = Some(why),
+                    }
+                }
+            });
+            offered_models(ui, form, palette);
+        });
+    });
+    names_card(ui, owner.as_deref(), &mut prefs.agents, facts, palette);
+    left
 }
 
-/// The image service form. Returns `true` when it is finished: the service was saved or removed, or the user
-/// cancelled.
-fn image_form(ui: &mut Ui, form: &mut ImageForm, prefs: &mut Prefs, vault: &dyn Vault, palette: Palette, notice: &mut Option<String>) -> bool {
-    let mut finished = false;
-    title(ui, if form.index.is_some() { "Image service" } else { "Add image service" });
+/// The image service form. Returns `true` when it was left by its way back; its buttons are in the bar under
+/// the page ([`Settings::footer`]).
+fn image_form(ui: &mut Ui, form: &mut ImageForm, prefs: &Prefs, palette: Palette) -> bool {
+    let left = back(ui, "Images", palette);
+    title(ui, if form.index.is_some() { "Image service" } else { "Add image service" }, palette);
     let kind = crate::imagery::Kind::named(&form.kind);
-    section(ui, "Service");
-    ui.columns(2, |columns| {
-        caption(&mut columns[0], "Name");
-        field(&mut columns[0], &mut form.name, "My image service", false, false, palette);
-        caption(&mut columns[1], "Kind");
-        let kinds: Vec<&str> = crate::imagery::Kind::ALL.iter().map(|kind| kind.name()).collect();
-        wide_choice(&mut columns[1], &mut form.kind, &kinds, palette);
-    });
-    // Human: a kind from a newer Pencraft, or typed into the settings file; the service can't be saved until
-    // one Pencraft knows is picked (`ImageForm::service`).
-    if kind.is_none() {
-        ui.add_space(2.0);
-        ui.label(RichText::new("Pencraft doesn't know this kind of service; pick one.").color(CHECKING));
-    }
-    ui.add_space(8.0);
-    caption(ui, "Model");
-    // Human: the hints show the kind's usual model and address, which an empty field stands for.
-    field(ui, &mut form.model, kind.map_or("", crate::imagery::Kind::model), true, false, palette);
-    ui.add_space(8.0);
-    caption(ui, "Address");
-    field(ui, &mut form.base_url, kind.map_or("", crate::imagery::Kind::base), true, false, palette);
-    if unprotected(&form.base_url) {
-        ui.add_space(2.0);
-        ui.label(RichText::new("This address isn't encrypted: the key and your descriptions could be read on the way.").color(CHECKING));
-    }
-    ui.add_space(2.0);
-    ui.label(
-        RichText::new("Leave model and address empty for the usual ones. \"OpenAI Images\" also fits other services that speak the same API.")
-            .color(palette.muted),
-    );
-    section(ui, "API key");
-    let saved = form.key_ref.is_some() && !form.forget_key;
-    field(ui, &mut form.key, if saved { "Saved - type a new key to replace it" } else { "Needed to make pictures" }, true, true, palette);
-    ui.add_space(2.0);
-    key_help(ui, "The key is kept in your system's keychain.", saved && form.key.is_empty(), &mut form.forget_key, palette);
-    if form.key_moves(&prefs.images) {
-        ui.add_space(2.0);
-        ui.label(RichText::new("The saved key will be sent to the new address.").color(CHECKING));
-    }
-    ui.add_space(16.0);
-    let service = form.service(&prefs.images);
-    ui.horizontal(|ui| {
-        let label = if form.index.is_some() { "Save service" } else { "Add service" };
-        let save = egui::Button::new(RichText::new(label).color(palette.primary_text))
-            .fill(palette.primary)
-            .corner_radius(CHIP_RADIUS)
-            .min_size(vec2(92.0, FIELD_HEIGHT));
-        if ui.add_enabled(service.is_some(), save).clicked()
-            && let Some(service) = service
-        {
-            match save_image_service(form, service, prefs, vault) {
-                Ok(()) => finished = true,
-                Err(why) => *notice = Some(why),
+    heading(ui, "Service", palette);
+    card(ui, palette, |rows| {
+        rows.block(|ui| {
+            ui.spacing_mut().item_spacing.x = 12.0;
+            ui.columns(2, |columns| {
+                caption(&mut columns[0], "Name", palette);
+                field(&mut columns[0], &mut form.name, "My image service", false, false, palette);
+                caption(&mut columns[1], "Kind", palette);
+                let kinds: Vec<&str> = crate::imagery::Kind::ALL.iter().map(|kind| kind.name()).collect();
+                wide_choice(&mut columns[1], &mut form.kind, &kinds, palette);
+            });
+            // Human: a kind from a newer Pencraft, or typed into the settings file; the service can't be saved until
+            // one Pencraft knows is picked (`ImageForm::service`).
+            if kind.is_none() {
+                warning(ui, "Pencraft doesn't know this kind of service; pick one.");
             }
-        }
-        if let Some(index) = form.index
-            && ui.add(egui::Button::new("Remove").corner_radius(CHIP_RADIUS).min_size(vec2(72.0, FIELD_HEIGHT))).clicked()
-        {
-            match remove_image_service(index, prefs, vault) {
-                Ok(()) => finished = true,
-                Err(why) => *notice = Some(why),
+            ui.add_space(14.0);
+            caption(ui, "Model", palette);
+            // Human: the hints show the kind's usual model and address, which an empty field stands for.
+            field(ui, &mut form.model, kind.map_or("", crate::imagery::Kind::model), true, false, palette);
+            ui.add_space(14.0);
+            caption(ui, "Address", palette);
+            field(ui, &mut form.base_url, kind.map_or("", crate::imagery::Kind::base), true, false, palette);
+            if unprotected(&form.base_url) {
+                warning(ui, "This address isn't encrypted: the key and your descriptions could be read on the way.");
             }
-        }
-        if ui.add(egui::Button::new("Cancel").corner_radius(CHIP_RADIUS).min_size(vec2(72.0, FIELD_HEIGHT))).clicked() {
-            finished = true;
-        }
+            note(
+                ui,
+                "Leave model and address empty for the usual ones. \"OpenAI Images\" also fits other services that speak the same API.",
+                palette,
+            );
+        });
     });
-    finished
-}
-
-/// The way back from a form to the Agents page, at the form's top. Returns whether it was clicked.
-// Human: a form takes the page's place, so it needs a way back that doesn't save; before, only the list of
-// pages at the left led out of it.
-fn back(ui: &mut Ui, palette: Palette) -> bool {
-    ui.add_space(20.0);
-    let button = text_button(ui, Some("chevron-left"), "Agents", vec2(86.0, FIELD_HEIGHT - 2.0), false, true, palette);
-    let clicked = button.on_hover_text("Back without saving").clicked();
-    ui.add_space(14.0);
-    clicked
+    heading(ui, "API key", palette);
+    card(ui, palette, |rows| {
+        rows.block(|ui| {
+            let saved = form.key_ref.is_some() && !form.forget_key;
+            field(ui, &mut form.key, if saved { "Saved - type a new key to replace it" } else { "Needed to make pictures" }, true, true, palette);
+            key_help(ui, "The key is kept in your system's keychain.", saved && form.key.is_empty(), &mut form.forget_key, palette);
+            if form.key_moves(&prefs.images) {
+                warning(ui, "The saved key will be sent to the new address.");
+            }
+        });
+    });
+    left
 }
 
 /// The line that adds Pencraft's tool server to an agent program's MCP servers, for the user to read.
@@ -1311,25 +1784,6 @@ fn hook(program: PathBuf, ctx: &egui::Context) -> Option<mpsc::Receiver<String>>
     started.ok().map(|_| receive)
 }
 
-/// The head of the command-line agent form: a picture, the name, what the form is for, the state.
-fn cli_header(ui: &mut Ui, form: &CliForm, installed: bool, palette: Palette) {
-    let (header, _) = ui.allocate_exact_size(vec2(ui.available_width(), 50.0), Sense::hover());
-    let tile = Rect::from_min_size(header.min, Vec2::splat(50.0));
-    ui.painter().rect_filled(tile, PROVIDER_RADIUS, palette.hover.gamma_multiply(0.6));
-    icons::paint(ui.painter(), Rect::from_center_size(tile.center(), Vec2::splat(26.0)), "terminal", palette.foreground);
-    let name = if form.name.trim().is_empty() { "Command-line agent" } else { form.name.trim() };
-    let at = |y: f32| pos2(tile.right() + 13.0, header.top() + y);
-    ui.painter().text(at(14.0), Align2::LEFT_CENTER, name, FontId::proportional(SETTINGS_TITLE_SIZE), palette.foreground);
-    let purpose = "An agent program on this computer, with its own sign-in";
-    ui.painter().text(at(40.0), Align2::LEFT_CENTER, purpose, FontId::proportional(SIDEBAR_TEXT_SIZE), palette.muted);
-    let link = match (form.on, installed) {
-        (false, _) => Link::Off,
-        (true, true) => Link::Installed,
-        (true, false) => Link::Missing,
-    };
-    status(ui, pos2(header.right(), header.center().y), link, palette);
-}
-
 /// What the command-line agent form says about how the program gets Pencraft's tools, and for Grok the button
 /// that adds them.
 fn cli_tools(
@@ -1341,7 +1795,6 @@ fn cli_tools(
     palette: Palette,
     notice: &mut Option<String>,
 ) {
-    section(ui, "Pencraft's tools");
     let tools = match form.kind.as_str() {
         KIND_CLAUDE => "Claude Code is handed Pencraft's tools each time it answers. There is nothing to set up.",
         KIND_GROK => {
@@ -1351,23 +1804,19 @@ fn cli_tools(
             "The program works on your documents through its own MCP servers: add `pencraft mcp` there once (the MCP page has the lines to copy), and let it use that server's tools without asking."
         }
     };
-    ui.add(egui::Label::new(RichText::new(tools).color(palette.muted)).wrap());
+    ui.add(egui::Label::new(RichText::new(tools).size(12.0).color(palette.muted)).wrap());
     if form.kind != KIND_GROK {
         return;
     }
-    ui.add_space(6.0);
+    ui.add_space(10.0);
     let pencraft = std::env::current_exe().map_or_else(|_| "pencraft".to_owned(), |path| path.display().to_string());
-    egui::Frame::new().stroke(Stroke::new(1.0, palette.outline)).corner_radius(CHIP_RADIUS).inner_margin(Margin::symmetric(11, 7)).show(ui, |ui| {
+    egui::Frame::new().fill(palette.hover).corner_radius(10.0).inner_margin(egui::Margin::symmetric(12, 10)).show(ui, |ui| {
         ui.set_width(ui.available_width());
-        ui.add(egui::Label::new(RichText::new(hook_line(command.unwrap_or("grok"), &pencraft)).monospace()).wrap());
+        ui.add(egui::Label::new(RichText::new(hook_line(command.unwrap_or("grok"), &pencraft)).monospace().size(12.0)).wrap());
     });
-    ui.add_space(6.0);
-    let add = egui::Button::new(if hooking.is_some() { "Adding…" } else { "Add Pencraft to Grok" })
-        .fill(Color32::TRANSPARENT)
-        .stroke(Stroke::new(1.0, palette.outline))
-        .corner_radius(CHIP_RADIUS)
-        .min_size(vec2(160.0, FIELD_HEIGHT - 2.0));
-    if ui.add_enabled(hooking.is_none() && program.is_some(), add).on_hover_text("Runs the line above").clicked()
+    ui.add_space(10.0);
+    let add = if hooking.is_some() { "Adding…" } else { "Add Pencraft to Grok" };
+    if button(ui, add, None, Kind::Outline, hooking.is_none() && program.is_some(), palette).on_hover_text("Runs the line above").clicked()
         && let Some(program) = program
     {
         *hooking = hook(program.clone(), ui.ctx());
@@ -1377,12 +1826,14 @@ fn cli_tools(
     }
 }
 
-/// The command-line agent form. Returns `true` when it is finished: saved, removed, or left.
+/// The command-line agent form. Returns `true` when it was left by its way back; its buttons are in the bar
+/// under the page ([`Settings::footer`]).
 // Agent: READS the file system once a frame to say whether the program is there (one look-up, form only).
 fn cli_form(
     ui: &mut Ui,
     form: &mut CliForm,
     agents: &mut Agents,
+    facts: &Facts<'_>,
     hooking: &mut Option<mpsc::Receiver<String>>,
     palette: Palette,
     notice: &mut Option<String>,
@@ -1391,95 +1842,77 @@ fn cli_form(
         *notice = Some(said);
         *hooking = None;
     }
-    let mut finished = back(ui, palette);
+    let left = back(ui, "Assistants", palette);
     let draft = LocalAgent { kind: form.kind.clone(), program: form.program.trim().to_owned(), ..LocalAgent::default() };
     let command = crate::chat::command_of(&draft).map(str::to_owned);
     let program = command.as_deref().and_then(locate);
-    cli_header(ui, form, program.is_some(), palette);
-
-    section(ui, "Program");
-    ui.columns(2, |columns| {
-        caption(&mut columns[0], "Name");
-        field(&mut columns[0], &mut form.name, "My agent", false, false, palette);
-        caption(&mut columns[1], "Kind");
-        wide_choice(&mut columns[1], &mut form.kind, &KINDS, palette);
-    });
-    ui.add_space(8.0);
-    caption(ui, "Program");
-    let usual = crate::chat::usual_command(&form.kind);
-    let hint = usual.map_or_else(|| "/full/path/to/program, or its command".to_owned(), |usual| format!("{usual} (found automatically)"));
-    field(ui, &mut form.program, &hint, true, false, palette);
-    ui.add_space(2.0);
-    let said = match (&program, &command) {
-        (Some(path), _) => format!("Found at {}", path.display()),
-        (None, Some(command)) => format!("`{command}` wasn't found on this computer. Install it, or give its full path."),
-        (None, None) => "Give the program's full path, or the command it is run with.".to_owned(),
+    let owner = form.index.and_then(|index| agents.local.get(index)).map(|agent| agent.name.clone());
+    title(ui, if owner.is_some() { "Agent program" } else { "Add command-line agent" }, palette);
+    ui.add_space(18.0);
+    let link = match (form.on, program.is_some()) {
+        (false, _) => Link::Off,
+        (true, true) => Link::Installed,
+        (true, false) => Link::Missing,
     };
-    ui.label(RichText::new(said).color(if program.is_some() || command.is_none() { palette.muted } else { CHECKING }));
-    ui.add_space(8.0);
-    caption(ui, "Models");
-    field(ui, &mut form.models, "Leave empty for the program's own default; several are separated by commas", true, false, palette);
-    if form.kind == KIND_PLAIN {
-        ui.add_space(8.0);
-        caption(ui, "Arguments");
-        field(ui, &mut form.arguments, "exec {prompt}", true, false, palette);
-        ui.add_space(2.0);
-        let how = "{prompt} is replaced by the message and {model} by the model. Without {prompt} the message goes to the program's input. The program's printed answer is shown in the chat.";
-        ui.add(egui::Label::new(RichText::new(how).color(palette.muted)).wrap());
-    }
-    cli_tools(ui, form, command.as_deref(), program.as_ref(), hooking, palette, notice);
-
-    section(ui, "Chat");
-    let offer = "Off keeps the settings here but takes it out of the assistant menu.";
-    row(ui, "Offer in the chat", Some(offer), palette, |ui| switch(ui, &mut form.on, palette));
-    ui.add_space(16.0);
-    let agent = form.agent(&agents.local);
-    ui.horizontal(|ui| {
-        let label = if form.index.is_some() { "Save agent" } else { "Add agent" };
-        let save = egui::Button::new(RichText::new(label).color(palette.primary_text))
-            .fill(palette.primary)
-            .corner_radius(CHIP_RADIUS)
-            .min_size(vec2(92.0, FIELD_HEIGHT));
-        if ui.add_enabled(agent.is_some(), save).clicked()
-            && let Some(agent) = agent
-        {
-            match form.index.and_then(|index| agents.local.get_mut(index)) {
-                Some(saved) => *saved = agent,
-                None => agents.local.push(agent),
-            }
-            finished = true;
-        }
-        if let Some(index) = form.index
-            && ui.add(egui::Button::new("Remove").corner_radius(CHIP_RADIUS).min_size(vec2(72.0, FIELD_HEIGHT))).clicked()
-        {
-            if index < agents.local.len() {
-                agents.local.remove(index);
-            }
-            finished = true;
-        }
+    let name = if form.name.trim().is_empty() { "Command-line agent".to_owned() } else { form.name.trim().to_owned() };
+    card(ui, palette, |rows| {
+        let purpose = "An agent program on this computer, with its own sign-in";
+        rows.row(&name, Some(purpose), Lead::Icon("terminal"), |ui| pill(ui, link.words(), link.tone(), palette));
     });
-    finished
-}
 
-/// The API key field with what it says about a key that is already saved.
-fn key_field(ui: &mut Ui, form: &mut Form, palette: Palette) {
-    caption(ui, "API key");
-    let saved = form.key_ref.is_some() && !form.forget_key;
-    field(ui, &mut form.key, if saved { "Saved - type a new key to replace it" } else { "Optional" }, true, true, palette);
-    ui.add_space(2.0);
-    let help = "Leave blank if your endpoint doesn't require a key. The key is kept in your system's keychain.";
-    key_help(ui, help, saved && form.key.is_empty(), &mut form.forget_key, palette);
+    heading(ui, "Program", palette);
+    card(ui, palette, |rows| {
+        rows.block(|ui| {
+            ui.spacing_mut().item_spacing.x = 12.0;
+            ui.columns(2, |columns| {
+                caption(&mut columns[0], "Name", palette);
+                field(&mut columns[0], &mut form.name, "My agent", false, false, palette);
+                caption(&mut columns[1], "Kind", palette);
+                wide_choice(&mut columns[1], &mut form.kind, &KINDS, palette);
+            });
+            ui.add_space(14.0);
+            caption(ui, "Program", palette);
+            let usual = crate::chat::usual_command(&form.kind);
+            let example = usual.map_or_else(|| "/full/path/to/program, or its command".to_owned(), |usual| format!("{usual} (found automatically)"));
+            field(ui, &mut form.program, &example, true, false, palette);
+            match (&program, &command) {
+                (Some(path), _) => note(ui, &format!("Found at {}", path.display()), palette),
+                (None, Some(command)) => warning(ui, &format!("`{command}` wasn't found on this computer. Install it, or give its full path.")),
+                (None, None) => note(ui, "Give the program's full path, or the command it is run with.", palette),
+            }
+            ui.add_space(14.0);
+            caption(ui, "Models", palette);
+            field(ui, &mut form.models, "Leave empty for the program's own default; several are separated by commas", true, false, palette);
+            if form.kind == KIND_PLAIN {
+                ui.add_space(14.0);
+                caption(ui, "Arguments", palette);
+                field(ui, &mut form.arguments, "exec {prompt}", true, false, palette);
+                let how = "{prompt} is replaced by the message and {model} by the model. Without {prompt} the message goes to the program's input. The program's printed answer is shown in the chat.";
+                note(ui, how, palette);
+            }
+        });
+    });
+    heading(ui, "Pencraft's tools", palette);
+    card(ui, palette, |rows| rows.block(|ui| cli_tools(ui, form, command.as_deref(), program.as_ref(), hooking, palette, notice)));
+    heading(ui, "Chat", palette);
+    card(ui, palette, |rows| {
+        let offer = "Off keeps the settings here but takes it out of the assistant menu.";
+        rows.row("Offer in the chat", Some(offer), Lead::Nothing, |ui| switch(ui, &mut form.on, palette));
+    });
+    names_card(ui, owner.as_deref(), agents, facts, palette);
+    left
 }
 
 /// What a form says under its key field, and its "Forget saved key" button when `forgettable` (a key is saved
 /// and none is typed); the button sets `forget`.
 fn key_help(ui: &mut Ui, help: &str, forgettable: bool, forget: &mut bool, palette: Palette) {
-    ui.horizontal(|ui| {
-        ui.label(RichText::new(help).color(palette.muted));
-        if forgettable && ui.small_button("Forget saved key").clicked() {
+    note(ui, help, palette);
+    if forgettable {
+        ui.add_space(6.0);
+        if button(ui, "Forget saved key", None, Kind::Outline, true, palette).clicked() {
             *forget = true;
         }
-    });
+    }
 }
 
 /// The keychain name a form's key has once it is saved, `key_ref` being the one it had: a newly `typed` key
@@ -1581,10 +2014,11 @@ fn service_about(service: &ImageService) -> String {
     [service.kind.trim(), model, key].into_iter().filter(|part| !part.is_empty()).collect::<Vec<_>>().join(" · ")
 }
 
-/// The line the Images page shows for a service whose key comes from the environment, if `ready` is one.
-fn environment_line(ready: &crate::imagery::Ready) -> Option<String> {
+/// The row the Images page shows for a service whose key comes from the environment, if `ready` is one: its
+/// name, and where its key is from.
+fn environment_line(ready: &crate::imagery::Ready) -> Option<(&str, String)> {
     match ready.key {
-        crate::imagery::KeyFrom::Environment(variable) => Some(format!("{}: from the {variable} environment variable.", ready.name)),
+        crate::imagery::KeyFrom::Environment(variable) => Some((ready.name.as_str(), format!("Key from the {variable} environment variable"))),
         crate::imagery::KeyFrom::Keychain(_) => None,
     }
 }
@@ -1605,20 +2039,20 @@ fn unprotected(address: &str) -> bool {
     !matches!(host, "localhost" | "127.0.0.1" | "::1")
 }
 
-/// The model rows of the custom provider form, and the button that adds one.
+/// The model rows of the custom provider form.
 fn model_rows(ui: &mut Ui, form: &mut Form, palette: Palette) {
     // Human: three fields side by side and a bin; only the first row carries the fields' names.
-    let gap = 13.0;
-    let bin = 26.0;
+    let gap = 8.0;
+    let bin = 30.0;
     let fields = ui.available_width() - bin - 3.0 * gap;
     let widths = [fields * 0.5, fields * 0.25, fields * 0.25];
     let mut remove = None;
     let rows = form.models.len();
     for (index, model) in form.models.iter_mut().enumerate() {
-        let names = if index == 0 { 27.0 } else { 0.0 };
+        let names = if index == 0 { 24.0 } else { 0.0 };
         let (line, _) = ui.allocate_exact_size(vec2(ui.available_width(), names + FIELD_HEIGHT + 4.0), Sense::hover());
         let mut left = line.left();
-        for (text, name, hint, width) in [
+        for (text, name, example, width) in [
             (&mut model.id, "Model ID", "my-model-id", widths[0]),
             (&mut model.context_window, "Context window", DEFAULT_TOKENS, widths[1]),
             (&mut model.max_tokens, "Max tokens", DEFAULT_TOKENS, widths[2]),
@@ -1627,109 +2061,73 @@ fn model_rows(ui: &mut Ui, form: &mut Form, palette: Palette) {
             left = cell.right() + gap;
             // Human: a child placed by hand, so the page's own flow continues under the whole row.
             let mut cell = ui.new_child(UiBuilder::new().max_rect(cell).id_salt((index, name)));
+            cell.spacing_mut().item_spacing.y = 0.0;
             if index == 0 {
-                caption(&mut cell, name);
+                caption(&mut cell, name, palette);
             }
-            field(&mut cell, text, hint, true, false, palette);
+            field(&mut cell, text, example, true, false, palette);
         }
-        let cell = Rect::from_min_size(pos2(left, line.bottom() - FIELD_HEIGHT), Vec2::splat(bin));
+        let cell = Rect::from_min_size(pos2(left, line.bottom() - FIELD_HEIGHT - 4.0), Vec2::splat(bin));
         let mut cell = ui.new_child(UiBuilder::new().max_rect(cell).id_salt((index, "bin")));
         if rows > 1 && icon_button(&mut cell, "trash-2", Vec2::splat(bin), false, palette).on_hover_text("Remove model").clicked() {
             remove = Some(index);
         }
-        ui.add_space(6.0);
+        ui.add_space(4.0);
     }
     if let Some(index) = remove {
         form.models.remove(index);
     }
-    ui.horizontal(|ui| {
-        ui.label(RichText::new("Each model appears under this provider in the model picker.").color(palette.muted));
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            let add = egui::Button::new("+  Add model")
-                .fill(Color32::TRANSPARENT)
-                .stroke(Stroke::new(1.0, palette.outline))
-                .corner_radius(CHIP_RADIUS)
-                .min_size(vec2(96.0, FIELD_HEIGHT - 2.0));
-            if ui.add(add).clicked() {
-                form.models.push(ModelRow::empty());
-            }
-        });
-    });
 }
 
-/// The button that asks the provider which models it has, and the list of what it answered; a click on a
-/// model adds it to the form.
-// Human: model names change often and differ by provider, so the form asks instead of guessing them.
+/// Asks the form's provider which models it has; the answer comes through what is returned.
 // Agent: SPAWNS one short-lived thread per question; it WAKES the UI when the answer is there. READS the saved
 // key from the keychain when no new one is typed.
-fn offered_models(
-    ui: &mut Ui,
-    form: &mut Form,
-    vault: &dyn Vault,
-    loading: &mut Option<mpsc::Receiver<Models>>,
-    palette: Palette,
-    notice: &mut Option<String>,
-) {
-    if let Some(waiting) = loading {
-        let answered = match waiting.try_recv() {
-            Ok(Ok(found)) => {
-                form.offered = found;
-                true
+fn ask_models(form: &Form, vault: &dyn Vault, ctx: &egui::Context) -> Result<mpsc::Receiver<Models>, String> {
+    let typed = form.key.trim();
+    let key = match (&form.key_ref, typed.is_empty(), form.forget_key) {
+        (_, false, _) => Some(SecretString::new(typed)),
+        (Some(name), true, false) => Some(vault.get(name).map_err(|e| format!("The saved key couldn't be read from the keychain: {e}"))?),
+        _ => None,
+    };
+    let (send, receive) = mpsc::channel();
+    let (api, base, wake) = (form.api.clone(), form.base_url.clone(), ctx.clone());
+    let started = std::thread::Builder::new().name("load-models".to_owned()).spawn(move || {
+        // The form may have closed meanwhile; then nobody listens, which is fine.
+        let _unheard = send.send(catalog::list_models(&api, &base, key.as_ref()));
+        wake.request_repaint();
+    });
+    started.map(|_| receive).map_err(|e| format!("The provider couldn't be asked: {e}"))
+}
+
+/// Takes in the provider's answer to [`ask_models`], when it is there. Asked as a test of the connection
+/// (`testing`), the answer is also said.
+fn take_models(form: &mut Form, loading: &mut Option<mpsc::Receiver<Models>>, testing: &mut bool, notice: &mut Option<String>) {
+    let Some(waiting) = loading else { return };
+    match waiting.try_recv() {
+        Ok(Ok(found)) => {
+            if *testing {
+                *notice = Some(format!("Connected: the provider answered with {}.", counted(found.len(), "model")));
             }
-            Ok(Err(why)) => {
-                *notice = Some(why);
-                true
-            }
-            Err(mpsc::TryRecvError::Empty) => false,
-            Err(mpsc::TryRecvError::Disconnected) => {
-                *notice = Some("The provider's models couldn't be loaded.".to_owned());
-                true
-            }
-        };
-        if answered {
-            *loading = None;
+            form.offered = found;
         }
+        Ok(Err(why)) => *notice = Some(why),
+        Err(mpsc::TryRecvError::Empty) => return,
+        Err(mpsc::TryRecvError::Disconnected) => *notice = Some("The provider didn't answer.".to_owned()),
     }
-    let busy = loading.is_some();
-    let button = egui::Button::new(if busy { "Loading models…" } else { "Load models from provider" })
-        .fill(Color32::TRANSPARENT)
-        .stroke(Stroke::new(1.0, palette.outline))
-        .corner_radius(CHIP_RADIUS)
-        .min_size(vec2(176.0, FIELD_HEIGHT - 2.0));
-    if ui.add_enabled(!busy && !form.base_url.trim().is_empty(), button).clicked() {
-        let typed = form.key.trim();
-        let key = match (&form.key_ref, typed.is_empty(), form.forget_key) {
-            (_, false, _) => Ok(Some(SecretString::new(typed))),
-            (Some(name), true, false) => vault.get(name).map(Some).map_err(|e| format!("The saved key couldn't be read from the keychain: {e}")),
-            _ => Ok(None),
-        };
-        match key {
-            Ok(key) => {
-                let (send, receive) = mpsc::channel();
-                let (api, base, wake) = (form.api.clone(), form.base_url.clone(), ui.ctx().clone());
-                let started = std::thread::Builder::new().name("load-models".to_owned()).spawn(move || {
-                    // The form may have closed meanwhile; then nobody listens, which is fine.
-                    let _unheard = send.send(catalog::list_models(&api, &base, key.as_ref()));
-                    wake.request_repaint();
-                });
-                match started {
-                    Ok(_) => {
-                        form.offered.clear();
-                        *loading = Some(receive);
-                    }
-                    Err(e) => *notice = Some(format!("The provider couldn't be asked: {e}")),
-                }
-            }
-            Err(why) => *notice = Some(why),
-        }
-    }
+    *loading = None;
+    *testing = false;
+}
+
+/// The models the provider answered with; a click on one adds it to the form.
+fn offered_models(ui: &mut Ui, form: &mut Form, palette: Palette) {
     if form.offered.is_empty() {
         return;
     }
     let free: Vec<String> = form.offered.iter().filter(|id| form.models.iter().all(|row| row.id.trim() != id.as_str())).cloned().collect();
-    ui.add_space(6.0);
+    ui.add_space(10.0);
     let said = if free.is_empty() { "Every model the provider has is in the list above." } else { "The provider's models; click one to add it:" };
-    ui.label(RichText::new(said).color(palette.muted));
+    ui.label(RichText::new(said).size(12.0).color(palette.muted));
+    ui.add_space(4.0);
     egui::ScrollArea::vertical().id_salt("offered-models").max_height(OFFERED_MODELS_HEIGHT).show(ui, |ui| {
         for id in free {
             if ui.selectable_label(false, RichText::new(&id).monospace()).clicked() {
@@ -1737,189 +2135,6 @@ fn offered_models(
             }
         }
     });
-}
-
-/// A page's title.
-fn title(ui: &mut Ui, text: &str) {
-    ui.add_space(34.0);
-    ui.add(egui::Label::new(RichText::new(text).size(SETTINGS_TITLE_SIZE)).selectable(false));
-}
-
-/// A section's title.
-fn section(ui: &mut Ui, text: &str) {
-    ui.add_space(24.0);
-    ui.add(egui::Label::new(RichText::new(text).size(SETTINGS_SECTION_SIZE)).selectable(false));
-    ui.add_space(6.0);
-}
-
-/// The small name over a form field.
-pub(crate) fn caption(ui: &mut Ui, text: &str) {
-    ui.add(egui::Label::new(RichText::new(text).size(SIDEBAR_TEXT_SIZE)).selectable(false));
-    ui.add_space(2.0);
-}
-
-/// The line between two rows of a section.
-fn divider(ui: &mut Ui, palette: Palette) {
-    let (line, _) = ui.allocate_exact_size(vec2(ui.available_width(), 1.0), Sense::hover());
-    ui.painter().hline(line.x_range(), line.center().y, Stroke::new(1.0, palette.outline.gamma_multiply(0.7)));
-}
-
-/// A settings row: its name (and a second, quieter line) on the left, its control on the right.
-pub(crate) fn row(ui: &mut Ui, name: &str, more: Option<&str>, palette: Palette, control: impl FnOnce(&mut Ui)) {
-    ui.spacing_mut().item_spacing.y = 0.0;
-    let height = if more.is_some() { SETTINGS_TALL_ROW } else { SETTINGS_ROW };
-    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::hover());
-    let font = FontId::proportional(SIDEBAR_TEXT_SIZE);
-    if let Some(more) = more {
-        ui.painter().text(pos2(rect.left(), rect.center().y - 9.0), Align2::LEFT_CENTER, name, font, palette.foreground);
-        // Human: the second line ends with "…" before the control at the right instead of running under it.
-        let mut job = egui::text::LayoutJob::simple_singleline(more.to_owned(), FontId::proportional(12.0), palette.muted);
-        job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width() - SETTINGS_ROW_CONTROL_ROOM);
-        let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
-        ui.painter().galley(pos2(rect.left(), rect.center().y + 10.0 - galley.size().y / 2.0), galley, palette.muted);
-    } else {
-        ui.painter().text(rect.left_center(), Align2::LEFT_CENTER, name, font, palette.foreground);
-    }
-    // Human: a child placed by hand, so every row is exactly as tall as the design says.
-    control(&mut ui.new_child(UiBuilder::new().max_rect(rect).layout(Layout::right_to_left(Align::Center)).id_salt(name)));
-}
-
-/// An on/off switch.
-pub(crate) fn switch(ui: &mut Ui, on: &mut bool, palette: Palette) {
-    let (rect, response) = ui.allocate_exact_size(Vec2::from(SWITCH_SIZE), Sense::click());
-    if response.clicked() {
-        *on = !*on;
-    }
-    let radius = rect.height() / 2.0;
-    let knob = radius - 2.0;
-    if *on {
-        ui.painter().rect_filled(rect, radius, palette.foreground);
-        ui.painter().circle_filled(pos2(rect.right() - radius, rect.center().y), knob, palette.island);
-    } else {
-        ui.painter().rect(rect, radius, palette.input.gamma_multiply(0.5), Stroke::new(1.0, palette.outline), StrokeKind::Inside);
-        ui.painter().circle_filled(pos2(rect.left() + radius, rect.center().y), knob, palette.muted.gamma_multiply(0.6));
-    }
-}
-
-/// The Light / Dark switch.
-fn appearance_switch(ui: &mut Ui, dark: &mut bool, palette: Palette) {
-    let (rect, _) = ui.allocate_exact_size(vec2(122.0, SETTINGS_CONTROL), Sense::hover());
-    ui.painter().rect_filled(rect, CHIP_RADIUS, palette.hover.gamma_multiply(0.5));
-    let halves = [(false, "sun", "Light", rect.left()), (true, "moon", "Dark", rect.center().x)];
-    for (value, icon, name, left) in halves {
-        let half = Rect::from_min_size(pos2(left, rect.top()), vec2(rect.width() / 2.0, rect.height())).shrink(1.5);
-        let response = ui.interact(half, ui.scope_id().with(("appearance", name)), Sense::click());
-        let active = *dark == value;
-        if active {
-            ui.painter().rect_filled(half, CHIP_RADIUS - 1.5, palette.hover);
-        }
-        let color = if active || response.hovered() { palette.foreground } else { palette.muted };
-        icons::paint(ui.painter(), Rect::from_center_size(pos2(half.left() + 15.0, half.center().y), Vec2::splat(11.0)), icon, color);
-        ui.painter().text(pos2(half.left() + 25.0, half.center().y), Align2::LEFT_CENTER, name, FontId::proportional(12.0), color);
-        if response.clicked() {
-            *dark = value;
-        }
-    }
-}
-
-/// A small outlined button showing `value`; a click offers `options`.
-fn choice(ui: &mut Ui, salt: &str, value: &mut String, options: &[&str], palette: Palette) {
-    let font = FontId::proportional(12.0);
-    let width = ui.painter().layout_no_wrap(value.clone(), font.clone(), palette.foreground).size().x;
-    let (rect, _) = ui.allocate_exact_size(vec2(width + 36.0, SETTINGS_CONTROL), Sense::hover());
-    choice_at(ui, rect, salt, value, options, font, palette);
-}
-
-/// A choice as wide and tall as a text field.
-fn wide_choice(ui: &mut Ui, value: &mut String, options: &[&str], palette: Palette) {
-    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), FIELD_HEIGHT), Sense::hover());
-    choice_at(ui, rect, "wide", value, options, FontId::proportional(SIDEBAR_TEXT_SIZE), palette);
-}
-
-/// A choice drawn in `rect`, showing `value`; a click offers `options`. `salt` tells it apart from others.
-pub(crate) fn choice_at(ui: &mut Ui, rect: Rect, salt: &str, value: &mut String, options: &[&str], font: FontId, palette: Palette) {
-    let response = ui.interact(rect, ui.scope_id().with(("choice", salt)), Sense::click());
-    if response.hovered() {
-        ui.painter().rect_filled(rect, CHIP_RADIUS, palette.hover.gamma_multiply(0.4));
-    }
-    ui.painter().rect_stroke(rect, CHIP_RADIUS, Stroke::new(1.0, palette.outline), StrokeKind::Inside);
-    ui.painter().text(pos2(rect.left() + 11.0, rect.center().y), Align2::LEFT_CENTER, value.as_str(), font, palette.foreground);
-    icons::paint(
-        ui.painter(),
-        Rect::from_center_size(pos2(rect.right() - 13.0, rect.center().y), Vec2::splat(11.0)),
-        "chevrons-up-down",
-        palette.muted,
-    );
-    egui::Popup::menu(&response).show(|ui| {
-        for option in options {
-            if ui.selectable_label(value.as_str() == *option, *option).clicked() {
-                (*option).clone_into(value);
-            }
-        }
-    });
-}
-
-/// A number of pixels.
-fn pixels(ui: &mut Ui, value: &mut f32) {
-    ui.add(egui::DragValue::new(value).range(1.0..=1000.0).speed(0.2).max_decimals(0).suffix(" px"));
-}
-
-/// An outlined text field as wide as the space it is in.
-fn field(ui: &mut Ui, text: &mut String, hint: &str, mono: bool, secret: bool, palette: Palette) -> Response {
-    let font = if mono { egui::TextStyle::Monospace } else { egui::TextStyle::Body };
-    let frame = egui::Frame::new().stroke(Stroke::new(1.0, palette.outline)).corner_radius(CHIP_RADIUS).inner_margin(Margin::symmetric(11, 7));
-    let hint = RichText::new(hint).text_style(font.clone()).color(palette.muted.gamma_multiply(0.75));
-    ui.add(egui::TextEdit::singleline(text).frame(frame).hint_text(hint).font(font).password(secret).desired_width(ui.available_width()))
-}
-
-/// A provider's card: a square with its initial, its name, its models, its state and an arrow.
-fn provider_card(ui: &mut Ui, name: &str, models: &str, sample: bool, state: Option<Link>, palette: Palette) -> Response {
-    let (card, response) = ui.allocate_exact_size(vec2(ui.available_width(), PROVIDER_CARD), Sense::click());
-    let fill = if response.hovered() { palette.hover.gamma_multiply(0.25) } else { Color32::TRANSPARENT };
-    ui.painter().rect(card, PROVIDER_RADIUS, fill, Stroke::new(1.0, palette.outline), StrokeKind::Inside);
-    let tile = Rect::from_center_size(pos2(card.left() + 15.0 + PROVIDER_TILE / 2.0, card.center().y), Vec2::splat(PROVIDER_TILE));
-    ui.painter().rect_filled(tile, CHIP_RADIUS, palette.hover.gamma_multiply(0.6));
-    let text_left = tile.right() + 15.0;
-    if state.is_some() {
-        // Human: brand marks aren't bundled, so the square shows the provider's first letter.
-        let initial: String = name.chars().take(1).collect();
-        ui.painter().text(tile.center(), Align2::CENTER_CENTER, initial, FontId::proportional(15.0), palette.foreground);
-    } else {
-        icons::paint(ui.painter(), Rect::from_center_size(tile.center(), Vec2::splat(ICON_SIZE)), "plus", palette.foreground);
-    }
-    if models.is_empty() {
-        ui.painter().text(pos2(text_left, card.center().y), Align2::LEFT_CENTER, name, FontId::proportional(13.5), palette.foreground);
-    } else {
-        ui.painter().text(pos2(text_left, card.top() + 23.0), Align2::LEFT_CENTER, name, FontId::proportional(13.5), palette.foreground);
-        let mut left = text_left;
-        if sample {
-            icons::paint(ui.painter(), Rect::from_center_size(pos2(left + 6.0, card.top() + 44.0), Vec2::splat(11.0)), "link", palette.muted);
-            left += 19.0;
-        }
-        ui.painter().text(pos2(left, card.top() + 43.0), Align2::LEFT_CENTER, models, FontId::proportional(12.0), palette.muted);
-    }
-    icons::paint(ui.painter(), Rect::from_center_size(pos2(card.right() - 21.0, card.center().y), Vec2::splat(12.0)), "chevron-right", palette.muted);
-    if let Some(state) = state {
-        status(ui, pos2(card.right() - 42.0, card.center().y), state, palette);
-    }
-    response
-}
-
-/// A state pill ("Not connected") with its right edge at `right`.
-fn status(ui: &Ui, right: egui::Pos2, link: Link, palette: Palette) {
-    let font = FontId::proportional(12.0);
-    let (text, dot, edge, fill) = match link {
-        Link::NotConnected | Link::Stopped | Link::Missing | Link::Off => {
-            (palette.muted, palette.muted.gamma_multiply(0.5), palette.outline, Color32::TRANSPARENT)
-        }
-        Link::Checking => (CHECKING, CHECKING, CHECKING.gamma_multiply(0.5), CHECKING.gamma_multiply(0.14)),
-        Link::Ready | Link::Running | Link::Installed => (CONNECTED, CONNECTED, CONNECTED.gamma_multiply(0.5), CONNECTED.gamma_multiply(0.14)),
-    };
-    let width = ui.painter().layout_no_wrap(link.words().to_owned(), font.clone(), text).size().x;
-    let pill = Rect::from_min_size(pos2(right.x - width - 32.0, right.y - 11.5), vec2(width + 32.0, 23.0));
-    ui.painter().rect(pill, 11.5, fill, Stroke::new(1.0, edge), StrokeKind::Inside);
-    ui.painter().circle_filled(pos2(pill.left() + 12.0, pill.center().y), 2.5, dot);
-    ui.painter().text(pos2(pill.left() + 21.0, pill.center().y), Align2::LEFT_CENTER, link.words(), font, text);
 }
 
 /// The folders a command-line program may be installed in: those of `PATH`, and the usual ones a program
@@ -2176,8 +2391,8 @@ mod tests {
         let mut images = Images::default();
         images.services.push(service("Studio", "OpenAI Images", Some("k")));
         let ready = crate::imagery::ready(&images, &|name| (name == "GEMINI_API_KEY").then(|| "g".to_owned()));
-        let lines: Vec<String> = ready.iter().filter_map(environment_line).collect();
-        assert_eq!(lines, ["Gemini: from the GEMINI_API_KEY environment variable."]);
+        let lines: Vec<(&str, String)> = ready.iter().filter_map(environment_line).collect();
+        assert_eq!(lines, [("Gemini", "Key from the GEMINI_API_KEY environment variable".to_owned())]);
     }
 
     #[test]
@@ -2198,7 +2413,10 @@ mod tests {
         }
         settings.open = false;
         let ctx = egui::Context::default();
-        assert_eq!(settings.show(&ctx, &mut Prefs::default(), &Facts { assistants: &[], port: None }, false), None);
+        assert_eq!(
+            settings.show(&ctx, &mut Prefs::default(), &Facts { assistants: &[], port: None, update: crate::update::Seen::default() }, false),
+            None
+        );
         assert!(settings.image_form.is_none());
     }
 
@@ -2335,7 +2553,7 @@ mod tests {
         let written = serde_json::to_string(&prefs).unwrap();
         assert_eq!(serde_json::from_str::<Prefs>(&written).unwrap(), prefs);
         // A path with a space stays one word for the shell and one string in the files.
-        let [(_, claude), (_, codex), (_, json)] = client_setups("/Apps/My Pencraft/pencraft");
+        let [(_, _, claude), (_, _, codex), (_, _, json)] = client_setups("/Apps/My Pencraft/pencraft");
         assert_eq!(claude, r#"claude mcp add pencraft -- "/Apps/My Pencraft/pencraft" mcp"#);
         assert!(codex.contains(r#"command = "/Apps/My Pencraft/pencraft""#));
         assert_eq!(serde_json::from_str::<serde_json::Value>(&json).unwrap()["mcpServers"]["pencraft"]["args"], serde_json::json!(["mcp"]));
@@ -2348,11 +2566,102 @@ mod tests {
 
     #[test]
     fn every_settings_icon_is_bundled() {
-        for (_, icon, _) in PAGES {
+        for (_, icon, _) in PAGES.iter().flat_map(|(_, pages)| pages.iter()) {
             assert!(icons::outline("lucide", icon).is_some(), "{icon}");
         }
-        for icon in ["server", "trash-2", "link", "chevrons-up-down", "chevron-right", "chevron-left", "terminal", "sun", "moon", "x"] {
+        let used = [
+            "server",
+            "trash-2",
+            "chevrons-up-down",
+            "chevron-right",
+            "chevron-left",
+            "chevron-down",
+            "terminal",
+            "sun",
+            "moon",
+            "monitor",
+            "x",
+            "search",
+            "plus",
+            "copy",
+            "download",
+            "globe",
+            "image",
+            "key-round",
+            "shield-check",
+            "circle-check",
+            "circle-arrow-up",
+        ];
+        for icon in used {
             assert!(icons::outline("lucide", icon).is_some(), "{icon}");
         }
+    }
+
+    #[test]
+    fn the_search_finds_settings_tools_and_providers_on_their_pages() {
+        assert!(finds("  ").is_empty() && finds("no such setting").is_empty());
+        let grid = finds("Pixel Grid");
+        assert_eq!(
+            grid.iter().map(|(page, _, name)| (*page, name.as_str())).collect::<Vec<_>>(),
+            [(Page::Canvas, "Show pixel grid"), (Page::Canvas, "Snap to pixel grid")]
+        );
+        assert_eq!(finds("edit_layers"), [(Page::Permissions, "Tools".to_owned(), "edit_layers".to_owned())]);
+        assert!(finds("deepseek").contains(&(Page::Agents, "Add an assistant".to_owned(), "Deepseek".to_owned())));
+        // A page's name finds everything on it, in the order of the list of pages.
+        let pages: Vec<Page> = finds("a").iter().map(|(page, ..)| *page).collect();
+        assert!(pages.is_sorted_by_key(|page| PAGES.iter().flat_map(|(_, pages)| pages.iter()).position(|(known, ..)| known == page)));
+        assert!(finds("mcp").iter().any(|(page, ..)| *page == Page::Mcp));
+        // Every page of the index is in the list of pages.
+        assert!(INDEX.iter().all(|(page, ..)| entry(*page).0 == *page));
+    }
+
+    #[test]
+    fn the_theme_follows_the_computer_or_stays_as_chosen() {
+        let mut look = Appearance { dark: true, ..Appearance::default() };
+        follow_theme(&mut look, THEME_SYSTEM);
+        assert!(look.follow_system && look.dark);
+        follow_theme(&mut look, THEME_LIGHT);
+        assert!(!look.follow_system && !look.dark);
+        follow_theme(&mut look, THEME_DARK);
+        assert!(!look.follow_system && look.dark);
+    }
+
+    #[test]
+    fn rows_say_who_owns_an_assistant_and_how_long_ago_a_look_was() {
+        assert!(owns("Claude Code", "Claude Code · Opus 5.5") && owns("Grok", "Grok"));
+        assert!(!owns("Grok", "Grok 2 · fast") && !owns("Claude", "Claude Code · Opus 5.5"));
+        assert_eq!((counted(1, "model"), counted(3, "model")), ("1 model".to_owned(), "3 models".to_owned()));
+        assert_eq!(ago(Duration::from_secs(20)), "just now");
+        assert_eq!(ago(Duration::from_secs(90)), "1 minute ago");
+        assert_eq!(ago(Duration::from_secs(3 * 3600 + 5)), "3 hours ago");
+        let seen = |looking, offered: Option<&str>, ago| crate::update::Seen { looking, offered: offered.map(str::to_owned), ago };
+        assert_eq!(update_line(&seen(true, Some("9.0.0"), None)), "Looking for a newer version…");
+        assert_eq!(update_line(&seen(false, Some("9.0.0"), None)), "Pencraft 9.0.0 is available.");
+        assert_eq!(update_line(&seen(false, None, Some(Duration::from_secs(600)))), "Last checked 10 minutes ago.");
+        assert!(update_line(&seen(false, None, None)).starts_with("Not checked yet"));
+    }
+
+    #[test]
+    fn a_forms_bar_says_what_is_missing() {
+        let mut form = Form::new();
+        assert_eq!(form.missing(), Some("Name and base URL are still missing."));
+        form.name = "Mine".to_owned();
+        assert_eq!(form.missing(), Some("The base URL is still missing."));
+        form.base_url = "https://example.com/v1".to_owned();
+        assert!(form.missing().is_some_and(|what| what.starts_with("Every model")));
+        form.models[0].id = "m".to_owned();
+        assert_eq!(form.missing(), None);
+        let agents = Agents::default();
+        let mut cli = CliForm::new();
+        assert_eq!(cli.missing(&agents.local), Some("A name is still missing."));
+        cli.name = "Grok".to_owned();
+        cli.program = "grok".to_owned();
+        assert_eq!(cli.missing(&agents.local), Some("Another agent has this name already."));
+        cli.name = "Codex".to_owned();
+        assert_eq!(cli.missing(&agents.local), None);
+        let mut image = ImageForm::new();
+        assert_eq!(image.missing(&Images::default()), Some("A name is still missing."));
+        image.name = "Studio".to_owned();
+        assert_eq!(image.missing(&Images::default()), None);
     }
 }

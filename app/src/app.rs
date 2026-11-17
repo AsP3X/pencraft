@@ -365,6 +365,31 @@ impl App {
         self.prefs.get().appearance.dark
     }
 
+    /// Changes between the light and the dark look.
+    // Human: choosing a look by hand ends following the computer's.
+    fn toggle_theme(&mut self, ctx: &egui::Context) {
+        let dark = !self.dark();
+        self.prefs.update(|p| {
+            p.appearance.dark = dark;
+            p.appearance.follow_system = false;
+        });
+        ctx.set_visuals(theme::visuals(dark));
+    }
+
+    /// While the settings say to follow the computer's appearance, takes the look from it.
+    // Human: the computer can change its appearance at any time (at sunset, say), so this is asked every frame.
+    fn follow_system_look(&mut self, ctx: &egui::Context) {
+        if !self.prefs.get().appearance.follow_system {
+            return;
+        }
+        let Some(look) = ctx.system_theme() else { return };
+        let dark = look == egui::Theme::Dark;
+        if dark != self.dark() {
+            self.prefs.update(|p| p.appearance.dark = dark);
+            ctx.set_visuals(theme::visuals(dark));
+        }
+    }
+
     fn next_seed(&mut self) -> u64 {
         self.seed = self.seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
         self.seed
@@ -674,9 +699,7 @@ impl App {
                 }
             }
             Command::ToggleTheme => {
-                let dark = !self.dark();
-                self.prefs.update(|p| p.appearance.dark = dark);
-                ctx.set_visuals(theme::visuals(dark));
+                self.toggle_theme(ctx);
             }
             Command::FullScreen => {
                 let full = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
@@ -1342,8 +1365,12 @@ impl App {
     fn settings_window(&mut self, ctx: &egui::Context) {
         let dark = self.dark();
         let mut prefs = self.prefs.get().clone();
-        let facts = crate::settings::Facts { assistants: &self.assistants, port: self.link.as_ref().map(|server| server.port) };
+        let facts =
+            crate::settings::Facts { assistants: &self.assistants, port: self.link.as_ref().map(|server| server.port), update: self.updates.seen() };
         let notice = self.settings.show(ctx, &mut prefs, &facts, dark);
+        if std::mem::take(&mut self.settings.check_now) {
+            self.updates.look_now(ctx);
+        }
         if prefs.appearance.dark != dark {
             ctx.set_visuals(theme::visuals(prefs.appearance.dark));
         }
@@ -1504,6 +1531,7 @@ impl eframe::App for App {
             ctx.request_repaint_after(deadline.saturating_duration_since(Instant::now()));
         }
         self.settle_fonts(ctx);
+        self.follow_system_look(ctx);
         if let Some(job) = &mut self.screenshot {
             job.frame(ctx);
         }
