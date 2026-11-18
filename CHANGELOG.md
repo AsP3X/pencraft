@@ -9,6 +9,15 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Fonts while Pencraft is in the background.** When an AI client opened
+  a document or wrote text while Pencraft's window was hidden or behind
+  other windows, a font that hadn't been used since the app started was
+  never loaded: after a wait of three seconds the text was measured and
+  drawn in Arial instead, in screenshots, exports and the boxes the model
+  was told. The font is now loaded at once.
+
 ## [0.3.11] - 2026-11-18
 
 Logos in every style, shapes that cut what is inside them, and text round circles and along lines.

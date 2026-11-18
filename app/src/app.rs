@@ -1494,6 +1494,14 @@ impl App {
             }
             ctx.request_repaint();
         }
+        // Human: egui takes new faces up when a frame begins, and a window that is hidden or behind others
+        // gets no frame: only `logic` runs. Faces asked for then (a model opens a document or writes text
+        // while the app is in the background) would never become ready, and that text would be measured and
+        // drawn in the stand-in. One frame is asked for although nothing shows it.
+        if fonts::pending() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaintWhileHidden);
+            ctx.request_repaint();
+        }
     }
 }
 
