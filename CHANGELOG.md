@@ -9,6 +9,10 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.14] - 2026-11-18
+
+The assistant can ask you questions, and a design can travel as one file.
+
 ### Added
 
 - **The assistant can ask you.** When a request could go two ways, the
@@ -479,7 +483,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.13...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.14...HEAD
+[0.3.14]: https://github.com/AsP3X/pencraft/compare/v0.3.13...v0.3.14
 [0.3.13]: https://github.com/AsP3X/pencraft/compare/v0.3.12...v0.3.13
 [0.3.12]: https://github.com/AsP3X/pencraft/compare/v0.3.11...v0.3.12
 [0.3.11]: https://github.com/AsP3X/pencraft/compare/v0.3.10...v0.3.11
