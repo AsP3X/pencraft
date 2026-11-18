@@ -9,6 +9,12 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.13] - 2026-11-18
+
+Pencraft has an icon of its own.
+
+<!-- required -->
+
 ### Added
 
 - **An icon.** Pencraft has an icon of its own: a pen nib setting a point
@@ -444,7 +450,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.12...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.13...HEAD
+[0.3.13]: https://github.com/AsP3X/pencraft/compare/v0.3.12...v0.3.13
 [0.3.12]: https://github.com/AsP3X/pencraft/compare/v0.3.11...v0.3.12
 [0.3.11]: https://github.com/AsP3X/pencraft/compare/v0.3.10...v0.3.11
 [0.3.10]: https://github.com/AsP3X/pencraft/compare/v0.3.9...v0.3.10
