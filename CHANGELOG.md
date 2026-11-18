@@ -9,6 +9,10 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.10] - 2026-11-18
+
+Watch a model build its design step by step, and a message line that reads well.
+
 ### Changed
 
 - **You see a model build its design.** What an AI model makes or changes
@@ -362,7 +366,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.9...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.10...HEAD
+[0.3.10]: https://github.com/AsP3X/pencraft/compare/v0.3.9...v0.3.10
 [0.3.9]: https://github.com/AsP3X/pencraft/compare/v0.3.8...v0.3.9
 [0.3.8]: https://github.com/AsP3X/pencraft/compare/v0.3.7...v0.3.8
 [0.3.7]: https://github.com/AsP3X/pencraft/compare/v0.3.6...v0.3.7
