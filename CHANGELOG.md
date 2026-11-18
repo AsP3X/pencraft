@@ -9,6 +9,32 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.11] - 2026-11-18
+
+Logos in every style, shapes that cut what is inside them, and text round circles and along lines.
+
+### Added
+
+- **Text round a circle.** A text layer can follow the circle that fits
+  its box, at the top or at the bottom, for the rim of a seal, a badge or
+  a roundel: ask the assistant for "the name round the rim". It is drawn
+  on the canvas and in PNG, PDF and SVG exports. In the properties panel
+  a text has Straight, Circle Top and Circle Bottom, and the angle it is
+  turned by.
+- **Text along any line.** A text can also follow a line of any shape,
+  for a name on a waving scroll or over an arch: ask the assistant for
+  "the name along the ribbon", or choose "Line" for a text in the
+  properties panel and bend the line by its points (Enter, or "Edit
+  Line").
+- **A shape as a mask.** A shape layer can cut the layers after it in its
+  group to its outline: water and a swan inside a shield, shading inside a
+  letter, hatching at any angle. Ask the assistant to "put it inside the
+  shield", or tick "Mask Layers Above" on a shape under Appearance. Drawn
+  on the canvas and in every export, and marked "mask" in the layers list.
+- **An outline round text.** A text layer's stroke now draws an outline
+  round its letters, outside them, for a team's name or a sticker; a
+  second stroke draws a keyline round the first.
+
 ### Changed
 
 - **Logos that are logos, in every style.** Asked for a logo, a model
@@ -28,29 +54,6 @@ in the app before they download the update. Write it for them.
   detailed logo without its small version, a name set in a typewriter
   face. The second model that reviews finished designs now reviews logos
   too, however few layers they have, by the rules of their style.
-
-### Added
-
-- **Text round a circle.** A text layer can follow the circle that fits
-  its box, at the top or at the bottom, for the rim of a seal, a badge or
-  a roundel: ask the assistant for "the name round the rim". It is drawn
-  on the canvas and in PNG, PDF and SVG exports. In the properties panel
-  a text has Straight, Circle Top and Circle Bottom, and the angle it is
-  turned by.
-
-- **Text along any line.** A text can also follow a line of any shape,
-  for a name on a waving scroll or over an arch: ask the assistant for
-  "the name along the ribbon", or choose "Line" for a text in the
-  properties panel and bend the line by its points (Enter, or "Edit
-  Line").
-- **A shape as a mask.** A shape layer can cut the layers after it in its
-  group to its outline: water and a swan inside a shield, shading inside a
-  letter, hatching at any angle. Ask the assistant to "put it inside the
-  shield", or tick "Mask Layers Above" on a shape under Appearance. Drawn
-  on the canvas and in every export, and marked "mask" in the layers list.
-- **An outline round text.** A text layer's stroke now draws an outline
-  round its letters, outside them, for a team's name or a sticker; a
-  second stroke draws a keyline round the first.
 
 ### Fixed
 
@@ -421,7 +424,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.10...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.11...HEAD
+[0.3.11]: https://github.com/AsP3X/pencraft/compare/v0.3.10...v0.3.11
 [0.3.10]: https://github.com/AsP3X/pencraft/compare/v0.3.9...v0.3.10
 [0.3.9]: https://github.com/AsP3X/pencraft/compare/v0.3.8...v0.3.9
 [0.3.8]: https://github.com/AsP3X/pencraft/compare/v0.3.7...v0.3.8
