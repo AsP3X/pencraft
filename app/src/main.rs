@@ -13,6 +13,7 @@ mod activity;
 mod advice;
 mod agent;
 mod app;
+mod bundle;
 mod canvas;
 mod chat;
 mod chips;

@@ -7,7 +7,7 @@ use std::sync::Mutex;
 use serde_json::{Map, Value};
 
 /// The folder pictures go into, beside the document.
-const FOLDER: &str = "images";
+pub const FOLDER: &str = "images";
 /// The file in that folder that says where each picture came from.
 pub const CREDITS: &str = "credits.json";
 /// The most letters of a description that go into a file's name.

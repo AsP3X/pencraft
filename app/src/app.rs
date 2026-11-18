@@ -22,7 +22,7 @@ use crate::theme::{
     SIDEBAR_TEXT_SIZE, TAB_BAR_HEIGHT, TAB_HEIGHT, TAB_WORK_DOT, TITLE_BUTTON, TITLE_ISLAND_HEIGHT, TITLE_ISLAND_TOP, TITLE_SIZE, TRAFFIC_LIGHT_LEFT,
     TRAFFIC_LIGHT_SPACE, ZOOM_ISLAND,
 };
-use crate::{fonts, samples, screenshot};
+use crate::{bundle, fonts, samples, screenshot};
 
 mod home;
 mod pictures;
@@ -193,6 +193,11 @@ impl App {
         // Human: shader effects run on the same GPU device the window is drawn with.
         if let Some(state) = &cc.wgpu_render_state {
             crate::gpu::install(state.device.clone(), state.queue.clone());
+        }
+        // Human: the folders that bundles open in an earlier run lay unpacked in are cleared away, off this
+        // thread; those a running Pencraft holds stay.
+        if let Err(error) = std::thread::Builder::new().name("working-folders".to_owned()).spawn(bundle::sweep) {
+            log::warn!("working folders: {error}");
         }
         let location = if launch.screenshot.is_some() || launch.private { Location::Memory } else { Location::Auto };
         let (prefs, report) = SettingsStore::<Prefs>::open(location);
@@ -489,12 +494,12 @@ impl App {
             self.active = Some(i);
             return Ok(());
         }
-        let doc = std::fs::read_to_string(path)
-            .map_err(|e| e.to_string())
-            .and_then(|text| pen_doc::read(&text).map_err(|e| e.to_string()))
-            .map_err(|e| format!("Couldn't open {}: {e}", path.display()))?;
         let seed = self.next_seed();
-        self.add_tab(Editor::new(doc, Some(path.to_path_buf()), seed));
+        let (editor, newer) = Editor::open(path, seed).map_err(|e| format!("Couldn't open {}: {e}", path.display()))?;
+        self.add_tab(editor);
+        if let Some(newer) = newer {
+            self.say(newer);
+        }
         let shown = path.display().to_string();
         self.prefs.update(|p| p.files.touch(&shown));
         Ok(())
@@ -524,31 +529,36 @@ impl App {
     }
 
     fn ask_open(&mut self) {
-        self.dialogs.ask(FileDialog::open_many().title("Open").filter("Design files", &["pen"]), Then::Open);
+        self.dialogs.ask(FileDialog::open_many().title("Open").filter("Design files", &[bundle::PLAIN, bundle::ENDING]), Then::Open);
     }
 
     fn save(&mut self, tab: usize, close: bool) {
-        let was = self.tabs.get(tab).and_then(|editor| editor.path.clone());
+        let was = self.tabs.get(tab).and_then(Editor::anchor);
         self.save_from(tab, close, was.as_deref());
     }
 
-    /// Saves the document in the tab `tab`, which was last saved as `was` (`None` when never), asking for a
-    /// file first when it has none; its pictures are brought to where it is saved (`pictures::settle`).
+    /// Saves the document in the tab `tab`, whose files lay beside `was` when it was last saved (its
+    /// [`Editor::anchor`] then; `None` when never), asking for a file first when it has none; its pictures are
+    /// brought to where it is saved (`pictures::settle`).
     fn save_from(&mut self, tab: usize, close: bool, was: Option<&Path>) {
         let Some(editor) = self.tabs.get_mut(tab) else { return };
         if editor.path.is_none() {
-            let name = format!("{}.pen", editor.title());
-            self.dialogs.ask(FileDialog::save().title("Save").filter("Design files", &["pen"]).file_name(name), Then::SaveAs { tab, close });
+            self.ask_save("Save", tab, close, false);
             return;
         }
-        let stuck = pictures::settle(editor, was, crate::imagery::store::home().as_deref());
+        let mut told = pictures::settle(editor, was, crate::imagery::store::home().as_deref());
+        // Human: said once, when the document first goes to a `.pen` file of this name, not at every save.
+        let plain = editor.path.as_deref().is_some_and(|path| !bundle::is_bundle(path));
+        let only_here = editor.only_here().filter(|_| plain && was != editor.anchor().as_deref());
         match editor.save() {
-            Ok(()) => {
+            Ok(more) => {
                 if let Some(path) = editor.path.as_ref().map(|p| p.display().to_string()) {
                     self.prefs.update(|p| p.files.touch(&path));
                 }
-                if !stuck.is_empty() {
-                    self.say(format!("Saved. {}", stuck.join(" ")));
+                told.extend(more);
+                told.extend(only_here);
+                if !told.is_empty() {
+                    self.say(format!("Saved. {}", told.join(" ")));
                 }
                 if close {
                     self.close_tab_now(tab);
@@ -559,9 +569,21 @@ impl App {
     }
 
     fn save_as(&mut self, tab: usize) {
+        self.ask_save("Save As", tab, false, false);
+    }
+
+    /// Asks where to save the document in the tab `tab`. The name offered ends as the file it has does (`.pen`
+    /// for one without a file), or the other way when `other` says so; either ending can be typed.
+    // Human: the ending picks the format: `.pen` is the document alone, `.pencraft` a bundle with its files.
+    fn ask_save(&mut self, title: &str, tab: usize, close: bool, other: bool) {
         let Some(editor) = self.tabs.get(tab) else { return };
-        let name = format!("{}.pen", editor.title());
-        self.dialogs.ask(FileDialog::save().title("Save As").filter("Design files", &["pen"]).file_name(name), Then::SaveAs { tab, close: false });
+        let bundle = editor.path.as_deref().is_some_and(bundle::is_bundle) != other;
+        let (name, endings) = if bundle {
+            (format!("{}.{}", editor.title(), bundle::ENDING), [bundle::ENDING, bundle::PLAIN])
+        } else {
+            (format!("{}.{}", editor.title(), bundle::PLAIN), [bundle::PLAIN, bundle::ENDING])
+        };
+        self.dialogs.ask(FileDialog::save().title(title).filter("Design files", &endings).file_name(name), Then::SaveAs { tab, close });
     }
 
     /// Closes a tab, asking first when it has unsaved changes.
@@ -577,7 +599,8 @@ impl App {
         if tab >= self.tabs.len() {
             return;
         }
-        let closed = self.tabs.remove(tab);
+        let mut closed = self.tabs.remove(tab);
+        closed.close();
         self.close_talk(closed.id);
         self.active = match self.active {
             Some(a) if a == tab => (!self.tabs.is_empty()).then(|| tab.min(self.tabs.len() - 1)),
@@ -645,9 +668,9 @@ impl App {
                     self.save(tab, false);
                 }
             }
-            Command::SaveAs => {
+            Command::SaveAs | Command::SaveAsOther => {
                 if let Some(tab) = self.active {
-                    self.save_as(tab);
+                    self.ask_save("Save As", tab, false, command == Command::SaveAsOther);
                 }
             }
             Command::NewFile => self.new_file(),
@@ -743,6 +766,7 @@ impl App {
         let editor = self.active.and_then(|tab| self.tabs.get(tab));
         crate::menus::bar(&crate::menus::State {
             document: editor.is_some(),
+            bundle: editor.and_then(|e| e.path.as_deref()).is_some_and(bundle::is_bundle),
             selection: editor.is_some_and(|e| !e.selection.is_empty()),
             recent: &self.prefs.get().files.recent,
             tabs: self.tabs.iter().enumerate().map(|(index, tab)| (tab.title(), self.active == Some(index))).collect(),
@@ -781,10 +805,14 @@ impl App {
                 }
                 (Then::SaveAs { tab, close }, Answer::Paths(paths)) => {
                     if let (Some(path), Some(editor)) = (paths.into_iter().next(), self.tabs.get_mut(tab)) {
-                        let path = if path.extension().is_some() { path } else { path.with_extension("pen") };
-                        let was = editor.path.replace(path);
-                        self.save_from(tab, close, was.as_deref());
-                        self.remember_tabs();
+                        let path = if path.extension().is_some() { path } else { path.with_extension(bundle::PLAIN) };
+                        match editor.move_to(path) {
+                            Ok(was) => {
+                                self.save_from(tab, close, was.as_deref());
+                                self.remember_tabs();
+                            }
+                            Err(error) => self.say(format!("Couldn't save: {error}")),
+                        }
                     }
                 }
                 (Then::Export(options), Answer::Paths(paths)) => self.exporting = paths.into_iter().next().map(|path| (path, options)),
@@ -1649,6 +1677,7 @@ fn run_on(editor: &mut Editor, command: Command, view: egui::Rect) {
         Command::Dashboard
         | Command::Save
         | Command::SaveAs
+        | Command::SaveAsOther
         | Command::NewFile
         | Command::OpenFile
         | Command::CloseTab

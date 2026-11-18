@@ -304,8 +304,8 @@ pub fn tools() -> Value {
         },
         {
             "name": "save_document",
-            "description": "Write the document to its file. A document that has no file yet needs `path`.",
-            "inputSchema": { "type": "object", "properties": { "document": document, "path": { "type": "string", "description": "Save under this full path (ending in .pen) from now on." } } }
+            "description": "Write the document to its file. A document that has no file yet needs `path`. A path ending in .pencraft saves a bundle: one file that holds the document with its pictures and shader files.",
+            "inputSchema": { "type": "object", "properties": { "document": document, "path": { "type": "string", "description": "Save under this full path (ending in .pen, or in .pencraft for a bundle) from now on." } } }
         },
         {
             "name": "export_layers",

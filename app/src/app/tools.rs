@@ -219,7 +219,7 @@ impl App {
             // Human: the web can be slow; its tools answer from a thread of their own, and the window goes on
             // meanwhile. A picture goes beside the document the call is about.
             if on && crate::web::is_web(&call.tool) {
-                let file = self.document(&call).ok().and_then(|tab| self.tabs.get(tab)).and_then(|editor| editor.path.clone());
+                let file = self.document(&call).ok().and_then(|tab| self.tabs.get(tab)).and_then(crate::editor::Editor::anchor);
                 let wake = ctx.clone();
                 let keyed = self.prefs.get().agents.picture_keys.clone();
                 crate::web::answer(call, file, keyed, move || wake.request_repaint());
@@ -360,20 +360,27 @@ impl App {
                 let tab = self.document(call)?;
                 let path = full_path(args, "path")?;
                 let editor = self.tabs.get_mut(tab).ok_or("The document was closed.")?;
-                let was = editor.path.clone();
+                let mut was = editor.anchor();
                 if let Some(path) = path {
-                    editor.path =
-                        Some(if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("pen")) { path } else { path.with_extension("pen") });
+                    // Human: `.pencraft` saves a bundle; any other ending, or none, a `.pen` file.
+                    let path = if crate::bundle::is_design(&path) { path } else { path.with_extension(crate::bundle::PLAIN) };
+                    was = editor.move_to(path).map_err(|error| format!("Couldn't save: {error}."))?;
                 }
                 // Human: as when the person saves: the pictures come to where the document is saved.
                 let stuck = super::pictures::settle(editor, was.as_deref(), crate::imagery::store::home().as_deref());
-                editor.save().map_err(|error| format!("Couldn't save: {error}. A document without a file needs `path`."))?;
+                let plain = editor.path.as_deref().is_some_and(|path| !crate::bundle::is_bundle(path));
+                let only_here = editor.only_here().filter(|_| plain && was != editor.anchor());
+                let mut notes = editor.save().map_err(|error| format!("Couldn't save: {error}. A document without a file needs `path`."))?;
+                notes.extend(only_here);
                 let saved = editor.path.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
                 self.prefs.update(|p| p.files.touch(&saved));
                 self.remember_tabs();
                 let mut answer = json!({ "saved": saved });
                 if !stuck.is_empty() {
                     answer["picturesNotBrought"] = json!(stuck);
+                }
+                if !notes.is_empty() {
+                    answer["notes"] = json!(notes);
                 }
                 Ok(text(&answer))
             }
@@ -550,7 +557,7 @@ impl App {
         let asked = args.get("scale").and_then(Value::as_f64).map_or(1.0, |scale| scale.clamp(0.1, 3.0) as f32);
         // Human: a very large picture is drawn smaller, so it stays something a model can take in.
         let scale = asked.min(MOST_PICTURE_SIDE / bounds.w.max(bounds.h).max(1.0));
-        let folder = editor.path.as_deref().and_then(Path::parent);
+        let folder = editor.folder();
         // Human: the picture holds what the layers paint, which is more than their boxes where a shadow or an
         // outline reaches out of them and less where a mask cuts something away; the note says where the
         // picture itself lies, so a place measured in it is the same place on the canvas.
@@ -646,7 +653,7 @@ impl App {
         let layers = scenes(editor, &agent::ids(args, "ids"))?;
         let bounds = around(&layers).ok_or("The document is empty: there is nothing to check.")?;
         let scale = (MOST_PICTURE_SIDE / bounds.w.max(bounds.h).max(1.0)).min(1.0);
-        let folder = editor.path.as_deref().and_then(Path::parent);
+        let folder = editor.folder();
         let vars = Vars::new(&editor.doc);
         let bare: Vec<SceneNode> = layers.iter().map(|scene| crate::glass_check::without_labels(scene)).collect();
         let survey = self.canvas.list().survey(&bare.iter().collect::<Vec<_>>(), scale, vars, ctx, folder);

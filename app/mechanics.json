@@ -7,6 +7,26 @@
    "value": "2.22"
   },
   {
+   "name": "Pencraft format number in the stamp",
+   "group": "file",
+   "value": 1
+  },
+  {
+   "name": "bundle: layout version in the manifest",
+   "group": "file",
+   "value": 1
+  },
+  {
+   "name": "bundle: most bytes unpacked",
+   "group": "file",
+   "value": 2147483648
+  },
+  {
+   "name": "bundle: seconds a new working folder is left alone",
+   "group": "file",
+   "value": 60
+  },
+  {
    "name": "frame layout when unset",
    "group": "layout",
    "value": "horizontal"

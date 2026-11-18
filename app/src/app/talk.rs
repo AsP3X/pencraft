@@ -256,8 +256,7 @@ impl App {
     /// Files dropped on the window: designs are opened, anything else is attached to the chat message.
     pub(super) fn dropped(&mut self, ctx: &egui::Context) {
         let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|file| file.path().to_path_buf()).collect());
-        let (designs, others): (Vec<_>, Vec<_>) =
-            dropped.into_iter().partition(|path| path.extension().is_some_and(|e| e.eq_ignore_ascii_case("pen")));
+        let (designs, others): (Vec<_>, Vec<_>) = dropped.into_iter().partition(|path| crate::bundle::is_design(path));
         for path in designs {
             self.open_path(&path);
         }

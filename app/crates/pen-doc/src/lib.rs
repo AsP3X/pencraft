@@ -7,6 +7,7 @@
 //! - [`path`]: SVG path data.
 //! - [`connector`]: lines between layers that follow them.
 //! - [`edit`]: finding and moving nodes by id.
+//! - [`stamp`]: Pencraft's own mark in a document, and the features only Pencraft draws.
 
 pub mod color;
 pub mod connector;
@@ -16,6 +17,7 @@ pub mod layout;
 pub mod model;
 pub mod path;
 pub mod scene;
+pub mod stamp;
 pub mod value;
 pub mod vars;
 

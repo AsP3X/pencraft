@@ -465,7 +465,9 @@ fn beside_of(editor: &Editor, ids: &[String]) -> Option<Goes> {
 /// under the home folder `home` because the document had no file when it was made is copied into `images/`
 /// beside it and named from there, and when the document goes to another folder than that of `was`, the file
 /// it had, the pictures named from there are copied along. A sentence for each picture that couldn't be
-/// brought; that one keeps its path.
+/// brought; that one keeps its path. A bundle takes in every picture file the document shows, also one named
+/// by a full path or from outside its folder, and the other files the document names come along into and out
+/// of a bundle (`bundle::carry`).
 // Human: done on every save, not only the first: a picture can still land under the home folder after it (one
 // that was being made while the document was saved), and the next save brings that one too. Without this a
 // saved document names pictures by a full path into one person's home folder, and shows none of them anywhere
@@ -474,21 +476,29 @@ fn beside_of(editor: &Editor, ids: &[String]) -> Option<Goes> {
 // thread that saves, which the document's own file is written on too. Changes `url`s in the document and its
 // undo steps without a new undo step.
 pub(super) fn settle(editor: &mut Editor, was: Option<&Path>, home: Option<&Path>) -> Vec<String> {
-    let Some(document) = editor.path.clone() else { return Vec::new() };
+    let Some(document) = editor.anchor() else { return Vec::new() };
     let folder = document.parent().unwrap_or(Path::new("")).to_path_buf();
     let left = was.and_then(Path::parent).filter(|left| *left != folder);
     let waiting = home.map(store::waiting);
+    let packs = editor.path.as_deref().is_some_and(crate::bundle::is_bundle);
     let mut told = Vec::new();
     editor.repicture(&mut |url| {
         let done = match crate::images::resolve(None, url) {
             Some(whole) if waiting.as_deref().is_some_and(|waiting| whole.starts_with(waiting)) => store::adopt(&whole, &document).map(Some),
+            Some(whole) if packs && whole.is_file() => store::adopt(&whole, &document).map(Some),
             Some(_) => Ok(None),
             None => {
-                let places = left.and_then(|left| crate::images::resolve(Some(left), url)).zip(crate::images::resolve(Some(&folder), url));
-                match places {
-                    Some((source, target)) if source.is_file() && !target.components().any(|part| part == Component::ParentDir) => {
-                        store::bring(&source, &target).map(|()| None)
+                let source = crate::images::resolve(Some(left.unwrap_or(&folder)), url).filter(|source| source.is_file());
+                match source.zip(crate::images::resolve(Some(&folder), url)) {
+                    // A path that leaves the folder: a bundle takes the picture in, a `.pen` file leaves it.
+                    Some((source, target)) if target.components().any(|part| part == Component::ParentDir) => {
+                        if packs {
+                            store::adopt(&source, &document).map(Some)
+                        } else {
+                            Ok(None)
+                        }
                     }
+                    Some((source, target)) if left.is_some() => store::bring(&source, &target).map(|()| None),
                     _ => Ok(None),
                 }
             }
@@ -498,6 +508,9 @@ pub(super) fn settle(editor: &mut Editor, was: Option<&Path>, home: Option<&Path
             None
         })
     });
+    if let Some(left) = left.filter(|_| editor.bundled()) {
+        told.extend(crate::bundle::carry(&editor.doc, left, &folder));
+    }
     told
 }
 
@@ -547,7 +560,7 @@ fn still_as_started(editor: &Editor, layer: &str, was: &str) -> bool {
 // thread (`sources::prepare`), which names the layer when it isn't.
 fn image_of(editor: &Editor, id: &str) -> Result<PathBuf, String> {
     let (_, _, url) = image_paint(editor, id)?;
-    let folder = editor.path.as_deref().and_then(Path::parent);
+    let folder = editor.folder();
     crate::images::resolve(folder, url).ok_or_else(|| {
         // Human: a path that would be found beside a saved document is one relative to a document without a file.
         let unsaved = folder.is_none() && crate::images::resolve(Some(Path::new(".")), url).is_some();
@@ -788,7 +801,7 @@ impl App {
             None => Goes::Answer,
         };
         let request = imagery::request(args, &chosen)?;
-        Ok((Order::new(chosen, request, editor.path.clone()), editor.id, goes))
+        Ok((Order::new(chosen, request, editor.anchor()), editor.id, goes))
     }
 
     /// What an `edit_image` call asks for, the id of the document it is about, and where its picture goes.
@@ -834,7 +847,7 @@ impl App {
             // Human: put in its place once the layers are drawn, below.
             Some(Pick::Drawn(_)) | None => Goes::Answer,
         };
-        let (document, doc) = (editor.path.clone(), editor.id);
+        let (document, doc) = (editor.anchor(), editor.id);
         // Human: nothing is drawn for a call that would be turned away for want of room.
         if model && got.iter().any(|(got, _)| matches!(got, Got::Draw(_))) {
             room(self.picturing.len())?;
@@ -889,7 +902,7 @@ impl App {
             .reduce(|a, b| a.union(&b))
             .filter(|bounds| bounds.w > 0.0 && bounds.h > 0.0)
             .ok_or_else(nothing)?;
-        let folder = editor.path.as_deref().and_then(Path::parent);
+        let folder = editor.folder();
         let picture = self.canvas.list().snapshot(&layers, drawing_scale(bounds), Vars::new(&editor.doc), ctx, folder).ok_or_else(nothing)?;
         Ok((picture, bounds))
     }
@@ -968,7 +981,7 @@ impl App {
     fn picture_answer(&mut self, waiting: &Waiting, done: &Done, dragged: bool, ctx: &egui::Context) -> Vec<Value> {
         // Human: a `./images/…` url is relative to the document's folder when the picture was asked for; a
         // document saved elsewhere since, or closed, gets the picture's full path instead.
-        let now = self.tabs.iter().find(|editor| editor.id == waiting.doc).and_then(|editor| editor.path.as_deref().and_then(Path::parent));
+        let now = self.tabs.iter().find(|editor| editor.id == waiting.doc).and_then(|editor| editor.folder());
         let url = lasting_url(&done.saved, waiting.folder.as_deref(), now);
         let mut told = json!({
             "url": url,
@@ -1178,7 +1191,7 @@ impl App {
         #[expect(clippy::cast_precision_loss, reason = "128 is exact in an f32")]
         let pixels = PIECE_PIXELS as f32;
         let scale = (pixels / bounds.w.max(bounds.h)).min(MOST_ENLARGED);
-        let folder = editor.path.as_deref().and_then(Path::parent);
+        let folder = editor.folder();
         let picture = self.canvas.list().snapshot(&[scene], scale, Vars::new(&editor.doc), ctx, folder)?;
         let image = egui::ColorImage::from_rgba_premultiplied([picture.w, picture.h], &picture.rgba);
         Some(ctx.load_texture("layer", image, egui::TextureOptions::LINEAR))
@@ -1313,7 +1326,7 @@ impl App {
             let chosen = imagery::pick(&ready, saved, service, &default)?.clone();
             let request = imagery::request(&asked, &chosen)?;
             let editor = self.tabs.get(tab).ok_or("The document was closed.")?;
-            return Ok((Order::new(chosen, request, editor.path.clone()), editor.id, Goes::Answer));
+            return Ok((Order::new(chosen, request, editor.anchor()), editor.id, Goes::Answer));
         }
         let chosen = imagery::pick_editing(&ready, saved, service, &default)?.clone();
         let (order, doc, goes) = self.edit_parts(&asked, chosen, tab, false, ctx)?;
@@ -1425,7 +1438,7 @@ impl App {
             .enumerate()
             .find(|(_, editor)| editor.id == making.doc)
             .ok_or_else(|| format!("The picture was made, but its document was closed. It is kept at {kept}."))?;
-        let url = lasting_url(&done.saved, making.folder.as_deref(), editor.path.as_deref().and_then(Path::parent));
+        let url = lasting_url(&done.saved, making.folder.as_deref(), editor.folder());
         let visible = editor.visible_area(view.width(), view.height());
         let placed = match &making.goes {
             Goes::Replace { layer, was } if still_as_started(editor, layer, was) => {
@@ -1558,6 +1571,92 @@ mod tests {
         assert_eq!(settle(&mut editor, Some(&folder.join("site.pen")), Some(&home)), Vec::<String>::new());
         assert_eq!(std::fs::read_dir(folder.join("images")).unwrap().count(), 2, "the picture and the credits");
         std::fs::remove_dir_all(&home).unwrap();
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn a_document_goes_into_a_bundle_and_out_again_with_its_files() {
+        let (folder, outside, back) = (empty("bundled"), empty("bundled-outside"), empty("bundled-back"));
+        for (file, bytes) in
+            [(folder.join("images/a.png"), &b"a"[..]), (folder.join("fx/glow.glsl"), b"void main(){}"), (outside.join("far.png"), b"far")]
+        {
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(file, bytes).unwrap();
+        }
+        std::fs::write(folder.join("images/credits.json"), r#"{"a.png":{"made":"generated"}}"#).unwrap();
+        let far = outside.join("far.png").to_string_lossy().replace('\\', "/");
+        let doc = pen_doc::read(
+            &json!({ "version": "2.22", "children": [
+                { "type": "rectangle", "id": "a", "mask": true, "fill": { "type": "image", "url": "./images/a.png" }, "effect": { "type": "shader", "url": "fx/glow.glsl" } },
+                { "type": "rectangle", "id": "b", "fill": { "type": "image", "url": far } },
+                { "type": "rectangle", "id": "c", "fill": { "type": "image", "url": "images/gone.png" } },
+            ] })
+            .to_string(),
+        )
+        .unwrap();
+        let mut editor = Editor::new(doc, Some(folder.join("site.pen")), 7);
+
+        // Into a bundle: every picture comes in, also the one named by a full path, and the shader file.
+        let bundle = folder.join("site.pencraft");
+        let was = editor.move_to(bundle.clone()).unwrap();
+        assert_eq!(was, Some(folder.join("site.pen")));
+        assert_eq!(settle(&mut editor, was.as_deref(), None), Vec::<String>::new());
+        let told = editor.save().unwrap();
+        assert!(told.len() == 1 && told[0].contains("images/gone.png"), "{told:?}");
+        let files = crate::bundle::zip::read(&std::fs::read(&bundle).unwrap(), 1 << 20, &|_| true).unwrap();
+        let names: Vec<&str> = files.iter().map(|file| file.name.as_str()).collect();
+        assert_eq!(names, ["manifest.json", "document.pen", "fx/glow.glsl", "images/a.png", "images/far.png", "images/credits.json"]);
+        let written = String::from_utf8(files[1].bytes.clone()).unwrap();
+        assert!(written.contains("\"./images/far.png\"") && !written.contains(&far), "{written}");
+        assert!(written.contains("\"pencraft\": {\n    \"format\": 1,\n    \"features\": [\n      \"mask\"\n    ]"), "{written}");
+        assert!(!folder.join("site.pen").exists() && outside.join("far.png").is_file());
+        let unpacked = editor.folder().unwrap().to_path_buf();
+        editor.close();
+        assert!(!unpacked.exists());
+
+        // Opened again, its files lie in a working folder, where its paths start.
+        let (mut editor, newer) = Editor::open(&bundle, 7).unwrap();
+        assert_eq!(newer, None);
+        let unpacked = editor.folder().unwrap().to_path_buf();
+        assert!(unpacked != folder && unpacked.join("images/far.png").is_file() && unpacked.join("fx/glow.glsl").is_file());
+        assert_eq!(editor.anchor(), Some(unpacked.join("document.pen")));
+        // Saved again as it is, the bundle is the same byte for byte.
+        let first = std::fs::read(&bundle).unwrap();
+        let at = editor.anchor();
+        assert_eq!(settle(&mut editor, at.as_deref(), None), Vec::<String>::new());
+        editor.save().unwrap();
+        assert_eq!(std::fs::read(&bundle).unwrap(), first);
+
+        // Out again to a `.pen` file elsewhere: the files come to lie beside it, and its paths start there.
+        let was = editor.move_to(back.join("back.pen")).unwrap();
+        assert_eq!(settle(&mut editor, was.as_deref(), None), Vec::<String>::new());
+        assert_eq!(editor.only_here().as_deref(), Some("Only Pencraft draws its masks; other programs that open .pen files leave them out."));
+        assert_eq!(editor.save().unwrap(), Vec::<String>::new());
+        assert_eq!(editor.folder(), Some(back.as_path()));
+        assert_eq!(std::fs::read(back.join("images/far.png")).unwrap(), b"far");
+        assert_eq!(std::fs::read(back.join("fx/glow.glsl")).unwrap(), b"void main(){}");
+        let credits = std::fs::read_to_string(back.join("images/credits.json")).unwrap();
+        assert!(credits.contains("a.png"), "{credits}");
+        let plain = std::fs::read_to_string(back.join("back.pen")).unwrap();
+        assert!(plain.starts_with("{\n  \"version\": \"2.22\",\n  \"pencraft\": {"), "{plain}");
+        editor.close();
+        assert!(!unpacked.exists());
+        for folder in [folder, outside, back] {
+            std::fs::remove_dir_all(folder).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_file_a_newer_pencraft_wrote_opens_with_a_sentence() {
+        let folder = empty("newer");
+        let file = folder.join("new.pen");
+        std::fs::write(&file, r#"{"version":"2.40","pencraft":{"format":4,"features":["hologram","mask"]},"children":[]}"#).unwrap();
+        let (editor, newer) = Editor::open(&file, 7).unwrap();
+        assert!(newer.is_some_and(|said| said.contains("A newer Pencraft") && said.contains("(hologram)")));
+        assert!(!editor.bundled() && editor.folder() == Some(folder.as_path()));
+        std::fs::write(&file, r#"{"version":"2.22","children":[]}"#).unwrap();
+        assert_eq!(Editor::open(&file, 7).unwrap().1, None);
+        assert!(Editor::open(&folder.join("missing.pencraft"), 7).is_err());
         std::fs::remove_dir_all(&folder).unwrap();
     }
 

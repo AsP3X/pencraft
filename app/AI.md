@@ -155,7 +155,7 @@ A client that speaks MCP over HTTP can skip `pencraft mcp`: the address and the 
 | `check_glass` | Measures a design that uses glass materials: which appearance each material came to, the contrast of every label on glass against the worst of what is under it, and how the glass is built |
 | `select_layers` | Selects layers for you and brings them into view |
 | `open_document` | Opens a `.pen` file, or starts an empty document |
-| `save_document` | Saves the document, or saves it under a new path |
+| `save_document` | Saves the document, or saves it under a new path; a path ending in `.pencraft` saves a bundle with its pictures and shader files |
 | `export_layers` | Writes layers to a PNG, JPEG, WebP, PDF or SVG file |
 | `generate_image` | Has an image model make a picture from a description and gives back the file to use in an image fill, or puts it on a layer. Needs an image service (see Pictures) |
 | `search_web` | Web results for a query: titles, addresses and the lines under them |

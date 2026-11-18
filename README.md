@@ -23,8 +23,12 @@ It runs on Windows and macOS.
 - **Components and layout.** Reusable components with instances, variables
   and light and dark themes, and flex layout that arranges children by
   itself.
-- **Reads and writes `.pen` files faithfully.** A file read and written
-  again is byte for byte the same; keys Pencraft does not know survive.
+- **Reads and writes `.pen` files faithfully.** Keys Pencraft does not know
+  survive, and a file Pencraft wrote is byte for byte the same when it is
+  read and written again. Pencraft adds one key of its own, `pencraft`,
+  which says what the design uses that only Pencraft draws.
+- **Bundles.** Save As Bundle puts a design and its pictures and shader
+  files into one `.pencraft` file, to send or to keep.
 - **Exports.** Any layer to PNG, JPEG, WebP, PDF or SVG.
 - **An assistant in the app.** The chat talks to Claude through the
   installed Claude Code program or a provider's API with your key, and a

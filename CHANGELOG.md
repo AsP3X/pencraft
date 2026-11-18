@@ -9,6 +9,29 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Added
+
+- **Bundles.** File › Save As Bundle… puts a design and everything it
+  shows into one `.pencraft` file: its pictures, also those that lay
+  somewhere else on your disk, its shader files and the pictures' credits.
+  Send that one file and the design arrives whole. Pencraft opens bundles
+  like `.pen` files, and File › Save As .pen File… turns one back into a
+  `.pen` file with its pictures beside it. The assistant saves a bundle
+  when it is given a path ending in `.pencraft`.
+- **Pencraft says what only it draws.** A design saved as a `.pen` file
+  under a new name tells you when it uses something other programs that
+  open `.pen` files leave out: connectors, masks, materials, pattern
+  fills, component states, text on a circle or along a line.
+- **Files from a newer Pencraft.** A file a newer version wrote opens with
+  a note that this version may not draw all of it. What it doesn't know is
+  kept when you save.
+
+### Changed
+
+- **A mark of Pencraft's own in `.pen` files.** Every save writes a key
+  `pencraft` with the number of Pencraft's format and the names of what
+  the design uses that only Pencraft draws. Other programs ignore it.
+
 ## [0.3.13] - 2026-11-18
 
 Pencraft has an icon of its own.

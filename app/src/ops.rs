@@ -345,7 +345,7 @@ impl Editor {
             crate::icons::svg_layer(&text, self.fresh_id()).ok_or("the SVG has no shapes this version can read")?
         } else {
             let (w, h) = image::image_dimensions(path).map_err(|e| e.to_string())?;
-            let folder = self.path.as_deref().and_then(std::path::Path::parent);
+            let folder = self.folder();
             // Human: a path inside the document's folder is written from there, with `/` between its parts on
             // every system, so the document shows its pictures on a Mac and on Windows alike.
             let parts = |rel: &std::path::Path| rel.iter().map(|part| part.to_string_lossy()).collect::<Vec<_>>().join("/");

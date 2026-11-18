@@ -160,7 +160,7 @@ impl Canvas {
             fit(editor, view, Some(bounds), 1.0);
         }
         self.zoom_and_pan(ui, editor, view, &response);
-        let folder = editor.path.as_deref().and_then(std::path::Path::parent);
+        let folder = editor.folder().map(std::path::Path::to_path_buf);
         let visible = crate::render::view_to_doc(&editor.camera, view);
         // Human: what a model changed is shown a step at a time: the steps whose turn has come are taken now,
         // and while more are waiting the canvas shows the document as it was after the last one taken.
@@ -173,7 +173,7 @@ impl Canvas {
             visible,
             Vars::new(&editor.doc),
             ui.ctx(),
-            folder,
+            folder.as_deref(),
             self.background,
             editor.activity.hidden(),
             stamp,

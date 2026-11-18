@@ -477,7 +477,7 @@ fn node_panel(ui: &mut Ui, editor: &mut Editor, id: &str, dark: bool, pictures: 
         in_component,
         slot: if role == Role::Inside && node.kind == Kind::Frame { slot_info(editor, id, &node) } else { None },
         export: editor.export.0,
-        folder: editor.path.as_deref().and_then(std::path::Path::parent).map(std::path::Path::to_path_buf),
+        folder: editor.folder().map(std::path::Path::to_path_buf),
         palette: theme::palette(dark),
     };
     let mut edits = Edits { pictures: std::mem::take(pictures), ..Edits::default() };

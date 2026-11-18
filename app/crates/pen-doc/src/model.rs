@@ -17,6 +17,9 @@ pub const SCHEMA_VERSION: &str = "2.22";
 pub struct Document {
     /// Schema version the file was written with.
     pub version: String,
+    /// Pencraft's own mark: its format number and the features only it draws ([`crate::stamp`]), kept whole.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pencraft: Option<Value>,
     /// Top-level nodes, back to front.
     #[serde(default)]
     pub children: Vec<Node>,
@@ -36,7 +39,15 @@ pub struct Document {
 
 impl Default for Document {
     fn default() -> Self {
-        Document { version: SCHEMA_VERSION.to_owned(), children: Vec::new(), themes: None, imports: None, variables: None, extra: Map::new() }
+        Document {
+            version: SCHEMA_VERSION.to_owned(),
+            pencraft: None,
+            children: Vec::new(),
+            themes: None,
+            imports: None,
+            variables: None,
+            extra: Map::new(),
+        }
     }
 }
 

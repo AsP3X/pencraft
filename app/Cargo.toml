@@ -44,6 +44,9 @@ lucide-static-svg = { version = "=1.72.0", default-features = false, features = 
 image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 # Human: Writes the `--screenshot` picture.
 png = "=0.18.1"
+# Human: Deflate and the CRC-32 checksum for the zip container of a `.pencraft` bundle (`src/bundle/zip.rs`). The
+# version the png crate already builds with, so no crate is added to Cargo.lock.
+flate2 = { version = "=1.1.11", default-features = false, features = ["rust_backend"] }
 log = "=0.4.34"
 # Human: Keeps API keys in the operating system's keychain (macOS Keychain, Windows Credential Manager, Linux
 # Secret Service) instead of a file.
@@ -111,6 +114,7 @@ lyon_tessellation.workspace = true
 lucide-static-svg.workspace = true
 image.workspace = true
 png.workspace = true
+flate2.workspace = true
 log.workspace = true
 wgpu.workspace = true
 env_logger.workspace = true

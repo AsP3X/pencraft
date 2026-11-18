@@ -17,6 +17,8 @@ pub enum Command {
     Save,
     /// Save the document under a new name.
     SaveAs,
+    /// Save the document under a new name in the other format: a `.pen` file as a bundle, a bundle as a `.pen` file.
+    SaveAsOther,
     /// A new, empty document.
     NewFile,
     /// Open a document from disk.
@@ -148,10 +150,11 @@ const fn action(
 
 /// Every action, in the order and under the headings the search lists them.
 // Agent: icons MUST be bundled Lucide names; a test checks it.
-pub const ACTIONS: [Action; 76] = [
+pub const ACTIONS: [Action; 77] = [
     action(Command::Dashboard, "layout-grid", "Open dashboard", "File", &[], "home files projects recent"),
     action(Command::Save, "save", "Save", "File", &["⌘", "S"], "write store disk"),
     action(Command::SaveAs, "save-all", "Save as…", "File", &["⌘", "⇧", "S"], "copy duplicate file disk"),
+    action(Command::SaveAsOther, "package", "Save as bundle or .pen file…", "File", &[], "pencraft package zip pictures one file convert send"),
     action(Command::NewFile, "file-plus", "New file", "File", &["⌘", "⇧", "N"], "create document blank"),
     action(Command::OpenFile, "folder-open", "Open file…", "File", &["⌘", "O"], "browse pen file document"),
     action(Command::CloseTab, "file-x", "Close tab", "File", &["⌘", "W"], "close file document window"),
@@ -408,7 +411,7 @@ mod tests {
     #[test]
     fn actions_are_found_by_name_heading_or_extra_words() {
         assert_eq!(matching("").len(), ACTIONS.len());
-        assert_eq!(matching("save").iter().map(|a| a.label).collect::<Vec<_>>(), ["Save", "Save as…"]);
+        assert_eq!(matching("save").iter().map(|a| a.label).collect::<Vec<_>>(), ["Save", "Save as…", "Save as bundle or .pen file…"]);
         assert!(matching("proportional").iter().any(|a| a.command == Command::Tool(Tool::Scale)));
         assert!(matching("zoom fit").iter().any(|a| a.command == Command::ZoomToFit));
         assert_eq!(matching("no such thing").len(), 0);

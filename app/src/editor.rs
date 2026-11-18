@@ -1,7 +1,7 @@
 //! One open document: its file, the document itself, the laid-out scene, selection, camera and undo history.
 
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use pen_doc::edit::{self, IdMaker};
 use pen_doc::geom::{Point, Rect};
@@ -92,8 +92,10 @@ pub fn find_in<'a>(nodes: &'a [SceneNode], id: &str) -> Option<&'a SceneNode> {
 pub struct Editor {
     /// A number of its own among the documents opened in this run; it stays the same however its tab moves.
     pub id: u64,
-    /// Where it is saved; `None` until first saved.
+    /// Where it is saved; `None` until first saved. A `.pen` file or a bundle ([`crate::bundle`]).
     pub path: Option<PathBuf>,
+    /// The folder a bundle's files lie unpacked in; `None` for a `.pen` file.
+    work: Option<crate::bundle::Work>,
     /// The document as the user made it.
     pub doc: Document,
     /// The document with instances expanded and laid out; rebuilt by [`Editor::refresh`].
@@ -141,6 +143,7 @@ impl Editor {
         Editor {
             id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             path,
+            work: None,
             doc,
             scene: Vec::new(),
             generation: 0,
@@ -162,6 +165,96 @@ impl Editor {
             ids: IdMaker::new(seed),
             needs_layout: true,
             needs_fit: true,
+        }
+    }
+
+    /// An editor for the design file at `path`: a `.pen` document, or a bundle, which is unpacked. With it, a
+    /// sentence when a newer Pencraft wrote the file and this one doesn't know all of it.
+    ///
+    /// # Errors
+    /// A sentence when the file can't be read or isn't a design file.
+    // Agent: READS `path`; for a bundle WRITES its working folder. BLOCKS on both.
+    pub fn open(path: &Path, seed: u64) -> Result<(Editor, Option<String>), String> {
+        let (doc, work, layout) = if crate::bundle::is_bundle(path) {
+            let opened = crate::bundle::open(path)?;
+            (opened.doc, Some(opened.work), opened.newer)
+        } else {
+            let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+            (pen_doc::read(&text).map_err(|e| e.to_string())?, None, None)
+        };
+        let newer = newer_than_this(&doc, layout);
+        let mut editor = Editor::new(doc, Some(path.to_path_buf()), seed);
+        editor.work = work;
+        Ok((editor, newer))
+    }
+
+    /// The folder the document's relative paths start in: that of its `.pen` file, or where its bundle lies
+    /// unpacked. `None` until first saved.
+    #[must_use]
+    pub fn folder(&self) -> Option<&Path> {
+        match self.unpacked() {
+            Some(work) => Some(work.folder()),
+            None => self.path.as_deref().and_then(Path::parent),
+        }
+    }
+
+    /// The document's file as its pictures see it: the `.pen` file itself, or a bundle's document in its
+    /// working folder. `None` until first saved.
+    #[must_use]
+    pub fn anchor(&self) -> Option<PathBuf> {
+        match self.unpacked() {
+            Some(work) => Some(work.document()),
+            None => self.path.clone(),
+        }
+    }
+
+    /// The working folder, while the document is saved as a bundle.
+    // Human: a document that went from a bundle to a `.pen` file keeps the folder until it is closed, but
+    // its paths start beside the `.pen` file from then on.
+    fn unpacked(&self) -> Option<&crate::bundle::Work> {
+        self.work.as_ref().filter(|_| self.path.as_deref().is_some_and(crate::bundle::is_bundle))
+    }
+
+    /// Whether the document has a bundle's working folder: it is saved as a bundle, or was in this run.
+    #[must_use]
+    pub fn bundled(&self) -> bool {
+        self.work.is_some()
+    }
+
+    /// Says the document is to be saved at `path` from now on, and gives the [`Editor::anchor`] it had. Going
+    /// to a bundle, it gets a working folder; going from one to a `.pen` file, it keeps the folder until it is
+    /// closed.
+    ///
+    /// # Errors
+    /// A sentence when a working folder can't be made; the document then stays where it was.
+    // Agent: WRITES a working folder when the document had none and `path` is a bundle.
+    pub fn move_to(&mut self, path: PathBuf) -> Result<Option<PathBuf>, String> {
+        let was = self.anchor();
+        if crate::bundle::is_bundle(&path) && self.work.is_none() {
+            self.work = Some(crate::bundle::Work::fresh()?);
+        }
+        self.path = Some(path);
+        Ok(was)
+    }
+
+    /// A sentence naming what the document uses that only Pencraft draws, for a document saved as a `.pen`
+    /// file other programs open too; `None` when it uses nothing of the kind.
+    #[must_use]
+    pub fn only_here(&self) -> Option<String> {
+        let labels: Vec<&str> = pen_doc::stamp::features(&self.doc).into_iter().map(pen_doc::stamp::Feature::label).collect();
+        let list = match labels.as_slice() {
+            [] => return None,
+            [one] => (*one).to_owned(),
+            [first @ .., last] => format!("{} and {last}", first.join(", ")),
+        };
+        Some(format!("Only Pencraft draws its {list}; other programs that open .pen files leave them out."))
+    }
+
+    /// Lets go of the working folder, when the document is closed.
+    // Agent: WRITES (removes the folder).
+    pub fn close(&mut self) {
+        if let Some(work) = self.work.take() {
+            work.discard();
         }
     }
 
@@ -377,17 +470,44 @@ impl Editor {
         self.needs_layout = true;
     }
 
-    /// Writes the document to its file, crash-safely.
+    /// Writes the document to its file, crash-safely: a `.pen` file as JSON, a bundle with the files the
+    /// document names. Stamps it as Pencraft's first ([`pen_doc::stamp`]). Gives a sentence for what the user
+    /// should know about the file that was written.
     ///
     /// # Errors
     /// When there is no path yet, the JSON can't be made, or the file can't be written.
-    pub fn save(&mut self) -> Result<(), String> {
+    // Agent: WRITES the file; for a bundle READS the files it names, whole. BLOCKS on both.
+    pub fn save(&mut self) -> Result<Vec<String>, String> {
         let Some(path) = self.path.clone() else { return Err("the document has no file yet".to_owned()) };
-        let text = pen_doc::write(&self.doc).map_err(|e| e.to_string())?;
-        craft_atomic::atomic_write(&path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))?;
+        pen_doc::stamp::apply(&mut self.doc);
+        let mut told = Vec::new();
+        let bytes = match self.unpacked() {
+            Some(work) => {
+                let packed = crate::bundle::pack(&self.doc, work.folder())?;
+                if !packed.missing.is_empty() {
+                    told.push(format!("These files the document names weren't found and aren't in the bundle: {}.", packed.missing.join(", ")));
+                }
+                packed.bytes
+            }
+            None => pen_doc::write(&self.doc).map_err(|e| e.to_string())?.into_bytes(),
+        };
+        craft_atomic::atomic_write(&path, &bytes).map_err(|e| format!("{}: {e}", path.display()))?;
         self.dirty = false;
-        Ok(())
+        Ok(told)
     }
+}
+
+/// A sentence for a file a newer Pencraft wrote: its stamp says a higher format number or features this
+/// version has no name for, or its bundle a higher layout number (`layout`). `None` for a file this version
+/// knows all of.
+fn newer_than_this(doc: &Document, layout: Option<u64>) -> Option<String> {
+    let stamp = pen_doc::stamp::newer(doc);
+    if stamp.is_none() && layout.is_none() {
+        return None;
+    }
+    let unknown = stamp.map(|stamp| stamp.features).unwrap_or_default();
+    let what = if unknown.is_empty() { String::new() } else { format!(" ({})", unknown.join(", ")) };
+    Some(format!("A newer Pencraft wrote this file. This version may not draw all of it{what}; what it doesn't know is kept when you save."))
 }
 
 /// Shows `visit` the `url` of every image paint in `doc`: in fills and strokes, and in what instances override.

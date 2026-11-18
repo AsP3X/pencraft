@@ -51,7 +51,7 @@ UninstallDisplayIcon={app}\{#AppExe}
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "associate"; Description: "Open .pen files with {#AppName}"
+Name: "associate"; Description: "Open .pen and .pencraft files with {#AppName}"
 Name: "addtopath"; Description: "Add to PATH, so AI clients can run pencraft mcp"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
 
@@ -65,6 +65,7 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 [Registry]
 ; HKA is the machine's registry for an install for everyone, the user's own otherwise.
 Root: HKA; Subkey: "Software\Classes\.pen\OpenWithProgids"; ValueType: string; ValueName: "Pencraft.Design"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\.pencraft\OpenWithProgids"; ValueType: string; ValueName: "Pencraft.Design"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
 Root: HKA; Subkey: "Software\Classes\Pencraft.Design"; ValueType: string; ValueName: ""; ValueData: "Pencraft design"; Flags: uninsdeletekey; Tasks: associate
 Root: HKA; Subkey: "Software\Classes\Pencraft.Design\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#AppExe},0"; Tasks: associate
 Root: HKA; Subkey: "Software\Classes\Pencraft.Design\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""; Tasks: associate

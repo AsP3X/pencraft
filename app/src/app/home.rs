@@ -279,7 +279,10 @@ impl App {
         let image = if path == SAMPLE {
             pen_doc::read(&crate::samples::starter(&crate::faces::installed)).ok().and_then(|doc| picture(ctx, doc, None))
         } else {
-            design(Path::new(&path)).and_then(|doc| picture(ctx, doc, Some(Path::new(&path))))
+            // Human: a bundle's pictures lie inside it and aren't unpacked for a small picture; its picture
+            // layers show their placeholder, never a file that happens to lie beside the bundle.
+            let beside = Some(Path::new(&path)).filter(|path| !crate::bundle::is_bundle(path));
+            design(Path::new(&path)).and_then(|doc| picture(ctx, doc, beside))
         };
         let texture = image.map(|image| ctx.load_texture(format!("home {path}"), image, egui::TextureOptions::LINEAR));
         let tries = home.thumbs.get(&path).filter(|old| old.stamp == stamp).map_or(0, |old| old.tries + 1);
@@ -522,6 +525,9 @@ fn stale(thumb: Option<&Thumb>, stamp: Option<SystemTime>, ready: bool) -> bool 
 
 /// The design in the file at `path`; `None` when it can't be read or is too large for a small picture.
 fn design(path: &Path) -> Option<pen_doc::Document> {
+    if crate::bundle::is_bundle(path) {
+        return crate::bundle::peek(path);
+    }
     if std::fs::metadata(path).ok()?.len() > MOST_BYTES {
         return None;
     }

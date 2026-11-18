@@ -259,7 +259,7 @@ pub fn run(list: &DisplayList, editor: &Editor, ctx: &egui::Context, options: Op
         return Err("There is nothing to export.".to_owned());
     }
     let vars = Vars::new(&editor.doc);
-    let folder = editor.path.as_deref().and_then(Path::parent);
+    let folder = editor.folder();
     let draw = |scale: f32| list.snapshot(&layers, scale, vars, ctx, folder).ok_or_else(|| "The layers are empty or too large to export.".to_owned());
     let bytes = match options.format {
         Format::Pdf => {
