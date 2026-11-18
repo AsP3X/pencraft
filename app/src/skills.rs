@@ -50,6 +50,16 @@ pub const ALL: &[Skill] = &[
         ],
     },
     Skill { name: "devices", files: &[(MAIN, include_str!("../skills/devices/SKILL.md"))] },
+    Skill {
+        name: "logos",
+        files: &[
+            (MAIN, include_str!("../skills/logos/SKILL.md")),
+            ("references/styles.md", include_str!("../skills/logos/references/styles.md")),
+            ("references/construction.md", include_str!("../skills/logos/references/construction.md")),
+            ("references/detail.md", include_str!("../skills/logos/references/detail.md")),
+            ("references/wordmarks.md", include_str!("../skills/logos/references/wordmarks.md")),
+        ],
+    },
 ];
 
 impl Skill {
@@ -487,7 +497,7 @@ mod tests {
 
         let root = std::env::temp_dir().join(format!("pencraft-skills-test-{}", std::process::id()));
         let written = install(&root).unwrap();
-        assert_eq!(written, [root.join("liquid-glass").join(MAIN), root.join("ui-components").join(MAIN), root.join("devices").join(MAIN)]);
+        assert_eq!(written, ["liquid-glass", "ui-components", "devices", "logos"].map(|name| root.join(name).join(MAIN)));
         for (path, text) in ALL[0].files {
             assert_eq!(std::fs::read_to_string(root.join("liquid-glass").join(path)).unwrap(), *text);
         }

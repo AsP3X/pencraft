@@ -21,7 +21,9 @@ the background; touched layers flash and the model's cursor shows where it works
 
 Skills teach a model one kind of design each; they are in [`skills/`](skills/) and reach every client through
 `read_skill` or `pencraft skills install`. So far: [`liquid-glass`](skills/liquid-glass/SKILL.md) (Liquid Glass and
-frosted materials, with the `material` layer property and the `check_glass` tool).
+frosted materials, with the `material` layer property and the `check_glass` tool),
+[`ui-components`](skills/ui-components/SKILL.md), [`devices`](skills/devices/SKILL.md) and
+[`logos`](skills/logos/SKILL.md) (a mark from one idea, constructed from a few exact paths, with its wordmark).
 
 ## Layout
 

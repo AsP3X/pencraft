@@ -52,6 +52,38 @@ A mock of a phone or tablet app ("a mock of an iPhone gallery app") comes inside
 and corners, with the status bar, the Dynamic Island or camera and the home indicator. Say "the screen alone"
 or "no device" to get the bare screen.
 
+A logo ("a logo for my bakery", "a family crest", "a mascot for our team", "an app icon") is made another way
+than a page. The assistant chooses a rendering style from what you ask for (say "vintage badge", "a full coat
+of arms", "minimal", "3D", "detailed" to choose it yourself), looks for one idea, draws three rough marks in
+black, keeps the best and builds it exactly; a detailed logo is built in passes, from the silhouette to the
+fine lines, and comes with a small version redrawn for favicon sizes. Each picture it takes of a logo comes
+with a second one, the logo drawn 24 pixels small and enlarged, and with what the app counted in it (lights
+that disagree, more than three line weights, a detailed logo without its small version). A logo is reviewed
+by the second model like a larger design, as a logo of its style.
+
+A shape can cut what follows it: a path, rectangle, ellipse or polygon with `"mask": true` is drawn as it is
+and cuts every layer after it in the same group or frame to its outline (water inside a shield, shading
+inside a letter); a second mask in the group ends the first. A `stroke` on a text draws an outline round its
+letters, outside them, and several strokes draw outlines one round the other. Both are drawn on the canvas
+and in every export. In the properties panel a shape has "Mask Layers Above" under Appearance, a text takes
+its outline in the Stroke section, and the Text section has Straight, Circle Top and Circle Bottom with the
+angle the text is turned by. `edit_layers` and
+`read_layers` now also say where a text's letters lie (`inkBoxes`, `inkBox`), an `update` that sets nothing
+fails instead of answering as done, and the advice names a font weight a family doesn't have.
+
+Text can also follow any line (a waving scroll, an arch, a slope): a text layer with `"onPath"` holding SVG
+path data in the layer's own coordinates runs along it, placed by its alignment. The assistant can set
+the line, and so can you: in the properties panel choose "Line" in the Text section (the text gets a gentle
+arch to start from), then "Edit Line" or Enter shows the line's points on the canvas. They are moved, bent
+by their handles, added and removed like a path's, and the text follows; Enter or Escape ends it. A double
+click on the text still edits its words. In the layers
+list a mask layer is marked "mask".
+
+Text can run round a circle, for the rim of a seal or a badge: a text layer with `"onCircle": "top"` or
+`"bottom"` follows the circle that fits its box (`circleAngle` turns it). It is drawn so on the canvas and in
+PNG, PDF and SVG exports. Its words are edited on the canvas in one line in the middle of the circle, and the
+text round the rim follows as you type.
+
 The send button turns into a stop button while the assistant works. "New" starts a new chat.
 
 You can keep writing while the assistant works. A message sent meanwhile shows greyed at the end of the chat
@@ -251,6 +283,8 @@ layers, and how to check the result. Skills are folders in the open Agent Skills
 | [`liquid-glass`](skills/liquid-glass/SKILL.md) | Liquid Glass interfaces (the translucent, light-bending material of iOS 26 and macOS 26) and frosted panels: which surfaces get glass, the `material` property, glass groups, legibility, tokens, ready-made components |
 | [`ui-components`](skills/ui-components/SKILL.md) | Standard components the way the common libraries build them (shadcn/ui, Radix, Base UI, Sonner, Vaul, cmdk): buttons, fields, menus, dialogs, drawers, toasts, a command palette, cards and tables, with sizes, tokens for light and dark, states and placement, and the numbers of named looks |
 | [`devices`](skills/devices/SKILL.md) | Screens shown inside the phone or tablet they are for: a ready iPhone template measured from the real one (status bar with the time and the signal, Wi-Fi and battery glyphs, Dynamic Island, home indicator, side buttons), and the numbers of an Android phone and an iPad |
+
+| [`logos`](skills/logos/SKILL.md) | Logos of every kind and rendering style: flat marks, monoline, vintage badges and roundels with text round the rim, heraldic crests, seals, engravings, mascots, luxury monograms, dimensional marks and app icons. Choosing the style from the brief, finding one idea, three rough marks, exact construction (arcs, cut-outs, rotation), building detail in passes (line weights, tones, one light), the wordmark and its lockup, the small version, and the proofs |
 
 A model gets a skill in one of two ways, with the same text either way:
 

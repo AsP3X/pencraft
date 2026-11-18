@@ -108,6 +108,8 @@ struct Text {
     family: String,
     size: f32,
     weight: f32,
+    /// What its family lacks for it (the weight asked for, an italic), in words.
+    lacks: Option<String>,
     /// Its letter spacing, in the units of its size.
     spacing: f32,
     colour: Option<Rgba>,
@@ -386,6 +388,7 @@ fn text(scene: &SceneNode, parent: Option<&SceneNode>, behind: Option<Rgba>, var
         family: style.family.clone(),
         size: style.size,
         weight: f32::from(style.weight),
+        lacks: crate::faces::falls_short(&style.family, style.weight, style.italic),
         spacing: style.letter_spacing,
         colour: solid.last().map(|(colour, _)| *colour),
         behind,
@@ -545,6 +548,8 @@ fn overlaps(scene: &SceneNode, seen: &mut Seen) {
         .iter()
         .filter(|child| child.node.layout_position.as_deref() != Some("absolute") && !matches!(&child.node.enabled, Some(Flag::Value(false))))
         .filter(|child| !by_hand || child.node.kind == Kind::Text)
+        // Human: text set on a circle has the circle's box, which lies over whatever is inside the ring.
+        .filter(|child| !crate::render::runs_along(&child.node))
         .collect();
     let mut pairs: Vec<(&SceneNode, &SceneNode)> = Vec::new();
     for (at, first) in placed.iter().enumerate() {
@@ -855,6 +860,23 @@ fn mistakes(seen: &Seen, installed: &dyn Fn(&str) -> Option<String>, out: &mut V
                 "The font \"{family}\" isn't installed on this computer, so its text is drawn in {shown}. Choose a family from the installed ones (get_guide lists them)."
             ));
         }
+    }
+    // Human: a family that has no face near the weight asked for draws its nearest one without a word, and a
+    // name meant heavy stands there in a medium.
+    let mut light: Vec<String> = Vec::new();
+    for text in &seen.texts {
+        if let Some(lacks) = &text.lacks {
+            let said = format!("\"{}\" {lacks}", text.family);
+            if !light.contains(&said) {
+                light.push(said);
+            }
+        }
+    }
+    if !light.is_empty() {
+        out.push(format!(
+            "Font faces that aren't there: {}. Ask for a weight the family has (get_guide lists each family's weights), or take another family.",
+            light.join("; ")
+        ));
     }
     if !seen.unplugged.is_empty() {
         out.push(format!(
@@ -1288,6 +1310,207 @@ pub fn device_note(tops: &[&SceneNode]) -> Option<String> {
     })
 }
 
+/// How many closed shapes a simple mark has at most; a logo with more is a detailed one.
+// Source: the marks people draw from memory are a handful of shapes (Signs.com, "Branded in Memory", 2017: of
+// 156 people only one in six drew even the simplest logos nearly right); a dozen is a generous ceiling.
+const MOST_SHAPES: usize = 12;
+/// How many colours a logo has at most, shadow tones included.
+// Source: embroidery houses recommend 3 to 6 thread colours for a logo; a mascot with a base and a shadow
+// for each of three colours and a neutral comes to 7, a crest in four tinctures with an ink, a paper and
+// three shadow tones to 9.
+const MOST_LOGO_COLOURS: usize = 10;
+/// How many line weights a logo has at most: contour, structure, fine detail.
+const MOST_WEIGHTS: usize = 3;
+/// How many font families a logo has at most.
+const MOST_LOGO_FACES: usize = 2;
+/// The smallest size a mark has to hold at, in pixels: a favicon on a dense screen, a tab, a list row.
+const SMALLEST_MARK: f32 = 24.0;
+/// The faces a model sets a name in to say "tradition", "craft" or "loud" without having chosen.
+const STOCK_LOGO_FACES: [&str; 9] =
+    ["american typewriter", "courier", "courier new", "rockwell", "copperplate", "papyrus", "comic sans ms", "impact", "brush script mt"];
+
+/// What was counted in the layers of a logo.
+#[derive(Default)]
+struct Mark {
+    /// How many shape layers there are, and how many closed shapes they hold.
+    layers: usize,
+    shapes: usize,
+    /// The box around all shapes: left, top, right, bottom.
+    around: Option<[f32; 4]>,
+    /// The width of every line drawn.
+    weights: Vec<f32>,
+    /// Layers with a blur or a material.
+    soft: Vec<String>,
+    /// The direction of every linear gradient, in degrees.
+    lights: Vec<f32>,
+    colours: Vec<Rgba>,
+    families: Vec<String>,
+    /// Icons from the icon set.
+    icons: Vec<String>,
+}
+
+/// The directions of the linear gradients among `paints`, in degrees.
+fn gradient_directions(paints: Option<&pen_doc::model::Paints>, out: &mut Vec<f32>) {
+    for paint in paints.map(pen_doc::model::Paints::as_slice).unwrap_or_default() {
+        if let Paint::Object(object) = paint
+            && object.get("type").and_then(Value::as_str) == Some("gradient")
+            && object.get("gradientType").and_then(Value::as_str).unwrap_or("linear") == "linear"
+        {
+            out.push(object.get("rotation").and_then(Value::as_f64).map_or(0.0, pen_doc::value::narrow).rem_euclid(360.0));
+        }
+    }
+}
+
+/// Counts `scene` and what is in it into `mark`.
+fn mark_of(scene: &SceneNode, vars: Vars<'_>, mark: &mut Mark) {
+    let node = &scene.node;
+    if matches!(&node.enabled, Some(Flag::Value(false))) {
+        return;
+    }
+    let (fills, _) = paints(scene, node.fill.as_ref(), vars);
+    let (strokes, _) = paints(scene, node.stroke.as_ref(), vars);
+    let weight = match &node.stroke_width {
+        Some(StrokeWidth::All(width)) => vars.number(width, &scene.theme).unwrap_or(1.0),
+        Some(StrokeWidth::Sides(_)) | None => 1.0,
+    };
+    let shape = matches!(node.kind, Kind::Path | Kind::Rectangle | Kind::Ellipse | Kind::Polygon | Kind::Line);
+    if shape || node.kind == Kind::Text {
+        for (colour, _) in fills.iter().chain(&strokes).filter(|(colour, _)| colour.a >= 128) {
+            if !mark.colours.contains(colour) {
+                mark.colours.push(*colour);
+            }
+        }
+    }
+    gradient_directions(node.fill.as_ref(), &mut mark.lights);
+    gradient_directions(node.stroke.as_ref(), &mut mark.lights);
+    if node.material.is_some() || ["blur", "background_blur"].iter().any(|kind| has_effect(scene, kind)) {
+        mark.soft.push(label(scene));
+    }
+    if shape {
+        mark.layers += 1;
+        // Human: each move in a path's data starts a shape of its own.
+        let moves = node.geometry.as_deref().map_or(0, |data| data.chars().filter(|c| matches!(c, 'M' | 'm')).count());
+        mark.shapes += moves.max(1);
+        let b = layout::doc_bounds(scene);
+        let a = mark.around.get_or_insert([b.x, b.y, b.x + b.w, b.y + b.h]);
+        *a = [a[0].min(b.x), a[1].min(b.y), a[2].max(b.x + b.w), a[3].max(b.y + b.h)];
+        if !strokes.is_empty() && weight > 0.0 {
+            mark.weights.push(weight);
+        }
+    }
+    match node.kind {
+        Kind::Text => {
+            let family = layout::text_style(node, vars, &scene.theme).family;
+            if !family.is_empty() && !mark.families.iter().any(|known| known.eq_ignore_ascii_case(&family)) {
+                mark.families.push(family);
+            }
+        }
+        Kind::Icon => mark.icons.push(label(scene)),
+        _ => {}
+    }
+    for child in &scene.children {
+        mark_of(child, vars, mark);
+    }
+}
+
+/// What a look at the layers of a logo finds, most important first, counted, not judged. A logo may be a
+/// simple mark or a detailed one (a badge, a crest, a mascot); what is counted is what neither may have (a
+/// blur, lights that disagree, weights and colours without a system), and what a detailed one needs: a
+/// small version beside it (`has_small`: the document has one) for the sizes its fine parts cannot hold at.
+/// For a request that asks for a logo; the notes on pages ([`review`]) say nothing of these.
+#[must_use]
+pub fn logo_notes(layers: &[&SceneNode], vars: Vars<'_>, has_small: bool) -> Vec<String> {
+    let mut mark = Mark::default();
+    for layer in layers {
+        mark_of(layer, vars, &mut mark);
+    }
+    // Human: a picture of the small version itself is held to what a small version is.
+    let is_small = !layers.is_empty() && layers.iter().all(|layer| names_small(&layer.node.display_name()));
+    let covered = has_small && !is_small;
+    let mut out = Vec::new();
+    if !mark.soft.is_empty() {
+        out.push(format!(
+            "A blur or a glass material in a logo: {}. A logo has hard edges; depth in a dimensional mark comes from a gradient, one soft shadow and one highlight. Remove it.",
+            named(mark.soft.iter().map(String::as_str))
+        ));
+    }
+    let lights = distinct(&mark.lights);
+    if lights.len() > 1 {
+        out.push(format!(
+            "Gradients run in {} directions ({} degrees). A logo has one light: give every linear gradient the same rotation (180 runs downward, light at the top).",
+            lights.len(),
+            listed(&lights)
+        ));
+    }
+    let side = mark.around.map_or(0.0, |[left, top, right, bottom]| (right - left).min(bottom - top));
+    // Human: a stroke as wide as a part of the mark (a neck drawn as one thick line, the wide copy behind a
+    // shape that makes its contour) is a shape, not a line weight: from a twenty-fourth of the logo on.
+    let widest_line = side / SMALLEST_MARK;
+    let lines: Vec<f32> = mark.weights.iter().copied().filter(|weight| *weight < widest_line).collect();
+    let weights = distinct(&lines);
+    let finest = side / SMALLEST_MARK;
+    let fine: Vec<f32> = distinct(&mark.weights).into_iter().filter(|weight| *weight < finest).collect();
+    let detailed = mark.shapes > MOST_SHAPES;
+    if is_small && (detailed || !fine.is_empty()) {
+        out.push(format!(
+            "The small version has {} shapes{}. It is redrawn for 16 to 64 pixels: a dozen shapes at most, nothing thinner than a twenty-fourth of it ({finest:.0} here), no text, no tone.",
+            mark.shapes,
+            if fine.is_empty() { String::new() } else { format!(" and lines of {}", listed(&fine)) }
+        ));
+    } else if !covered && (detailed || !fine.is_empty()) {
+        let what = match (detailed, fine.is_empty()) {
+            (true, true) => format!("{} shapes in {} layers", mark.shapes, mark.layers),
+            (true, false) => format!("{} shapes in {} layers, with lines of {}", mark.shapes, mark.layers, listed(&fine)),
+            (false, _) => format!("lines of {} on a mark {side:.0} across", listed(&fine)),
+        };
+        out.push(format!(
+            "This logo has {what}: at {SMALLEST_MARK:.0} pixels its fine parts are under a pixel and vanish. If it is meant as a simple mark, take parts away and make every line at least {finest:.0} thick. If it is a detailed logo (a badge, a crest, a mascot), that is right, and it needs a small version beside it: a second top-level group named like \"Holm logo, small\", redrawn from its main picture with a dozen shapes at most and no text (the `logos` skill, \"The small version\")."
+        ));
+    }
+    if weights.len() > MOST_WEIGHTS {
+        out.push(format!(
+            "{} line weights in one logo ({}). Three at most, with clear steps: the contour, the structure inside (about half), fine detail (about a quarter).",
+            weights.len(),
+            listed(&weights)
+        ));
+    }
+    if mark.colours.len() > MOST_LOGO_COLOURS {
+        out.push(format!(
+            "{} colours in the logo. Even a detailed one keeps to two or three colours, each with one shadow tone, and a neutral; name them as variables and use only those.",
+            mark.colours.len()
+        ));
+    }
+    let stock: Vec<&str> =
+        mark.families.iter().map(String::as_str).filter(|family| STOCK_LOGO_FACES.contains(&family.to_lowercase().as_str())).collect();
+    if !stock.is_empty() {
+        out.push(format!(
+            "The name is set in {}: the face a logo gets when nobody chose. Unless the style you chose calls for exactly this face, pick a family whose shapes answer the mark's (the `logos` skill, `references/wordmarks.md`).",
+            stock.join(", ")
+        ));
+    }
+    if mark.families.len() > MOST_LOGO_FACES {
+        out.push(format!(
+            "{} font families in one logo ({}). One for the name, and at most a second for one contrasting word.",
+            mark.families.len(),
+            mark.families.join(", ")
+        ));
+    }
+    if !mark.icons.is_empty() {
+        out.push(format!(
+            "An icon from the icon set as the mark: {}. Everyone has that icon; draw the mark as a path of its own.",
+            named(mark.icons.iter().map(String::as_str))
+        ));
+    }
+    out
+}
+
+/// Whether a layer's `name` says it is the small version of a logo.
+#[must_use]
+pub fn names_small(name: &str) -> bool {
+    let name = name.to_lowercase();
+    ["small", "simplified", "favicon", "app icon"].iter().any(|word| name.contains(word))
+}
+
 /// The mistakes in `layers`, whatever the design is meant to be: text too faint to read or too small, layers
 /// that don't fit their frame, a font that isn't installed. Told with every change, so they don't pile up.
 #[must_use]
@@ -1322,6 +1545,48 @@ mod tests {
         editor.refresh(&|style| (style.size * 0.5 * 10.0, style.size * 1.2));
         let layers: Vec<&SceneNode> = editor.scene.iter().collect();
         review(&layers, Vars::new(&editor.doc), &|family| missing.contains(&family).then(|| "Segoe UI".to_owned()), false)
+    }
+
+    #[test]
+    fn what_a_logo_may_not_have_is_counted() {
+        let logo = |json: &str, has_small: bool| {
+            let mut editor = Editor::new(pen_doc::read(json).unwrap(), None, 1);
+            editor.refresh(&|style| (style.size * 0.5 * 10.0, style.size * 1.2));
+            let layers: Vec<&SceneNode> = editor.scene.iter().collect();
+            logo_notes(&layers, Vars::new(&editor.doc), has_small)
+        };
+        // Many parts, four line weights, a blur, two lights and a typewriter face.
+        let emblem = |name: &str| {
+            format!(
+                r##"{{"version":"2.22","children":[{{"type":"frame","id":"emblem","name":"{name}","x":0,"y":0,"width":400,"height":500,"layout":"none","children":[
+              {{"type":"path","id":"shield","name":"Shield","x":0,"y":0,"width":400,"height":500,"fill":{{"type":"gradient","gradientType":"linear","rotation":180,"colors":[{{"color":"#c8102e","position":0}},{{"color":"#7a0a1c","position":1}}]}},"stroke":"#14243b","strokeWidth":10,"viewBox":[0,0,400,500],"geometry":"M0 0 H320 V200 Z"}},
+              {{"type":"path","id":"rule","name":"Inner rule","x":0,"y":0,"width":400,"height":500,"stroke":"#f7f4ee","strokeWidth":2,"viewBox":[0,0,400,500],"geometry":"M0 0 H320 V200 Z"}},
+              {{"type":"path","id":"castle","name":"Castle","x":0,"y":0,"width":400,"height":500,"fill":{{"type":"gradient","gradientType":"linear","rotation":90,"colors":[{{"color":"#ffffff","position":0}},{{"color":"#dddddd","position":1}}]}},"effect":{{"type":"blur","radius":4}},"viewBox":[0,0,400,500],"geometry":"M1 1 H2 V2 Z M1 1 H2 V2 Z M1 1 H2 V2 Z M1 1 H2 V2 Z M1 1 H2 V2 Z M1 1 H2 V2 Z M1 1 H2 V2 Z M1 1 H2 V2 Z M1 1 H2 V2 Z M1 1 H2 V2 Z M1 1 H2 V2 Z"}},
+              {{"type":"path","id":"waves","name":"Waves","x":0,"y":0,"width":400,"height":500,"stroke":"#f7f4ee","strokeWidth":5,"viewBox":[0,0,400,500],"geometry":"M0 0 H10"}},
+              {{"type":"path","id":"gate","name":"Gate","x":0,"y":0,"width":400,"height":500,"stroke":"#f7f4ee","strokeWidth":3,"viewBox":[0,0,400,500],"geometry":"M0 0 H10"}},
+              {{"type":"text","id":"name","name":"Name","x":40,"y":400,"content":"HAMBURG","fontFamily":"American Typewriter","fontSize":36,"fill":"#f7f4ee"}}]}}]}}"##
+            )
+        };
+        let said = logo(&emblem("Hamburg emblem"), false);
+        let has = |part: &str| said.iter().any(|note| note.contains(part));
+        assert!(has("A blur or a glass material in a logo: \"Castle\""), "{said:?}");
+        assert!(has("Gradients run in 2 directions (90, 180 degrees)"), "{said:?}");
+        assert!(has("This logo has 15 shapes in 5 layers, with lines of 2, 3, 5, 10") && has("needs a small version beside it"), "{said:?}");
+        assert!(has("4 line weights in one logo (2, 3, 5, 10)"), "{said:?}");
+        assert!(has("The name is set in American Typewriter"), "{said:?}");
+        // With a small version in the document, its detail is right; the small version itself is held to less.
+        assert!(!logo(&emblem("Hamburg emblem"), true).iter().any(|note| note.contains("small version")));
+        assert!(
+            logo(&emblem("Hamburg emblem, small"), true).iter().any(|note| note.contains("The small version has 15 shapes and lines of 2, 3, 5, 10"))
+        );
+        // A mark of one path with a hole and a name beside it has nothing to count.
+        let said = logo(
+            r##"{"version":"2.22","children":[{"type":"group","id":"logo","name":"Holm logo","x":0,"y":0,"children":[
+              {"type":"path","id":"mark","name":"Mark","x":0,"y":0,"width":240,"height":240,"fill":"#111111","fillRule":"evenodd","viewBox":[0,0,240,240],"geometry":"M20 20 H220 V220 H20 Z M80 80 H160 V160 H80 Z"},
+              {"type":"text","id":"word","name":"Wordmark","x":310,"y":57,"content":"HOLM","fontFamily":"Avenir Next","fontSize":100,"fontWeight":"700","fill":"#111111"}]}]}"##,
+            false,
+        );
+        assert_eq!(said, Vec::<String>::new());
     }
 
     #[test]

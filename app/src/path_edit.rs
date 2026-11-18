@@ -6,7 +6,7 @@
 use egui::{Color32, CursorIcon, Pos2, Rect as ScreenRect, Stroke};
 use pen_doc::edit;
 use pen_doc::geom::{Affine, Point, Rect};
-use pen_doc::model::Kind;
+use pen_doc::model::{Kind, Node};
 use pen_doc::path;
 use pen_doc::value::Num;
 
@@ -54,13 +54,30 @@ struct Shape {
     scale: (f32, f32),
 }
 
+/// The path data of `node` that has points to edit: a path's outline, or the line a text runs along.
+// Human: a text set along a line has that line as path data of its own; its points are edited the way a
+// path's are, and the text follows.
+fn line_of(node: &Node) -> Option<&str> {
+    match node.kind {
+        Kind::Path => node.geometry.as_deref(),
+        Kind::Text => node.extra.get(crate::render::ON_PATH).and_then(serde_json::Value::as_str),
+        _ => None,
+    }
+}
+
 impl Editor {
-    /// Whether the layer with `id` is a path whose points can be edited: a path of the document itself (not one
-    /// inside an instance) with readable path data.
+    /// Whether the layer with `id` has points that can be edited: a path of the document itself (not one
+    /// inside an instance) with readable path data, or a text that runs along a line.
     #[must_use]
     pub fn can_edit_path(&self, id: &str) -> bool {
-        edit::find(&self.doc, id)
-            .is_some_and(|n| n.kind == Kind::Path && n.geometry.as_deref().is_some_and(|g| path::parse(g).is_ok_and(|s| !s.is_empty())))
+        edit::find(&self.doc, id).is_some_and(|n| line_of(n).is_some_and(|g| path::parse(g).is_ok_and(|s| !s.is_empty())))
+    }
+
+    /// Starts editing the points of the one selected layer, when it has points (the panel's "Edit Line").
+    pub fn edit_selected_path(&mut self) {
+        if let [id] = self.selection.as_slice() {
+            self.edit_path(id.clone());
+        }
     }
 
     /// Starts editing the points of the path with `id`.
@@ -141,7 +158,7 @@ impl Editor {
     /// Selects every point of the path (⌘A); `true` while a path is being edited.
     pub fn select_all_path_points(&mut self) -> bool {
         // Agent: read from the document alone, so it also works before the first layout (the `--points` picture).
-        let data = self.path_edit.as_ref().and_then(|e| edit::find(&self.doc, &e.id)).and_then(|n| n.geometry.as_deref());
+        let data = self.path_edit.as_ref().and_then(|e| edit::find(&self.doc, &e.id)).and_then(line_of);
         let contours = data.and_then(|d| path::parse(d).ok()).map(|s| pen::contours(&s)).unwrap_or_default();
         let all: Vec<Spot> = contours.iter().enumerate().flat_map(|(c, contour)| (0..contour.anchors.len()).map(move |a| (c, a))).collect();
         match &mut self.path_edit {
@@ -155,7 +172,12 @@ impl Editor {
     fn shape(&self) -> Option<Shape> {
         let id = &self.path_edit.as_ref()?.id;
         let (node, scene) = (edit::find(&self.doc, id)?, self.scene_node(id)?);
-        let segments = path::parse(node.geometry.as_deref()?).ok()?;
+        let segments = path::parse(line_of(node)?).ok()?;
+        // Human: a text's line is written in the text's own box, unit for unit.
+        if node.kind == Kind::Text {
+            let view = Rect::new(0.0, 0.0, scene.local.w, scene.local.h);
+            return Some(Shape { contours: pen::contours(&segments), to_doc: scene.to_doc, view, scale: (1.0, 1.0) });
+        }
         let narrow = pen_doc::value::narrow;
         let view = node.view_box.map(|v| Rect::new(narrow(v[0]), narrow(v[1]), narrow(v[2]), narrow(v[3]))).or_else(|| path::bounds(&segments))?;
         // Agent: the same rule the renderer fits a path with: a box without width or height is not stretched.
@@ -171,6 +193,23 @@ impl Editor {
         let Some(shape) = self.shape() else { return };
         let Some(id) = self.path_edit.as_ref().map(|e| e.id.clone()) else { return };
         let data = pen::data(contours);
+        // Human: a text keeps its box whatever its line does; a text whose line lost its last point is a
+        // straight text again.
+        if edit::find(&self.doc, &id).is_some_and(|node| node.kind == Kind::Text) {
+            let left = path::parse(&data).is_ok_and(|segments| !segments.is_empty());
+            if let Some(node) = edit::find_mut(&mut self.doc, &id) {
+                if left {
+                    node.extra.insert(crate::render::ON_PATH.to_owned(), serde_json::Value::String(data));
+                } else {
+                    node.extra.remove(crate::render::ON_PATH);
+                }
+            }
+            if !left {
+                self.path_edit = None;
+            }
+            self.touched();
+            return;
+        }
         let Some(bounds) = path::parse(&data).ok().and_then(|s| path::bounds(&s)) else {
             edit::remove(&mut self.doc, &id);
             self.selection.clear();
@@ -475,6 +514,29 @@ mod tests {
     fn path_of(editor: &Editor) -> (String, (f32, f32), Option<Num>, Option<Num>) {
         let node = edit::find(&editor.doc, "p").unwrap();
         (node.geometry.clone().unwrap_or_default(), stored_position(node), node.width.clone(), node.height.clone())
+    }
+
+    #[test]
+    fn the_line_a_text_runs_along_is_edited_like_a_path_and_the_text_keeps_its_box() {
+        let doc = r#"{"version":"2.22","children":[{"type":"text","id":"t","x":10,"y":20,"width":240,"height":120,"textGrowth":"fixed-width-height","content":"Along","onPath":"M0 60 L120 20 L240 60"}]}"#;
+        let mut editor = Editor::new(pen_doc::read(doc).unwrap(), None, 1);
+        editor.refresh(&|style| (style.size * 0.5 * 10.0, style.size * 1.2));
+        assert!(editor.can_edit_path("t"));
+        editor.selection = vec!["t".to_owned()];
+        editor.edit_selected_path();
+        assert!(editor.select_all_path_points() && editor.path_edit.as_ref().is_some_and(|editing| editing.selected.len() == 3));
+        // Its points move in the text's own box; the box stays.
+        editor.path_edit.as_mut().unwrap().selected = vec![(0, 1)];
+        assert!(editor.nudge_path_points(0.0, 10.0));
+        let node = edit::find(&editor.doc, "t").unwrap();
+        assert_eq!(node.extra.get(crate::render::ON_PATH).and_then(serde_json::Value::as_str), Some("M0 60 L120 30 L240 60"));
+        assert_eq!((node.width.clone(), node.height.clone(), stored_position(node)), (Some(Num::new(240.0)), Some(Num::new(120.0)), (10.0, 20.0)));
+        // With its last points gone the text is straight again, and still there.
+        editor.refresh(&|style| (style.size * 0.5 * 10.0, style.size * 1.2));
+        editor.select_all_path_points();
+        assert!(editor.delete_path_points());
+        let node = edit::find(&editor.doc, "t").unwrap();
+        assert!(!node.extra.contains_key(crate::render::ON_PATH) && editor.path_edit.is_none());
     }
 
     #[test]

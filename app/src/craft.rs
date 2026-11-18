@@ -23,7 +23,7 @@ Left to your defaults you produce the average of every design you have seen, and
 model made it. Whenever you design something with a look of its own (a screen, a page, a poster, a card, a
 component set), work the way a designer does. For a small change to an existing design (a colour, a label, one
 more row) skip this and match what is there. What the user asks for outright always comes first: if they want a
-violet gradient, they get one.
+violet gradient, they get one. A logo is not a page: it has a method of its own ("A logo or a mark" below).
 
 A named reference is the brief. When the user names a library, a product or a style to follow (shadcn, Radix,
 Material, "like Linear"), or asks for standard, default, plain, conventional or typical components, they have
@@ -141,6 +141,26 @@ insert its template as it is (the body, the screen, the status bar with its time
 Island, the home indicator and the side buttons), then build the app in its "App" frame. The device the user
 named (every iPhone since the XR is in the skill), or the template's iPhone when they named none. Several
 screens: one device each, side by side.
+
+## A logo or a mark
+A logo, a mark, a wordmark, a monogram, an emblem, a crest, a badge, a seal, a mascot, a favicon or an app
+icon stands for one name and is not a page: sections 1 to 3, the two looks of section 5 and the worlds,
+ground and face dealt for a conversation do not apply to it. Read the `logos` skill with `read_skill` before
+the first layer and work as it says. In short: choose the rendering style the brief calls for (flat
+geometric, monoline, a vintage badge, a heraldic crest, a seal, an engraving, a mascot, a luxury monogram, a
+gradient or dimensional mark and more; the skill's `references/styles.md` has each one's rules) instead of
+answering every brief with the same flat mark; find one idea you can say in a sentence among at least eight,
+after striking the first picture anyone would draw for the subject and the stock symbols; draw three rough
+marks in black side by side, choose one in the small proof and delete the others; build it exactly (a grid,
+calculated points, arcs of circles, exact symmetry, holes cut with `"fillRule": "evenodd"`) and in the
+style's own order: a simple mark from one to three paths in one weight, a detailed logo in passes
+(silhouette, big shapes, three line weights, two or three tones per colour, one light, type, fine detail
+last) with text round a rim set by `onCircle`; choose the face to answer the mark; colour after the shapes.
+A detailed logo comes with a small version redrawn for 16 to 64 pixels. Never the subject's picture built
+from rectangles, parts added because logos have them, or a typewriter face for tradition. A `screenshot` of a
+logo comes with a small proof (24 pixels on its shorter side, enlarged), and `scale: 2` shows whether curves,
+gaps, shading and the name hold up close. Deliver the logo alone, in a group or a frame without a fill named
+like "Holm logo"; only an app icon has a filled tile.
 
 ## 4. What gives a generated design away: leave these out
 The user's own words can earn any of these; reaching for one when nobody asked means you were not deciding.
@@ -322,6 +342,44 @@ pub const DEVICE_NOTE: &str = "<pencraft_device>
 This message names a phone or a tablet. If what you make is a screen of an app or a site for it (a mock, a mockup, a prototype, a gallery, a screen of any kind), show it inside the device: read the `devices` skill with read_skill first and insert its template as it is, then build the app in its \"App\" frame. Never draw the device or its status bar from memory. Leave the device out only if the user asks for the screen alone or for no device, or if this is not a screen (an app icon, a logo, one component). Before you answer, check the device is there (\"A screen on a device\" in Designing well).
 </pencraft_device>";
 
+/// Words by which a request, or a layer's name, says that the thing is a logo.
+// Human: "badge", "seal", "mark" and "symbol" are left out: in a request for a screen they name interface
+// parts (a notification badge, a check mark), and the note for a logo would lead that work astray.
+const LOGOS: [&str; 16] = [
+    "logo",
+    "wordmark",
+    "word mark",
+    "lettermark",
+    "monogram",
+    "emblem",
+    "crest",
+    "coat of arms",
+    "brand mark",
+    "brandmark",
+    "signet",
+    "favicon",
+    "app icon",
+    "wappen",
+    "insignia",
+    "mascot",
+];
+
+/// Whether `asked` (what the user wrote, or the name of a layer) says that the thing is a logo.
+// Human: a logo is the one kind of design where the method for pages does harm (a ground, a display face, a
+// first view), and where the review of a design never came, a logo being a handful of layers. A word match
+// is coarse; the note it brings says to set it aside when the logo is only shown on something else.
+#[must_use]
+pub fn names_a_logo(asked: &str) -> bool {
+    // Human: a word counts where it starts a word: "logo" in "a logo for us" and in "logos", not in "catalogo".
+    let asked: String = std::iter::once(' ').chain(asked.to_lowercase().chars().map(|c| if c.is_alphanumeric() { c } else { ' ' })).collect();
+    LOGOS.iter().any(|word| asked.contains(&format!(" {word}")))
+}
+
+/// The note that goes with a message which asks for a logo.
+pub const LOGO_NOTE: &str = "<pencraft_logo>
+This message names a logo, a mark or an emblem. If it asks you to make, redraw, enrich or improve one, read the `logos` skill with read_skill first and work as it says: the brief in four lines; the rendering style the brief calls for, chosen from the skill's `references/styles.md` (read that style's entry), and whether the logo is simple or detailed, not the same flat mark for every brief; at least eight ideas, with the first picture anyone would draw for this subject and the stock symbols struck out; three rough marks in black side by side in a group named \"Logo roughs\", judged in the small proof that comes with their screenshot, and all but one deleted; the logo built exactly as `references/construction.md` says and, for a detailed style, in the passes of `references/detail.md` (silhouette, big shapes, three line weights, two or three tones per colour, one light, type, fine detail last), with text round a rim set by onCircle; the face chosen to answer the mark; colour after the shapes; for a detailed logo a small version beside it. No picture of the subject built from rectangles, no part added only because logos have it, no typewriter face for tradition, and nothing the chosen style does not call for. A plain initial or the subject's picture is not an idea. Before you answer, take the proofs the skill lists (the small proof and scale 2), go through the tells of the style, and say the idea and the style in one sentence each. Set this note aside if the logo is only something a screen or a page shows.
+</pencraft_logo>";
+
 /// The installed font families, as the model is told about them; empty when none were found.
 #[must_use]
 pub fn fonts() -> String {
@@ -342,19 +400,30 @@ pub fn guide() -> String {
     format!("{}\n{}\n{CRAFT}\n{}", crate::agent::GUIDE, crate::skills::index(), fonts())
 }
 
+/// What to ask of a picture of a design before it is called done.
+const JUDGE_A_DESIGN: &str = "Before you call this done, judge the picture as a strict art director would judge someone else's work: is it one whole with a mood of its own; was each choice made for this subject, or could another product use it unchanged; is anything misaligned, cramped, cut off or without hierarchy; is what the user needs findable at once, with one main action? (For standard components, or a design that follows a library or style the user named, ask instead of the first two: is every piece that was named there and nothing else, is the same thing built the same way everywhere, and would someone who knows the reference take it for the real thing?) Name what is weak, fix all of it in one go, and look once more to confirm; a second look that finds nothing new is the end.";
+
+/// What to ask of a picture of a logo before it is called done.
+const JUDGE_A_LOGO: &str = "This is a logo: judge it as an identity designer would judge a stranger's work (the `logos` skill has the method; read it if you have not). Which rendering style is it, was that the right one for this brief, and does every part keep to that style's rules, or is it the same flat mark any brief would have got, or a mix of styles? Can you say its idea in one sentence, and is that idea this client's, or the first picture anyone would draw for the subject, or a stock symbol? Is it built, or assembled: one centre line, exact symmetry, curves that are arcs meeting edges without a kink, equal gaps, nothing colliding or crossing an outline, holes that show the ground? In a simple mark: one weight, few parts, nothing that fills in or vanishes in the small proof. In a detailed logo: three line weights with clear steps, two or three tones per colour, all shading from one light, one thing read first and a place to rest, rim text upright on its arc and ending symmetrically, a main picture that fills its field, every part there because the style and the brief call for it; and a small version beside it that holds in the small proof. Does the name's face answer the mark and the style? If the idea or the style is the weak part, go back and draw another; do not polish this one. Otherwise fix everything you found in one go and look once more.";
+
 /// What goes with a picture of `layers` many layers: what the review counted, and how to judge the picture.
+/// `logo` says the picture is of a logo, which is judged as one, however few layers it has.
 #[must_use]
-pub fn with_picture(notes: &[String], layers: usize) -> Option<String> {
-    // Human: a single shape or a small drawing has no system to review; the questions are for designs.
-    if notes.is_empty() && layers < 12 {
+pub fn with_picture(notes: &[String], layers: usize, logo: bool) -> Option<String> {
+    // Human: a single shape or a small drawing has no system to review; the questions are for designs. A
+    // logo is a small drawing that is a design: it always gets its questions.
+    if notes.is_empty() && layers < 12 && !logo {
         return None;
     }
     let mut said = String::new();
     if notes.is_empty() {
-        said.push_str(
+        said.push_str(if logo {
+            "review (read as a logo: shapes, line weights, colours, effects and faces counted): nothing against it.
+"
+        } else {
             "review: nothing counted in these layers.
-",
-        );
+"
+        });
     } else {
         said.push_str(
             "review (counted in these layers; put each right unless the user asked for exactly that, or a library or standard they named calls for it):\n",
@@ -365,9 +434,7 @@ pub fn with_picture(notes: &[String], layers: usize) -> Option<String> {
             said.push('\n');
         }
     }
-    said.push_str(
-        "Before you call this done, judge the picture as a strict art director would judge someone else's work: is it one whole with a mood of its own; was each choice made for this subject, or could another product use it unchanged; is anything misaligned, cramped, cut off or without hierarchy; is what the user needs findable at once, with one main action? (For standard components, or a design that follows a library or style the user named, ask instead of the first two: is every piece that was named there and nothing else, is the same thing built the same way everywhere, and would someone who knows the reference take it for the real thing?) Name what is weak, fix all of it in one go, and look once more to confirm; a second look that finds nothing new is the end.",
-    );
+    said.push_str(if logo { JUDGE_A_LOGO } else { JUDGE_A_DESIGN });
     Some(said)
 }
 
@@ -377,12 +444,12 @@ mod tests {
 
     #[test]
     fn a_small_drawing_gets_no_questions_and_a_design_gets_its_review() {
-        assert_eq!(with_picture(&[], 3), None);
-        assert!(with_picture(&[], 40).is_some_and(|said| said.starts_with(
+        assert_eq!(with_picture(&[], 3, false), None);
+        assert!(with_picture(&[], 40, false).is_some_and(|said| said.starts_with(
             "review: nothing counted in these layers.
 Before you call this done"
         )));
-        let said = with_picture(&["Text too faint.".to_owned()], 3).unwrap();
+        let said = with_picture(&["Text too faint.".to_owned()], 3, false).unwrap();
         assert!(said.starts_with("review") && said.contains("- Text too faint.\n") && said.contains("art director"));
         assert!(guide().starts_with("# Working on a Pencraft document") && guide().contains("# Designing well"));
         // Three different worlds each time, and other ones for another conversation.
@@ -409,5 +476,25 @@ Before you call this done"
         assert!(!names_a_device("A dashboard for a bakery"));
         // The guide says how to draw the device, and the note points there.
         assert!(CRAFT.contains("## A screen on a device") && DEVICE_NOTE.contains("A screen on a device"));
+    }
+
+    #[test]
+    fn a_request_for_a_logo_is_known_and_a_logo_is_judged_as_one() {
+        assert!(names_a_logo("Create a logo for my bakery"));
+        assert!(names_a_logo("Hamburg Family Emblem"));
+        assert!(names_a_logo("Three logos to choose from, please"));
+        assert!(names_a_logo("a monogram of J and K"));
+        assert!(names_a_logo("An app icon for a tide table"));
+        assert!(names_a_logo("A mascot for our handball team"));
+        assert!(!names_a_logo("A catalogo page for a furniture shop"));
+        assert!(!names_a_logo("A notification badge on the bell"));
+        assert!(!names_a_logo("A dashboard for a bakery"));
+        // The guide says how a logo is made, the note points at the skill, and the skill is there.
+        assert!(CRAFT.contains("## A logo or a mark") && LOGO_NOTE.contains("`logos` skill"));
+        assert!(crate::skills::find("logos").is_some());
+        // A logo of three layers gets its own questions; a small drawing that is none gets nothing.
+        let said = with_picture(&[], 3, true).unwrap();
+        assert!(said.starts_with("review (read as a logo") && said.contains("identity designer") && !said.contains("art director"));
+        assert_eq!(with_picture(&[], 3, false), None);
     }
 }

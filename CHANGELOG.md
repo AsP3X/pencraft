@@ -9,6 +9,61 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Changed
+
+- **Logos that are logos, in every style.** Asked for a logo, a model
+  used to draw the subject's most obvious picture out of rectangles, put
+  it in a shield and hang a ribbon under it. It now works the way an
+  identity designer does: it chooses a style from what you ask for (a
+  flat mark, a vintage badge, a crest or full coat of arms, a seal, an
+  engraving, a mascot, a luxury monogram, a dimensional app icon and
+  more), looks for one idea, draws three rough marks in black, keeps the
+  best and builds it exactly. A detailed logo is built in passes, from the
+  silhouette to the fine lines, and comes with a small version for favicon
+  sizes. Pencraft has a `logos` skill for this, with the rules of each
+  style, the numbers and worked logos.
+- **A logo is checked as a logo.** Every picture a model takes of a logo
+  now comes with the same logo drawn 24 pixels small, and with what the app
+  counted in it: lights that disagree, too many line weights or colours, a
+  detailed logo without its small version, a name set in a typewriter
+  face. The second model that reviews finished designs now reviews logos
+  too, however few layers they have, by the rules of their style.
+
+### Added
+
+- **Text round a circle.** A text layer can follow the circle that fits
+  its box, at the top or at the bottom, for the rim of a seal, a badge or
+  a roundel: ask the assistant for "the name round the rim". It is drawn
+  on the canvas and in PNG, PDF and SVG exports. In the properties panel
+  a text has Straight, Circle Top and Circle Bottom, and the angle it is
+  turned by.
+
+- **Text along any line.** A text can also follow a line of any shape,
+  for a name on a waving scroll or over an arch: ask the assistant for
+  "the name along the ribbon", or choose "Line" for a text in the
+  properties panel and bend the line by its points (Enter, or "Edit
+  Line").
+- **A shape as a mask.** A shape layer can cut the layers after it in its
+  group to its outline: water and a swan inside a shield, shading inside a
+  letter, hatching at any angle. Ask the assistant to "put it inside the
+  shield", or tick "Mask Layers Above" on a shape under Appearance. Drawn
+  on the canvas and in every export, and marked "mask" in the layers list.
+- **An outline round text.** A text layer's stroke now draws an outline
+  round its letters, outside them, for a team's name or a sticker; a
+  second stroke draws a keyline round the first.
+
+### Fixed
+
+- **A font weight a family doesn't have is said.** Text that asked for a
+  weight its family lacks was drawn in the nearest one without a word; a
+  model is now told which weight was drawn.
+- **A model is told where letters are.** A text's box is taller than its
+  letters, so names sat too high or too low beside a mark. Pencraft now
+  gives a model the box round the letters as drawn.
+- **A change that changes nothing fails.** An update a model sent with
+  its properties in the wrong place was answered as done; it now says
+  where they belong.
+
 ## [0.3.10] - 2026-11-18
 
 Watch a model build its design step by step, and a message line that reads well.

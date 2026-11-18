@@ -96,6 +96,49 @@ fn box_distance(p: [f32; 2], half: [f32; 2], radius: f32) -> f32 {
     q[0].max(q[1]).min(0.0) + q[0].max(0.0).hypot(q[1].max(0.0)) - radius
 }
 
+/// The least a pixel is covered to count as the rim of a shape an outline is drawn round.
+const RIM: f32 = 0.2;
+
+/// A squared distance no pixel of a picture is from another.
+const FAR: f32 = 1e20;
+
+/// For every place along a line, the least of `far[q] + (p - q)²` over all places `q`: the squared distance
+/// to the nearest painted pixel, when `far` holds how far each place already is from one.
+// Human: each place stands for a parabola; the answer is the lower edge of them all, found in one sweep
+// that keeps only the parabolas that are lowest somewhere.
+fn nearest(far: &[f32], out: &mut [f32]) {
+    let n = far.len();
+    // The parabolas kept, by where they stand, and where each begins to be the lowest.
+    let mut kept: Vec<usize> = Vec::with_capacity(n);
+    let mut from: Vec<f32> = Vec::with_capacity(n + 1);
+    let meet = |p: usize, q: usize| {
+        let (fp, fq, p, q) = (far[p], far[q], coordinate(p), coordinate(q));
+        // Written so that no large squares are subtracted from each other: a picture is thousands of pixels wide.
+        f32::midpoint(p, q) + (fq - fp) / (2.0 * (q - p))
+    };
+    for (q, height) in far.iter().enumerate() {
+        if *height >= FAR {
+            continue;
+        }
+        while let (Some(&last), Some(&since)) = (kept.last(), from.last()) {
+            if meet(last, q) > since {
+                break;
+            }
+            kept.pop();
+            from.pop();
+        }
+        from.push(kept.last().map_or(f32::NEG_INFINITY, |&last| meet(last, q)));
+        kept.push(q);
+    }
+    let mut at = 0;
+    for (p, out) in out.iter_mut().enumerate().take(n) {
+        while at + 1 < kept.len() && from[at + 1] <= coordinate(p) {
+            at += 1;
+        }
+        *out = kept.get(at).map_or(FAR, |&q| far[q] + (coordinate(p) - coordinate(q)).powi(2));
+    }
+}
+
 impl Bitmap {
     /// A clear bitmap.
     #[must_use]
@@ -175,6 +218,85 @@ impl Bitmap {
                     if let Some(under) = self.px.get_mut(y * self.w + x) {
                         blend(under, color);
                     }
+                }
+            }
+        }
+    }
+
+    /// Paints an outline in `color` round what `shape` shows: everything within `reach` pixels of it, inside
+    /// `clip`. `shape` is this bitmap with `pad` more pixels on every side, so letters just outside this bitmap
+    /// (a picture is painted in strips) still have their outline in it.
+    // Human: an outline round letters, for a picture. The distance from every pixel to the nearest painted one
+    // is worked out exactly in two sweeps (first down each column, then along each row), and a pixel is in
+    // the outline as far as that distance is under `reach`. One pass over the pixels, whatever the reach;
+    // painting the letters again and again round a ring, as the canvas does, takes a hundred times as long here.
+    // Source: Felzenszwalb and Huttenlocher, "Distance Transforms of Sampled Functions" (2012).
+    pub fn outline(&mut self, shape: &Bitmap, pad: usize, reach: f32, color: Pixel, clip: Option<Span>) {
+        if shape.w != self.w + 2 * pad || shape.h != self.h + 2 * pad || reach.is_nan() || reach <= 0.0 {
+            return;
+        }
+        // The part of `shape` the outline can reach: around what is painted, by `reach`.
+        let (mut x0, mut y0, mut x1, mut y1) = (shape.w, shape.h, 0, 0);
+        for (at, pixel) in shape.px.iter().enumerate() {
+            if pixel[3] > RIM {
+                let (x, y) = (at % shape.w, at / shape.w);
+                (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x + 1), y1.max(y + 1));
+            }
+        }
+        if x0 >= x1 {
+            return;
+        }
+        let around = index(reach.ceil() + 1.0, shape.w.max(shape.h));
+        let (x0, y0, x1, y1) = (x0.saturating_sub(around), y0.saturating_sub(around), (x1 + around).min(shape.w), (y1 + around).min(shape.h));
+        let (w, h) = (x1 - x0, y1 - y0);
+        // How far each pixel is from the letters, squared: nothing for a painted one, up to a pixel for one on
+        // their rim (so the outline's edge is as smooth as the letters'), and out of reach for a clear one.
+        let mut far: Vec<f32> = Vec::with_capacity(w * h);
+        for y in y0..y1 {
+            for x in x0..x1 {
+                let cover = shape.px.get(y * shape.w + x).map_or(0.0, |pixel| pixel[3]);
+                // The letters' edge is where they cover half a pixel; the faint rim beyond it is no letter.
+                far.push(if cover >= 0.5 {
+                    0.0
+                } else if cover > RIM {
+                    (1.0 - 2.0 * cover).powi(2)
+                } else {
+                    FAR
+                });
+            }
+        }
+        let mut line = vec![0.0; w.max(h)];
+        let mut swept = vec![0.0; w.max(h)];
+        for x in 0..w {
+            for y in 0..h {
+                line[y] = far[y * w + x];
+            }
+            nearest(&line[..h], &mut swept[..h]);
+            for y in 0..h {
+                far[y * w + x] = swept[y];
+            }
+        }
+        for y in 0..h {
+            nearest(&far[y * w..(y + 1) * w], &mut swept[..w]);
+            far[y * w..(y + 1) * w].copy_from_slice(&swept[..w]);
+        }
+        // The part of this bitmap that lies in the region worked out, inside `clip`.
+        let own = |v: usize| coordinate(v.saturating_sub(pad));
+        let Some([cx0, cy0, cx1, cy1]) = self.range([own(x0), own(y0), own(x1), own(y1)], clip) else { return };
+        for y in cy0..cy1 {
+            for x in cx0..cx1 {
+                let Some(&far) = (y + pad)
+                    .checked_sub(y0)
+                    .zip((x + pad).checked_sub(x0))
+                    .and_then(|(row, column)| far.get(row * w + column).filter(|_| column < w))
+                else {
+                    continue;
+                };
+                let cover = (reach + 0.5 - far.sqrt()).clamp(0.0, 1.0);
+                if cover > 0.0
+                    && let Some(under) = self.px.get_mut(y * self.w + x)
+                {
+                    blend(under, color.map(|c| c * cover));
                 }
             }
         }
@@ -461,6 +583,31 @@ mod tests {
     fn square(x0: f32, y0: f32, x1: f32, y1: f32, color: Color32) -> Mesh {
         let corner = |x, y| Vertex { pos: pos2(x, y), uv: WHITE_UV, color };
         Mesh { indices: vec![0, 1, 2, 0, 2, 3], vertices: vec![corner(x0, y0), corner(x1, y0), corner(x1, y1), corner(x0, y1)], ..Default::default() }
+    }
+
+    #[test]
+    fn an_outline_reaches_as_far_as_asked_round_what_is_painted_also_past_the_edge() {
+        // One painted pixel in the middle of a padded shape; the outline is a disc of the reach round it.
+        let (side, pad) = (41, 6);
+        let mut shape = Bitmap::new(side + 2 * pad, side + 2 * pad);
+        shape.px[(20 + pad) * shape.w + 20 + pad] = [1.0; 4];
+        let mut bitmap = Bitmap::new(side, side);
+        bitmap.outline(&shape, pad, 8.0, [1.0; 4], None);
+        let alpha = |x: usize, y: usize| bitmap.px[y * side + x][3];
+        assert!(alpha(20, 20) >= 1.0 && alpha(27, 20) >= 1.0 && alpha(20, 13) >= 1.0);
+        assert!(alpha(29, 20) <= 0.0 && alpha(27, 27) <= 0.0 && alpha(25, 25) >= 1.0);
+        // The edge is soft over one pixel: half covered at exactly the reach.
+        assert!((alpha(28, 20) - 0.5).abs() < 1e-3);
+        // A pixel painted just outside the bitmap, in the padding, still casts its outline into it.
+        let mut shape = Bitmap::new(side + 2 * pad, side + 2 * pad);
+        shape.px[(20 + pad) * shape.w + 2] = [1.0; 4];
+        let mut bitmap = Bitmap::new(side, side);
+        bitmap.outline(&shape, pad, 8.0, [1.0; 4], None);
+        assert!(bitmap.px[20 * side][3] >= 1.0 && bitmap.px[20 * side + 3][3] >= 1.0 && bitmap.px[20 * side + 6][3] <= 0.0);
+        // Distances along a line: the nearest painted place, squared.
+        let mut out = [0.0; 6];
+        nearest(&[FAR, 0.0, FAR, FAR, FAR, 0.0], &mut out);
+        assert_eq!(out, [1.0, 0.0, 1.0, 4.0, 1.0, 0.0]);
     }
 
     #[test]

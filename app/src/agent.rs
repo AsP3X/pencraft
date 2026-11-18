@@ -65,7 +65,21 @@ Types:
   drawn), `fontStyle` ("italic"), `underline` and `strikethrough` (true), `lineHeight` (a multiple of the
   font size), `letterSpacing`, `textAlign`, `textAlignVertical` ("top" | "middle" | "bottom", in a text with
   a height of its own), `textGrowth` ("auto": one line that grows; "fixed-width": wraps at `width`;
-  "fixed-width-height"). The text colour is its `fill`.
+  "fixed-width-height"). The text colour is its `fill`. `"onCircle": "top"` or `"bottom"` sets one line of text
+  along the circle that fits the layer's box, for the rim of a seal or a badge (give it `textGrowth`
+  "fixed-width-height" and the same `width` and `height`, the circle's diameter): at the top it is centred on
+  the highest point, reads clockwise and stands outward on the circle; at the bottom it is centred on the
+  lowest point, reads left to right and stands inward. `circleAngle` turns its middle clockwise, in degrees.
+  `"onPath": "M0 60 C60 0 180 120 240 60"` sets one line of text along any line instead (a waving scroll, an
+  arch, a slope): SVG path data in the layer's own coordinates (0, 0 is the top left of its box; give it
+  `textGrowth` "fixed-width-height" and a `width` and `height` that hold the line). The line is the baseline;
+  the text reads the way the line is drawn, standing on its left (upright on a line drawn left to right), and
+  `textAlign` puts it at the line's start, middle ("center") or end.
+  A `stroke` on a text is an outline round its letters, `strokeWidth` wide and drawn outside them (a team's
+  name, a sticker); a list of strokes is outlines one round the other, each that wide, the first outermost
+  (`["#ffffff", "$ink"]` is a white keyline round an ink outline). A text's box is taller than its letters: `edit_layers` answers with `inkBoxes` and
+  `read_layers` with an `inkBox` for each text: the box round the letters as drawn, on the canvas like a
+  `layoutBox`, without any outline (for the first 24 texts of a call); place a name by that.
 - `icon`: `library` ("lucide"), `icon` (the icon's name), sized by `width` and `height`; coloured by `fill`.
   Only the Lucide set is there, all of it, under its current names; among them `check`, `x`, `chevron-down`, `chevron-right`,
   `chevron-up`, `ellipsis`, `search`, `loader-circle`, `panel-left`, `circle-check`, `info`,
@@ -73,6 +87,14 @@ Types:
   empty box, and `edit_layers` answers with the nearest name.
 - `note`: a sticky note with `content` and `color`.
 - `ref`: an instance of a component (see below).
+
+## Masks
+A shape layer (`path`, `rectangle`, `ellipse`, `polygon`) with `"mask": true` is drawn as it is and cuts
+every layer after it in the same group or frame to its outline: water and a charge inside a shield, shading
+inside a letter, hatching at any angle inside any shape. Put the mask and what it cuts into a group of
+their own; whatever should not be cut (an outline drawn over the edge) comes after that group. A second
+mask in the same group ends the first: it is drawn whole and cuts what follows it. A mask with
+no `fill` only cuts; a path with `"fillRule": "evenodd"` masks with its holes.
 
 ## Size and position
 `width` and `height` are numbers, or "fill_container" (take the room the parent's layout gives) or
@@ -230,7 +252,7 @@ pub fn tools() -> Value {
         },
         {
             "name": "read_layers",
-            "description": "Read layers as they are in the document, each with the box it has on the canvas (`layoutBox`). Without `ids` it reads the top-level layers. Children are given down to `depth`; deeper ones are only listed by id. With `find` it lists the layers whose name, text or type contains that text instead.",
+            "description": "Read layers as they are in the document, each with the box it has on the canvas (`layoutBox`); a text also has the box round its letters as drawn (`inkBox`). Without `ids` it reads the top-level layers. Children are given down to `depth`; deeper ones are only listed by id. With `find` it lists the layers whose name, text or type contains that text instead.",
             "inputSchema": { "type": "object", "properties": {
                 "document": document,
                 "ids": ids("The layers to read. An id like `instanceId/layerId` reads a layer inside a component instance, as that instance shows it."),
@@ -240,7 +262,7 @@ pub fn tools() -> Value {
         },
         {
             "name": "edit_layers",
-            "description": "Change the document with a list of operations, applied in order as one undo step. If one fails, none is kept and the error says which. Returns each operation's result (the ids it made), the boxes of the layers it touched, and `advice` when Pencraft sees something wrong with the result (a layer in the colour of what is behind it, a container around a screen, text that can't be read or is too faint, a layer that doesn't fit its frame, a font that isn't installed); put that right before going on. The user sees each touched layer flash on the canvas.",
+            "description": "Change the document with a list of operations, applied in order as one undo step. If one fails, none is kept and the error says which. Returns each operation's result (the ids it made), the boxes of the layers it touched (`layoutBoxes`, and for texts `inkBoxes`: the box round the letters as drawn), and `advice` when Pencraft sees something wrong with the result (a layer in the colour of what is behind it, a container around a screen, text that can't be read or is too faint, a layer that doesn't fit its frame, a font that isn't installed); put that right before going on. The user sees each touched layer flash on the canvas.",
             "inputSchema": { "type": "object", "required": ["operations"], "properties": {
                 "document": document,
                 "description": { "type": "string", "description": "A few words saying what this change does, shown to the user." },
@@ -657,6 +679,20 @@ fn update(editor: &mut Editor, id: &str, properties: &Map<String, Value>) -> Res
     Ok(())
 }
 
+/// Refuses an `update` that sets nothing.
+// Human: an update without anything to set changes nothing, and answered as done it sends a model on with a
+// layer it believes it changed. The usual slip is the layer written into `node`.
+fn nothing_to_set(op: &Value, properties: &Map<String, Value>) -> Result<(), String> {
+    if !properties.is_empty() {
+        return Ok(());
+    }
+    Err(if op.get("node").is_some() {
+        "`update` takes the properties to set in `properties`, not a layer in `node` (that is for insert and replace)".to_owned()
+    } else {
+        "`update` needs `properties`: the properties to set on the layer".to_owned()
+    })
+}
+
 /// One operation of `edit_layers`. Returns what it has to say, and the id it made or changed.
 fn operate(editor: &mut Editor, op: &Value, made: &[Option<String>]) -> Result<(Value, Option<String>), String> {
     let kind = op.get("op").and_then(Value::as_str).ok_or("the operation needs an `op`")?;
@@ -674,7 +710,7 @@ fn operate(editor: &mut Editor, op: &Value, made: &[Option<String>]) -> Result<(
         }
         "update" => {
             let id = id()?;
-            update(editor, &id, properties)?;
+            nothing_to_set(op, properties).and_then(|()| update(editor, &id, properties))?;
             Ok((json!({ "id": id }), Some(id)))
         }
         "delete" => {
@@ -889,6 +925,20 @@ mod tests {
         let mut editor = Editor::new(doc, None, 7);
         editor.refresh(&|_| (10.0, 10.0));
         editor
+    }
+
+    #[test]
+    fn an_update_with_nothing_to_set_fails_and_says_where_the_properties_go() {
+        let mut editor = Editor::new(
+            pen_doc::read(r#"{"version":"2.22","children":[{"type":"rectangle","id":"box","x":0,"y":0,"width":10,"height":10}]}"#).unwrap(),
+            None,
+            1,
+        );
+        let wrong = edit(&mut editor, &json!({ "operations": [{ "op": "update", "id": "box", "node": { "width": 20 } }] })).unwrap_err();
+        assert!(wrong.contains("in `properties`, not a layer in `node`"), "{wrong}");
+        let none = edit(&mut editor, &json!({ "operations": [{ "op": "update", "id": "box" }] })).unwrap_err();
+        assert!(none.contains("`update` needs `properties`"), "{none}");
+        edit(&mut editor, &json!({ "operations": [{ "op": "update", "id": "box", "properties": { "width": 20 } }] })).unwrap();
     }
 
     #[test]

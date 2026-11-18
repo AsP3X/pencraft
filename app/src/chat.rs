@@ -58,6 +58,7 @@ pub const BRIEF: &str = "You are the design assistant built into Pencraft, a can
 Work on the user's open document through the Pencraft tools: call get_state first, read layers before you change them, make changes with edit_layers (one meaningful step per call, with a short description), and look at the result with screenshot before you say it is done. \
 When edit_layers answers with advice, or a screenshot comes with a review, act on it. \
 When you design something with a look of its own (a screen, a page, a poster, a card), work as \"Designing well\" below says: decide the direction for this subject, set colours, type and spacing as variables first, build with a clear hierarchy, then judge your screenshot as a strict art director would and improve the weakest parts before you answer. Never fall back on your defaults (Inter or Arial, a violet gradient, three equal cards, everything centred). \
+A logo, a mark, a wordmark, a monogram, an emblem or an app icon is not a page and is made another way: read the logos skill with read_skill before the first layer and work as it says (one idea, three rough marks in black, one chosen and constructed exactly, proven small and in one ink), as \"A logo or a mark\" below says. \
 When the user names a library, a product or a style to follow, or asks for standard or plain components, that reference is the brief instead: keep its face, palette and measures and add no direction of your own. \
 Before the first layer, note for yourself what the user named, piece by piece; before you answer, check each piece is there and that you added nothing that was not asked for, and say so if you left something out or added something. \
 Reuse the document's variables and components instead of making new ones for the same thing. Make what was asked for and nothing around it: a thing the user asks for (a dog, a logo, a button) gets no backdrop, board or coloured frame behind it unless the user asks for one or the thing itself is one, like a screen, a page or a card; keep its parts together in a group or a frame without a fill. \
@@ -722,7 +723,10 @@ impl Chat {
         // Human: attached text files travel inside the message, pictures beside it.
         // Human: a conversation's first message also carries three starting points for a design's look.
         // Human: a request that names what to follow has its look; worlds to choose from would pull it away.
-        let dealt = if self.entries.is_empty() && !crate::craft::names_a_reference(&ask.text) {
+        // Human: a logo has a method of its own; a ground and a display face dealt for a page would make a
+        // poster of it.
+        let logo = crate::craft::names_a_logo(&ask.text);
+        let dealt = if self.entries.is_empty() && !logo && !crate::craft::names_a_reference(&ask.text) {
             let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_secs());
             format!("{}\n", crate::craft::directions(seed))
         } else {
@@ -731,7 +735,10 @@ impl Chat {
         // Human: any message that names a phone or a tablet, not only the first, is reminded that a screen for
         // it is shown in the device; left alone the model draws the screen bare.
         let device = if crate::craft::names_a_device(&ask.text) { format!("{}\n", crate::craft::DEVICE_NOTE) } else { String::new() };
-        files::written(&format!("{}\n{dealt}{device}\n{}", self.retold(&ask.context, known), ask.text), &ask.files)
+        // Human: so is any message that asks for a logo: left alone the model draws the subject's most
+        // obvious picture out of rectangles and hangs a ribbon under it.
+        let logo = if logo { format!("{}\n", crate::craft::LOGO_NOTE) } else { String::new() };
+        files::written(&format!("{}\n{dealt}{device}{logo}\n{}", self.retold(&ask.context, known), ask.text), &ask.files)
     }
 
     /// Sends the user's message and starts the run that answers it.

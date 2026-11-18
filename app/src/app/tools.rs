@@ -28,6 +28,11 @@ const MOST_PICTURE_SIDE: f32 = 2000.0;
 const AGENT_NAME: &str = "Agent";
 /// How many parts of a design the reviewer is shown enlarged, and the fewest layers such a part holds.
 const MOST_PARTS: usize = 4;
+/// How many pixels a logo's shorter side has in the small proof that goes with its picture.
+// Source: a favicon is 16 or 32 pixels, a tab or list icon 24; a mark that holds at 24 holds on a sign.
+const SMALL_PROOF: f32 = 24.0;
+/// How many times the small proof is enlarged, pixel by pixel, so a model sees what is left of the logo.
+const PROOF_ENLARGED: usize = 6;
 /// See [`MOST_PARTS`].
 const PART_LAYERS: usize = 8;
 /// The fewest layers a model has to have written since the last review for a reviewer to be asked.
@@ -63,6 +68,75 @@ fn stands_in(family: &str) -> Option<String> {
 /// Whether `scene` is the layer `id` or holds it.
 pub(super) fn holds(scene: &SceneNode, id: &str) -> bool {
     scene.id == id || scene.children.iter().any(|child| holds(child, id))
+}
+
+/// How many texts one answer measures the letters of. A logo or a headline has a few; a page of text gains
+/// nothing from it and would pay for every line.
+const MOST_INKS: usize = 24;
+
+/// The box round the letters of the text layer `scene` as they are drawn, as a tool's answer gives it.
+fn ink_of(scene: &SceneNode, editor: &Editor, ctx: &egui::Context) -> Option<Value> {
+    let ink = crate::render::ink_box(ctx, scene, Vars::new(&editor.doc))?;
+    let round = |v: f32| (f64::from(v) * 10.0).round() / 10.0;
+    Some(json!({ "x": round(ink.x), "y": round(ink.y), "width": round(ink.w), "height": round(ink.h) }))
+}
+
+/// The boxes round the letters of the text layers among `touched` and in them, by id; `None` without one.
+fn inks_of(editor: &Editor, touched: &[String], ctx: &egui::Context) -> Option<Value> {
+    let inks: serde_json::Map<String, Value> = touched
+        .iter()
+        .filter_map(|id| editor.scene_node(id))
+        .flat_map(|scene| texts_in(scene))
+        .take(MOST_INKS)
+        .filter_map(|scene| ink_of(scene, editor, ctx).map(|ink| (scene.id.clone(), ink)))
+        .collect();
+    (!inks.is_empty()).then_some(Value::Object(inks))
+}
+
+/// The text layers in `scene`, itself included: a text put in with its group is measured too.
+fn texts_in(scene: &SceneNode) -> Vec<&SceneNode> {
+    let mut found = Vec::new();
+    scene.walk(
+        &mut |layer, _| {
+            if layer.node.kind == pen_doc::model::Kind::Text {
+                found.push(layer);
+            }
+        },
+        0,
+    );
+    found
+}
+
+/// Adds to every text layer in `value` (what `read_layers` answers) the box round its letters, as `inkBox`.
+fn add_ink(value: &mut Value, editor: &Editor, ctx: &egui::Context, left: &mut usize) {
+    match value {
+        Value::Object(object) => {
+            let ink = (*left > 0 && object.get("type").and_then(Value::as_str) == Some("text"))
+                .then(|| object.get("id").and_then(Value::as_str).and_then(|id| editor.scene_node(id)).and_then(|scene| ink_of(scene, editor, ctx)))
+                .flatten();
+            if let Some(ink) = ink {
+                object.insert("inkBox".to_owned(), ink);
+                *left -= 1;
+            }
+            object.values_mut().for_each(|inner| add_ink(inner, editor, ctx, left));
+        }
+        Value::Array(list) => list.iter_mut().for_each(|inner| add_ink(inner, editor, ctx, left)),
+        _ => {}
+    }
+}
+
+/// `picture` with every pixel drawn `times` across and down: a small picture made large without smoothing,
+/// so what is left of a design at that size can be seen.
+fn enlarged(picture: &crate::export::Picture, times: usize) -> crate::export::Picture {
+    let (w, h) = (picture.w * times, picture.h * times);
+    let mut rgba = Vec::with_capacity(w * h * 4);
+    for y in 0..h {
+        for x in 0..w {
+            let at = ((y / times) * picture.w + x / times) * 4;
+            rgba.extend_from_slice(picture.rgba.get(at..at + 4).unwrap_or(&[0; 4]));
+        }
+    }
+    crate::export::Picture { w, h, rgba }
 }
 
 /// The box around `layers` on the canvas.
@@ -326,7 +400,8 @@ impl App {
     fn read_tool(&mut self, call: &Call, ctx: &egui::Context) -> Result<Vec<Value>, String> {
         let args = &call.arguments;
         let (_, editor, label) = self.laid_out(call, ctx)?;
-        let read = agent::read(editor, args)?;
+        let mut read = agent::read(editor, args)?;
+        add_ink(&mut read, editor, ctx, &mut MOST_INKS.clone());
         // The cursor goes to the layers the model reads by name.
         let looked = scenes(editor, &agent::ids(args, "ids")).ok().filter(|_| args.get("ids").is_some()).and_then(|layers| around(&layers));
         editor.activity.point(looked, &label, Instant::now());
@@ -439,6 +514,11 @@ impl App {
             }
         }
         let mut answer = json!({ "results": results, "layoutBoxes": agent::boxes(editor, &touched) });
+        // Human: a text's box is taller than its letters; where the letters are is what a model needs to set
+        // a name level with a mark.
+        if let Some(inks) = inks_of(editor, &touched, ctx) {
+            answer["inkBoxes"] = inks;
+        }
         // Human: the app looks at what the model made and says what it would not want to leave that way.
         let mut advice = crate::advice::advice(editor, &touched);
         // Human: the top-level layers changed are looked at whole: text is judged against the frame behind
@@ -471,11 +551,21 @@ impl App {
         // Human: a very large picture is drawn smaller, so it stays something a model can take in.
         let scale = asked.min(MOST_PICTURE_SIDE / bounds.w.max(bounds.h).max(1.0));
         let folder = editor.path.as_deref().and_then(Path::parent);
-        let picture =
-            self.canvas.list().snapshot(&layers, scale, Vars::new(&editor.doc), ctx, folder).ok_or("The layers are empty or too large to draw.")?;
+        // Human: the picture holds what the layers paint, which is more than their boxes where a shadow or an
+        // outline reaches out of them and less where a mask cuts something away; the note says where the
+        // picture itself lies, so a place measured in it is the same place on the canvas.
+        let drawn =
+            self.canvas.list().survey(&layers, scale, Vars::new(&editor.doc), ctx, folder).ok_or("The layers are empty or too large to draw.")?;
+        let (picture, origin) = (drawn.picture, drawn.origin);
+        #[expect(clippy::cast_precision_loss, reason = "a picture is at most a few thousand pixels a side")]
         let note = format!(
             "{} × {} pixels at {scale:.2} pixels per unit, showing the canvas from ({:.0}, {:.0}), {:.0} × {:.0} units.",
-            picture.w, picture.h, bounds.x, bounds.y, bounds.w, bounds.h
+            picture.w,
+            picture.h,
+            origin.x,
+            origin.y,
+            picture.w as f32 / scale,
+            picture.h as f32 / scale
         );
         let png = picture.encode(crate::export::Format::Png, 100)?;
         // Human: the moment the model looks at its work is the moment to tell it what the app counted in
@@ -488,7 +578,37 @@ impl App {
                 .is_some_and(|talk| talk.chat.entries.iter().any(|entry| entry.role == crate::chat::Role::User && test(&entry.text)))
         };
         let follows = asked(crate::craft::names_a_reference);
-        let mut notes = crate::review::review(&layers, Vars::new(&editor.doc), &stands_in, follows);
+        // Human: a logo is judged as a logo: when the chat's request asks for one, or (for a client outside,
+        // whose request the app never sees) when the layers shown are named as one, like "Holm logo". What
+        // the app can count in a logo comes first, and the picture is shown once more as small as a logo
+        // has to work, which is where a mark made of many parts gives itself away.
+        let named_one = |layer: &&SceneNode| crate::craft::names_a_logo(&layer.node.display_name());
+        let logo = asked(crate::craft::names_a_logo) || layers.iter().any(named_one);
+        // Human: what the review counts in a page (cards in cards, a scale of sizes and spacings, a default
+        // face) is not what a logo is made of; of a logo only the plain mistakes are told, then what is
+        // counted in a logo.
+        let mut notes = if logo {
+            crate::review::mistakes_in(&layers, Vars::new(&editor.doc), &stands_in)
+        } else {
+            crate::review::review(&layers, Vars::new(&editor.doc), &stands_in, follows)
+        };
+        let mut small = None;
+        if logo {
+            // Human: a detailed logo's fine parts are right when a small version stands beside it.
+            let has_small = editor.scene.iter().any(|top| crate::review::names_small(&top.node.display_name()));
+            let counted = crate::review::logo_notes(&layers, Vars::new(&editor.doc), has_small);
+            notes.splice(0..0, counted);
+            let shorter = bounds.w.min(bounds.h).max(1.0);
+            let proof = SMALL_PROOF / shorter;
+            // A picture that is already this small is its own proof.
+            if proof < scale * 0.5 {
+                small = self
+                    .canvas
+                    .list()
+                    .snapshot(&layers, proof, Vars::new(&editor.doc), ctx, folder)
+                    .map(|picture| enlarged(&picture, PROOF_ENLARGED));
+            }
+        }
         // Human: while the chat's request names a phone or a tablet, a phone screen standing bare on the canvas
         // is the first thing to put right. It is judged by the top-level layers the picture shows or lies in,
         // so a picture of the screen inside a device doesn't count as a bare screen.
@@ -506,7 +626,11 @@ impl App {
         notes.truncate(crate::review::MOST_NOTES);
         let mut answer =
             vec![json!({ "type": "image", "data": agent::base64(&png), "mimeType": "image/png" }), json!({ "type": "text", "text": note })];
-        answer.extend(crate::craft::with_picture(&notes, crate::review::size(&layers)).map(|said| json!({ "type": "text", "text": said })));
+        if let Some(png) = small.and_then(|small| small.encode(crate::export::Format::Png, 100).ok()) {
+            answer.push(json!({ "type": "image", "data": agent::base64(&png), "mimeType": "image/png" }));
+            answer.push(json!({ "type": "text", "text": format!("The small proof: the same layers drawn {SMALL_PROOF:.0} pixels on their shorter side, the size a logo has to hold at, shown {PROOF_ENLARGED} times enlarged so you see each pixel. What has filled in, broken up or vanished here is too small or too thin in the mark.") }));
+        }
+        answer.extend(crate::craft::with_picture(&notes, crate::review::size(&layers), logo).map(|said| json!({ "type": "text", "text": said })));
         if let Some(editor) = self.tabs.get_mut(tab) {
             editor.activity.point(Some(bounds), &label, Instant::now());
         }
@@ -543,13 +667,19 @@ impl App {
         let Some(doc) = own.or_else(|| self.designed.last().map(|(doc, _, _)| *doc)) else { return Ok(Vec::new()) };
         let (designed, others): (Vec<_>, Vec<_>) = std::mem::take(&mut self.designed).into_iter().partition(|(at, _, _)| *at == doc);
         self.designed = others;
+        // Human: a logo is a handful of layers, and the design most in need of a second pair of eyes: it is
+        // reviewed however little was written.
+        let logo = call.chat.and_then(|id| self.talk(id)).is_some_and(|talk| {
+            talk.chat.entries.iter().any(|entry| entry.role == crate::chat::Role::User && crate::craft::names_a_logo(&entry.text))
+        });
         let Some(editor) = self.tabs.iter_mut().find(|tab| tab.id == doc) else { return Ok(Vec::new()) };
         editor.refresh(&text_measure(ctx));
         let ids: Vec<String> = designed.iter().filter(|(_, id, _)| editor.scene_node(id).is_some()).map(|(_, id, _)| id.clone()).collect();
         let written: usize = designed.iter().map(|(_, _, count)| count).sum();
-        // Human: a design that was reviewed and changed is looked at again however little was changed.
+        // Human: a design that was reviewed and changed is looked at again however little was changed, and
+        // so is a logo.
         let again = call.arguments.get("again").and_then(Value::as_bool) == Some(true);
-        if ids.is_empty() || written < if again { 1 } else { WORTH_A_REVIEW } {
+        if ids.is_empty() || written < if again || logo { 1 } else { WORTH_A_REVIEW } {
             return Ok(Vec::new());
         }
         let document = editor.path.as_ref().map_or_else(|| editor.title(), |path| path.display().to_string());

@@ -265,6 +265,30 @@ pub fn pick(name: &str, weight: u16, italic: bool) -> Option<&'static Face> {
     nearest(&family.faces, weight, italic)
 }
 
+/// How far the heaviest and the lightest weight a face is drawn in may be from the weight asked for before
+/// it is worth saying: one step of the usual scale (400 for 500) is how most families are built.
+const WEIGHT_OFF: f32 = 150.0;
+
+/// What the installed family `name` lacks for text that asks for `weight` and, with `italic`, an italic:
+/// the weight it is drawn in instead when the family has no face near the one asked for, and that its
+/// upright is slanted when it has no italic. `None` when the family isn't installed (which is said
+/// elsewhere) or has what was asked for.
+#[must_use]
+pub fn falls_short(name: &str, weight: u16, italic: bool) -> Option<String> {
+    let family = families().get(&name.trim().to_lowercase())?;
+    let face = nearest(&family.faces, weight, italic)?;
+    let wanted = f32::from(weight);
+    let drawn = face.weights.map_or(f32::from(face.weight), |(lightest, heaviest)| wanted.clamp(lightest, heaviest));
+    let mut said = Vec::new();
+    if (drawn - wanted).abs() >= WEIGHT_OFF {
+        said.push(format!("has no{} weight {weight}; it is drawn in {drawn:.0}", if italic && face.italic { " italic of" } else { "" }));
+    }
+    if italic && !face.italic {
+        said.push("has no italic; its upright is slanted instead".to_owned());
+    }
+    (!said.is_empty()).then(|| said.join(", and "))
+}
+
 /// The name of the family that is drawn when text asks for `name`.
 #[must_use]
 pub fn shown_as(name: &str) -> Option<&'static str> {

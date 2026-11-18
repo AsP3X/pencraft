@@ -20,7 +20,7 @@ use pen_doc::value::{Flag, Num, narrow};
 use serde_json::Value;
 
 use super::glass::Pane;
-use super::{Builder, Item, TextItem, color32, glyph_scale, intersect, text_anchor, text_job, to_u8};
+use super::{Builder, Item, TextItem, color32, glyph_scale, intersect, to_u8};
 use crate::effects::{self, EffectKind};
 use crate::raster::{self, Bitmap, Span};
 use crate::shader::{self, Program, Role, Source, Type};
@@ -88,6 +88,26 @@ pub(super) struct Look {
     pub radius: Option<f32>,
 }
 
+/// How a tile of a mask's box lies to the mask's outline.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Cover {
+    /// Wholly inside: what is in it shows as it is.
+    Inside,
+    /// Wholly outside: nothing of it shows.
+    Outside,
+    /// The outline's edge runs through it: it is drawn as a picture, cut to the outline.
+    Edge,
+}
+
+/// The side of a mask's tile, in picture pixels.
+// Human: small enough that the pictures along the outline's edge are a small part of the mask's area, large
+// enough that a shield on screen is a few dozen tiles.
+const MASK_TILE: f32 = 256.0;
+/// How many tiles a mask's box is laid out in at most; past that the tiles grow.
+const MOST_MASK_TILES: f32 = 4096.0;
+/// How many tiles' answers are kept.
+const KEPT_COVERS: usize = 16_384;
+
 /// One baked picture.
 struct Picture {
     handle: TextureHandle,
@@ -128,6 +148,8 @@ pub(super) struct Baked {
     skipped: Cell<bool>,
     /// The clear picture that stands in for one left out.
     blank: RefCell<Option<TextureHandle>>,
+    /// How each tile of a mask asked about so far lies to its outline, by a hash of the two.
+    tiles: RefCell<HashMap<u64, Cover>>,
 }
 
 impl Baked {
@@ -146,6 +168,15 @@ impl Baked {
         self.seen.borrow_mut().clear();
         self.cover.set(cover);
         self.skipped.set(false);
+    }
+
+    /// Whether this build bakes pictures for `area`; says so afterwards ([`Baked::skipped`]) when it doesn't.
+    fn covers(&self, area: &Rect) -> bool {
+        let covered = self.cover.get().is_none_or(|cover| cover.intersects(area));
+        if !covered {
+            self.skipped.set(true);
+        }
+        covered
     }
 
     /// How many pixels the pictures held now have between them.
@@ -178,6 +209,10 @@ impl Baked {
             }
         }
         self.learned.borrow_mut().retain(|key, _| pictures.contains_key(key));
+        // The tiles of masks are few; a long session over many designs is what fills this.
+        if self.tiles.borrow().len() > KEPT_COVERS {
+            self.tiles.borrow_mut().clear();
+        }
     }
 
     /// The texture for `key`, baked with `make` unless an earlier build already did. `area` is the part of the
@@ -378,7 +413,8 @@ fn hash_item(item: &Item, grid: &Grid, hasher: &mut DefaultHasher) {
         }
         Item::Text { text, clip, .. } => {
             let m = text.to_doc.m;
-            (1_u8, format!("{:?}", text.style), text.color.to_array(), clip_of(clip)).hash(hasher);
+            (1_u8, format!("{:?}{:?}{:?}{:?}", text.style, text.circle, text.track, text.outlines), text.color.to_array(), clip_of(clip))
+                .hash(hasher);
             ([m[0], m[1], m[2], m[3], text.size.0, text.size.1].map(f32::to_bits), at(Point::new(m[4], m[5]))).hash(hasher);
         }
         Item::Shadow { rect, radius, offset, blur, color, clip } => {
@@ -410,14 +446,25 @@ impl Builder<'_> {
         }
         let items: Vec<&Item> = items.iter().collect();
         // Human: several layers make one picture: each where it is on the canvas, in a picture that holds them all.
-        let frame = scenes.iter().map(|scene| layout::doc_bounds(scene)).reduce(|a, b| a.union(&b))?;
+        let whole = scenes.iter().map(|scene| layout::doc_bounds(scene)).reduce(|a, b| a.union(&b))?;
+        // Human: a group has no box of its own, only the one round what is in it; what a mask in it cuts
+        // away would otherwise leave an empty margin in the picture. A group is as large as what it paints.
+        let frame = scenes
+            .iter()
+            .filter(|scene| scene.node.kind != pen_doc::model::Kind::Group)
+            .map(|scene| layout::doc_bounds(scene))
+            .reduce(|a, b| a.union(&b));
         // Human: what a clipping frame cuts off is not in the picture, so it takes no room in it either.
         let painted = items
             .iter()
             .filter_map(|item| extent(item).map(|e| item.clip().map_or(e, |clip| intersect(&e, &clip))))
             .filter(|e| e.w > 0.0 && e.h > 0.0)
             .reduce(|a, b| a.union(&b));
-        let area = painted.map_or(frame, |painted| painted.union(&frame));
+        let area = match (painted, frame) {
+            (Some(painted), Some(frame)) => painted.union(&frame),
+            (Some(area), None) | (None, Some(area)) => area,
+            (None, None) => whole,
+        };
         // The picture starts and ends on whole pixels.
         let scale = self.scale;
         let (left, top) = ((area.x * scale).floor() / scale, (area.y * scale).floor() / scale);
@@ -490,6 +537,117 @@ impl Builder<'_> {
                 out.extend(whole.map(|whole| whole.clipped_to(part)));
             }
         }
+    }
+
+    /// Cuts `inside` (the items of the layers that follow a mask layer) to the mask's `outline`, whose box is
+    /// `area`, and adds what is left to `out`.
+    // Human: the canvas can only cut to upright rectangles, and a mask has any shape (a shield, a letter, a
+    // bird). So the mask's box is laid out in square tiles of a fixed size on screen. A tile that lies wholly
+    // inside the outline keeps its items as they are, each cut to the tile (tiles side by side joined into
+    // one band): they stay sharp at any zoom and cost no picture. A tile wholly outside shows nothing. Only
+    // a tile the outline's edge runs through becomes a small picture of what lies there, with everything
+    // outside the outline rubbed out; and only where the view is, like every other picture.
+    pub(super) fn mask_off(&self, outline: &Item, area: Rect, cut: Option<Rect>, inside: &[Item], out: &mut Vec<Item>) {
+        let area = cut.map_or(area, |cut| intersect(&area, &cut));
+        if area.w <= 0.0 || area.h <= 0.0 || inside.is_empty() || self.scale <= 0.0 {
+            return;
+        }
+        // A tile's side in the document; larger when the box would take more tiles than are worth going through.
+        let side = (MASK_TILE / self.scale).max((area.w * area.h / MOST_MASK_TILES).sqrt());
+        let touches = |item: &Item, part: &Rect| {
+            let reach = item.clip().map_or(*part, |clip| intersect(&clip, part));
+            (reach.w > 0.0 && reach.h > 0.0 && extent(item).is_some_and(|e| e.intersects(&reach))).then_some(reach)
+        };
+        // The bands of tiles wholly inside the outline, each a run of tiles in one row.
+        let mut bands: Vec<Rect> = Vec::new();
+        let mut y = area.y;
+        while y < area.bottom() - 1e-3 {
+            let h = side.min(area.bottom() - y);
+            let mut run: Option<Rect> = None;
+            let mut x = area.x;
+            while x < area.right() - 1e-3 {
+                let tile = Rect::new(x, y, side.min(area.right() - x), h);
+                x += side;
+                let whole = self.baked.covers(&tile) && {
+                    match self.cover_of(outline, &tile) {
+                        Cover::Inside => true,
+                        Cover::Outside => false,
+                        Cover::Edge => {
+                            self.mask_tile(outline, tile, cut, inside, out);
+                            false
+                        }
+                    }
+                };
+                if whole {
+                    run = Some(run.map_or(tile, |run| run.union(&tile)));
+                } else {
+                    bands.extend(run.take());
+                }
+            }
+            bands.extend(run.take());
+            y += side;
+        }
+        // Bands one under the other with the same ends are one block.
+        let mut blocks: Vec<Rect> = Vec::new();
+        for band in bands {
+            match blocks
+                .iter_mut()
+                .find(|block| (block.x - band.x).abs() < 1e-3 && (block.w - band.w).abs() < 1e-3 && (block.bottom() - band.y).abs() < 1e-3)
+            {
+                Some(block) => *block = block.union(&band),
+                None => blocks.push(band),
+            }
+        }
+        for block in blocks {
+            out.extend(inside.iter().filter_map(|item| touches(item, &block).map(|reach| item.clone().clipped_to(reach))));
+        }
+    }
+
+    /// Whether `tile` lies inside the mask's `outline`, outside it, or on its edge.
+    // Human: the outline alone is painted over the tile, one sample a pixel; that is cheap, and kept, since
+    // the same tiles are asked about with every build.
+    fn cover_of(&self, outline: &Item, tile: &Rect) -> Cover {
+        let Some(grid) = Grid::new(*tile, None, 0.0, self.scale, false) else { return Cover::Outside };
+        let key = Self::key("cover", &grid, &[(&[outline], true)], &[], Color32::TRANSPARENT);
+        if let Some(known) = self.baked.tiles.borrow().get(&key) {
+            return *known;
+        }
+        let mut solid = grid.bitmap();
+        self.paint(&grid, &[outline], true, &mut solid);
+        let (mut any, mut all) = (false, true);
+        for pixel in &solid.px {
+            any |= pixel[3] > 0.0;
+            all &= pixel[3] >= 1.0;
+        }
+        let found = match (any, all) {
+            (_, true) => Cover::Inside,
+            (false, false) => Cover::Outside,
+            (true, false) => Cover::Edge,
+        };
+        self.baked.tiles.borrow_mut().insert(key, found);
+        found
+    }
+
+    /// The picture of what `inside` shows in `tile`, cut to the mask's `outline`, added to `out`.
+    fn mask_tile(&self, outline: &Item, tile: Rect, cut: Option<Rect>, inside: &[Item], out: &mut Vec<Item>) {
+        let here: Vec<&Item> = inside
+            .iter()
+            .filter(|item| extent(item).is_some_and(|e| e.intersects(&item.clip().map_or(tile, |clip| intersect(&clip, &tile)))))
+            .collect();
+        let Some(grid) = Grid::new(tile, None, 0.0, self.scale, true).filter(|_| !here.is_empty()) else { return };
+        let key = Self::key("mask", &grid, &[(&here, false), (&[outline], true)], &[], Color32::TRANSPARENT);
+        let texture = self.baked.texture(self.ctx, key, grid.rect(), || {
+            let mut bitmap = grid.bitmap();
+            self.paint(&grid, &here, false, &mut bitmap);
+            let mut bitmap = grid.settle(bitmap);
+            let mut solid = grid.bitmap();
+            self.paint(&grid, &[outline], true, &mut solid);
+            for (pixel, cover) in bitmap.px.iter_mut().zip(&grid.settle(solid).px) {
+                *pixel = pixel.map(|c| c * cover[3]);
+            }
+            bitmap
+        });
+        out.push(Self::picture(texture, &grid, Point::default(), 1.0, cut));
     }
 
     /// The effects of `scene` that are switched on, variables looked up.
@@ -764,9 +922,24 @@ impl Builder<'_> {
                     };
                     bitmap.triangles(mesh, |p| grid.place(Point::new(p.x, p.y)), clip.map(|c| grid.span(&c)), picture.as_deref(), solid);
                 }
-                Item::Text { clip, .. } => {
+                Item::Text { text: item, clip, .. } => {
+                    let clip = clip.map(|c| grid.span(&c));
+                    // Human: the outline round letters is everything within its width of them, found from one
+                    // painting of the letters; the shape of an outlined text has its outline in it.
+                    if let Some((_, widest)) = item.outlines.first() {
+                        let pad = pixels(widest * grid.density() + 2.0);
+                        let mut shape = Bitmap::new(bitmap.w + 2 * pad, bitmap.h + 2 * pad);
+                        let by = length(pad);
+                        for mesh in text {
+                            shape.triangles(mesh, |p| [p.x + by, p.y + by], None, letters.as_ref(), true);
+                        }
+                        for (ink, width) in &item.outlines {
+                            let color = if solid { [1.0; 4] } else { raster::pixel(*ink) };
+                            bitmap.outline(&shape, pad, width * grid.density(), color, clip);
+                        }
+                    }
                     for mesh in text {
-                        bitmap.triangles(mesh, |p| [p.x, p.y], clip.map(|c| grid.span(&c)), letters.as_ref(), solid);
+                        bitmap.triangles(mesh, |p| [p.x, p.y], clip, letters.as_ref(), solid);
                     }
                 }
                 // A box's own soft shadow is no part of its shape.
@@ -792,23 +965,25 @@ impl Builder<'_> {
         // Human: text larger than the font atlas holds is laid out smaller and its triangles are scaled up
         // (see `glyph_scale`); a poster's headline must not vanish from the picture of it.
         let (laid, grow) = glyph_scale(text.style.size, z);
-        let galley = self.ctx.fonts_mut(|fonts| fonts.layout_job(text_job(&text.style, text.color, laid)));
-        let (anchor, angle) = text_anchor(text, galley.size().y / laid);
-        let [x, y] = grid.place(anchor);
-        let shape = TextShape::new(Pos2::ZERO, galley, text.color).with_angle(angle);
-        self.ctx
-            .tessellate(vec![ClippedShape::new(egui::Rect::EVERYTHING, shape)], per_point)
-            .into_iter()
-            .filter_map(|clipped| match clipped.primitive {
-                Primitive::Mesh(mut mesh) => {
-                    for v in &mut mesh.vertices {
-                        v.pos = Pos2::new(v.pos.x * grow * per_point + x, v.pos.y * grow * per_point + y);
+        // Human: set on a circle, each letter is a paragraph of its own. (An outline is painted from these.)
+        let parts = super::text_placed(text, text.color, laid, &mut |job| self.ctx.fonts_mut(|fonts| fonts.layout_job(job)));
+        let mut meshes = Vec::new();
+        for (anchor, galley, angle) in parts {
+            let [x, y] = grid.place(anchor);
+            let shape = TextShape::new(Pos2::ZERO, galley, text.color).with_angle(angle);
+            meshes.extend(self.ctx.tessellate(vec![ClippedShape::new(egui::Rect::EVERYTHING, shape)], per_point).into_iter().filter_map(|clipped| {
+                match clipped.primitive {
+                    Primitive::Mesh(mut mesh) => {
+                        for v in &mut mesh.vertices {
+                            v.pos = Pos2::new(v.pos.x * grow * per_point + x, v.pos.y * grow * per_point + y);
+                        }
+                        Some(mesh)
                     }
-                    Some(mesh)
+                    Primitive::Callback(_) => None,
                 }
-                Primitive::Callback(_) => None,
-            })
-            .collect()
+            }));
+        }
+        meshes
     }
 
     /// A hash of everything a picture is made from: the effect, its numbers and colour, and each layer of items

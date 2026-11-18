@@ -903,6 +903,90 @@
    "value": 300,
    "unit": "pt",
    "source": "estimated"
+  },
+  {
+   "name": "mask tile side",
+   "group": "render",
+   "value": 256,
+   "unit": "px",
+   "source": "Pencraft's own rule"
+  },
+  {
+   "name": "mask tiles at most before they grow",
+   "group": "render",
+   "value": 4096,
+   "source": "Pencraft's own rule"
+  },
+  {
+   "name": "text outline copies apart on the canvas",
+   "group": "render",
+   "value": 1,
+   "unit": "px",
+   "source": "Pencraft's own rule"
+  },
+  {
+   "name": "text outline copies per ring at most",
+   "group": "render",
+   "value": 256,
+   "source": "Pencraft's own rule"
+  },
+  {
+   "name": "text line followed within",
+   "group": "render",
+   "value": 0.02,
+   "unit": "units",
+   "source": "Pencraft's own rule"
+  },
+  {
+   "name": "letters box laid out at letter height",
+   "group": "ai",
+   "value": 192,
+   "unit": "px",
+   "source": "Pencraft's own rule"
+  },
+  {
+   "name": "letters boxes per call",
+   "group": "ai",
+   "value": 24,
+   "source": "Pencraft's own rule"
+  },
+  {
+   "name": "logo small proof shorter side",
+   "group": "ai",
+   "value": 24,
+   "unit": "px",
+   "source": "a favicon is 16 or 32 pixels, a tab icon 24"
+  },
+  {
+   "name": "logo small proof enlarged",
+   "group": "ai",
+   "value": 6,
+   "unit": "times",
+   "source": "Pencraft's own rule"
+  },
+  {
+   "name": "logo simple mark shapes at most",
+   "group": "ai",
+   "value": 12,
+   "source": "Signs.com, Branded in Memory (2017)"
+  },
+  {
+   "name": "logo line weights at most",
+   "group": "ai",
+   "value": 3,
+   "source": "Pencraft's own rule"
+  },
+  {
+   "name": "logo colours at most",
+   "group": "ai",
+   "value": 10,
+   "source": "embroidery houses recommend 3 to 6 thread colours"
+  },
+  {
+   "name": "logo font families at most",
+   "group": "ai",
+   "value": 2,
+   "source": "Pencraft's own rule"
   }
  ]
 }

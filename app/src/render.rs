@@ -73,6 +73,189 @@ struct TextItem {
     color: Color32,
     to_doc: Affine,
     size: (f32, f32),
+    /// The circle the text runs along instead of a straight line, when it has one.
+    circle: Option<OnCircle>,
+    /// The line the text runs along instead of a straight one, when it has one (and no circle).
+    track: Option<std::sync::Arc<Track>>,
+    /// The outlines round its letters, the outermost (drawn first) first: each one's colour and how far it
+    /// reaches out of the letters.
+    outlines: Vec<(Color32, f32)>,
+}
+
+/// The property of a text layer that sets it along a line: SVG path data in the layer's own coordinates.
+pub const ON_PATH: &str = "onPath";
+/// How far the straight pieces a text's line is followed by may lie from its curves, in document units.
+const TRACK_TOLERANCE: f32 = 0.02;
+
+/// The line a text runs along: its corners in the layer's box, each with how far along the line it lies.
+// Human: a name on a waving scroll, along an arch, up a slope. The line is the baseline; the text reads the
+// way the line was drawn, its letters standing on the left of that direction (upright on a line drawn from
+// left to right). Where on the line the text sits is its `textAlign`: at the start, in the middle, at the end.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Track {
+    corners: Vec<(Point, f32)>,
+}
+
+impl Track {
+    /// The line a text layer says it runs along; `None` for a text without one, or with one that is no line.
+    #[must_use]
+    pub fn of(node: &Node) -> Option<Self> {
+        use lyon_tessellation::path::iterator::PathIterator;
+        let segments = svg::parse(node.extra.get(ON_PATH).and_then(Value::as_str)?).ok()?;
+        // Written in the layer's own coordinates: a unit of the path is a unit of the layer.
+        let shape = build_path(&segments, Rect::new(0.0, 0.0, 1.0, 1.0), 1.0, 1.0);
+        let mut corners: Vec<(Point, f32)> = Vec::new();
+        for event in shape.iter().flattened(TRACK_TOLERANCE) {
+            match event {
+                // Human: the first outline is the line; a path with several has no one direction to read in.
+                lyon_tessellation::path::Event::Begin { at } if corners.is_empty() => corners.push((Point::new(at.x, at.y), 0.0)),
+                lyon_tessellation::path::Event::Line { to, .. } => {
+                    let Some(&(last, along)) = corners.last() else { break };
+                    let step = (to.x - last.x).hypot(to.y - last.y);
+                    if step > 1e-4 {
+                        corners.push((Point::new(to.x, to.y), along + step));
+                    }
+                }
+                lyon_tessellation::path::Event::Begin { .. } | lyon_tessellation::path::Event::End { .. } => {
+                    if corners.len() > 1 {
+                        break;
+                    }
+                }
+                lyon_tessellation::path::Event::Quadratic { .. } | lyon_tessellation::path::Event::Cubic { .. } => {}
+            }
+        }
+        (corners.len() > 1).then_some(Self { corners })
+    }
+
+    /// How long the line is.
+    #[must_use]
+    pub fn length(&self) -> f32 {
+        self.corners.last().map_or(0.0, |(_, along)| *along)
+    }
+
+    /// The point `along` the line from its start, and the angle the line runs at there. Before its start and
+    /// past its end the line goes on straight, so a text longer than its line is not piled up at the ends.
+    #[must_use]
+    pub fn at(&self, along: f32) -> (Point, f32) {
+        let next = self.corners.partition_point(|(_, reached)| *reached < along).clamp(1, self.corners.len().saturating_sub(1));
+        let (Some(&(from, start)), Some(&(to, _))) = (self.corners.get(next.saturating_sub(1)), self.corners.get(next)) else {
+            return (Point::new(0.0, 0.0), 0.0);
+        };
+        let angle = (to.y - from.y).atan2(to.x - from.x);
+        let by = along - start;
+        (Point::new(from.x + by * angle.cos(), from.y + by * angle.sin()), angle)
+    }
+}
+
+/// Whether the text layer `node` runs along a circle or a line instead of straight.
+#[must_use]
+pub fn runs_along(node: &Node) -> bool {
+    node.extra.contains_key(ON_CIRCLE) || node.extra.contains_key(ON_PATH)
+}
+
+/// The property that makes a layer a mask: the layers after it in its group or frame are cut to its shape.
+pub const MASK: &str = "mask";
+
+/// Whether `node` is a mask for the layers that follow it.
+#[must_use]
+pub fn is_mask(node: &Node) -> bool {
+    node.extra.get(MASK).and_then(Value::as_bool) == Some(true)
+}
+
+/// The box round the letters of the text layer `scene` as they are drawn, in the document: what a model
+/// needs to centre a name on a mark, since a text's own box is taller than its letters. `None` for a text
+/// that is empty, turned or set on a circle.
+// Agent: lays the text out through the egui context; MAIN-THREAD.
+#[must_use]
+pub fn ink_box(ctx: &egui::Context, scene: &SceneNode, vars: Vars<'_>) -> Option<Rect> {
+    let node = &scene.node;
+    if node.kind != Kind::Text || runs_along(node) {
+        return None;
+    }
+    let mut style = layout::text_style(node, vars, &scene.theme);
+    if style.content.trim().is_empty() {
+        return None;
+    }
+    if matches!(node.text_growth.as_deref(), Some("fixed-width" | "fixed-width-height")) {
+        style.wrap = Some(scene.local.w);
+    }
+    // Laid out so its letters are about `INK_LETTER` pixels high: their edges are then known to well under
+    // a hundredth of the text's size, and small text doesn't fill the font picture with large letters.
+    let laid = (INK_LETTER / style.size.max(f32::EPSILON)).clamp(0.5, INK_SCALE);
+    let galley = ctx.fonts_mut(|fonts| fonts.layout_job(text_job(&style, Color32::WHITE, laid)));
+    let text = TextItem {
+        style,
+        color: Color32::WHITE,
+        to_doc: scene.to_doc,
+        size: (scene.local.w, scene.local.h),
+        circle: None,
+        track: None,
+        outlines: Vec::new(),
+    };
+    let (anchor, angle) = text_anchor(&text, galley.size().y / laid);
+    if angle.abs() > 1e-3 {
+        return None;
+    }
+    let mut ink: Option<egui::Rect> = None;
+    for row in &galley.rows {
+        let letters = row.row.visuals.mesh_bounds;
+        if letters.is_finite() && letters.width() > 0.0 {
+            let letters = letters.translate(row.pos.to_vec2());
+            ink = Some(ink.map_or(letters, |all| all.union(letters)));
+        }
+    }
+    let ink = ink?;
+    Some(Rect::new(anchor.x + ink.min.x / laid, anchor.y + ink.min.y / laid, ink.width() / laid, ink.height() / laid))
+}
+
+/// The most a text is enlarged to find where its letters lie.
+const INK_SCALE: f32 = 4.0;
+/// The height of letters, in pixels, a text is laid out at for that.
+const INK_LETTER: f32 = 192.0;
+
+/// The property of a text layer that sets it along a circle: `"top"` or `"bottom"`.
+pub const ON_CIRCLE: &str = "onCircle";
+/// The property that turns such a text about the circle's centre, in degrees clockwise.
+pub const CIRCLE_ANGLE: &str = "circleAngle";
+
+/// How a text runs along the circle that fits its layer's box.
+// Human: a seal, a roundel or a badge has its name set round its rim. The baseline is the circle itself. At
+// the top the text reads clockwise and its letters stand outward; at the bottom it reads from left to right
+// as well, so it runs the other way round and its letters stand inward, heads toward the centre.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OnCircle {
+    /// Whether the text is centred on the lowest point of the circle instead of the highest.
+    pub bottom: bool,
+    /// How far the text's middle is turned from there, clockwise, in radians.
+    pub turned: f32,
+}
+
+impl OnCircle {
+    /// What a text layer says about running along a circle; `None` for ordinary text.
+    #[must_use]
+    pub fn of(node: &Node) -> Option<Self> {
+        let bottom = match node.extra.get(ON_CIRCLE).and_then(Value::as_str)? {
+            "top" => false,
+            "bottom" => true,
+            _ => return None,
+        };
+        let turned = node.extra.get(CIRCLE_ANGLE).and_then(Value::as_f64).map_or(0.0, narrow).to_radians();
+        Some(Self { bottom, turned })
+    }
+
+    /// Where on the circle (the angle from its right, clockwise on screen) the point lies that is `along`
+    /// radians of text from the text's middle, and the angle a letter there is drawn at.
+    #[must_use]
+    pub fn at(self, along: f32) -> (f32, f32) {
+        let quarter = std::f32::consts::FRAC_PI_2;
+        if self.bottom {
+            let place = quarter - along + self.turned;
+            (place, place - quarter)
+        } else {
+            let place = along - quarter + self.turned;
+            (place, place + quarter)
+        }
+    }
 }
 
 /// A picture of layers with what is needed to measure it.
@@ -672,7 +855,15 @@ impl Builder<'_> {
                 let to_doc = scene.to_doc.then(&Affine::translate(NOTE_PADDING, NOTE_PADDING));
                 let size = (w - 2.0 * NOTE_PADDING, h - 2.0 * NOTE_PADDING);
                 out.push(Item::Text {
-                    text: Box::new(TextItem { style, color: color32(text_color.with_opacity(opacity)), to_doc, size }),
+                    text: Box::new(TextItem {
+                        style,
+                        color: color32(text_color.with_opacity(opacity)),
+                        to_doc,
+                        size,
+                        circle: None,
+                        track: None,
+                        outlines: Vec::new(),
+                    }),
                     bounds,
                     clip,
                 });
@@ -749,9 +940,27 @@ impl Builder<'_> {
                 if matches!(node.text_growth.as_deref(), Some("fixed-width" | "fixed-width-height")) {
                     style.wrap = Some(w);
                 }
+                let circle = OnCircle::of(node);
+                let track = if circle.is_none() { Track::of(node).map(std::sync::Arc::new) } else { None };
+                if circle.is_some() || track.is_some() {
+                    // Text on a circle or along a line is one line, however long.
+                    style.wrap = None;
+                }
                 let color = fills.iter().find_map(|b| if let Brush::Solid(c) = b { Some(*c) } else { None }).unwrap_or(Rgba::BLACK);
+                let outlines: Vec<(Color32, f32)> =
+                    self.text_outlines(scene, &strokes).into_iter().map(|(ink, reach)| (color32(ink.with_opacity(opacity)), reach)).collect();
+                let reach = outlines.first().map_or(0.0, |(_, reach)| *reach);
+                let bounds = Rect::new(bounds.x - reach, bounds.y - reach, bounds.w + 2.0 * reach, bounds.h + 2.0 * reach);
                 out.push(Item::Text {
-                    text: Box::new(TextItem { style, color: color32(color.with_opacity(opacity)), to_doc: scene.to_doc, size: (w, h) }),
+                    text: Box::new(TextItem {
+                        style,
+                        color: color32(color.with_opacity(opacity)),
+                        to_doc: scene.to_doc,
+                        size: (w, h),
+                        circle,
+                        track,
+                        outlines,
+                    }),
                     bounds,
                     clip,
                 });
@@ -836,6 +1045,58 @@ impl Builder<'_> {
         }
     }
 
+    /// The outlines round the letters of the text `scene`, the outermost first: each one's colour and how far
+    /// it reaches out of the letters.
+    // Human: a text's `stroke` is an outline round its letters, `strokeWidth` wide, drawn outside them so the
+    // letters keep their weight: the name on a team's crest, a sticker's edge. Several strokes are outlines
+    // one round the other, each `strokeWidth` wide; like fills, the first is at the back, so it is the
+    // outermost (a white keyline round a dark outline is `["#ffffff", "$ink"]`).
+    pub(super) fn text_outlines(&self, scene: &SceneNode, strokes: &[Brush]) -> Vec<(Rgba, f32)> {
+        let width = self.stroke_width(scene);
+        let solid: Vec<Rgba> = strokes.iter().filter_map(|b| if let Brush::Solid(c) = b { Some(*c) } else { None }).collect();
+        if width <= 0.0 {
+            return Vec::new();
+        }
+        #[expect(clippy::cast_precision_loss, reason = "a handful of strokes")]
+        solid.iter().enumerate().map(|(at, ink)| (*ink, width * (solid.len() - at) as f32)).collect()
+    }
+
+    /// The outline of a layer that has a shape of its own (a box, an ellipse, a polygon, a path), and how its
+    /// inside is told from its outside.
+    fn shape_of(&self, scene: &SceneNode) -> Option<(Path, FillRule)> {
+        let (node, theme) = (&scene.node, &scene.theme);
+        let (w, h) = (scene.local.w, scene.local.h);
+        match node.kind {
+            Kind::Frame | Kind::Rectangle => Some((rounded_rect(0.0, 0.0, w, h, self.corner_radii(node, theme, w, h)), FillRule::NonZero)),
+            Kind::Ellipse => Some((self.ellipse(node, theme, w, h), FillRule::EvenOdd)),
+            Kind::Polygon => {
+                let count = self.num(node.polygon_count.as_ref(), theme).unwrap_or(3.0).clamp(3.0, 64.0);
+                let radius = match &node.corner_radius {
+                    Some(Corners::All(r)) => self.num(Some(r), theme),
+                    Some(Corners::Each(each)) => self.num(each.first(), theme),
+                    None => None,
+                };
+                Some((polygon(w, h, count, radius.unwrap_or(0.0).max(0.0)), FillRule::NonZero))
+            }
+            Kind::Path => {
+                let shape = node.geometry.as_deref().and_then(|g| svg::parse(g).ok()).map(|segments| fit_path(&segments, node, w, h))?;
+                Some((shape, if node.fill_rule.as_deref() == Some("evenodd") { FillRule::EvenOdd } else { FillRule::NonZero }))
+            }
+            _ => None,
+        }
+    }
+
+    /// The outline of a mask layer as an item that covers its shape, and the box of that shape.
+    fn mask_layer(&self, scene: &SceneNode) -> Option<(Item, Rect)> {
+        if !is_mask(&scene.node) {
+            return None;
+        }
+        let (shape, rule) = self.shape_of(scene)?;
+        let bounds = layout::doc_bounds(scene);
+        let mesh = self.fill_mesh(&shape, &Brush::Solid(Rgba::WHITE), rule, (scene.local.w, scene.local.h), &scene.to_doc, 1.0)?;
+        Some((Item::Mesh { mesh, bounds, clip: None }, bounds))
+    }
+
     /// Adds the items of `scene`'s children, clipped to its box when it clips.
     fn children(&self, scene: &SceneNode, opacity: f32, bounds: Rect, clip: Option<Rect>, out: &mut Vec<Item>) {
         let clips = scene.node.clip.as_ref().and_then(|c| self.vars.flag(c, &scene.theme)).unwrap_or(false);
@@ -847,13 +1108,33 @@ impl Builder<'_> {
         let radii = if clips && boxed { self.corner_radii(&scene.node, &scene.theme, w, h) } else { [0.0; 4] };
         let rounded = radii.iter().any(|radius| *radius > 0.5) && !scene.children.is_empty();
         let mut inside = Vec::new();
+        // Human: a layer with `"mask": true` is drawn as it is, and cuts the layers that follow it in the same
+        // group or frame to its shape: water inside a shield, shading inside a letter. Those layers are
+        // gathered apart and become one picture, cut to the mask's outline.
+        let mut mask: Option<(Item, Rect, Vec<Item>)> = None;
         let mut joined = 0;
         for child in &scene.children {
             // Human: a glass group draws the glass of its children as one pane, so they don't draw their own.
             let merges = joined < glass::MOST_SHAPES && self.merges(scene, child);
             joined += usize::from(merges);
             self.merged.set(merges);
-            self.node(child, opacity, child_clip, if rounded { &mut inside } else { &mut *out });
+            let drawn: &mut Vec<Item> = if rounded { &mut inside } else { &mut *out };
+            // Human: a second mask layer ends what the first one cuts: it is drawn whole, and cuts what follows.
+            let next = self.mask_layer(child);
+            if next.is_some()
+                && let Some((outline, area, masked)) = mask.take()
+            {
+                self.mask_off(&outline, area, child_clip, &masked, drawn);
+            }
+            if let Some((_, _, masked)) = &mut mask {
+                self.node(child, opacity, child_clip, masked);
+            } else {
+                self.node(child, opacity, child_clip, drawn);
+                mask = next.map(|(outline, area)| (outline, area, Vec::new()));
+            }
+        }
+        if let Some((outline, area, masked)) = mask {
+            self.mask_off(&outline, area, child_clip, &masked, if rounded { &mut inside } else { &mut *out });
         }
         if let (true, Some(cut)) = (rounded, child_clip) {
             let outline = self
@@ -1389,16 +1670,145 @@ fn draw_text(painter: &Painter, camera: &Camera, view: egui::Rect, text: &TextIt
         return;
     }
     let (laid, grow) = glyph_scale(text.style.size, z);
-    let galley = painter.layout_job(text_job(&text.style, text.color, laid));
+    let fine = z * painter.ctx().pixels_per_point();
+    for (corner, paragraph, angle) in text_parts(text, laid, fine, &mut |job| painter.layout_job(job)) {
+        paint_galley(painter, screen(camera, view, corner), paragraph, text.color, angle, grow);
+    }
+}
+
+/// How far apart, in screen pixels, the copies of a text lie along the ring that makes its outline.
+const OUTLINE_STEP: f32 = 1.0;
+/// How many copies one ring of an outline has at most.
+const MOST_COPIES: f32 = 256.0;
+
+/// Where the copies of a text lie that together make an outline reaching `width` out of its letters, as
+/// offsets in document units, drawn at `z` screen pixels per unit.
+// Human: letters come from the font picture, which has no outlines to widen. Copies of the text in the
+// outline's colour, set round a ring of the outline's width (and round a second ring half way in when it is
+// wide, for dots and serifs smaller than the outline), fill the same area a widened letter would, with round
+// corners. A letter's square corner shows every gap between two copies as a step, so the copies lie a pixel
+// apart; the graphics card draws a few hundred small letters without effort. (A picture is painted another
+// way, from distances: see `Bitmap::outline`.)
+fn outline_ring(width: f32, z: f32) -> Vec<(f32, f32)> {
+    let mut places = Vec::new();
+    let px = width * z;
+    let rings: &[f32] = if px > 4.0 { &[1.0, 0.5] } else { &[1.0] };
+    for part in rings {
+        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "clamped to 8..=256 before the cast")]
+        let count = (std::f32::consts::TAU * px * part / OUTLINE_STEP).ceil().clamp(8.0, MOST_COPIES) as usize;
+        for at in 0..count {
+            #[expect(clippy::cast_precision_loss, reason = "at most 256 steps")]
+            let angle = std::f32::consts::TAU * at as f32 / count as f32;
+            places.push((width * part * angle.cos(), width * part * angle.sin()));
+        }
+    }
+    places
+}
+
+/// `text` in `color`, as paragraphs with the document point of their top left corner and the angle they are
+/// turned by: the whole text, or its letters one by one when it is set on a circle. `laid` is the scale it
+/// is laid out at; `lay` lays a paragraph out.
+fn text_placed(text: &TextItem, color: Color32, laid: f32, lay: &mut dyn FnMut(LayoutJob) -> std::sync::Arc<egui::Galley>) -> Vec<Letter> {
+    let galley = lay(text_job(&text.style, color, laid));
+    // Human: where the letter whose middle is `at` along a text `long` stands, and the angle it is turned by.
+    let (w, h) = text.size;
+    if let Some(circle) = text.circle {
+        let radius = w.min(h) / 2.0;
+        if radius <= 0.0 {
+            return Vec::new();
+        }
+        return letters_along(text, &galley, color, laid, lay, &|at, long| {
+            let (place, angle) = circle.at((at - long / 2.0) / radius);
+            (Point::new(w / 2.0 + radius * place.cos(), h / 2.0 + radius * place.sin()), angle)
+        });
+    }
+    if let Some(track) = &text.track {
+        let room = track.length();
+        return letters_along(text, &galley, color, laid, lay, &|at, long| {
+            let start = match text.style.align {
+                TextAlign::Left | TextAlign::Justify => 0.0,
+                TextAlign::Center => (room - long) / 2.0,
+                TextAlign::Right => room - long,
+            };
+            track.at(start + at)
+        });
+    }
     let (anchor, angle) = text_anchor(text, galley.size().y / laid);
-    let pos = screen(camera, view, anchor);
+    vec![(anchor, galley, angle)]
+}
+
+/// Everything of `text` that the canvas draws, back to front: the copies that make its outline, then the
+/// text itself. `z` is the scale it is drawn at, in screen pixels per unit.
+fn text_parts(text: &TextItem, laid: f32, z: f32, lay: &mut dyn FnMut(LayoutJob) -> std::sync::Arc<egui::Galley>) -> Vec<Letter> {
+    let mut parts = Vec::new();
+    for (ink, width) in text.outlines.iter().copied() {
+        let ring = outline_ring(width, z);
+        for (corner, paragraph, angle) in text_placed(text, ink, laid, lay) {
+            parts.extend(ring.iter().map(|(dx, dy)| (Point::new(corner.x + dx, corner.y + dy), paragraph.clone(), angle)));
+        }
+    }
+    parts.extend(text_placed(text, text.color, laid, lay));
+    parts
+}
+
+/// A letter of a text set on a circle: the document point of the top left corner of its own small
+/// paragraph, that paragraph, and the angle it is drawn at about that corner.
+type Letter = (Point, std::sync::Arc<egui::Galley>, f32);
+
+/// The letters of `galley` (the text of `text` laid out as one line at `laid` pixels per unit), each placed to
+/// stand on the circle that fits the layer's box. `lay` lays one letter out.
+// Human: the line as a whole says where each letter's middle lies along the text, so the spacing between
+// letters is the face's own; each letter is then drawn by itself, turned to stand on the circle there.
+fn letters_along(
+    text: &TextItem,
+    galley: &egui::Galley,
+    color: Color32,
+    laid: f32,
+    lay: &mut dyn FnMut(LayoutJob) -> std::sync::Arc<egui::Galley>,
+    place: &dyn Fn(f32, f32) -> (Point, f32),
+) -> Vec<Letter> {
+    let Some(row) = galley.rows.first() else { return Vec::new() };
+    let (Some(first), Some(last)) = (row.row.glyphs.first(), row.row.glyphs.last()) else { return Vec::new() };
+    // The space added after each letter is not part of the last letter.
+    let spacing = text.style.letter_spacing * laid;
+    let length = last.pos.x + last.advance_width - spacing - first.pos.x;
+    let turn = text.to_doc.m[1].atan2(text.to_doc.m[0]);
+    let mut single = text.style.clone();
+    single.letter_spacing = 0.0;
+    single.wrap = None;
+    let mut letters = Vec::new();
+    for glyph in &row.row.glyphs {
+        if glyph.chr.is_whitespace() {
+            continue;
+        }
+        let middle = glyph.pos.x - first.pos.x + (glyph.advance_width - spacing) / 2.0;
+        let (stands, angle) = place(middle / laid, length / laid);
+        let on_circle = text.to_doc.apply(stands);
+        single.content = glyph.chr.to_string();
+        let letter = lay(text_job(&single, color, laid));
+        let Some(drawn) = letter.rows.first().and_then(|row| row.row.glyphs.first().map(|glyph| (row.pos, glyph.pos, glyph.advance_width))) else {
+            continue;
+        };
+        // The point of the letter that goes on the circle: the middle of its width, on its baseline.
+        let (foot_x, foot_y) = ((drawn.0.x + drawn.1.x + drawn.2 / 2.0) / laid, (drawn.0.y + drawn.1.y) / laid);
+        let angle = angle + turn;
+        let (sin, cos) = angle.sin_cos();
+        let corner = Point::new(on_circle.x - (foot_x * cos - foot_y * sin), on_circle.y - (foot_x * sin + foot_y * cos));
+        letters.push((corner, letter, angle));
+    }
+    letters
+}
+
+/// Paints `galley` with its top left corner at `pos`, turned by `angle` about that corner and enlarged `grow`
+/// times (1 when it was laid out at the size it is drawn at).
+fn paint_galley(painter: &Painter, pos: Pos2, galley: std::sync::Arc<egui::Galley>, color: Color32, angle: f32, grow: f32) {
     if grow <= 1.0 {
-        painter.add(egui::epaint::TextShape::new(pos, galley, text.color).with_angle(angle));
+        painter.add(egui::epaint::TextShape::new(pos, galley, color).with_angle(angle));
         return;
     }
     // Human: a headline zoomed past what the font atlas holds is laid out at the largest size that fits, and
     // its triangles are scaled up around where the text starts. It is a little soft, and it is there.
-    let shape = egui::epaint::TextShape::new(Pos2::ZERO, galley, text.color).with_angle(angle);
+    let shape = egui::epaint::TextShape::new(Pos2::ZERO, galley, color).with_angle(angle);
     let per_point = painter.ctx().pixels_per_point();
     for clipped in painter.ctx().tessellate(vec![egui::epaint::ClippedShape::new(egui::Rect::EVERYTHING, shape)], per_point) {
         if let egui::epaint::Primitive::Mesh(mut mesh) = clipped.primitive {
@@ -1434,6 +1844,57 @@ fn text_anchor(text: &TextItem, text_h: f32) -> (Point, f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn text_on_a_circle_reads_from_left_to_right_at_the_top_and_at_the_bottom() {
+        let quarter = std::f32::consts::FRAC_PI_2;
+        let node = |json: &str| serde_json::from_str::<Node>(json).unwrap();
+        assert_eq!(OnCircle::of(&node(r#"{"type":"text","id":"a","content":"A"}"#)), None);
+        let top = OnCircle::of(&node(r#"{"type":"text","id":"a","content":"A","onCircle":"top"}"#)).unwrap();
+        // The middle of the text is at the highest point, upright; what follows lies to its right, turned on.
+        assert_eq!(top.at(0.0), (-quarter, 0.0));
+        let (place, angle) = top.at(0.5);
+        assert!(place.cos() > 0.0 && angle > 0.0);
+        let bottom = OnCircle::of(&node(r#"{"type":"text","id":"a","content":"A","onCircle":"bottom","circleAngle":90}"#)).unwrap();
+        assert!(bottom.bottom && (bottom.turned - quarter).abs() < 1e-6);
+        let plain = OnCircle { bottom: true, turned: 0.0 };
+        assert_eq!(plain.at(0.0), (quarter, 0.0));
+        // At the bottom what follows also lies to the right, turned the other way.
+        let (place, angle) = plain.at(0.5);
+        assert!(place.cos() > 0.0 && angle < 0.0);
+    }
+
+    #[test]
+    fn a_text_follows_its_line_from_the_start_and_goes_on_straight_past_its_ends() {
+        let node = |json: &str| serde_json::from_str::<Node>(json).unwrap();
+        assert_eq!(Track::of(&node(r#"{"type":"text","id":"a","content":"A"}"#)), None);
+        assert_eq!(Track::of(&node(r#"{"type":"text","id":"a","content":"A","onPath":"M0 0"}"#)), None);
+        // Right for 100, then down for 50; a second outline is no part of the line.
+        let track = Track::of(&node(r#"{"type":"text","id":"a","content":"A","onPath":"M0 10 H100 V60 M500 500 H600"}"#)).unwrap();
+        assert!((track.length() - 150.0).abs() < 1e-3);
+        let near =
+            |(p, angle): (Point, f32), x: f32, y: f32, turned: f32| (p.x - x).abs() < 1e-3 && (p.y - y).abs() < 1e-3 && (angle - turned).abs() < 1e-3;
+        let quarter = std::f32::consts::FRAC_PI_2;
+        assert!(near(track.at(40.0), 40.0, 10.0, 0.0));
+        assert!(near(track.at(120.0), 100.0, 30.0, quarter));
+        assert!(near(track.at(-20.0), -20.0, 10.0, 0.0) && near(track.at(170.0), 100.0, 80.0, quarter));
+        // A curve is followed closely: a half circle of radius 50 is about 157 long.
+        let arch = Track::of(&node(r#"{"type":"text","id":"a","content":"A","onPath":"M0 50 A50 50 0 0 1 100 50"}"#)).unwrap();
+        assert!((arch.length() - 157.08).abs() < 0.2, "{}", arch.length());
+        assert!(runs_along(&node(r#"{"type":"text","id":"a","onPath":"M0 0 H9"}"#)) && !runs_along(&node(r#"{"type":"text","id":"a"}"#)));
+    }
+
+    #[test]
+    fn an_outline_is_a_ring_of_copies_and_a_mask_is_told_by_its_property() {
+        // A hairline outline takes the fewest copies; a wide one more, and a second ring half way in.
+        assert_eq!(outline_ring(1.0, 1.0).len(), 8);
+        let wide = outline_ring(8.0, 2.0);
+        assert!((120..=200).contains(&wide.len()) && wide.iter().all(|(x, y)| x.hypot(*y) <= 8.001), "{}", wide.len());
+        assert!(wide.iter().any(|(x, y)| (x.hypot(*y) - 4.0).abs() < 0.01));
+        let node = |json: &str| serde_json::from_str::<Node>(json).unwrap();
+        assert!(is_mask(&node(r#"{"type":"path","id":"a","mask":true}"#)));
+        assert!(!is_mask(&node(r#"{"type":"path","id":"a","mask":false}"#)) && !is_mask(&node(r#"{"type":"path","id":"a"}"#)));
+    }
 
     fn close(a: &Rect, b: &Rect) -> bool {
         [(a.x, b.x), (a.y, b.y), (a.w, b.w), (a.h, b.h)].iter().all(|(u, v)| (u - v).abs() < 1e-3)

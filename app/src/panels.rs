@@ -121,6 +121,9 @@ enum LayerAction {
     ToggleHidden(String),
 }
 
+/// What the layers list says after a mask layer's name, and what it means.
+const MASK_TAG: (&str, &str) = ("mask", "Cuts the layers above it in this group to its shape");
+
 /// One line of the layers list.
 struct Row<'a> {
     /// The layer's id: a document id, or `instance/inner` inside an instance.
@@ -133,6 +136,8 @@ struct Row<'a> {
     has_kids: bool,
     /// Top-level layers start open.
     top: bool,
+    /// A word after the layer's name for what it does to other layers, and what that word means.
+    does: Option<(&'static str, &'static str)>,
 }
 
 /// Draws one line of the layers list; returns whether its children are shown.
@@ -173,6 +178,10 @@ fn row(ui: &mut Ui, editor: &Editor, line: &Row, depth: usize, dark: bool, actio
         if label.clicked() {
             *action = Some(LayerAction::Select { id: id.to_owned(), add: ui.input(|i| i.modifiers.shift || i.modifiers.command) });
         }
+        // Human: a mask is told apart in the list, since what it does shows only on the layers above it.
+        if let Some((word, meaning)) = line.does {
+            ui.label(RichText::new(word).small().color(ACCENT)).on_hover_text(meaning);
+        }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let eye = if line.hidden { "○" } else { "●" };
             if ui
@@ -211,6 +220,7 @@ fn layer_row(ui: &mut Ui, editor: &Editor, node: &Node, depth: usize, dark: bool
         },
         has_kids: instance.map_or(!node.kids().is_empty(), |shown| !shown.children.is_empty()),
         top: depth == 0,
+        does: crate::render::is_mask(node).then_some(MASK_TAG),
     };
     if !row(ui, editor, &line, depth, dark, action) {
         return;
@@ -239,6 +249,7 @@ fn inside_row(ui: &mut Ui, editor: &Editor, shown: &SceneNode, depth: usize, dar
         linked: Some(theme::INSTANCE),
         has_kids: !shown.children.is_empty(),
         top: false,
+        does: crate::render::is_mask(&shown.node).then_some(MASK_TAG),
     };
     if row(ui, editor, &line, depth, dark, action) {
         for child in shown.children.iter().rev() {
@@ -1005,6 +1016,21 @@ fn appearance(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
             edits.set(move |n| n.clip = (!clips).then_some(Flag::Value(true)));
         }
     }
+    // Human: a shape can cut the layers above it in its group to its outline (water inside a shield).
+    if matches!(node.kind, Kind::Frame | Kind::Rectangle | Kind::Ellipse | Kind::Polygon | Kind::Path) {
+        ui.add_space(PROPS_GAP);
+        let (cell, _) = ui.allocate_exact_size(vec2(ui.available_width(), PROPS_ROW), Sense::hover());
+        let masks = crate::render::is_mask(node);
+        if check(ui, cell, "Mask Layers Above", masks, true, palette) {
+            edits.set(move |n| {
+                if masks {
+                    n.extra.remove(crate::render::MASK);
+                } else {
+                    n.extra.insert(crate::render::MASK.to_owned(), Value::Bool(true));
+                }
+            });
+        }
+    }
     end(ui, true);
 }
 
@@ -1624,7 +1650,87 @@ fn text(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
             }
         });
     }
+    on_circle(ui, shown, edits);
     end(ui, true);
+}
+
+/// The choice of a text running along a line of its own, among the ways a text can run.
+const LINE: &str = "line";
+
+/// How a text runs: straight, or round the top or the bottom of the circle that fits its box, and how far
+/// round the circle its middle is turned.
+// Human: a text set on a circle has a box that is that circle, so choosing a circle makes the box a square
+// of a fixed size (as wide as the text was, at least four times its size, so the letters have a curve to stand
+// on); going back to straight makes it a line that grows again.
+fn on_circle(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
+    let (palette, node) = (shown.palette, shown.node);
+    let said = node.extra.get(crate::render::ON_CIRCLE).and_then(Value::as_str);
+    // Human: a text along a line was given its line by a model or in the file; here it can be told from a
+    // straight one and made straight again. Its place on the line is the alignment above.
+    let lined = said.is_none() && node.extra.contains_key(crate::render::ON_PATH);
+    ui.add_space(PROPS_GAP);
+    let ways = [("Straight", None), ("Circle Top", Some("top")), ("Circle Bottom", Some("bottom")), ("Line", Some(LINE))];
+    let now = if lined { Some(LINE) } else { said };
+    let labels: Vec<(&str, bool)> = ways.iter().map(|(label, value)| (*label, now == *value)).collect();
+    let chosen =
+        choice_row(ui, "on-circle", &labels, palette).and_then(|index| ways.get(index)).map(|(_, value)| *value).filter(|value| now != *value);
+    if lined {
+        ui.add_space(PROPS_GAP);
+        // Human: the line has points like a path; they are edited on the canvas (Enter does the same).
+        if wide_button(ui, Some("spline"), "Edit Line", palette).clicked() {
+            edits.command = Some(Editor::edit_selected_path);
+        }
+    }
+    if chosen == Some(Some(LINE)) {
+        // Human: a new line is a gentle arch across the text's box, there to be bent: the box is made a
+        // fixed one that holds it, at least three times as high as the letters.
+        let (w, h) = shown.size;
+        let size = pen_doc::layout::text_style(node, shown.vars, shown.theme).size;
+        let (across, high) = (w.max(4.0 * size).round(), h.max(3.0 * size).round());
+        let line = format!("M0 {} Q{} {} {} {}", high * 0.75, across / 2.0, high * 0.25, across, high * 0.75);
+        edits.set(move |n| {
+            n.extra.remove(crate::render::ON_CIRCLE);
+            n.extra.remove(crate::render::CIRCLE_ANGLE);
+            n.extra.insert(crate::render::ON_PATH.to_owned(), Value::String(line.clone()));
+            n.text_growth = Some("fixed-width-height".to_owned());
+            (n.width, n.height) = (Some(Num::new(across)), Some(Num::new(high)));
+            n.text_align = Some("center".to_owned());
+        });
+    } else if let Some(value) = chosen {
+        let (w, h) = shown.size;
+        let size = pen_doc::layout::text_style(node, shown.vars, shown.theme).size;
+        let was_straight = said.is_none() && !lined;
+        edits.set(move |n| {
+            n.extra.remove(crate::render::ON_PATH);
+            if let Some(where_on) = value {
+                n.extra.insert(crate::render::ON_CIRCLE.to_owned(), Value::String(where_on.to_owned()));
+                if was_straight {
+                    let across = w.max(h).max(4.0 * size).round();
+                    n.text_growth = Some("fixed-width-height".to_owned());
+                    (n.width, n.height) = (Some(Num::new(across)), Some(Num::new(across)));
+                }
+            } else {
+                n.extra.remove(crate::render::ON_CIRCLE);
+                n.extra.remove(crate::render::CIRCLE_ANGLE);
+                n.text_growth = None;
+                (n.width, n.height) = (None, None);
+            }
+        });
+    }
+    if said.is_some() {
+        ui.add_space(PROPS_GAP);
+        let [left, _] = pair(ui);
+        let angle = node.extra.get(crate::render::CIRCLE_ANGLE).and_then(Value::as_f64).map_or(0.0, pen_doc::value::narrow);
+        if let Some(v) = number(ui, left, Tag::Icon("rotate-cw"), Some(angle), None, 1.0, palette) {
+            edits.set(move |n| {
+                if v.abs() > f32::EPSILON {
+                    n.extra.insert(crate::render::CIRCLE_ANGLE.to_owned(), serde_json::json!(v));
+                } else {
+                    n.extra.remove(crate::render::CIRCLE_ANGLE);
+                }
+            });
+        }
+    }
 }
 
 /// Code: turning the layer into code. Nothing can be exported yet; the controls say so.

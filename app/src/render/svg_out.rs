@@ -18,6 +18,9 @@ use super::{Brush, Builder, GradientKind, NOTE_COLOR, polygon_points};
 use crate::effects::{self, EffectKind};
 use crate::icons;
 
+/// How far the straight pieces of a mask's outline may lie from its curves, in document units.
+const MASK_TOLERANCE: f32 = 0.02;
+
 /// The file being written: the definitions (gradients, clips, filters) and the drawing, and a counter for ids.
 #[derive(Default)]
 struct Sheet {
@@ -354,7 +357,7 @@ impl Builder<'_> {
             }
         }
         match node.kind {
-            Kind::Text | Kind::Note => self.svg_text(scene, &fills, &transform, sheet),
+            Kind::Text | Kind::Note => self.svg_text(scene, &fills, &strokes, &transform, sheet),
             Kind::Icon | Kind::IconFont => {
                 let ink = fills.iter().find_map(|b| if let Brush::Solid(c) = b { Some(*c) } else { None }).unwrap_or(Rgba::BLACK);
                 let old = |key: &str| node.extra.get(key).and_then(Value::as_str);
@@ -384,20 +387,68 @@ impl Builder<'_> {
             }
             _ => false,
         };
-        for child in &scene.children {
-            self.svg_node(child, sheet);
-        }
+        self.svg_children(scene, sheet);
         if cut {
             sheet.body.push_str("</g>\n");
         }
         sheet.body.push_str("</g>\n");
     }
 
+    /// Writes the children of `scene`; the layers after a mask layer are cut to its shape.
+    fn svg_children(&self, scene: &SceneNode, sheet: &mut Sheet) {
+        let mut masked = false;
+        for child in &scene.children {
+            // A second mask layer ends what the first one cuts: it is written whole, and cuts what follows.
+            let outline = self.svg_mask(child);
+            if outline.is_some() && std::mem::take(&mut masked) {
+                sheet.body.push_str("</g>\n");
+            }
+            self.svg_node(child, sheet);
+            if let Some(outline) = outline {
+                let clip = sheet.id("c");
+                let _ = writeln!(sheet.defs, "<clipPath id=\"{clip}\">{outline}</clipPath>");
+                let _ = writeln!(sheet.body, "<g clip-path=\"url(#{clip})\">");
+                masked = true;
+            }
+        }
+        if masked {
+            sheet.body.push_str("</g>\n");
+        }
+    }
+
+    /// The outline of a mask layer as a closed SVG path element in the document's coordinates.
+    // Human: the outline is written from the same shape the canvas draws, as straight pieces fine enough for
+    // any print size, so every kind of layer that can be a mask is written one way.
+    fn svg_mask(&self, scene: &SceneNode) -> Option<String> {
+        use lyon_tessellation::path::iterator::PathIterator;
+        if !super::is_mask(&scene.node) {
+            return None;
+        }
+        let (shape, rule) = self.shape_of(scene)?;
+        let mut data = String::new();
+        for event in shape.iter().flattened(MASK_TOLERANCE) {
+            match event {
+                lyon_tessellation::path::Event::Begin { at } => {
+                    let p = scene.to_doc.apply(pen_doc::geom::Point::new(at.x, at.y));
+                    let _ = write!(data, "M{} {}", n(p.x), n(p.y));
+                }
+                lyon_tessellation::path::Event::Line { to, .. } => {
+                    let p = scene.to_doc.apply(pen_doc::geom::Point::new(to.x, to.y));
+                    let _ = write!(data, "L{} {}", n(p.x), n(p.y));
+                }
+                lyon_tessellation::path::Event::End { .. } => data.push('Z'),
+                lyon_tessellation::path::Event::Quadratic { .. } | lyon_tessellation::path::Event::Cubic { .. } => {}
+            }
+        }
+        let rule = if rule == lyon_tessellation::FillRule::EvenOdd { "evenodd" } else { "nonzero" };
+        Some(format!("<path d=\"{data}\" clip-rule=\"{rule}\"/>"))
+    }
+
     /// Writes a text's (or a sticky note's) lines.
     // Human: SVG has no text boxes: each line the text has is written at its place, by the font's size and line
     // height. A text that the app wraps to its width is written unwrapped, since where it wraps depends on
     // the font the viewer has.
-    fn svg_text(&self, scene: &SceneNode, fills: &[Brush], transform: &str, sheet: &mut Sheet) {
+    fn svg_text(&self, scene: &SceneNode, fills: &[Brush], strokes: &[Brush], transform: &str, sheet: &mut Sheet) {
         let (node, theme) = (&scene.node, &scene.theme);
         let style = layout::text_style(node, self.vars, theme);
         if style.content.is_empty() {
@@ -432,12 +483,75 @@ impl Builder<'_> {
         if style.underline || style.strikethrough {
             let _ = write!(attributes, " text-decoration=\"{}\"", if style.underline { "underline" } else { "line-through" });
         }
-        let _ = writeln!(sheet.body, "<text{attributes}{} transform=\"{transform}\">", color("fill", ink));
+        // Human: the text is written once for each outline, the outermost first, as a stroke twice as wide
+        // as the outline reaches (half of it lies under the letters), and then once filled.
+        let mut paints: Vec<String> = if sticky {
+            Vec::new()
+        } else {
+            self.text_outlines(scene, strokes)
+                .into_iter()
+                .map(|(outline, reach)| {
+                    format!(" fill=\"none\"{} stroke-width=\"{}\" stroke-linejoin=\"round\"", color("stroke", outline), n(2.0 * reach))
+                })
+                .collect()
+        };
+        paints.push(color("fill", ink));
+        // Human: text set along a circle is a `textPath` on that circle: clockwise from the bottom for text
+        // at the top, the other way round from the top for text at the bottom, so half way is its middle.
+        if let Some(circle) = (!sticky).then(|| super::OnCircle::of(node)).flatten() {
+            let (w, h) = (scene.local.w, scene.local.h);
+            let (cx, cy, r) = (w / 2.0, h / 2.0, w.min(h) / 2.0);
+            let (start, sweep) = if circle.bottom { (cy - r, 0) } else { (cy + r, 1) };
+            let id: String = scene.id.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+            let attributes = attributes.replace(&format!(" text-anchor=\"{anchor}\""), " text-anchor=\"middle\"");
+            let turned = format!("{transform} rotate({} {} {})", n(circle.turned.to_degrees()), n(cx), n(cy));
+            let _ = writeln!(
+                sheet.body,
+                "<path id=\"circle-{id}\" fill=\"none\" d=\"M{} {} A{r} {r} 0 1 {sweep} {} {} A{r} {r} 0 1 {sweep} {} {}\" transform=\"{turned}\"/>",
+                n(cx),
+                n(start),
+                n(cx),
+                n(2.0 * cy - start),
+                n(cx),
+                n(start),
+                r = n(r)
+            );
+            for paint in &paints {
+                let _ = writeln!(
+                    sheet.body,
+                    "<text{attributes}{paint} transform=\"{turned}\"><textPath href=\"#circle-{id}\" startOffset=\"50%\">{}</textPath></text>",
+                    escape(&style.content)
+                );
+            }
+            return;
+        }
+        // Human: text along a line is a `textPath` on that line, written as the layer has it; where the text
+        // sits on it is its alignment.
+        if let Some(data) = (!sticky && super::Track::of(node).is_some()).then(|| node.extra.get(super::ON_PATH).and_then(Value::as_str)).flatten() {
+            let id: String = scene.id.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+            let offset = match style.align {
+                TextAlign::Left | TextAlign::Justify => "0%",
+                TextAlign::Center => "50%",
+                TextAlign::Right => "100%",
+            };
+            let _ = writeln!(sheet.body, "<path id=\"line-{id}\" fill=\"none\" d=\"{}\" transform=\"{transform}\"/>", escape(data));
+            for paint in &paints {
+                let _ = writeln!(
+                    sheet.body,
+                    "<text{attributes}{paint} transform=\"{transform}\"><textPath href=\"#line-{id}\" startOffset=\"{offset}\">{}</textPath></text>",
+                    escape(&style.content)
+                );
+            }
+            return;
+        }
+        let mut lines = String::new();
         let mut baseline = pad + (line - style.size) / 2.0 + style.size * 0.8;
         for text in style.content.lines() {
-            let _ = writeln!(sheet.body, "<tspan x=\"{}\" y=\"{}\">{}</tspan>", n(x), n(baseline), escape(text));
+            let _ = writeln!(lines, "<tspan x=\"{}\" y=\"{}\">{}</tspan>", n(x), n(baseline), escape(text));
             baseline += line;
         }
-        sheet.body.push_str("</text>\n");
+        for paint in &paints {
+            let _ = writeln!(sheet.body, "<text{attributes}{paint} transform=\"{transform}\">\n{lines}</text>");
+        }
     }
 }

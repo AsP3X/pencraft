@@ -713,9 +713,19 @@ impl Canvas {
             return;
         };
         let b = layout::doc_bounds(scene);
-        let min = screen(&editor.camera, view, Point::new(b.x, b.y));
-        let size = egui::vec2((b.w * editor.camera.zoom).max(120.0), (b.h * editor.camera.zoom).max(28.0));
         let font = layout::text_style(&scene.node, Vars::new(&editor.doc), &scene.theme).size * editor.camera.zoom;
+        let (mut min, mut size) = (
+            screen(&editor.camera, view, Point::new(b.x, b.y)),
+            egui::vec2((b.w * editor.camera.zoom).max(120.0), (b.h * editor.camera.zoom).max(28.0)),
+        );
+        // Human: a text set on a circle or along a line has that shape's box as its own; an editor that large
+        // would hide the very letters being typed. Its words are edited in one line in the middle of the box,
+        // and the text on its curve follows each key.
+        if crate::render::runs_along(&scene.node) {
+            size = egui::vec2((size.x * 0.7).max(120.0), (font.clamp(8.0, 96.0) * 1.4).max(28.0));
+            let centre = screen(&editor.camera, view, b.center());
+            min = egui::pos2(centre.x - size.x / 2.0, centre.y - size.y / 2.0);
+        }
         // Human: the text shown, which for a text inside an instance is the component's with the instance's override.
         let mut text = scene.node.content.clone().unwrap_or_default();
         let area = egui::Area::new(egui::Id::unique(("text-edit", &id))).fixed_pos(min).order(egui::Order::Foreground);
