@@ -9,6 +9,10 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.12] - 2026-11-18
+
+Fonts are right again while Pencraft works in the background.
+
 ### Fixed
 
 - **Fonts while Pencraft is in the background.** When an AI client opened
@@ -433,7 +437,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.11...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.12...HEAD
+[0.3.12]: https://github.com/AsP3X/pencraft/compare/v0.3.11...v0.3.12
 [0.3.11]: https://github.com/AsP3X/pencraft/compare/v0.3.10...v0.3.11
 [0.3.10]: https://github.com/AsP3X/pencraft/compare/v0.3.9...v0.3.10
 [0.3.9]: https://github.com/AsP3X/pencraft/compare/v0.3.8...v0.3.9
