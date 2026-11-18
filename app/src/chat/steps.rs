@@ -49,7 +49,7 @@ struct Words {
 }
 
 /// The tools the app gives a model, as the chat names them.
-const TOOLS: [Words; 19] = [
+const TOOLS: [Words; 20] = [
     Words {
         tool: "get_state",
         icon: "eye",
@@ -92,6 +92,7 @@ const TOOLS: [Words; 19] = [
     Words { tool: "read_web_page", icon: "globe", doing: "Reading a web page", did: "Read a web page", failed: "Couldn't read the web page" },
     Words { tool: "search_images", icon: "image", doing: "Looking for pictures", did: "Looked for pictures", failed: "Couldn't look for pictures" },
     Words { tool: "download_image", icon: "download", doing: "Fetching a picture", did: "Fetched a picture", failed: "Couldn't fetch the picture" },
+    Words { tool: "ask_user", icon: "message-circle-question-mark", doing: "Asking you", did: "Asked you", failed: "Couldn't ask you" },
     // Human: not a tool the model calls: the app has a reviewer look at a finished design ([`super::critic`]).
     Words {
         tool: "review_design",
@@ -108,6 +109,12 @@ const OTHER_ICON: &str = "wrench";
 pub const FAILED_ICON: &str = "circle-x";
 /// The icon that says the assistant's answer is there.
 pub const ANSWERED_ICON: &str = "check";
+/// The icon of next steps the assistant offers.
+pub const SUGGESTED_ICON: &str = "lightbulb";
+/// The icon of an answer the user gave to a question.
+pub const PICKED_ICON: &str = "corner-down-right";
+/// The icon that closes a question.
+pub const CLOSE_ICON: &str = "x";
 /// The icon of a note that isn't about a tool ("Stopped").
 pub const PLAIN_ICON: &str = "sparkle";
 /// The most letters of the model's own description a note shows.
@@ -258,7 +265,9 @@ mod tests {
             let name = tool["name"].as_str().unwrap();
             assert!(words(name).is_some(), "{name}");
         }
-        for icon in TOOLS.iter().map(|words| words.icon).chain([OTHER_ICON, FAILED_ICON, PLAIN_ICON, ANSWERED_ICON]) {
+        for icon in
+            TOOLS.iter().map(|words| words.icon).chain([OTHER_ICON, FAILED_ICON, PLAIN_ICON, ANSWERED_ICON, SUGGESTED_ICON, PICKED_ICON, CLOSE_ICON])
+        {
             assert!(crate::icons::outline("lucide", icon).is_some(), "{icon}");
         }
     }

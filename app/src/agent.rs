@@ -344,6 +344,17 @@ pub fn tools() -> Value {
                 "aspect": { "type": "string", "enum": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"], "description": "Width to height. Leave out to keep the shape of the picture to change." },
                 "size": { "type": "string", "enum": ["normal", "large"], "description": "As in generate_image." }
             } }
+        },
+        {
+            "name": "ask_user",
+            "description": "Ask the user something, or offer what to do next, in the chat inside Pencraft. With `questions`: when a request is unclear in a way that changes the design, ask one to three short questions, each with two to four answers to pick from (the user can also type an answer of their own). The call returns at once; end your turn after it and do not guess meanwhile, the answers arrive as the user's next message. With `suggestions`: when you have finished something, offer two to four next steps the user can start with one click, each worded as the user would ask for it (\"Add a dark version\"). Give one of the two, never both. Plain words, no Markdown.",
+            "inputSchema": { "type": "object", "properties": {
+                "questions": { "type": "array", "minItems": 1, "maxItems": 3, "description": "The questions, most important first.", "items": { "type": "object", "required": ["question"], "properties": {
+                    "question": { "type": "string", "description": "One short question." },
+                    "options": { "type": "array", "maxItems": 4, "items": { "type": "string" }, "description": "Two to four short answers to pick from, a few words each. Leave out a catch-all like \"Other\": the user can always type." }
+                } } },
+                "suggestions": { "type": "array", "minItems": 1, "maxItems": 4, "items": { "type": "string" }, "description": "Next steps to offer, each a short request in the user's voice." }
+            } }
         }
     ]);
     if let Some(list) = all.as_array_mut() {
@@ -962,6 +973,7 @@ mod tests {
                 "export_layers",
                 "generate_image",
                 "edit_image",
+                "ask_user",
                 "search_web",
                 "read_web_page",
                 "search_images",
@@ -976,7 +988,7 @@ mod tests {
         off.extend(crate::web::TOOLS.map(str::to_owned));
         let left = tools_without(&off);
         let left: Vec<&str> = left.as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-        assert_eq!(left.len(), 12);
+        assert_eq!(left.len(), 13);
         assert!(!left.contains(&"export_layers") && !left.contains(&"search_web") && left.contains(&"edit_layers") && left.contains(&"edit_image"));
         assert_eq!(tools_without(&[]), tools);
     }

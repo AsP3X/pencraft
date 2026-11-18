@@ -14,8 +14,8 @@ use crate::chips::Chip;
 use crate::editor::{Editor, Tool};
 use crate::icons;
 use crate::theme::{
-    self, ASSISTANT_MENU_WIDTH, CHAT_STATUS_GAP, CHAT_STATUS_STAY, CHIP_CORNER, CHIP_HEIGHT, CHIP_ICON, CHIP_ICON_AT, CHIP_RADIUS, COMPOSER_HEIGHT,
-    ICON_SIZE, IDEA_ROW, IDEA_ROW_GAP, ISLAND_GAP, ISLAND_PADDING, ISLAND_RADIUS, MESSAGE_BAR_HEIGHT, MESSAGE_BAR_SELECTED_WIDTH,
+    self, ASSISTANT_MENU_WIDTH, CHAT_ASK_WIDTH, CHAT_STATUS_GAP, CHAT_STATUS_STAY, CHIP_CORNER, CHIP_HEIGHT, CHIP_ICON, CHIP_ICON_AT, CHIP_RADIUS,
+    COMPOSER_HEIGHT, ICON_SIZE, IDEA_ROW, IDEA_ROW_GAP, ISLAND_GAP, ISLAND_PADDING, ISLAND_RADIUS, MESSAGE_BAR_HEIGHT, MESSAGE_BAR_SELECTED_WIDTH,
     MESSAGE_BAR_TYPING_ROOM, MESSAGE_BAR_WIDTH, MESSAGE_TEXT_SIZE, Palette, RAIL_ACTIVE, RAIL_ARROW_STEP, RAIL_MENU_ROW, RAIL_MENU_WIDTH, RAIL_STEP,
     RAIL_WIDTH, SELECTION_CHIP_HEIGHT, SEND_BUTTON, SIDEBAR_ANIMATION, SIDEBAR_GROW_START, SIDEBAR_HEADER_PADDING, SIDEBAR_ROW, SIDEBAR_SLIDE_END,
     SIDEBAR_TEXT_SIZE, SIDEBAR_TITLE_SIZE, SIDEBAR_WIDE_WIDTH, SIDEBAR_WIDTH, ZOOM_ISLAND,
@@ -181,6 +181,8 @@ pub enum ChatAsk {
     Looked,
     /// Talk to the assistant with this id from now on.
     Pick(String),
+    /// Take what the user did with a question of the assistant's: an answer picked, or the question closed.
+    Answer(crate::conversation::Pick),
 }
 
 impl Default for Sidebar {
@@ -409,10 +411,16 @@ impl Sidebar {
         }
         if fade > 0.0 {
             let foot = pos2(bar.center().x, bar.top() - CHAT_STATUS_GAP);
-            let line = crate::conversation::Line { foot, most_width: bar.width(), fresh: since < CHAT_STATUS_STAY, opacity: fade };
-            if crate::conversation::status_line(ctx, &line, look.chat, palette, look.animate) {
-                self.collapsed = false;
-                self.view = View::Chat;
+            // Human: a question of the assistant's is a dialog in the same place, as wide as the window allows.
+            let ask_width = (space.width() - 2.0 * ISLAND_GAP).min(CHAT_ASK_WIDTH);
+            let line = crate::conversation::Line { foot, most_width: bar.width(), ask_width, fresh: since < CHAT_STATUS_STAY, opacity: fade };
+            match crate::conversation::status_line(ctx, &line, look.chat, palette, look.animate) {
+                Some(crate::conversation::Tap::Open) => {
+                    self.collapsed = false;
+                    self.view = View::Chat;
+                }
+                Some(crate::conversation::Tap::Pick(pick)) => self.chat_asks.push(ChatAsk::Answer(pick)),
+                None => {}
             }
         } else {
             // The open chat shows the answer itself.
@@ -487,6 +495,14 @@ impl Sidebar {
         let line = title.bottom() + 11.0;
         ui.painter().hline(panel.x_range(), line, Stroke::new(1.0, palette.outline.gamma_multiply(0.7)));
         let body = Rect::from_min_max(pos2(panel.left() + ISLAND_PADDING, line + 1.0), pos2(panel.right() - ISLAND_PADDING, panel.bottom() - 1.0));
+        // Human: a view that isn't the chat still shows a question of the assistant's, under itself.
+        let body = if self.view == View::Chat {
+            body
+        } else {
+            let (left, pick) = crate::conversation::pinned(ui, look.chat, body, look.chat_text, palette);
+            self.chat_asks.extend(pick.map(ChatAsk::Answer));
+            left
+        };
         ui.scope_builder(UiBuilder::new().max_rect(body), |ui| {
             ui.set_clip_rect(body.intersect(ui.clip_rect()));
             match self.view {
@@ -496,7 +512,10 @@ impl Sidebar {
                     crate::conversation::forget(ui.ctx(), look.chat_id);
                     self.start_of_chat(ui, palette);
                 }
-                View::Chat => crate::conversation::show(ui, look.chat, look.chat_id, look.chat_text, palette, look.animate),
+                View::Chat => {
+                    let pick = crate::conversation::show(ui, look.chat, look.chat_id, look.chat_text, palette, look.animate);
+                    self.chat_asks.extend(pick.map(ChatAsk::Answer));
+                }
                 View::Layers => {
                     ui.add_space(8.0);
                     crate::panels::layers(ui, editor, dark);

@@ -201,6 +201,7 @@ impl App {
                 }
                 ChatAsk::Send { shown, pointed, told, files } => self.send_chat(shown, pointed, told, &files, ctx),
                 ChatAsk::Attach => self.ask_attach(),
+                ChatAsk::Answer(pick) => self.answer_chat(pick, ctx),
             }
         }
     }
@@ -282,7 +283,32 @@ impl App {
             }
             (false, false) => (format!("{shown}\n\nAttached: {}", names.join(", ")), text),
         };
-        let message = Waiting { shown, told, files: paths.to_vec(), pointed };
+        // Human: a message written while the assistant's question is open is the answer to it; the answers
+        // picked before that go along.
+        let told = match self.shown_talk().chat.leave_question() {
+            Some(picked) => format!("{picked}\n\n{told}"),
+            None => told,
+        };
+        self.hand_over(Waiting { shown, told, files: paths.to_vec(), pointed }, ctx);
+    }
+
+    /// Does what the user picked in a question of the assistant's: an answer is taken, and with the last one
+    /// the answers go to the assistant as the user's message; or the question is closed.
+    fn answer_chat(&mut self, pick: crate::conversation::Pick, ctx: &egui::Context) {
+        let chat = &mut self.shown_talk().chat;
+        match pick {
+            crate::conversation::Pick::Dismiss => chat.dismiss(),
+            crate::conversation::Pick::Answer { question, answer } => {
+                if let Some(message) = chat.answer(question, &answer) {
+                    self.hand_over(message, ctx);
+                }
+            }
+        }
+    }
+
+    /// Gives `message` to the chat the sidebar shows: its assistant answers it, or, while one is at work, takes
+    /// it at its next step or after its run, as the settings say.
+    fn hand_over(&mut self, message: Waiting, ctx: &egui::Context) {
         let steer = self.prefs.get().agents.always_steer;
         let talk = self.shown_talk();
         let id = talk.id;

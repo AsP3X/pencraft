@@ -295,7 +295,15 @@ fn answer(message: &Value, chat: Option<u64>, shared: &Shared) -> Option<Value> 
             })
         }
         Some("ping") => json!({}),
-        Some("tools/list") => json!({ "tools": crate::agent::tools_without(&lock(&shared.off)) }),
+        Some("tools/list") => {
+            // Human: only the app's own chat has a place to put a question to the user; a client outside the app
+            // asks in its own window, and is not offered the tool.
+            let mut off = lock(&shared.off).clone();
+            if chat.is_none() {
+                off.push(crate::chat::asks::TOOL.to_owned());
+            }
+            json!({ "tools": crate::agent::tools_without(&off) })
+        }
         Some("tools/call") => {
             let Some(tool) = params.get("name").and_then(Value::as_str) else { return Some(failure(id, -32602, "tools/call needs the tool's name")) };
             let (reply, answered) = channel();
@@ -479,6 +487,12 @@ mod tests {
         assert!(answer(&json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }), None, &shared).is_none());
         let list = answer(&json!({ "jsonrpc": "2.0", "id": "a", "method": "tools/list" }), None, &shared).unwrap();
         assert!(list["result"]["tools"].as_array().is_some_and(|tools| tools.len() >= 9) && list["id"] == "a");
+        // Asking the user is offered to the app's own chats only.
+        let offered = |chat| {
+            let list = answer(&json!({ "jsonrpc": "2.0", "id": "c", "method": "tools/list" }), chat, &shared).unwrap();
+            list["result"]["tools"].as_array().unwrap().iter().any(|tool| tool["name"] == crate::chat::asks::TOOL)
+        };
+        assert!(offered(Some(3)) && !offered(None));
         // A tool the user turned off is left out of the list from then on.
         lock(&shared.off).push("export_layers".to_owned());
         let fewer = answer(&json!({ "jsonrpc": "2.0", "id": "b", "method": "tools/list" }), None, &shared).unwrap();

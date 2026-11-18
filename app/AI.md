@@ -84,6 +84,13 @@ Text can run round a circle, for the rim of a seal or a badge: a text layer with
 PNG, PDF and SVG exports. Its words are edited on the canvas in one line in the middle of the circle, and the
 text round the rim follows as you type.
 
+When a request could go two ways, the assistant asks instead of guessing: a question with a few answers to
+pick from. In the chat it is a card; with the sidebar folded away, the status line over the message bar grows
+into the question; with another view open (the layers, say), it sits under that view. Click an answer, or type your own into the message box and send it. Several questions come
+one after the other, and your answers go to the assistant together. The cross closes a question unanswered.
+When it has finished something, the assistant may offer next steps the same way; a click sends one as your
+message. A finished design is not reviewed while a question waits for you.
+
 The send button turns into a stop button while the assistant works. "New" starts a new chat.
 
 You can keep writing while the assistant works. A message sent meanwhile shows greyed at the end of the chat
@@ -163,6 +170,7 @@ A client that speaks MCP over HTTP can skip `pencraft mcp`: the address and the 
 | `search_images` | Photos and illustrations that may be reused, each with its maker, licence and credit line |
 | `download_image` | Fetches a picture into the `images` folder beside the document, for an image fill |
 | `edit_image` | Has an image model change a picture by an instruction (a layer's picture, layers as they look, or a picture file), or make one that goes by up to four reference pictures; puts the result in place of the layer's picture or beside the layers drawn. Needs a Google Gemini service (see Pictures) |
+| `ask_user` | Asks you one to three questions, each with answers to click, or offers next steps. Only the chat inside Pencraft has it |
 
 ## The web
 

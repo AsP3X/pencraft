@@ -184,6 +184,22 @@ pub const CHAT_STATUS_MORPH: f32 = 0.36;
 pub const CHAT_STATUS_HOLD: f32 = 2.4;
 /// Seconds the line still says that the answer is there after a run.
 pub const CHAT_STATUS_STAY: f64 = 12.0;
+/// The widest the assistant's question over the message bar gets.
+pub const CHAT_ASK_WIDTH: f32 = 440.0;
+/// The room between the edge of a question's island or card and what stands in it.
+pub const CHAT_ASK_PAD: f32 = 14.0;
+/// The least height of an answer to pick.
+pub const CHAT_ASK_OPTION: f32 = 32.0;
+/// The room between two answers.
+pub const CHAT_ASK_OPTION_GAP: f32 = 6.0;
+/// The room between an answer's edge and its words, left and right.
+pub const CHAT_ASK_OPTION_PAD: f32 = 11.0;
+/// The corner radius of an answer.
+pub const CHAT_ASK_OPTION_RADIUS: f32 = 8.0;
+/// The room between a question, its answers and the line under them.
+pub const CHAT_ASK_GAP: f32 = 10.0;
+/// The side of the button that closes a question.
+pub const CHAT_ASK_CLOSE: f32 = 22.0;
 /// Seconds a new line of the conversation takes to fade in.
 pub const CHAT_APPEAR: f32 = 0.24;
 /// How far below its place a new line starts.

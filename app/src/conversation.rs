@@ -8,6 +8,8 @@
 use egui::text::{LayoutJob, TextFormat};
 use egui::{Align, Color32, FontId, Layout, RichText, Sense, Ui, Vec2, pos2, vec2};
 
+pub use crate::asking::Pick;
+use crate::chat::asks::Asked;
 use crate::chat::steps::{self, State};
 use crate::chat::{Chat, Entry, Role};
 use crate::icons;
@@ -15,7 +17,7 @@ use crate::theme::{
     self, CHAT_APPEAR, CHAT_BUBBLE_SHARE, CHAT_DOT, CHAT_DOT_GAP, CHAT_DOT_LIFT, CHAT_DOT_PACE, CHAT_GAP, CHAT_ICON_AT_WORK, CHAT_ICON_BREATH,
     CHAT_ICON_BURST, CHAT_ICON_FROM_OWN, CHAT_ICON_LEAST, CHAT_ICON_RING, CHAT_ICON_SETTLE, CHAT_ICON_SHAKE, CHAT_ICON_TAIL, CHAT_ICON_TURN,
     CHAT_NOTE_GAP, CHAT_NOTE_ICON, CHAT_RISE, CHAT_STATUS_HEIGHT, CHAT_STATUS_HOLD, CHAT_STATUS_MORPH, CHAT_STATUS_PAD, CHAT_WRITE_CATCH_UP,
-    CHAT_WRITE_PACE, CHIP_CORNER, CHIP_ICON, CHIP_ICON_AT, MESSAGE_TEXT_SIZE, PROBLEM, Palette, SIDEBAR_TEXT_SIZE,
+    CHAT_WRITE_PACE, CHIP_CORNER, CHIP_ICON, CHIP_ICON_AT, ISLAND_RADIUS, MESSAGE_TEXT_SIZE, PROBLEM, Palette, SIDEBAR_TEXT_SIZE,
 };
 
 /// What the panel remembers between frames to move things: it lives in egui's memory, not in the chat.
@@ -41,10 +43,11 @@ pub fn forget(ctx: &egui::Context, key: u64) {
     ctx.data_mut(|data| data.remove::<Motion>(motion_id(key)));
 }
 
-/// Draws the conversation of the chat `key`. `animate` is the user's "Animations & effects" setting.
+/// Draws the conversation of the chat `key`. `animate` is the user's "Animations & effects" setting. Returns
+/// what the user did with a question of the assistant's, if anything.
 // Human: the newest line stays in view while the assistant writes, unless the user has scrolled up to read.
 // Agent: MAIN-THREAD; asks for another frame while something moves or the assistant is at work.
-pub fn show(ui: &mut Ui, chat: &Chat, key: u64, scale: f32, palette: Palette, animate: bool) {
+pub fn show(ui: &mut Ui, chat: &Chat, key: u64, scale: f32, palette: Palette, animate: bool) -> Option<Pick> {
     let now = ui.input(|input| input.time);
     let step = ui.input(|input| input.stable_dt).min(0.1);
     let mut motion: Motion = ui.data(|data| data.get_temp(motion_id(key))).unwrap_or_default();
@@ -66,6 +69,9 @@ pub fn show(ui: &mut Ui, chat: &Chat, key: u64, scale: f32, palette: Palette, an
         }
     }
     let mut moving = false;
+    let mut pick = None;
+    // Human: only the question that waits for the user can be answered; an older one is history.
+    let open = crate::chat::asking(&chat.entries).map(|(at, _)| at);
     egui::ScrollArea::vertical().id_salt(("conversation", key)).auto_shrink([false, false]).stick_to_bottom(true).show(ui, |ui| {
         ui.add_space(12.0);
         ui.spacing_mut().item_spacing.y = 0.0;
@@ -93,10 +99,13 @@ pub fn show(ui: &mut Ui, chat: &Chat, key: u64, scale: f32, palette: Palette, an
             let clock = animate.then(|| Clock { now, since: motion.states[index].1.max(shown_until) });
             moving |= clock.is_some_and(|clock| clock.settling() < 1.0);
             ui.add_space((1.0 - arrived) * CHAT_RISE);
-            ui.scope(|ui| {
+            let picked = ui.scope(|ui| {
                 ui.set_opacity(arrived);
-                line(ui, still_at_work.as_ref().unwrap_or(entry), shown, scale, palette, clock);
+                line(ui, still_at_work.as_ref().unwrap_or(entry), shown, Looks { scale, palette, clock, live: open == Some(index) })
             });
+            if picked.inner.is_some() {
+                pick = picked.inner;
+            }
         }
         if chat.running() && !chat.entries.last().is_some_and(at_work) {
             ui.add_space(CHAT_GAP);
@@ -127,6 +136,7 @@ pub fn show(ui: &mut Ui, chat: &Chat, key: u64, scale: f32, palette: Palette, an
         ui.request_repaint();
     }
     ui.data_mut(|data| data.insert_temp(motion_id(key), motion));
+    pick
 }
 
 /// How far a line born at `born` has come in: 0 just born, 1 in place; it slows down as it gets there.
@@ -168,9 +178,22 @@ fn at_work(entry: &Entry) -> bool {
     entry.step.as_ref().is_some_and(|step| step.state == State::Running)
 }
 
-/// One line of the conversation; `shown` is as much of its text as shows.
-/// `scale` is how much larger than small the text is (the settings' chat text size).
-fn line(ui: &mut Ui, entry: &Entry, shown: &str, scale: f32, palette: Palette, clock: Option<Clock>) {
+/// How a line of the conversation is drawn.
+#[derive(Clone, Copy)]
+struct Looks {
+    /// How much larger than small the text is (the settings' chat text size).
+    scale: f32,
+    palette: Palette,
+    /// The time a note's icon moves by; `None` when nothing moves.
+    clock: Option<Clock>,
+    /// The line is the question that waits for the user: its answers can be picked.
+    live: bool,
+}
+
+/// One line of the conversation; `shown` is as much of its text as shows. Returns what the user did with it,
+/// when it is a question of the assistant's.
+fn line(ui: &mut Ui, entry: &Entry, shown: &str, looks: Looks) -> Option<Pick> {
+    let Looks { scale, palette, clock, live } = looks;
     let words = |text: &str, color: Color32| egui::Label::new(RichText::new(text).size(MESSAGE_TEXT_SIZE * scale).color(color)).wrap();
     match entry.role {
         Role::User => {
@@ -189,11 +212,42 @@ fn line(ui: &mut Ui, entry: &Entry, shown: &str, scale: f32, palette: Palette, c
         Role::Assistant => {
             ui.add(words(shown, palette.foreground));
         }
-        Role::Step => note(ui, entry, scale, palette, clock),
+        // Human: a question is a card with its answers; suggestions nobody can pick any more are one quiet note.
+        Role::Step => match &entry.asked {
+            Some(asked) if !(asked.suggests && asked.closed) => return question(ui, asked, scale, palette, live),
+            _ => note(ui, entry, scale, palette, clock),
+        },
         Role::Problem => {
             ui.add(words(shown, PROBLEM));
         }
     }
+    None
+}
+
+/// Draws the question that waits for the user in the chat at the bottom of `body`, for a sidebar view that
+/// doesn't show the conversation. Returns the room left over it for the view, and what the user did.
+// Human: with the layers or the components open the conversation can't be seen, and no status line stands
+// over the message box. The question then sits just over the message box, and the view gives way to it.
+// Agent: MAIN-THREAD; draws nothing and returns `body` whole when nothing is asked or the panel is too short.
+pub fn pinned(ui: &mut Ui, chat: &Chat, body: egui::Rect, scale: f32, palette: Palette) -> (egui::Rect, Option<Pick>) {
+    let Some((_, asked)) = crate::chat::asking(&chat.entries) else { return (body, None) };
+    let sheet = crate::asking::sheet(ui.ctx(), asked, body.width(), crate::asking::Style { scale, history: false, palette });
+    let card = egui::Rect::from_min_max(pos2(body.left(), body.bottom() - CHAT_GAP - sheet.size.y), pos2(body.right(), body.bottom() - CHAT_GAP));
+    let left = egui::Rect::from_min_max(body.min, pos2(body.right(), card.top() - CHAT_GAP));
+    if left.height() < sheet.size.y / 2.0 {
+        return (body, None);
+    }
+    ui.painter().rect_stroke(card, ISLAND_RADIUS - 4.0, egui::Stroke::new(1.0, palette.outline), egui::StrokeKind::Inside);
+    (left, crate::asking::paint(ui, &sheet, card.min, true, palette))
+}
+
+/// A question of the assistant's in the conversation: a card as wide as the panel with the question, its
+/// answers to pick from while it is `live`, and the answers already given.
+fn question(ui: &mut Ui, asked: &Asked, scale: f32, palette: Palette, live: bool) -> Option<Pick> {
+    let sheet = crate::asking::sheet(ui.ctx(), asked, ui.available_width(), crate::asking::Style { scale, history: true, palette });
+    let (card, _) = ui.allocate_exact_size(sheet.size, Sense::hover());
+    ui.painter().rect_stroke(card, ISLAND_RADIUS - 4.0, egui::Stroke::new(1.0, palette.outline), egui::StrokeKind::Inside);
+    crate::asking::paint(ui, &sheet, card.min, live, palette)
 }
 
 /// A message of the user's that points at layers: what was selected as chips over it, and each layer pasted
@@ -418,11 +472,18 @@ enum Status<'a> {
     Answered,
     /// The run ended with this problem.
     Problem(&'a str),
+    /// The assistant asks the user something, or offers next steps: not a line but a dialog.
+    Asking(&'a Asked),
 }
 
 /// What that line says: `running` while a message is being answered, and for a while after (`fresh`).
+// Human: a question of the assistant's comes before everything else and stays until it is answered or closed:
+// the run that asked it can't go on without the user.
 fn status(entries: &[Entry], running: bool, fresh: bool) -> Option<Status<'_>> {
     let last = entries.last()?;
+    if let Some((_, asked)) = crate::chat::asking(entries) {
+        return Some(Status::Asking(asked));
+    }
     if running {
         return Some(match entries.iter().rev().find(|entry| at_work(entry)) {
             Some(note) => Status::Tool(note),
@@ -445,6 +506,8 @@ pub struct Line {
     pub foot: egui::Pos2,
     /// The most room it may take.
     pub most_width: f32,
+    /// How wide it is as a dialog, when the assistant asks something.
+    pub ask_width: f32,
     /// The run ended only a moment ago: the line still says that the answer is there.
     pub fresh: bool,
     /// How much of it shows; it fades with the bar it stands over.
@@ -462,6 +525,8 @@ enum Face {
     Answered,
     /// The run ended with this problem.
     Problem(String),
+    /// A question of the assistant's, or its suggestions, as far as the user has got with it.
+    Asking(Asked),
 }
 
 impl From<Status<'_>> for Face {
@@ -471,6 +536,7 @@ impl From<Status<'_>> for Face {
             Status::Waiting(label) => Face::Waiting(label),
             Status::Answered => Face::Answered,
             Status::Problem(text) => Face::Problem(text.to_owned()),
+            Status::Asking(asked) => Face::Asking(asked.clone()),
         }
     }
 }
@@ -483,17 +549,17 @@ struct Morph {
     face: Face,
     /// Since when, in egui's time.
     since: f64,
-    /// What it showed before, and how wide the island was when that gave way; `None` when the line was not
+    /// What it showed before, and how large the island was when that gave way; `None` when the line was not
     /// there before.
-    from: Option<(Face, f32)>,
-    /// How wide the island was drawn last.
-    width: f32,
+    from: Option<(Face, Vec2)>,
+    /// How large the island was drawn last.
+    size: Vec2,
 }
 
 impl Morph {
     /// The line at rest showing `face`: nothing moves ("Animations & effects" is off).
     fn still(face: Face) -> Self {
-        Morph { face, since: f64::NEG_INFINITY, from: None, width: 0.0 }
+        Morph { face, since: f64::NEG_INFINITY, from: None, size: Vec2::ZERO }
     }
 
     /// What the line shows at `now`, given what it `kept` from the frame before and what the chat `wanted`.
@@ -505,8 +571,8 @@ impl Morph {
             Some(kept) if matches!((&kept.face, &wanted), (Face::Tool(_), Face::Waiting(_))) && now - kept.since < f64::from(CHAT_STATUS_HOLD) => {
                 kept
             }
-            Some(kept) => Morph { from: Some((kept.face, kept.width)), face: wanted, since: now, width: kept.width },
-            None => Morph { face: wanted, since: now, from: None, width: 0.0 },
+            Some(kept) => Morph { from: Some((kept.face, kept.size)), face: wanted, since: now, size: kept.size },
+            None => Morph { face: wanted, since: now, from: None, size: Vec2::ZERO },
         }
     }
 
@@ -541,6 +607,8 @@ fn face_words(face: &Face, palette: Palette) -> LayoutJob {
         Face::Waiting(label) => quiet(label, palette.muted),
         Face::Answered => quiet("Done  ·  click to read the reply", palette.muted),
         Face::Problem(text) => quiet(text, PROBLEM),
+        // A question is not a line: it is laid out as a sheet ([`crate::asking`]).
+        Face::Asking(_) => LayoutJob::default(),
     }
 }
 
@@ -553,28 +621,59 @@ fn laid_out(ctx: &egui::Context, face: &Face, most_width: f32, palette: Palette)
     (lead, ctx.fonts_mut(|fonts| fonts.layout_job(words)))
 }
 
+/// How a question is laid out as the dialog over the message bar: only what is still to answer.
+fn dialog(palette: Palette) -> crate::asking::Style {
+    crate::asking::Style { scale: 1.0, history: false, palette }
+}
+
+/// How large the island is when it shows `face` and nothing else.
+fn face_size(ctx: &egui::Context, face: &Face, line: &Line, palette: Palette) -> Vec2 {
+    if let Face::Asking(asked) = face {
+        return crate::asking::sheet(ctx, asked, line.ask_width, dialog(palette)).size;
+    }
+    let (lead, words) = laid_out(ctx, face, line.most_width, palette);
+    vec2((2.0 * CHAT_STATUS_PAD + lead + LEAD_GAP + words.size().x).min(line.most_width), CHAT_STATUS_HEIGHT)
+}
+
 /// Where and how a face of the status line is painted.
 #[derive(Clone, Copy)]
 struct Spot {
     /// The island as it is drawn now.
     island: egui::Rect,
-    /// The widest the island gets.
-    most_width: f32,
+    /// The widest the island gets as a line, and its width as a dialog.
+    widths: (f32, f32),
     /// How much of the face shows.
     opacity: f32,
     /// egui's time, by which icons and dots move; `None` when nothing moves.
     time: Option<f64>,
+    /// The face is what the island shows now, not what it showed before: its buttons can be clicked.
+    live: bool,
 }
 
-/// Paints `face` in the middle of the island at `place`.
-fn paint_face(ui: &mut Ui, face: &Face, place: Spot, palette: Palette) {
-    let Spot { island, most_width, opacity, time } = place;
+/// Paints `face` in the island at `place`: a line in the middle of its bottom strip, a question as its whole
+/// sheet standing on the bottom edge. Returns what the user did with a question.
+// Human: the island grows upwards from the line it was, so a line stays where it stood while it fades, and a
+// question's sheet is laid out for the finished island and shows through the growing one.
+fn paint_face(ui: &mut Ui, face: &Face, place: Spot, palette: Palette) -> Option<Pick> {
+    let Spot { island, widths: (most_width, ask_width), opacity, time, live } = place;
     if opacity <= 0.0 {
-        return;
+        return None;
     }
+    if let Face::Asking(asked) = face {
+        let sheet = crate::asking::sheet(ui.ctx(), asked, ask_width, dialog(palette));
+        let origin = pos2(island.center().x - sheet.size.x / 2.0, island.bottom() - sheet.size.y);
+        return ui
+            .scope(|ui| {
+                ui.multiply_opacity(opacity);
+                ui.set_clip_rect(island.shrink(1.0).intersect(ui.clip_rect()));
+                crate::asking::paint(ui, &sheet, origin, live, palette)
+            })
+            .inner;
+    }
+    let strip = egui::Rect::from_min_max(pos2(island.left(), island.bottom() - CHAT_STATUS_HEIGHT), island.max);
     let (lead, words) = laid_out(ui.ctx(), face, most_width, palette);
-    let left = island.center().x - (lead + LEAD_GAP + words.size().x) / 2.0;
-    let slot = egui::Rect::from_min_size(pos2(left, island.center().y - CHAT_NOTE_ICON / 2.0), vec2(lead, CHAT_NOTE_ICON));
+    let left = strip.center().x - (lead + LEAD_GAP + words.size().x) / 2.0;
+    let slot = egui::Rect::from_min_size(pos2(left, strip.center().y - CHAT_NOTE_ICON / 2.0), vec2(lead, CHAT_NOTE_ICON));
     ui.scope(|ui| {
         ui.multiply_opacity(opacity);
         // Human: while the island is narrower than the words, they show through it as through a window.
@@ -584,10 +683,21 @@ fn paint_face(ui: &mut Ui, face: &Face, place: Spot, palette: Palette) {
             Face::Waiting(_) => dots(ui, slot, time),
             Face::Answered => icons::paint(ui.painter(), slot, steps::ANSWERED_ICON, theme::AGENT),
             Face::Problem(_) => icons::paint(ui.painter(), slot, steps::FAILED_ICON, PROBLEM),
+            Face::Asking(_) => {}
         }
-        let at = pos2(slot.right() + LEAD_GAP, island.center().y - words.size().y / 2.0);
+        let at = pos2(slot.right() + LEAD_GAP, strip.center().y - words.size().y / 2.0);
         ui.painter().galley(at, words, palette.muted);
     });
+    None
+}
+
+/// What the user did with the island over the message bar.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Tap {
+    /// Clicked it: the sidebar opens the chat.
+    Open,
+    /// Answered or closed the question in it.
+    Pick(Pick),
 }
 
 fn status_id() -> egui::Id {
@@ -595,51 +705,55 @@ fn status_id() -> egui::Id {
 }
 
 /// Draws the chat's one-line status as a small island: what the assistant is doing right now, or that its
-/// answer is there. Returns whether it was clicked (the sidebar then opens the chat).
+/// answer is there; and when the assistant asks the user something, the same island grown into a dialog with
+/// the question and its answers. Returns what the user did with it: a click on it opens the chat.
 // Human: with the sidebar folded away the conversation can't be seen, so without this line a message sent
 // from the bar would get no sign of life until the design changes. It is one island all through a run: when
 // what it says changes, it grows or shrinks to the new words while the old ones fade and the new ones come.
+// A question is no other thing: the line's island grows upwards into the dialog, and shrinks back into a line
+// when the question is answered.
 // Agent: MAIN-THREAD; a floating layer over the canvas; asks for the next frame while the assistant works or
 // the island turns.
-pub fn status_line(ctx: &egui::Context, line: &Line, chat: &Chat, palette: Palette, animate: bool) -> bool {
-    let Line { foot, most_width, fresh, opacity } = *line;
+pub fn status_line(ctx: &egui::Context, line: &Line, chat: &Chat, palette: Palette, animate: bool) -> Option<Tap> {
+    let Line { foot, most_width, ask_width, fresh, opacity } = *line;
     let Some(status) = status(&chat.entries, chat.running(), fresh) else {
         ctx.data_mut(|data| data.remove::<Morph>(status_id()));
-        return false;
+        return None;
     };
     let now = ctx.input(|input| input.time);
     let mut morph = if animate { Morph::next(ctx.data(|data| data.get_temp(status_id())), status.into(), now) } else { Morph::still(status.into()) };
     let share = morph.share(now);
-    let (lead, words) = laid_out(ctx, &morph.face, most_width, palette);
-    let full = (2.0 * CHAT_STATUS_PAD + lead + LEAD_GAP + words.size().x).min(most_width);
+    let full = face_size(ctx, &morph.face, line, palette);
     // Human: a line that was not there before simply fades in at its size.
-    let (width, appeared) = match &morph.from {
-        Some((_, from)) => (from + (full - from) * eased(share), 1.0),
+    let (size, appeared) = match &morph.from {
+        Some((_, from)) => (*from + (full - *from) * eased(share), 1.0),
         None => (full, share),
     };
-    morph.width = width;
-    let place = egui::Rect::from_min_size(pos2(foot.x - width / 2.0, foot.y - CHAT_STATUS_HEIGHT), vec2(width, CHAT_STATUS_HEIGHT));
+    morph.size = size;
+    let place = egui::Rect::from_min_size(pos2(foot.x - size.x / 2.0, foot.y - size.y), size);
+    let widths = (most_width, ask_width);
     let time = animate.then_some(now);
     let shown = egui::Area::new(egui::Id::unique("chat-status")).fade_in(false).fixed_pos(place.min).order(egui::Order::Foreground).show(ctx, |ui| {
         ui.multiply_opacity(opacity * appeared);
         let (island, response) = ui.allocate_exact_size(place.size(), Sense::click());
-        crate::sidebar::island(ui, island, CHAT_STATUS_HEIGHT / 2.0, palette);
+        // Human: a line is a pill; grown into a dialog the island has the corners of the other islands.
+        crate::sidebar::island(ui, island, ISLAND_RADIUS.min(island.height() / 2.0), palette);
         let (old, new) = if morph.from.is_some() { crossfade(share) } else { (0.0, 1.0) };
         if let Some((before, _)) = &morph.from {
-            paint_face(ui, before, Spot { island, most_width, opacity: old, time }, palette);
+            paint_face(ui, before, Spot { island, widths, opacity: old, time, live: false }, palette);
         }
-        paint_face(ui, &morph.face, Spot { island, most_width, opacity: new, time }, palette);
-        response
+        let pick = paint_face(ui, &morph.face, Spot { island, widths, opacity: new, time, live: true }, palette);
+        (response, pick)
     });
     if animate && (chat.running() || share < 1.0) {
         ctx.request_repaint();
     }
     ctx.data_mut(|data| data.insert_temp(status_id(), morph));
-    let response = shown.inner;
+    let (response, pick) = shown.inner;
     if response.hovered() {
         ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
     }
-    response.clicked()
+    pick.map(Tap::Pick).or_else(|| response.clicked().then_some(Tap::Open))
 }
 
 /// Three dots that rise one after the other in `slot`; without a `time` they rest.
@@ -761,11 +875,12 @@ mod tests {
         // A line that wasn't there comes from nothing; one that says the same stays as it is.
         let first = Morph::next(None, thinking.clone(), 10.0);
         assert_eq!((first.from.as_ref(), first.since), (None, 10.0));
-        let first = Morph { width: 90.0, ..first };
+        let pill = vec2(90.0, CHAT_STATUS_HEIGHT);
+        let first = Morph { size: pill, ..first };
         assert_eq!(Morph::next(Some(first.clone()), thinking.clone(), 11.0), first);
         // A tool takes over at once, from the width the island had.
         let at_work = Morph::next(Some(first), tool.clone(), 12.0);
-        assert_eq!((&at_work.face, at_work.from.as_ref(), at_work.since), (&tool, Some(&(thinking.clone(), 90.0)), 12.0));
+        assert_eq!((&at_work.face, at_work.from.as_ref(), at_work.since), (&tool, Some(&(thinking.clone(), pill)), 12.0));
         // Its note stays for a moment after the tool is done, then gives way; the end of the run doesn't wait.
         assert_eq!(Morph::next(Some(at_work.clone()), thinking.clone(), 12.5), at_work);
         assert_eq!(Morph::next(Some(at_work.clone()), thinking.clone(), 12.0 + f64::from(CHAT_STATUS_HOLD)).face, thinking);
@@ -776,6 +891,35 @@ mod tests {
         assert_eq!((crossfade(0.0), crossfade(1.0)), ((1.0, 0.0), (0.0, 1.0)));
         assert!((0..=100_u8).map(|step| crossfade(f32::from(step) / 100.0)).all(|(old, new)| old + new <= 1.0));
         assert!(eased(0.0).abs() < 1e-6 && (eased(0.5) - 0.5).abs() < 1e-6 && (eased(1.0) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn a_question_takes_the_status_lines_place_until_it_is_answered() {
+        let mut entries = crate::chat::sample_asking(false);
+        // It is there while the assistant still writes, and long after the run: it waits for the user.
+        assert!(matches!(status(&entries, true, false), Some(Status::Asking(asked)) if asked.questions.len() == 2));
+        assert!(matches!(status(&entries, false, false), Some(Status::Asking(_))));
+        // The island that said "Thinking…" becomes the dialog, from the size it had; the next question, and
+        // the line after the last answer, come out of the dialog the same way.
+        let pill = vec2(90.0, CHAT_STATUS_HEIGHT);
+        let line = Morph { size: pill, ..Morph::next(None, Face::Waiting("Thinking…"), 1.0) };
+        let first: Face = status(&entries, true, false).unwrap().into();
+        let asking = Morph::next(Some(line), first.clone(), 2.0);
+        assert_eq!((&asking.face, asking.from.as_ref()), (&first, Some(&(Face::Waiting("Thinking…"), pill))));
+        let grown = vec2(440.0, 190.0);
+        if let Some(asked) = entries[3].asked.as_mut() {
+            asked.answer(0, "Dark and technical");
+        }
+        let second: Face = status(&entries, false, false).unwrap().into();
+        let next = Morph::next(Some(Morph { size: grown, ..asking }), second.clone(), 3.0);
+        assert_eq!(next.from, Some((first, grown)));
+        if let Some(asked) = entries[3].asked.as_mut() {
+            asked.answer(1, "Phone");
+        }
+        assert_eq!(status(&entries, false, false), None);
+        entries.push(Entry::new(Role::User, "Dark and technical\nPhone"));
+        let after: Face = status(&entries, true, false).unwrap().into();
+        assert_eq!(Morph::next(Some(Morph { size: grown, ..next }), after, 4.0).from, Some((second, grown)));
     }
 
     #[test]

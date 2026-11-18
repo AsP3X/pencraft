@@ -19,6 +19,7 @@ use crate::link::Call;
 use crate::prefs::{AgentName, Agents, CustomProvider, LocalAgent};
 
 pub mod api;
+pub mod asks;
 pub mod catalog;
 pub mod code;
 pub mod critic;
@@ -67,7 +68,8 @@ A layer id followed by its name in quotes and brackets inside a message, like ca
 For real facts or wording use search_web and read_web_page; for a real photo use search_images, then download_image, and put the url it returns into an image fill. \
 Each message from the user starts with a note from the app in <pencraft_context> tags saying which document this chat works on (your tools work on it unless a call names another) and what is selected; \"this\" or \"the selection\" means those layers. \
 Keep replies short and plain: a few sentences on what you made and what to look at, without lists of ids. The chat panel shows your words exactly as you write them, so use no Markdown of any kind: no asterisks for bold, no bullet or numbered lists, no headings, no backticks, no tables. \
-If a request is unclear in a way that changes the design, ask one short question instead of guessing.";
+If a request is unclear in a way that changes the design, ask instead of guessing: with the ask_user tool when you have it (one to three short questions, each with two to four answers to pick from), then end your turn, since the answer comes as the user's next message; without that tool, ask one short question in your reply. \
+When you have finished something and there are clear next steps, you may offer two or three with ask_user's `suggestions`, each worded as the user would ask for it; offer none that only repeat what you did.";
 
 /// The last thing an engine is told, after everything long: how its replies have to look.
 // Human: said once at the start, the rule is forgotten by the time a long design is done; the end of the
@@ -124,19 +126,21 @@ pub struct Entry {
     pub pointed: Vec<Pointed>,
     /// For a note on a tool call: the call it is about.
     pub step: Option<Step>,
+    /// For the note of an `ask_user` call: what it asks the user, and how far the user has got with it.
+    pub asked: Option<asks::Asked>,
 }
 
 impl Entry {
     /// A line from `role` saying `text`.
     pub fn new(role: Role, text: impl Into<String>) -> Self {
-        Entry { role, text: text.into(), pointed: Vec::new(), step: None }
+        Entry { role, text: text.into(), pointed: Vec::new(), step: None, asked: None }
     }
 
     /// A note on a call of `tool` that is in `state`, saying the tool's usual words and `detail`.
     fn note(tool: &str, state: State, detail: &str) -> Self {
         let text = if state == State::Failed { steps::failed(tool) } else { steps::did(tool) };
         let step = Step { tool: tool.to_owned(), id: String::new(), detail: detail.to_owned(), state, times: 1, named: false };
-        Entry { role: Role::Step, text, pointed: Vec::new(), step: Some(step) }
+        Entry { role: Role::Step, text, pointed: Vec::new(), step: Some(step), asked: None }
     }
 }
 
@@ -461,6 +465,34 @@ pub fn sample() -> Vec<Entry> {
     ]
 }
 
+/// A short exchange that ends with the assistant asking (`suggests`: offering next steps instead), for a
+/// picture of the question in the chat panel and over the message bar (`--sidebar question`).
+#[must_use]
+pub fn sample_asking(suggests: bool) -> Vec<Entry> {
+    let input = if suggests {
+        serde_json::json!({ "suggestions": ["Add a dark version of the page", "Make the headline bolder", "Export the hero as a PNG"] })
+    } else {
+        serde_json::json!({ "questions": [
+            { "question": "Which mood should the landing page have?", "options": ["Warm and editorial", "Dark and technical", "Bright and playful"] },
+            { "question": "Is it for a phone or for a desktop browser?", "options": ["Phone", "Desktop"] },
+        ] })
+    };
+    let mut note = Entry::note(asks::TOOL, State::Done, "");
+    note.asked = asks::parse(&input).ok();
+    let (user, said) = if suggests {
+        ("Design a landing page for a small coffee roaster.", "Done. The page has a hero, three coffees and a footer.")
+    } else {
+        ("Design a landing page for a small coffee roaster.", "Two things decide how this looks.")
+    };
+    vec![Entry::new(Role::User, user), Entry::note("get_state", State::Done, ""), Entry::new(Role::Assistant, said), note]
+}
+
+/// The question or the suggestions among `entries` that wait for the user: the latest, unless it is closed.
+#[must_use]
+pub fn asking(entries: &[Entry]) -> Option<(usize, &asks::Asked)> {
+    entries.iter().enumerate().rev().find_map(|(at, entry)| entry.asked.as_ref().map(|asked| (at, asked))).filter(|(_, asked)| !asked.closed)
+}
+
 /// What a run needs besides the conversation.
 pub struct Ask {
     /// What the user wrote, as the assistant reads it (a pasted layer as its id and name).
@@ -639,6 +671,29 @@ impl Chat {
         steered.into_iter().map(|text| (text, true)).chain(self.waiting.iter().map(|waiting| (waiting.shown.clone(), false))).collect()
     }
 
+    /// Takes the user's `answer` to the question at `at` of what the assistant asks. With the last answer it
+    /// gives the message to send to the assistant.
+    pub fn answer(&mut self, at: usize, answer: &str) -> Option<Waiting> {
+        let asked = self.entries.iter_mut().rev().find_map(|entry| entry.asked.as_mut())?;
+        let (shown, told) = asked.answer(at, answer)?;
+        Some(Waiting { shown, told, files: Vec::new(), pointed: Vec::new() })
+    }
+
+    /// Closes what the assistant asks: the user doesn't want to answer it.
+    pub fn dismiss(&mut self) {
+        for asked in self.entries.iter_mut().filter_map(|entry| entry.asked.as_mut()) {
+            asked.closed = true;
+        }
+    }
+
+    /// The user writes a message of their own instead of picking answers: what the assistant asks is closed.
+    /// Returns the answers picked before that, as the assistant reads them, to go with the message.
+    pub fn leave_question(&mut self) -> Option<String> {
+        let asked = self.entries.iter_mut().rev().find_map(|entry| entry.asked.as_mut()).filter(|asked| !asked.closed)?;
+        asked.closed = true;
+        (!asked.suggests && !asked.answers.is_empty()).then(|| asked.told())
+    }
+
     /// The waiting message whose turn it is, once nothing is being answered.
     pub fn next_waiting(&mut self) -> Option<Waiting> {
         (!self.running() && !self.waiting.is_empty()).then(|| self.waiting.remove(0))
@@ -683,8 +738,15 @@ impl Chat {
         let said: Vec<String> = self
             .entries
             .iter()
-            .filter(|entry| matches!(entry.role, Role::User | Role::Assistant))
-            .map(|entry| format!("{}: {}", if entry.role == Role::User { "User" } else { "Assistant" }, entry.text))
+            .filter_map(|entry| match (entry.role, &entry.asked) {
+                (Role::User, _) => Some(format!("User: {}", entry.text)),
+                (Role::Assistant, _) => Some(format!("Assistant: {}", entry.text)),
+                // Human: a question the assistant asked through its tool is part of what was said.
+                (_, Some(asked)) if !asked.suggests => {
+                    Some(format!("Assistant asked: {}", asked.questions.iter().map(|question| question.text.as_str()).collect::<Vec<_>>().join(" ")))
+                }
+                _ => None,
+            })
             .collect();
         if known || said.is_empty() {
             return context.to_owned();
@@ -751,6 +813,8 @@ impl Chat {
         }
         let prompt = self.prompt_for(&ask);
         let pictures = files::pictures(&ask.files);
+        // Human: a message of the user's is their answer; a question still open then is closed by it.
+        self.dismiss();
         self.entries.push(Entry { pointed: ask.pointed.clone(), ..Entry::new(Role::User, ask.shown.clone()) });
         self.fresh = true;
         let (send, events) = channel();
@@ -758,6 +822,9 @@ impl Chat {
         let child = Arc::new(Mutex::new(None));
         let kept = Mutex::new((self.session.clone(), self.history.clone()));
         let (flag, held) = (stop.clone(), child.clone());
+        // Human: the ids of the run's `ask_user` calls, and whether one of them asked a question: the run then
+        // waits for the user's answer, and nothing is reviewed or sent back to the assistant meanwhile.
+        let asking: Mutex<(Vec<String>, bool)> = Mutex::new((Vec::new(), false));
         let model = ask.model.clone();
         // Human: an API run asks the model again after every tool it used, and can hand it a new message of
         // the user's then; a program is given its one message when it starts.
@@ -769,6 +836,11 @@ impl Chat {
                 match &event {
                     Event::Session(session) => lock(&kept).0 = Some(session.clone()),
                     Event::History(history) => lock(&kept).1.clone_from(history),
+                    Event::Tool { id, name } if steps::short(name) == asks::TOOL => lock(&asking).0.push(id.clone()),
+                    Event::ToolInput { id, input } => {
+                        let mut asking = lock(&asking);
+                        asking.1 |= asking.0.contains(id) && asks::parse(input).is_ok_and(|asked| !asked.suggests);
+                    }
                     _ => {}
                 }
                 // The chat was cleared or stopped: nobody listens, and the run winds up.
@@ -787,7 +859,7 @@ impl Chat {
             // still asked for changes.
             // An engine the reviewer can't speak through gets no review.
             for round in 0..if ask.review && critic::can_judge(&ask.engine) { critic::ROUNDS + 1 } else { 0 } {
-                if flag.load(Ordering::Relaxed) {
+                if flag.load(Ordering::Relaxed) || lock(&asking).1 {
                     break;
                 }
                 let Some(picture) = critic::picture(&ask.tools, &*ask.wake, ask.chat, round > 0) else { break };
@@ -895,6 +967,19 @@ impl Chat {
     fn describe(&mut self, id: &str, input: &Value) {
         let Some(at) = self.note_of(id) else { return };
         let Some(tool) = self.entries[at].step.as_ref().map(|step| step.tool.clone()) else { return };
+        // Human: the note of a question is the question itself, with its answers to pick from; an earlier
+        // question that is still open gives way to it.
+        if tool == asks::TOOL {
+            let Ok(asked) = asks::parse(input) else { return };
+            self.dismiss();
+            let entry = &mut self.entries[at];
+            if asked.suggests { "Suggested next steps" } else { "Asked a question" }.clone_into(&mut entry.text);
+            if let Some(step) = &mut entry.step {
+                step.named = true;
+            }
+            entry.asked = Some(asked);
+            return;
+        }
         let (name, detail) = (steps::name(&tool, input), steps::detail(&tool, input));
         let same = |before: &Entry| {
             before.step.as_ref().is_some_and(|step| step.tool == tool && !step.named && step.state != State::Failed && step.detail == detail)
@@ -924,6 +1009,8 @@ impl Chat {
         let Some(step) = &mut entry.step else { return };
         step.state = if failed { State::Failed } else { State::Done };
         if failed {
+            // A question the app refused is not put to the user.
+            entry.asked = None;
             // Human: what the model wanted to do stays readable beside the tool's words for a failure.
             if step.named {
                 step.detail = std::mem::take(&mut entry.text);
@@ -1000,6 +1087,55 @@ mod tests {
         assert!(chat.retold("note", false).contains("User: Make a card\nAssistant: I'll look first.\nAssistant: Done: a card."));
         chat.clear();
         assert!(chat.entries.is_empty() && chat.session.is_none());
+    }
+
+    #[test]
+    fn a_question_of_the_assistants_waits_for_the_users_answer() {
+        let open = |chat: &Chat| asking(&chat.entries).map(|(_, asked)| asked.clone());
+        let ask = |id: &str, input: Value| {
+            vec![
+                Event::Tool { id: id.to_owned(), name: "mcp__pencraft__ask_user".to_owned() },
+                Event::ToolInput { id: id.to_owned(), input },
+                Event::ToolEnd { id: id.to_owned(), failed: false },
+            ]
+        };
+        let questions = serde_json::json!({ "questions": [{ "question": "Mood?", "options": ["Warm", "Dark"] }, { "question": "Screen?", "options": ["Phone"] }] });
+        let mut events = ask("a1", serde_json::json!({ "suggestions": ["Export it"] }));
+        events.extend(ask("a2", questions.clone()));
+        events.extend([Event::Text("Two things first.".to_owned()), Event::Done]);
+        let mut chat = with_events(events);
+        assert!(open(&chat).is_none() && chat.poll());
+        // The later call takes the place of the earlier one; its note is the question.
+        let notes: Vec<(&str, bool)> = chat.entries.iter().filter_map(|e| e.asked.as_ref().map(|asked| (e.text.as_str(), asked.closed))).collect();
+        assert_eq!(notes, vec![("Suggested next steps", true), ("Asked a question", false)]);
+        assert_eq!(open(&chat).as_ref().and_then(asks::Asked::current).map(|(at, question)| (at, question.text.as_str())), Some((0, "Mood?")));
+        assert!(chat.retold("note", false).contains("Assistant asked: Mood? Screen?\nAssistant: Two things first."));
+        // The answers are taken one by one; the last makes the message for the assistant.
+        assert_eq!(chat.answer(0, "Dark"), None);
+        let message = chat.answer(1, "Phone").unwrap();
+        assert_eq!((message.shown.as_str(), message.told.as_str()), ("Dark\nPhone", "Mood?\nAnswer: Dark\nScreen?\nAnswer: Phone"));
+        assert!(open(&chat).is_none() && chat.answer(1, "Phone").is_none());
+        // A message of the user's own closes the question and takes along what was picked before it.
+        let mut events = ask("a3", questions);
+        events.push(Event::Done);
+        let mut chat = with_events(events);
+        chat.poll();
+        chat.answer(0, "Warm");
+        assert_eq!(chat.leave_question().as_deref(), Some("Mood?\nAnswer: Warm"));
+        assert!(open(&chat).is_none() && chat.leave_question().is_none());
+        // Closing it asks nothing more; a question the app refused was never put.
+        let mut chat = with_events(vec![
+            Event::Tool { id: "a4".to_owned(), name: "ask_user".to_owned() },
+            Event::ToolInput { id: "a4".to_owned(), input: serde_json::json!({ "questions": ["Why?"] }) },
+        ]);
+        chat.poll();
+        assert!(open(&chat).is_some());
+        chat.finish("a4", true);
+        assert!(chat.entries.iter().all(|entry| entry.asked.is_none()));
+        let mut asking = Chat { entries: sample_asking(false), ..Chat::default() };
+        assert!(open(&asking).is_some() && open(&Chat { entries: sample_asking(true), ..Chat::default() }).is_some_and(|asked| asked.suggests));
+        asking.dismiss();
+        assert!(open(&asking).is_none());
     }
 
     #[test]

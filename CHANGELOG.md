@@ -11,6 +11,12 @@ in the app before they download the update. Write it for them.
 
 ### Added
 
+- **The assistant can ask you.** When a request could go two ways, the
+  assistant asks instead of guessing: a question with a few answers to
+  click. With the sidebar folded away, the status line over the message
+  bar grows into the question; in the chat it is a card. Click an answer,
+  or type your own. After finishing something the assistant can also
+  offer next steps to start with one click.
 - **Bundles.** File › Save As Bundle… puts a design and everything it
   shows into one `.pencraft` file: its pictures, also those that lay
   somewhere else on your disk, its shader files and the pictures' credits.

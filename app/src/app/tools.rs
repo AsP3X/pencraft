@@ -390,9 +390,23 @@ impl App {
             "check_glass" => self.glass_tool(call, ctx),
             crate::chat::critic::TOOL => self.review_tool(call, ctx),
             "select_layers" => self.select_tool(call, ctx),
+            crate::chat::asks::TOOL => self.ask_tool(call),
             "export_layers" => self.export_tool(call, ctx),
             other => Err(format!("There is no tool called \"{other}\".")),
         }
+    }
+
+    /// `ask_user`: says whether the question can be put to the user. The chat itself shows it, from the call
+    /// as its run reports it.
+    // Human: the call answers at once. The user's answer is their next message, so the assistant doesn't hold
+    // a tool call open for as long as the user takes to decide.
+    fn ask_tool(&self, call: &Call) -> Result<Vec<Value>, String> {
+        let asked = crate::chat::asks::parse(&call.arguments)?;
+        if call.chat.and_then(|id| self.talk(id)).is_none() {
+            return Err(crate::chat::asks::NO_CHAT.to_owned());
+        }
+        let said = if asked.suggests { crate::chat::asks::SUGGESTED } else { crate::chat::asks::ASKED };
+        Ok(vec![json!({ "type": "text", "text": said })])
     }
 
     /// The document a call is about, laid out, with its tab and the name for the model's cursor.

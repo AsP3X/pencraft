@@ -337,10 +337,20 @@ impl App {
     /// Sets the sidebar up for a picture: a view's name, or `conversation` for the chat view with a short
     /// exchange in it.
     fn pose_sidebar(&mut self, name: &str) {
-        if name == "conversation" {
-            self.front_talk().chat.entries = crate::chat::sample();
+        // Human: `question` and `suggestions` show the dialog over the bar of the folded sidebar, `asked` the
+        // same question in the conversation.
+        let (entries, view) = match name {
+            "conversation" => (Some(crate::chat::sample()), "chat"),
+            "question" => (Some(crate::chat::sample_asking(false)), "hidden"),
+            "suggestions" => (Some(crate::chat::sample_asking(true)), "hidden"),
+            "asked" => (Some(crate::chat::sample_asking(false)), "chat"),
+            "pinned" => (Some(crate::chat::sample_asking(false)), "layers"),
+            _ => (None, name),
+        };
+        if let Some(entries) = entries {
+            self.front_talk().chat.entries = entries;
         }
-        self.sidebar.pose(if name == "conversation" { "chat" } else { name });
+        self.sidebar.pose(view);
     }
 
     /// Starts the local server AI models reach the app through.
