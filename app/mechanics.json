@@ -559,6 +559,24 @@
    "source": "estimated"
   },
   {
+   "name": "AI step time, ms",
+   "group": "ai",
+   "value": 80,
+   "source": "estimated"
+  },
+  {
+   "name": "AI steps of one call, longest together, ms",
+   "group": "ai",
+   "value": 2500,
+   "source": "estimated"
+  },
+  {
+   "name": "AI staging of one call, longest layout time, ms",
+   "group": "ai",
+   "value": 250,
+   "source": "Pencraft's own limit (src/app/tools.rs STAGING_MOST)"
+  },
+  {
    "name": "AI flash outline start distance, points",
    "group": "ai",
    "value": 12,

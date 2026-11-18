@@ -12,8 +12,9 @@ use serde_json::{Value, json};
 
 use super::talk::{Home, home};
 use super::{App, text_measure};
+use crate::activity::{Turn, What};
 use crate::agent;
-use crate::editor::Editor;
+use crate::editor::{Editor, find_in};
 use crate::link::Call;
 
 /// How long a change waits for the user to finish a drag on the canvas before the model is told to try again.
@@ -33,6 +34,9 @@ const PART_LAYERS: usize = 8;
 const WORTH_A_REVIEW: usize = 30;
 /// How long a call waits for the faces of a document's text to be made ready.
 const FACE_PATIENCE: Duration = Duration::from_secs(3);
+/// How long laying out the document after each operation of a call may take in all, for the canvas to show
+/// the call an operation at a time.
+const STAGING_MOST: Duration = Duration::from_millis(250);
 /// The tools that change a document.
 const CHANGING: [&str; 2] = ["edit_layers", "select_layers"];
 /// The tools whose call waits for a picture to be made ([`App::start_picture`]).
@@ -336,8 +340,14 @@ impl App {
     }
 
     /// The change an `edit_layers` call asks for, in the document at `tab`.
-    // Human: one call is one undo step, made only when the call worked. Every layer it touched flashes, and the
-    // model's cursor goes to them.
+    // Human: one call is one undo step, made only when the call worked. What it changed is shown a small step
+    // at a time, in the order of the call's operations: the canvas shows the document as it was after each
+    // one, so a change is seen when it is made and a deleted layer goes when it is deleted. A layer that was
+    // made is followed by each layer in it, parents first, and appears at its turn. At its turn a layer
+    // flashes (one that is gone, where it was) and the model's cursor goes to it.
+    // Human: laying the document out after every operation costs time the model waits for. After
+    // `STAGING_MOST` the rest of the call is shown on the finished document: its new layers still appear one
+    // by one, its changes and deletions are then seen at once.
     // Agent: a finished picture is put on its layer through this with the tab found by its document's id
     // (`App::fill_picture`), so two documents of the same name can't be mistaken for each other.
     pub(super) fn edit_in(&mut self, tab: usize, call: &Call, ctx: &egui::Context) -> Result<Vec<Value>, String> {
@@ -348,7 +358,17 @@ impl App {
         let view = self.canvas_view;
         let editor = self.tabs.get_mut(tab).ok_or("The document was closed.")?;
         let before = editor.doc.clone();
-        let (results, touched) = agent::edit(editor, args)?;
+        let was = pen_doc::edit::ids(&before);
+        let first = editor.scene.clone();
+        let count = args.get("operations").and_then(Value::as_array).map_or(0, Vec::len);
+        let began = Instant::now();
+        let measure = text_measure(ctx);
+        // What the document looked like after each operation but the last, which leaves it as it is.
+        let mut staged: Vec<Option<Vec<SceneNode>>> = Vec::new();
+        let (results, touched) = agent::edit_staged(editor, args, &mut |editor| {
+            let worth = staged.len() + 1 < count && began.elapsed() < STAGING_MOST;
+            staged.push(worth.then(|| editor.laid_out(&measure)));
+        })?;
         let after = std::mem::replace(&mut editor.doc, before);
         editor.checkpoint();
         editor.doc = after;
@@ -358,8 +378,46 @@ impl App {
         editor.selection = selection;
         let now = Instant::now();
         let place = touched.iter().filter_map(|id| editor.scene_node(id)).map(layout::doc_bounds).reduce(|a, b| a.union(&b));
-        editor.activity.flash(&touched, now);
-        editor.activity.point(place, &label, now);
+        // The insides of an instance are no layers of the document: they come with their instance.
+        let mut turns: Vec<Vec<Turn>> = Vec::new();
+        let mut listed = std::collections::HashSet::new();
+        let at = |index: usize| staged.get(index).and_then(Option::as_deref).unwrap_or(&editor.scene);
+        for (index, result) in results.iter().enumerate() {
+            let mut own = Vec::new();
+            if let Some(id) = result.get("deleted").and_then(Value::as_str) {
+                let had = if index == 0 { &first[..] } else { at(index - 1) };
+                let place = find_in(had, id).map(layout::doc_bounds);
+                own.push(Turn { id: id.to_owned(), what: What::Removed, place, scene: None });
+            } else if let Some(top) = result.get("id").and_then(Value::as_str).and_then(|id| find_in(at(index), id)) {
+                top.walk(
+                    &mut |layer, depth| {
+                        let new = layer.doc_id.as_ref().is_some_and(|id| !was.contains(id));
+                        let fresh = listed.insert(layer.id.clone());
+                        if depth == 0 || (new && fresh) {
+                            let what = if new && fresh { What::Made } else { What::Changed };
+                            own.push(Turn { id: layer.id.clone(), what, place: Some(layout::doc_bounds(layer)), scene: None });
+                        }
+                    },
+                    0,
+                );
+            }
+            // An operation on no layer to be seen (the variables) still has its turn: what it changed shows then.
+            if own.is_empty() {
+                own.push(Turn { id: String::new(), what: What::Changed, place: None, scene: None });
+            }
+            turns.push(own);
+        }
+        // Each operation's first step brings what the document looked like after it; from the first one that
+        // wasn't kept on, that is the document as it is.
+        let mut finished = false;
+        for (index, own) in turns.iter_mut().enumerate() {
+            let scene =
+                staged.get_mut(index).and_then(Option::take).or_else(|| (!std::mem::replace(&mut finished, true)).then(|| editor.scene.clone()));
+            if let Some(turn) = own.first_mut() {
+                turn.scene = scene;
+            }
+        }
+        editor.activity.play(turns.into_iter().flatten().collect(), &label, now, editor.generation);
         // Human: a change out of sight would flash unseen. When the middle of what was touched isn't on the
         // part of the canvas the islands leave free, the view goes there, as it does for "select layers".
         if let Some(place) = place
@@ -397,8 +455,7 @@ impl App {
         // Human: what a chat's own assistant changes, its note in the chat (and in the one line over the
         // message bar) already says; a second message over it would only be in the way.
         if let Some(said) = args.get("description").and_then(Value::as_str).filter(|said| !said.trim().is_empty() && call.chat.is_none()) {
-            let said = format!("{}: {}", call.client, said.trim());
-            self.say(said);
+            self.say_from(&call.client, said);
         }
         Ok(text(&answer))
     }

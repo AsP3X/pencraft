@@ -162,7 +162,22 @@ impl Canvas {
         self.zoom_and_pan(ui, editor, view, &response);
         let folder = editor.path.as_deref().and_then(std::path::Path::parent);
         let visible = crate::render::view_to_doc(&editor.camera, view);
-        self.list.update(&editor.scene, editor.generation, editor.camera.zoom, visible, Vars::new(&editor.doc), ui.ctx(), folder, self.background);
+        // Human: what a model changed is shown a step at a time: the steps whose turn has come are taken now,
+        // and while more are waiting the canvas shows the document as it was after the last one taken.
+        editor.activity.advance(std::time::Instant::now(), editor.generation);
+        let (stage, stamp) = editor.activity.stage();
+        self.list.update(
+            stage.unwrap_or(&editor.scene),
+            editor.generation,
+            editor.camera.zoom,
+            visible,
+            Vars::new(&editor.doc),
+            ui.ctx(),
+            folder,
+            self.background,
+            editor.activity.hidden(),
+            stamp,
+        );
         self.list.draw(&painter, &editor.camera, view);
         // Human: a path being drawn becomes a layer when the tool changes (Escape goes back to Move) or with
         // Enter, which also goes back to Move.
@@ -533,7 +548,7 @@ impl Canvas {
         let cam = &editor.camera;
         let palette = theme::palette(dark);
         // Top-level frame names above their boards.
-        for node in &editor.scene {
+        for node in editor.activity.shown(&editor.scene) {
             if node.node.kind == Kind::Frame {
                 let b = layout::doc_bounds(node);
                 let pos = screen(cam, view, Point::new(b.x, b.y)) - egui::vec2(0.0, 4.0);

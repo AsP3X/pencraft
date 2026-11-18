@@ -103,8 +103,8 @@ A client that speaks MCP over HTTP can skip `pencraft mcp`: the address and the 
 
 - If Pencraft isn't running, `pencraft mcp` starts it behind your other windows, without taking the keyboard.
 - Pencraft doesn't need to be in front. It answers while it is behind other windows, minimised or hidden.
-- When you look at it, you see the model work: every layer it touches flashes, and a cursor moves to where it
-  is working. The cursor is labelled "Agent"; Settings → General → Agents → "Agent cursor label" changes that
+- When you look at it, you see the model work: what a call changes is shown a step at a time (a new layer
+  appears, a change is made, a deleted layer goes), every layer it touches flashes at its turn, and a cursor moves to where it is working. The cursor is labelled "Agent"; Settings → General → Agents → "Agent cursor label" changes that
   to the model's name (the chat's model, or the name an outside client gave) or to nothing, and "Agent cursor
   size" makes it larger. A change's description shows at the bottom of the window.
 - Each `edit_layers` call is one undo step: ⌘Z takes back what the model just did.

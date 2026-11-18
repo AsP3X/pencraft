@@ -82,6 +82,12 @@ impl Default for Camera {
 /// The number the next opened document gets.
 static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
+/// The node with the scene id `id` among `nodes` and what is in them.
+#[must_use]
+pub fn find_in<'a>(nodes: &'a [SceneNode], id: &str) -> Option<&'a SceneNode> {
+    nodes.iter().find_map(|n| if n.id == id { Some(n) } else { find_in(&n.children, id) })
+}
+
 /// One open document.
 pub struct Editor {
     /// A number of its own among the documents opened in this run; it stays the same however its tab moves.
@@ -242,10 +248,17 @@ impl Editor {
             return;
         }
         self.needs_layout = false;
+        self.scene = self.laid_out(measure);
+        self.generation += 1;
+    }
+
+    /// The document as it is now, with instances expanded and laid out; [`Editor::scene`] is not touched.
+    // Agent: MAIN-THREAD; ALLOCATES a scene; CALLS measure for every text node.
+    #[must_use]
+    pub fn laid_out(&self, measure: &Measure<'_>) -> Vec<SceneNode> {
         let mut scene = scene::build(&self.doc, &self.root_theme());
         layout::layout(&mut scene, Vars::new(&self.doc), measure);
-        self.scene = scene;
-        self.generation += 1;
+        scene
     }
 
     /// Whether the document changed, or the faces of its text did, since it was last laid out.
@@ -262,10 +275,7 @@ impl Editor {
     /// The laid-out scene node for an id: a document node's id, or `instance/inner` for a node inside an instance.
     #[must_use]
     pub fn scene_node(&self, id: &str) -> Option<&SceneNode> {
-        fn search<'a>(nodes: &'a [SceneNode], id: &str) -> Option<&'a SceneNode> {
-            nodes.iter().find_map(|n| if n.id == id { Some(n) } else { search(&n.children, id) })
-        }
-        search(&self.scene, id)
+        find_in(&self.scene, id)
     }
 
     /// The scene node that holds the one with `id`.

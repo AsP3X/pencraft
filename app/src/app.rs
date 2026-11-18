@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use craft_dialogs::{Answer, Dialogs, FileDialog};
 use craft_settings::{Location, SaveStatus, SettingsStore};
@@ -144,7 +144,7 @@ pub struct App {
     hide_ui: bool,
     prompt: Option<ClosePrompt>,
     discard_confirmed: bool,
-    message: Option<(String, Instant)>,
+    toasts: crate::toast::Toasts,
     screenshot: Option<screenshot::Job>,
     seed: u64,
     canvas_view: egui::Rect,
@@ -183,8 +183,6 @@ pub struct App {
     home: home::Home,
 }
 
-/// How long a message stays at the bottom of the window.
-const MESSAGE_TIME: Duration = Duration::from_secs(6);
 /// The clipboard text format: a JSON object with this key holding the copied nodes.
 const CLIPBOARD_KEY: &str = "pencraftNodes";
 
@@ -221,7 +219,7 @@ impl App {
             hide_ui: false,
             prompt: None,
             discard_confirmed: false,
-            message: None,
+            toasts: crate::toast::Toasts::default(),
             screenshot: None,
             seed,
             canvas_view: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 700.0)),
@@ -396,7 +394,12 @@ impl App {
     }
 
     fn say(&mut self, text: impl Into<String>) {
-        self.message = Some((text.into(), Instant::now()));
+        self.toasts.say("", &text.into(), Instant::now());
+    }
+
+    /// [`App::say`] for what a model says: its name stands before the sentence.
+    fn say_from(&mut self, who: &str, text: &str) {
+        self.toasts.say(who, text, Instant::now());
     }
 
     /// Does what the tool rail asked for; a sentence for the user when that is all there is to do.
@@ -1478,24 +1481,6 @@ impl App {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }
-
-    fn message(&mut self, ctx: &egui::Context) {
-        let Some((text, since)) = self.message.clone() else { return };
-        if since.elapsed() > MESSAGE_TIME {
-            self.message = None;
-            return;
-        }
-        ctx.request_repaint_after(MESSAGE_TIME.saturating_sub(since.elapsed()));
-        let palette = theme::palette(self.dark());
-        egui::Area::new(egui::Id::unique("message")).anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -90.0)).order(egui::Order::Tooltip).show(
-            ctx,
-            |ui| {
-                egui::Frame::new().fill(palette.primary).corner_radius(8.0).inner_margin(10.0).show(ui, |ui| {
-                    ui.label(RichText::new(text).color(palette.primary_text));
-                });
-            },
-        );
-    }
 }
 
 impl App {
@@ -1586,7 +1571,7 @@ impl eframe::App for App {
         self.show_picture_dialog(&ctx);
         self.update_prompt(&ctx);
         self.close_prompt(&ctx);
-        self.message(&ctx);
+        self.toasts.show(&ctx, self.dark());
         let title = self.active.and_then(|i| self.tabs.get(i)).map_or_else(|| "Pencraft".to_owned(), |t| format!("{} — Pencraft", t.title()));
         let current = ctx.input(|i| i.viewport().title.clone());
         if current.as_deref() != Some(title.as_str()) {

@@ -77,6 +77,38 @@ pub const INSTANCE: Color32 = Color32::from_rgb(0x8b, 0x5c, 0xf6);
 pub const AGENT: Color32 = Color32::from_rgb(96, 125, 255);
 /// How long a layer an AI model touched flashes.
 pub const AGENT_FLASH_TIME: std::time::Duration = std::time::Duration::from_millis(1200);
+/// How long the message line shows a sentence.
+pub const TOAST_TIME: std::time::Duration = std::time::Duration::from_secs(6);
+/// How long the message line's capsule takes to open, or to take the shape of the next sentence.
+pub const TOAST_MORPH: std::time::Duration = std::time::Duration::from_millis(320);
+/// How long the flash on a sentence just said lasts.
+pub const TOAST_FLASH: std::time::Duration = std::time::Duration::from_millis(650);
+/// How long the message line takes to go at the end: it closes into a dot, then the dot fades.
+pub const TOAST_LEAVE: std::time::Duration = std::time::Duration::from_millis(480);
+/// The share of [`TOAST_LEAVE`] the capsule takes to close into the dot; the dot fades in the rest.
+pub const TOAST_CLOSING: f32 = 0.7;
+/// How far under its place the message line starts, points.
+pub const TOAST_RISE: f32 = 10.0;
+/// The least height of the message line's capsule (one line of text); its ends are half circles of this.
+pub const TOAST_HEIGHT: f32 = 38.0;
+/// The most the message line's capsule is wide, and what it keeps free at the window's sides.
+pub const TOAST_WIDTH: f32 = 560.0;
+/// See [`TOAST_WIDTH`].
+pub const TOAST_MARGIN: f32 = 24.0;
+/// Space between the capsule's edge and its text at the left and right; top and bottom share as much.
+pub const TOAST_PADDING: f32 = 18.0;
+/// Text size of the message line.
+pub const TOAST_TEXT: f32 = 13.0;
+/// The dot before a model's name on the message line, and the space after it.
+pub const TOAST_DOT: f32 = 7.0;
+/// See [`TOAST_DOT`].
+pub const TOAST_GAP: f32 = 8.0;
+/// How far over the window's bottom edge the message line sits: clear of the message bar.
+pub const TOAST_LIFT: f32 = 90.0;
+/// How long after one small step of a model's change the next is shown.
+pub const AGENT_STEP: std::time::Duration = std::time::Duration::from_millis(80);
+/// The longest the steps of one call take together; with more steps than fit they follow each other faster.
+pub const AGENT_STEPS_MOST: std::time::Duration = std::time::Duration::from_millis(2500);
 /// How far outside the layer the flash's outline starts, points.
 pub const AGENT_FLASH_GROW: f32 = 12.0;
 /// Width of the flash's outline.

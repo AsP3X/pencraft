@@ -50,6 +50,7 @@ mod shader;
 mod sidebar;
 mod skills;
 mod theme;
+mod toast;
 mod tool_icons;
 mod update;
 mod web;

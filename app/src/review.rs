@@ -143,6 +143,8 @@ struct Seen {
     raw_radii: bool,
     /// Layers that stick out of the frame that lays them out.
     spilling: Vec<String>,
+    /// Layers whose box reaches over the edge of the page they are in.
+    outside: Vec<String>,
     /// The deepest run of cards inside cards, and the innermost one.
     nested: (usize, String),
     /// Frames with an outline and a shadow at once.
@@ -475,37 +477,42 @@ fn clips(scene: &SceneNode) -> bool {
     matches!(&scene.node.clip, Some(Flag::Value(true)))
 }
 
-/// Notes what reaches over the edge of a page (a filled frame at the top) that doesn't cut it off: a shape
-/// meant to run off the sheet shows beyond it, in the picture and in every export.
+/// How many layers reaching out of one page are named.
+const MOST_OUTSIDE: usize = 3;
+
+/// Notes what reaches over the edge of a page (a filled frame at the top), whether or not the page cuts it off.
+// Human: every part of a design lies within its main element. A page that doesn't cut shows the part beyond
+// itself, in the picture and in every export. One that cuts hides it, but the layer is still out there: its
+// box lies over the designs beside it, where it is selected, measured and moved with them.
+// Human: what a clipping frame inside the page holds is not looked at: content scrolled out of sight under
+// such a frame is how a scrolled screen is built, and the frame that cuts it lies within the page.
+// Agent: names the layers furthest out, `MOST_OUTSIDE` at most per page, and not what is inside one named.
 fn bleed(page: &SceneNode, seen: &mut Seen) {
-    fn furthest<'a>(scene: &'a SceneNode, page: &pen_doc::geom::Rect, worst: &mut Option<(f32, &'a SceneNode)>) {
+    fn outside<'a>(scene: &'a SceneNode, page: &pen_doc::geom::Rect, found: &mut Vec<(f32, &'a SceneNode)>) {
         for child in &scene.children {
             if matches!(&child.node.enabled, Some(Flag::Value(false))) {
                 continue;
             }
             let inner = layout::doc_bounds(child);
             let over = (inner.x + inner.w - page.x - page.w).max(page.x - inner.x).max(inner.y + inner.h - page.y - page.h).max(page.y - inner.y);
-            if over > 1.5 && worst.is_none_or(|(most, _)| over > most) {
-                *worst = Some((over, child));
-            }
-            // What a clipping frame holds is cut off there and can't reach the page's edge.
-            if !clips(child) {
-                furthest(child, page, worst);
+            if over > 1.5 {
+                found.push((over, child));
+            } else if !clips(child) {
+                outside(child, page, found);
             }
         }
     }
-    if page.node.kind != Kind::Frame || page.node.fill.is_none() || clips(page) {
+    if page.node.kind != Kind::Frame || page.node.fill.is_none() {
         return;
     }
-    let mut worst = None;
-    furthest(page, &layout::doc_bounds(page), &mut worst);
-    if let Some((over, layer)) = worst {
-        seen.spilling.push(format!(
-            "{} reaches {over:.0} over the edge of {}, which doesn't cut it off, so it shows beyond the page (set `clip` to true on {} if the edge should cut it)",
-            label(layer),
-            label(page),
-            label(page)
-        ));
+    let mut found = Vec::new();
+    outside(page, &layout::doc_bounds(page), &mut found);
+    found.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let shows = if clips(page) { "" } else { " and shows beyond it" };
+    // A layer the page's layout has no room for is named for that already ("sticks out of").
+    let fresh: Vec<_> = found.into_iter().filter(|(_, layer)| !seen.spilling.iter().any(|note| note.starts_with(&label(layer)))).collect();
+    for (over, layer) in fresh.into_iter().take(MOST_OUTSIDE) {
+        seen.outside.push(format!("{} reaches {over:.0} over the edge of {}{shows}", label(layer), label(page)));
     }
 }
 
@@ -881,6 +888,12 @@ fn mistakes(seen: &Seen, installed: &dyn Fn(&str) -> Option<String>, out: &mut V
         out.push(format!(
             "Layers that don't fit where their frame's layout puts them: {}. Give them \"fill_container\" or a smaller size, let the text wrap (textGrowth \"fixed-width\"), or give the frame a gap that isn't negative.",
             named(seen.spilling.iter().map(String::as_str))
+        ));
+    }
+    if !seen.outside.is_empty() {
+        out.push(format!(
+            "Layers that reach outside their design: {}. Every part of a design lies within its top-level frame, whether or not the frame cuts it off: move or resize each one so its whole box is inside. A background is the frame's own fill or a layer of the frame's size, a glow is a gradient on such a layer, and content scrolled out of sight goes into a clipping frame inside the design.",
+            named(seen.outside.iter().map(String::as_str))
         ));
     }
     if !seen.loose.is_empty() {
@@ -1486,16 +1499,26 @@ mod tests {
     }
 
     #[test]
-    fn a_shape_running_off_a_page_that_does_not_cut_it_is_named() {
-        let page = |clip: &str| {
+    fn a_layer_reaching_out_of_its_page_is_named_whether_the_page_cuts_it_or_not() {
+        let page = |clip: &str, inside: &str| {
             format!(
                 r##"{{"version":"2.22","children":[{{"type":"frame","id":"sheet","name":"Poster","x":0,"y":0,"width":400,"height":600,"layout":"none","fill":"#1e3fb8"{clip},"children":[
-                  {{"type":"ellipse","id":"sun","name":"Disc","x":250,"y":200,"width":300,"height":300,"fill":"#ffd02e"}}]}}]}}"##
+                  {{"type":"ellipse","id":"sun","name":"Disc","x":250,"y":200,"width":300,"height":300,"fill":"#ffd02e"}}{inside}]}}]}}"##
             )
         };
-        let said = notes(&page(""), &[]);
-        assert!(said.iter().any(|note| note.contains("\"Disc\" (sun) reaches 150 over the edge of \"Poster\" (sheet)")), "{said:#?}");
-        assert_eq!(notes(&page(r#","clip":true"#), &[]), Vec::<String>::new());
+        let said = notes(&page("", ""), &[]);
+        assert!(
+            said.iter().any(|note| note.contains("\"Disc\" (sun) reaches 150 over the edge of \"Poster\" (sheet) and shows beyond it")),
+            "{said:#?}"
+        );
+        // A page that cuts it off hides it, but the layer still lies outside.
+        let said = notes(&page(r#","clip":true"#, ""), &[]);
+        assert!(said.iter().any(|note| note.contains("(sun) reaches 150 over the edge of \"Poster\" (sheet). Every part")), "{said:#?}");
+        // A group is named once, not with what is in it; what a clipping frame inside the page holds is left alone.
+        let more = r##",{"type":"group","id":"back","children":[{"type":"rectangle","id":"wide","x":0,"y":0,"width":900,"height":100,"fill":"#000000"}]},
+            {"type":"frame","id":"list","x":0,"y":0,"width":400,"height":300,"layout":"none","clip":true,"children":[{"type":"rectangle","id":"row","x":0,"y":-200,"width":400,"height":100,"fill":"#ffffff"}]}"##;
+        let said = notes(&page(r#","clip":true"#, more), &[]).join("\n");
+        assert!(said.contains("(back) reaches 500 over") && !said.contains("(wide)") && !said.contains("(row)"), "{said}");
     }
 
     #[test]

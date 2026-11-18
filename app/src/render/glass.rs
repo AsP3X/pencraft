@@ -329,7 +329,8 @@ impl Builder<'_> {
     /// Whether `child`'s glass is drawn by the glass group `parent` it is in, not by itself: both lie straight
     /// on the canvas and the child is liquid glass with an outline that can be worked out.
     pub(super) fn merges(&self, parent: &SceneNode, child: &SceneNode) -> bool {
-        crate::glass_check::group_spacing(parent).is_some()
+        !self.hides(child)
+            && crate::glass_check::group_spacing(parent).is_some()
             && parent.to_doc.is_axis_aligned()
             && child.to_doc.is_axis_aligned()
             && child.node.material.as_ref().and_then(Material::read).is_some_and(|material| material.is_glass())

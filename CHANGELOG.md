@@ -9,6 +9,25 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Changed
+
+- **You see a model build its design.** What an AI model makes or changes
+  in one go used to stand on the canvas all at once. Now it is shown a
+  step at a time: each new layer appears, each change is made and each
+  deleted layer goes at its turn, with a flash, and the model's cursor
+  moves along.
+- **A message line that reads well.** The short messages over the bottom
+  of the window (what a model just changed, what a button couldn't do)
+  were cramped into a narrow box. They now sit on a capsule as wide as
+  their text, with the model's name set apart, and it opens out of a dot,
+  flashes, changes shape when the next message comes, and closes into the
+  dot again before it goes.
+- **A model keeps every part of a design inside its frame.** A background
+  or a glow larger than the frame used to pass as long as the frame cut it
+  off, and its box then lay over the designs beside it. Pencraft now tells
+  the model about any layer that reaches over the edge of its frame, and
+  the guide says how to build it inside.
+
 ## [0.3.9] - 2026-11-17
 
 Draw and edit connectors on the canvas, and zoom without stalls.

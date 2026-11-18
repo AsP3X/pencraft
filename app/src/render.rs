@@ -131,6 +131,10 @@ pub struct DisplayList {
     view_moved: Option<std::time::Instant>,
     /// How far past the screen the last build baked effects, as a share of the screen's width and height.
     margin: f32,
+    /// The layers the list was built without (see [`crate::activity::Activity::hidden`]).
+    hidden: std::collections::HashSet<String>,
+    /// Which stage of a model's change the list was built from (see [`crate::activity::Activity::stage`]).
+    stage: u64,
 }
 
 /// How long the zoom must hold still before the list is rebuilt for its new step.
@@ -155,6 +159,9 @@ impl DisplayList {
     // that were left out would otherwise be seen missing. And while the view rests, the part that is baked
     // grows a step at a time, until it is the whole design or the pictures would take too much memory: after
     // a short rest panning costs nothing.
+    // Human: `hidden` are layers a model made that are not shown yet (it shows its work a layer at a time): they
+    // are left out with everything in them, and the list is built again when they change. `stage` says which
+    // step of such a change `scene` is: it has the document's `generation`, and is another scene each time.
     // Agent: CALLS ctx.request_repaint_after while a rebuild is waiting for the zoom to settle or the view to rest.
     #[expect(clippy::too_many_arguments, reason = "the scene, what it was built from, where its pictures live, and what is on screen")]
     pub fn update(
@@ -167,6 +174,8 @@ impl DisplayList {
         ctx: &egui::Context,
         folder: Option<&std::path::Path>,
         background: Color32,
+        hidden: &std::collections::HashSet<String>,
+        stage: u64,
     ) {
         let bucket = zoom_bucket(zoom);
         let now = std::time::Instant::now();
@@ -181,7 +190,12 @@ impl DisplayList {
         }
         let wait = self.zoom_moved.and_then(|moved| ZOOM_SETTLE.checked_sub(now.duration_since(moved)));
         let rest = self.view_moved.and_then(|moved| BAKE_ON_AFTER.checked_sub(now.duration_since(moved)));
-        let same = !self.items.is_empty() && self.generation == generation && self.folder.as_deref() == folder && self.background == background;
+        let same = !self.items.is_empty()
+            && self.generation == generation
+            && self.folder.as_deref() == folder
+            && self.background == background
+            && self.hidden == *hidden
+            && self.stage == stage;
         let covered = self.cover.is_none_or(|cover| cover.holds(&visible));
         let current = same && covered && self.zoom_bucket == bucket;
         // Effects were left out, there is room for more, and nothing is moving: bake on.
@@ -206,6 +220,8 @@ impl DisplayList {
         self.generation = generation;
         self.zoom_bucket = bucket;
         self.background = background;
+        self.hidden.clone_from(hidden);
+        self.stage = stage;
         self.baked.begin_within(Some(cover));
         let builder = Builder {
             vars,
@@ -217,6 +233,7 @@ impl DisplayList {
             background,
             scale: 2.0_f32.powi(bucket) * ctx.pixels_per_point(),
             merged: std::cell::Cell::new(false),
+            hidden: Some(hidden),
         };
         for node in scene {
             builder.node(node, 1.0, None, &mut self.items);
@@ -278,6 +295,7 @@ impl DisplayList {
             background: Color32::TRANSPARENT,
             scale,
             merged: std::cell::Cell::new(false),
+            hidden: None,
         }
     }
 
@@ -495,6 +513,8 @@ struct Builder<'a> {
     scale: f32,
     /// Whether the node about to be built has its material drawn by the glass group it is in.
     merged: std::cell::Cell<bool>,
+    /// The layers left out (by scene id); a picture for a file or a model leaves none out.
+    hidden: Option<&'a std::collections::HashSet<String>>,
 }
 
 /// The line a stroke is drawn with.
@@ -506,6 +526,11 @@ struct Pen {
 }
 
 impl Builder<'_> {
+    /// Whether `scene` is left out for now.
+    fn hides(&self, scene: &SceneNode) -> bool {
+        self.hidden.is_some_and(|hidden| hidden.contains(&scene.id))
+    }
+
     fn num(&self, value: Option<&Num>, theme: &ThemeContext) -> Option<f32> {
         value.and_then(|v| self.vars.number(v, theme))
     }
@@ -600,6 +625,9 @@ impl Builder<'_> {
         let theme = &scene.theme;
         // Whether the glass group this node is in draws its material; said by `children` just before.
         let merged = self.merged.replace(false);
+        if self.hides(scene) {
+            return;
+        }
         if node.enabled.as_ref().and_then(|e| self.vars.flag(e, theme)) == Some(false) {
             return;
         }
