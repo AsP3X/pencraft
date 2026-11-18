@@ -15,6 +15,9 @@
 *.pen   text eol=lf
 
 *.png   binary
+*.icns  binary
+*.ico   binary
+*.svg   text eol=lf
 
 app/Cargo.lock linguist-generated=true
 

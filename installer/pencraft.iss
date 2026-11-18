@@ -37,6 +37,9 @@ OutputBaseFilename=pencraft-{#AppVersion}-setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+; The icon of the setup program itself. pencraft.exe carries the same one
+; (app\build.rs), which is what the shortcuts and .pen files show.
+SetupIconFile=pencraft.ico
 ChangesEnvironment=yes
 ChangesAssociations=yes
 ; A running Pencraft is closed before its file is replaced, and started again.

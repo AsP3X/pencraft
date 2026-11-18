@@ -9,6 +9,13 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Added
+
+- **An icon.** Pencraft has an icon of its own: a pen nib setting a point
+  of a path. It is on the app in the Dock and the Finder on a Mac, and on
+  the program, its shortcuts, the taskbar, `.pen` files and the installers
+  on Windows.
+
 ## [0.3.12] - 2026-11-18
 
 Fonts are right again while Pencraft works in the background.

@@ -13,6 +13,8 @@
   <string>dev.pencraft.desktop</string>
   <key>CFBundleExecutable</key>
   <string>pencraft</string>
+  <key>CFBundleIconFile</key>
+  <string>Pencraft</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleInfoDictionaryVersion</key>

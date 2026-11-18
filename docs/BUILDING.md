@@ -112,8 +112,21 @@ a Mac; an Apple Silicon Mac builds the Intel half too.
 `installer/Info.plist` is what macOS reads about the app. Its bundle
 identifier, `dev.pencraft.desktop`, must never change.
 
-The app has no icon of its own yet, on either system, and the Mac app does
-not yet open a `.pen` file that is double-clicked in the Finder.
+The Mac app does not yet open a `.pen` file that is double-clicked in the
+Finder.
+
+### The icon
+
+`design/icon/pencraft.svg` is the icon, and `design/icon/build.sh` draws every
+icon file from it. Run it on a Mac after changing the SVG, and commit what it
+writes:
+
+| File | Used for |
+| --- | --- |
+| `app/assets/icon.png` | the window on Windows and Linux (`app/src/main.rs`) |
+| `app/assets/icon-macos.png` | the Dock while Pencraft runs outside its `.app`, as with `cargo run` |
+| `installer/Pencraft.icns` | `Pencraft.app` (`installer/Info.plist`, `installer/build-macos.sh`) |
+| `installer/pencraft.ico` | `pencraft.exe`, and with it the shortcuts and `.pen` files (`app/build.rs`); the setup wizard and the MSI |
 
 ## Other systems
 

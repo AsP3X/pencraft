@@ -60,7 +60,7 @@ if ($wix) {
     $msi = Join-Path $out "pencraft-$version-x64.msi"
     Write-Host "Building $msi"
     & $wix.Source build (Join-Path $PSScriptRoot 'pencraft.wxs') `
-        -arch x64 -pdbtype none -d "Version=$version" -d "ExePath=$exe" -o $msi
+        -arch x64 -pdbtype none -b $PSScriptRoot -d "Version=$version" -d "ExePath=$exe" -o $msi
     if ($LASTEXITCODE -ne 0) { throw 'wix build failed.' }
 } else {
     $missing += 'MSI skipped: the WiX Toolset is not installed. Get it with: dotnet tool install --global wix --version 5.0.2'

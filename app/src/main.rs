@@ -66,6 +66,10 @@ const MIN_WINDOW_SIZE: [f32; 2] = [560.0, 400.0];
 
 /// How many samples a pixel the window is drawn with (multisample anti-aliasing).
 const SAMPLES: u16 = 4;
+/// The icon of the window and, on a Mac, of the app in the Dock (`design/icon/build.sh` draws both files).
+// Human: a Mac icon is a plate with room and a shadow round it, as the Dock expects; elsewhere the plate fills
+// the square. Pencraft.app has the same picture as its own icon; this one is for a Pencraft started without it.
+const ICON: &[u8] = if cfg!(target_os = "macos") { include_bytes!("../assets/icon-macos.png") } else { include_bytes!("../assets/icon.png") };
 const USAGE: &str = "usage: pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--update-required] [--update-collapsed] [--update-download [PERCENT]] [--home] [--export FILE]]\n       pencraft [--background] [--private] [--no-update-check] [--update-download [PERCENT]] [--assistant ID] [--ask MESSAGE] [FILE.pen]...\n       pencraft mcp
        pencraft skills [show NAME [FILE] | install [--project DIR | --dir DIR]]";
 
@@ -100,6 +104,10 @@ fn main() -> ExitCode {
         .with_inner_size(WINDOW_SIZE)
         .with_min_inner_size(MIN_WINDOW_SIZE)
         .with_drag_and_drop(true);
+    match eframe::icon_data::from_png_bytes(ICON) {
+        Ok(icon) => viewport = viewport.with_icon(icon),
+        Err(e) => log::warn!("icon: the window keeps the default one: {e}"),
+    }
     if cfg!(target_os = "macos") {
         // Human: the tab strip is the title bar, with the window buttons inset at its start.
         viewport = viewport.with_fullsize_content_view(true).with_titlebar_shown(false).with_title_shown(false);

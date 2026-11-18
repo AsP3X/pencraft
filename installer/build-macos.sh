@@ -49,6 +49,9 @@ lipo -create -output "$work/Pencraft.app/Contents/MacOS/pencraft" \
   target/aarch64-apple-darwin/release/pencraft \
   target/x86_64-apple-darwin/release/pencraft
 sed "s/@VERSION@/$version/g" ../installer/Info.plist > "$work/Pencraft.app/Contents/Info.plist"
+# The icon Info.plist names (CFBundleIconFile). design/icon/build.sh draws it.
+mkdir -p "$work/Pencraft.app/Contents/Resources"
+cp ../installer/Pencraft.icns "$work/Pencraft.app/Contents/Resources/Pencraft.icns"
 identity="${PENCRAFT_SIGN_IDENTITY:-}"
 if [ -n "$identity" ]; then
   echo "Signing with $identity"

@@ -1,3 +1,5 @@
+<img src="design/icon/pencraft.svg" alt="" width="96" align="right">
+
 # Pencraft
 
 [![CI](https://github.com/AsP3X/pencraft/actions/workflows/ci.yml/badge.svg)](https://github.com/AsP3X/pencraft/actions/workflows/ci.yml)

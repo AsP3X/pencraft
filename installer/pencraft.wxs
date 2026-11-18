@@ -2,7 +2,7 @@
 <!--
   MSI installer for Pencraft. Built with the WiX Toolset (v4 or v5):
 
-    wix build installer\pencraft.wxs -arch x64 ^
+    wix build installer\pencraft.wxs -arch x64 -b installer ^
       -d Version=0.2.0 -d ExePath=app\target\release\pencraft.exe ^
       -o app\target\installer\pencraft-0.2.0-x64.msi
 
@@ -32,6 +32,12 @@
          offers Uninstall. -->
     <Property Id="ARPNOMODIFY" Value="1" />
     <Property Id="ARPNOREPAIR" Value="1" />
+
+    <!-- The icon in Programs and Features. The file is found through the
+         bind path (-b installer). The shortcut shows the icon inside
+         pencraft.exe, which is the same one (app\build.rs). -->
+    <Icon Id="PencraftIcon.ico" SourceFile="pencraft.ico" />
+    <Property Id="ARPPRODUCTICON" Value="PencraftIcon.ico" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="Pencraft">

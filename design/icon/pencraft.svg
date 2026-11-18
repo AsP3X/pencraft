@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- The Pencraft icon: a pen nib setting a selected anchor point. Source of every icon file; see build.sh. -->
+  <defs>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34343a"/>
+      <stop offset="1" stop-color="#111113"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.08"/>
+    </linearGradient>
+    <linearGradient id="nib" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e4e4e7"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="230" fill="url(#plate)"/>
+  <rect x="5" y="5" width="1014" height="1014" rx="225" fill="none" stroke="url(#rim)" stroke-width="10"/>
+  <g transform="translate(-14 -14)">
+  <!-- The path the pen is drawing. -->
+  <path d="M 296 728 C 470 880 700 850 830 690" fill="none" stroke="#3b82f6" stroke-width="34" stroke-linecap="round"/>
+  <!-- The nib: tip at the origin, pointing down, then turned to point down-left. -->
+  <g transform="translate(296 728) rotate(45)">
+    <path fill="url(#nib)" d="M 0 0 C 36 -100 168 -230 168 -362 C 168 -428 136 -482 104 -516 L -104 -516 C -136 -482 -168 -428 -168 -362 C -168 -230 -36 -100 0 0 Z"/>
+    <rect fill="url(#nib)" x="-104" y="-618" width="208" height="64" rx="20"/>
+    <path d="M 0 -70 L 0 -290" stroke="#1c1c1f" stroke-width="26" stroke-linecap="round"/>
+    <circle cx="0" cy="-322" r="46" fill="#1c1c1f"/>
+  </g>
+  <!-- The selected anchor point under the tip. -->
+  <rect x="236" y="668" width="120" height="120" rx="22" fill="#3b82f6" stroke="#ffffff" stroke-width="22"/>
+  </g>
+</svg>
