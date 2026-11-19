@@ -278,6 +278,10 @@ pub const RADIUS_HANDLE_INSET: f32 = 12.0;
 pub const RADIUS_HANDLE_ROOM: f32 = 56.0;
 /// Text size of the size label under the selection.
 pub const SIZE_LABEL_TEXT: f32 = 12.5;
+/// Text size of a board's name above it on the canvas.
+pub const FRAME_NAME_TEXT: f32 = 11.0;
+/// A board narrower than this on screen shows no name, unless it is selected or under the pointer.
+pub const FRAME_NAME_LEAST: f32 = 40.0;
 
 /// The colours of one appearance.
 #[derive(Clone, Copy, Debug)]

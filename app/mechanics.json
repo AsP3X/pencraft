@@ -748,6 +748,19 @@
    "unit": "pt"
   },
   {
+   "name": "board name text",
+   "group": "canvas",
+   "value": 11,
+   "unit": "pt"
+  },
+  {
+   "name": "board name needs a board width on screen of",
+   "group": "canvas",
+   "value": 40,
+   "unit": "pt",
+   "source": "estimated"
+  },
+  {
    "name": "pen handle square",
    "group": "canvas",
    "value": 9,

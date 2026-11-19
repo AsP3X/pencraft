@@ -13,8 +13,8 @@ use crate::editor::{Camera, Editor, FIT_PADDING, MAX_ZOOM, MIN_ZOOM, Role, Tool}
 use crate::ops::{is_free, set_position, stored_position};
 use crate::render::{DisplayList, doc_point, screen};
 use crate::theme::{
-    self, ACCENT, COMPONENT, EDGE_GRAB, HANDLE_SIZE, INSTANCE, PEN_ANCHOR, PEN_HANDLE, PEN_REACH, RADIUS_HANDLE, RADIUS_HANDLE_INSET,
-    RADIUS_HANDLE_ROOM, ROTATE_DOT, ROTATE_DOT_GAP, ROTATE_DOT_GRAB, ROTATE_REACH, SIZE_LABEL_TEXT, WIRE_REACH,
+    self, ACCENT, COMPONENT, EDGE_GRAB, FRAME_NAME_LEAST, FRAME_NAME_TEXT, HANDLE_SIZE, INSTANCE, PEN_ANCHOR, PEN_HANDLE, PEN_REACH, RADIUS_HANDLE,
+    RADIUS_HANDLE_INSET, RADIUS_HANDLE_ROOM, ROTATE_DOT, ROTATE_DOT_GAP, ROTATE_DOT_GRAB, ROTATE_REACH, SIZE_LABEL_TEXT, WIRE_REACH,
 };
 
 /// Wheel and trackpad panning: screen points per scroll point.
@@ -549,26 +549,12 @@ impl Canvas {
     fn overlay(&self, ui: &egui::Ui, painter: &egui::Painter, editor: &Editor, view: ScreenRect, dark: bool) {
         let cam = &editor.camera;
         let palette = theme::palette(dark);
-        // Top-level frame names above their boards.
-        for node in editor.activity.shown(&editor.scene) {
-            if node.node.kind == Kind::Frame {
-                let b = layout::doc_bounds(node);
-                let pos = screen(cam, view, Point::new(b.x, b.y)) - egui::vec2(0.0, 4.0);
-                let color = if node.node.reusable == Some(true) {
-                    COMPONENT
-                } else if node.doc_id.as_ref().is_some_and(|id| editor.selection.contains(id)) {
-                    ACCENT
-                } else {
-                    palette.muted
-                };
-                painter.text(pos, egui::Align2::LEFT_BOTTOM, node.node.display_name(), egui::FontId::proportional(11.0), color);
-            }
-        }
+        let over = if self.drag.is_none() { ui.input(|i| i.pointer.hover_pos()).filter(|p| view.contains(*p)) } else { None };
+        let over = over.map(|p| doc_point(cam, view, p));
+        board_names(painter, editor, view, palette.muted, palette.canvas, over);
         // Human: a component's origin is marked with a magenta box, and its name above it when it isn't a board
         // that is named already — but only while it is selected or the pointer is over it; left alone the
         // design shows clean.
-        let over = if self.drag.is_none() { ui.input(|i| i.pointer.hover_pos()).filter(|p| view.contains(*p)) } else { None };
-        let over = over.map(|p| doc_point(cam, view, p));
         for top in &editor.scene {
             top.walk(
                 &mut |node, depth| {
@@ -579,7 +565,13 @@ impl Canvas {
                     outline(painter, cam, view, node, Stroke::new(1.0, COMPONENT.gamma_multiply(0.7)));
                     if depth > 0 || node.node.kind != Kind::Frame {
                         let pos = screen(cam, view, node.to_doc.apply(Point::new(0.0, 0.0))) - egui::vec2(0.0, 4.0);
-                        painter.text(pos, egui::Align2::LEFT_BOTTOM, node.node.display_name(), egui::FontId::proportional(11.0), COMPONENT);
+                        painter.text(
+                            pos,
+                            egui::Align2::LEFT_BOTTOM,
+                            node.node.display_name(),
+                            egui::FontId::proportional(FRAME_NAME_TEXT),
+                            COMPONENT,
+                        );
                     }
                 },
                 0,
@@ -815,6 +807,56 @@ pub fn zoom_at(editor: &mut Editor, view: ScreenRect, anchor: Pos2, zoom: f32) {
     let after = doc_point(&editor.camera, view, anchor);
     editor.camera.center.x += before.x - after.x;
     editor.camera.center.y += before.y - after.y;
+}
+
+/// Draws the top-level frames' names above their boards; `over` is the pointer in the document.
+// Human: top-level frame names above their boards. Zoomed out, names of a fixed size ran into each
+// other, so a name gets only its board's width (cut with "…") and none at all over a board too narrow
+// for one. The selected boards and the one under the pointer keep the whole name, drawn last on a
+// plate of the canvas colour so it reads over the names it covers.
+// Agent: boards don't overlap, so names cut to their board's width can't collide sideways.
+fn board_names(painter: &egui::Painter, editor: &Editor, view: ScreenRect, muted: Color32, canvas: Color32, over: Option<Point>) {
+    let cam = &editor.camera;
+    let font = egui::FontId::proportional(FRAME_NAME_TEXT);
+    let (mut whole, mut cut) = (Vec::new(), Vec::new());
+    for node in editor.activity.shown(&editor.scene) {
+        if node.node.kind == Kind::Frame {
+            let b = layout::doc_bounds(node);
+            let pos = screen(cam, view, Point::new(b.x, b.y)) - egui::vec2(0.0, 4.0);
+            let selected = node.doc_id.as_ref().is_some_and(|id| editor.selection.contains(id));
+            let color = if node.node.reusable == Some(true) {
+                COMPONENT
+            } else if selected {
+                ACCENT
+            } else {
+                muted
+            };
+            let room = b.w * cam.zoom;
+            if selected || over.is_some_and(|p| b.contains(p)) {
+                let galley = painter.layout_no_wrap(node.node.display_name(), font.clone(), color);
+                let at = pos - egui::vec2(0.0, galley.size().y);
+                let plate = ScreenRect::from_min_size(at, galley.size()).expand2(egui::vec2(3.0, 1.0));
+                whole.push((at, plate, galley.size().x > room, galley, color));
+            } else if room >= FRAME_NAME_LEAST {
+                let mut job = egui::text::LayoutJob::simple_singleline(node.node.display_name(), font.clone(), color);
+                job.wrap = egui::text::TextWrapping::truncate_at_width(room);
+                let galley = painter.layout_job(job);
+                cut.push((pos - egui::vec2(0.0, galley.size().y), galley, color));
+            }
+        }
+    }
+    // Human: a cut name that a whole one reaches over is left out, so no end of it shows beside the plate.
+    for (at, galley, color) in cut {
+        if !whole.iter().any(|(_, plate, _, _, _)| plate.intersects(ScreenRect::from_min_size(at, galley.size()))) {
+            painter.galley(at, galley, color);
+        }
+    }
+    for (at, plate, wide, galley, color) in whole {
+        if wide {
+            painter.rect_filled(plate, 3.0, canvas);
+        }
+        painter.galley(at, galley, color);
+    }
 }
 
 /// The blue label under a selection box, centred under `at`.
