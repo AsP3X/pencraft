@@ -9,6 +9,17 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.15] - 2026-11-19
+
+The canvas reaches the top of the window.
+
+### Changed
+
+- **No bar behind the title.** With a design open, the title and the
+  buttons at the top right float over the canvas like the other islands,
+  and the canvas runs up to the window's top edge behind them. The empty
+  space between them still moves the window.
+
 ## [0.3.14] - 2026-11-18
 
 The assistant can ask you questions, and a design can travel as one file.
@@ -483,7 +494,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.14...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.15...HEAD
+[0.3.15]: https://github.com/AsP3X/pencraft/compare/v0.3.14...v0.3.15
 [0.3.14]: https://github.com/AsP3X/pencraft/compare/v0.3.13...v0.3.14
 [0.3.13]: https://github.com/AsP3X/pencraft/compare/v0.3.12...v0.3.13
 [0.3.12]: https://github.com/AsP3X/pencraft/compare/v0.3.11...v0.3.12
