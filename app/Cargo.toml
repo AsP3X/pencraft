@@ -7,7 +7,7 @@ resolver = "3"
 members = ["crates/pen-doc"]
 
 [workspace.package]
-version = "0.3.17"
+version = "0.3.18"
 edition = "2024"
 rust-version = "1.99"
 license-file = "../LICENSE"

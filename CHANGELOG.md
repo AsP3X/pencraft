@@ -9,6 +9,24 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.18] - 2026-11-19
+
+Large designs are quick to work on.
+
+### Changed
+
+- **Editing a large design is quick.** Moving a layer or changing a
+  property used to work the whole design out again, which on a design of
+  11,000 layers took an eighth of a second for every step of a drag.
+  Pencraft now works out only the screen you are changing: that drag runs
+  at 67 pictures a second where it ran at 8. Changing a component, a
+  variable or the theme still works everything out, since it can show
+  anywhere.
+- **Zooming and scrolling a large design no longer stutters.** After a
+  zoom came to rest, or a scroll reached a new part of the canvas, the
+  window stopped for a moment several times while the design was drawn
+  anew. That is now done in the background, and the window keeps moving.
+
 ## [0.3.17] - 2026-11-19
 
 Large designs keep moving after a zoom.
@@ -526,7 +544,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.17...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.18...HEAD
+[0.3.18]: https://github.com/AsP3X/pencraft/compare/v0.3.17...v0.3.18
 [0.3.17]: https://github.com/AsP3X/pencraft/compare/v0.3.16...v0.3.17
 [0.3.16]: https://github.com/AsP3X/pencraft/compare/v0.3.15...v0.3.16
 [0.3.15]: https://github.com/AsP3X/pencraft/compare/v0.3.14...v0.3.15
