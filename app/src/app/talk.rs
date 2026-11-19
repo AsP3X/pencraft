@@ -27,6 +27,8 @@ pub(super) struct Talk {
     logged: usize,
     /// What was being written in it when another chat came to the front.
     kept: Writing,
+    /// The design file its conversation was last kept for, and how many lines it had then.
+    saved: Option<(PathBuf, usize)>,
 }
 
 /// The document a tool call works on when it names none.
@@ -104,7 +106,15 @@ impl App {
         let doc = self.front_doc();
         let at = self.talks.iter().position(|talk| talk.doc == doc).unwrap_or_else(|| {
             self.talks_made += 1;
-            self.talks.push(Talk { id: self.talks_made, doc, ..Talk::default() });
+            let mut talk = Talk { id: self.talks_made, doc, ..Talk::default() };
+            // Human: a design's chat starts with what was said about it before.
+            let file = self.active.and_then(|tab| self.tabs.get(tab)).and_then(|editor| editor.path.clone()).filter(|_| !self.private);
+            if let Some(file) = file {
+                talk.chat.entries = chat::history::read(&file);
+                talk.logged = talk.chat.entries.len();
+                talk.saved = Some((file, talk.chat.entries.len()));
+            }
+            self.talks.push(talk);
             self.talks.len() - 1
         });
         &mut self.talks[at]
@@ -186,6 +196,29 @@ impl App {
             changed |= talk.chat.poll();
         }
         changed
+    }
+
+    /// Keeps what was said in each design's chat for the next run, once an answer is done or the chat was
+    /// started over. A design without a file has no place to keep it yet; it is kept once it is saved.
+    // Agent: WRITES a small file per chat that changed, in the window's thread.
+    pub(super) fn keep_chats(&mut self) {
+        if self.private {
+            return;
+        }
+        for talk in &mut self.talks {
+            let file = talk.doc.and_then(|doc| self.tabs.iter().find(|tab| tab.id == doc)).and_then(|editor| editor.path.clone());
+            let Some(file) = file.filter(|_| !talk.chat.running()) else { continue };
+            let now = (file, talk.chat.entries.len());
+            // A design never talked about is not written for.
+            let nothing = talk.saved.is_none() && now.1 == 0;
+            if nothing || talk.saved.as_ref() == Some(&now) {
+                continue;
+            }
+            if let Err(problem) = chat::history::keep(&now.0, &talk.chat.entries) {
+                log::warn!("chat history: {problem}");
+            }
+            talk.saved = Some(now);
+        }
     }
 
     /// Does what the chat panel asked for this frame: stop, start over, another assistant, send.

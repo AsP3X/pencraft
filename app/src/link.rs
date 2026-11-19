@@ -33,6 +33,9 @@ const NOTE_CHECK: Duration = Duration::from_secs(2);
 const PING: &str = r#"{"jsonrpc":"2.0","id":0,"method":"ping"}"#;
 /// The name clients are shown.
 const SERVER_NAME: &str = "pencraft";
+/// The message a second Pencraft sends the running one to have it open files ([`hand_over`]), and the name
+/// its [`Call`] has in the app. No tool of this name is offered to models.
+pub const OPEN: &str = "pencraft/open";
 
 /// One tool call on its way to the app.
 pub struct Call {
@@ -152,6 +155,23 @@ fn write_info(port: u16, token: &str) -> std::io::Result<()> {
 #[must_use]
 pub fn serving() -> bool {
     running().is_some_and(|(port, token)| post(port, &token, PING).is_ok())
+}
+
+/// Hands `files` to the Pencraft that is running, which opens them in tabs and comes to the front; whether
+/// one took them.
+// Human: a design double-clicked in the Explorer, or named on the command line, starts a second Pencraft. With
+// one running already the file belongs in that one's window, beside the designs that are open; the second
+// passes it on and ends without opening a window.
+// Agent: BLOCKS on the running app's answer (it opens the files first); `false` when none answers.
+#[must_use]
+pub fn hand_over(files: &[PathBuf]) -> bool {
+    let Some((port, token)) = running() else { return false };
+    let paths: Vec<String> = files.iter().map(|file| std::path::absolute(file).unwrap_or_else(|_| file.clone()).display().to_string()).collect();
+    let message = json!({ "jsonrpc": "2.0", "id": 1, "method": OPEN, "params": { "paths": paths } });
+    post(port, &token, &message.to_string())
+        .ok()
+        .and_then(|body| serde_json::from_slice::<Value>(&body).ok())
+        .is_some_and(|answer| answer.get("result").is_some())
 }
 
 /// Removes the address file when the app ends, so a bridge doesn't try a server that is gone.
@@ -295,6 +315,19 @@ fn answer(message: &Value, chat: Option<u64>, shared: &Shared) -> Option<Value> 
             })
         }
         Some("ping") => json!({}),
+        Some(OPEN) => {
+            let (reply, answered) = channel();
+            let call = Call { tool: OPEN.to_owned(), arguments: params, client: String::new(), chat: None, reply };
+            if lock(&shared.send).send(call).is_err() {
+                return Some(failure(id, -32000, "Pencraft is closing"));
+            }
+            (shared.wake)();
+            match answered.recv_timeout(PATIENCE) {
+                Ok(Ok(_)) => json!({ "opened": true }),
+                Ok(Err(error)) => return Some(failure(id, -32000, &error)),
+                Err(_) => return Some(failure(id, -32000, "Pencraft didn't answer in time.")),
+            }
+        }
         Some("tools/list") => {
             // Human: only the app's own chat has a place to put a question to the user; a client outside the app
             // asks in its own window, and is not offered the tool.
@@ -523,6 +556,22 @@ mod tests {
         assert_eq!((&good["result"]["content"][0]["text"], &good["result"]["isError"]), (&json!("done"), &json!(false)));
         let bad = call(json!({}));
         assert_eq!((&bad["result"]["content"][0]["text"], &bad["result"]["isError"]), (&json!("no such layer"), &json!(true)));
+        app.join().unwrap();
+    }
+
+    #[test]
+    fn files_handed_over_reach_the_app_as_a_call_of_their_own() {
+        let (shared, calls) = shared();
+        let app = std::thread::spawn(move || {
+            let call = calls.recv().unwrap();
+            assert_eq!((call.tool.as_str(), &call.arguments["paths"], call.chat), (OPEN, &json!(["/designs/shop.pen"]), None));
+            call.reply.send(Ok(Vec::new())).unwrap();
+            calls.recv().unwrap().reply.send(Err("Pencraft is busy".to_owned())).unwrap();
+        });
+        let open = json!({ "jsonrpc": "2.0", "id": 1, "method": OPEN, "params": { "paths": ["/designs/shop.pen"] } });
+        assert_eq!(answer(&open, None, &shared).unwrap()["result"], json!({ "opened": true }));
+        // An app that can't take them says so, and the second Pencraft opens them itself.
+        assert!(answer(&open, None, &shared).unwrap().get("result").is_none());
         app.join().unwrap();
     }
 

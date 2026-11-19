@@ -53,6 +53,38 @@ struct ClosePrompt {
     quitting: bool,
 }
 
+/// Clears away the folders that bundles open in an earlier run lay unpacked in, off this thread; those a running
+/// Pencraft holds stay.
+fn sweep_working_folders() {
+    if let Err(error) = std::thread::Builder::new().name("working-folders".to_owned()).spawn(bundle::sweep) {
+        log::warn!("working folders: {error}");
+    }
+}
+
+/// Crash recovery, as the app holds it.
+#[derive(Default)]
+struct Recovery {
+    /// Keeps the documents with unsaved changes on disk in case this run doesn't end properly; `None` in a
+    /// private run or a picture's, and when its folder couldn't be made.
+    keeper: Option<crate::recover::Keeper>,
+    /// The documents an earlier run that didn't end properly left behind, until the user says what to do with them.
+    left: Vec<crate::recover::Left>,
+}
+
+impl Recovery {
+    /// Finds what earlier runs left behind and starts keeping this run's documents; nothing of either in a
+    /// `private` run.
+    // Human: what a crashed run left is looked for before this run makes a folder of its own.
+    fn start(private: bool) -> Recovery {
+        if private {
+            return Recovery::default();
+        }
+        let left = crate::recover::left();
+        let keeper = crate::recover::Keeper::start().map_err(|problem| log::warn!("{problem}")).ok();
+        Recovery { keeper, left }
+    }
+}
+
 /// The app's name in the menu bar ("Quit Pencraft").
 const APP_NAME: &str = "Pencraft";
 
@@ -127,6 +159,8 @@ impl Launch {
 pub struct App {
     prefs: SettingsStore<Prefs>,
     tabs: Vec<Editor>,
+    /// What is kept in case this run doesn't end properly, and what an earlier run left behind.
+    recovery: Recovery,
     /// The tab in front; `None` shows the home screen.
     active: Option<usize>,
     canvas: Canvas,
@@ -194,11 +228,7 @@ impl App {
         if let Some(state) = &cc.wgpu_render_state {
             crate::gpu::install(state.device.clone(), state.queue.clone());
         }
-        // Human: the folders that bundles open in an earlier run lay unpacked in are cleared away, off this
-        // thread; those a running Pencraft holds stay.
-        if let Err(error) = std::thread::Builder::new().name("working-folders".to_owned()).spawn(bundle::sweep) {
-            log::warn!("working folders: {error}");
-        }
+        sweep_working_folders();
         let location = if launch.screenshot.is_some() || launch.private { Location::Memory } else { Location::Auto };
         let (prefs, report) = SettingsStore::<Prefs>::open(location);
         if report.has_problems() {
@@ -211,6 +241,7 @@ impl App {
         let mut app = App {
             prefs,
             tabs: Vec::new(),
+            recovery: Recovery::start(launch.private || launch.screenshot.is_some()),
             active: None,
             canvas: Canvas::default(),
             actions: crate::palette::Palette::default(),
@@ -287,6 +318,7 @@ impl App {
                 app.open_path(path);
             }
         }
+        // Human: what an earlier run that crashed left behind is looked for before this run starts keeping its own.
         // Human: `--sidebar chat` opens the app, or takes its picture, with that view showing.
         if let Some(name) = launch.sidebar.as_deref() {
             app.pose_sidebar(name);
@@ -611,6 +643,9 @@ impl App {
         }
         let mut closed = self.tabs.remove(tab);
         closed.close();
+        if let Some(keeper) = &mut self.recovery.keeper {
+            keeper.forget(closed.id);
+        }
         self.close_talk(closed.id);
         self.active = match self.active {
             Some(a) if a == tab => (!self.tabs.is_empty()).then(|| tab.min(self.tabs.len() - 1)),
@@ -1511,6 +1546,89 @@ impl App {
         }
     }
 
+    /// Hands the documents with unsaved changes to the keeper, and asks for another look when some wait their turn.
+    // Human: not in the middle of a drag, which changes the document with every frame; it is kept when the drag ends.
+    fn keep_for_recovery(&mut self, ctx: &egui::Context) {
+        let Some(keeper) = &mut self.recovery.keeper else { return };
+        if self.canvas.dragging() {
+            return;
+        }
+        let now = Instant::now();
+        let mut waiting = false;
+        for tab in &self.tabs {
+            let seen = crate::recover::Seen { id: tab.id, dirty: tab.dirty, scene: tab.generation, path: tab.path.as_deref(), title: &tab.title() };
+            waiting |= keeper.look(&seen, &tab.doc, now);
+        }
+        if waiting {
+            ctx.request_repaint_after(crate::recover::EVERY);
+        }
+    }
+
+    /// Asks what to do with the documents an earlier run left behind when it didn't end properly.
+    fn recovery_prompt(&mut self, ctx: &egui::Context) {
+        if self.recovery.left.is_empty() {
+            return;
+        }
+        let mut choice = None;
+        egui::Modal::new(egui::Id::unique("recovery")).show(ctx, |ui| {
+            ui.set_width(380.0);
+            ui.label(RichText::new("Pencraft didn't close properly last time").strong());
+            ui.label(if self.recovery.left.len() == 1 {
+                "This design had changes that weren't saved:"
+            } else {
+                "These designs had changes that weren't saved:"
+            });
+            ui.add_space(4.0);
+            for left in &self.recovery.left {
+                let place = left.path.as_ref().map_or_else(|| "never saved".to_owned(), |path| path.display().to_string());
+                ui.label(format!("{} ({place})", left.title));
+            }
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                if ui.button("Restore").clicked() {
+                    choice = Some(true);
+                }
+                if ui.button("Discard").clicked() {
+                    choice = Some(false);
+                }
+            });
+        });
+        let Some(restore) = choice else { return };
+        let left = std::mem::take(&mut self.recovery.left);
+        if !restore {
+            crate::recover::clear(&left);
+            return;
+        }
+        // Human: one that can't be brought back stays on disk and is offered again at the next start.
+        let (mut restored, mut failed) = (Vec::new(), Vec::new());
+        for one in left {
+            match self.restore_left(&one) {
+                Ok(()) => restored.push(one),
+                Err(problem) => failed.push(format!("{}: {problem}", one.title)),
+            }
+        }
+        crate::recover::clear(&restored);
+        if !failed.is_empty() {
+            self.say(format!("Couldn't restore {}", failed.join("; ")));
+        }
+    }
+
+    /// Opens one document an earlier run left behind: its file, with the kept document in the place of the
+    /// file's, or a new document when it has no file (any more). Its changes count as unsaved.
+    fn restore_left(&mut self, left: &crate::recover::Left) -> Result<(), String> {
+        let doc = left.document()?;
+        if let Some(path) = left.path.as_deref().filter(|path| path.is_file()) {
+            self.try_open(path)?;
+            self.editor().ok_or("its tab didn't open")?.restore(doc);
+        } else {
+            let seed = self.next_seed();
+            let mut editor = Editor::new(doc, None, seed);
+            editor.dirty = true;
+            self.add_tab(editor);
+        }
+        Ok(())
+    }
+
     /// After one unsaved question while quitting: ask about the next unsaved tab, or quit.
     fn continue_quit(&mut self, ctx: &egui::Context) {
         if let Some(tab) = self.tabs.iter().position(|t| t.dirty) {
@@ -1574,6 +1692,8 @@ impl eframe::App for App {
         }
         self.send_waiting(ctx);
         self.log_chats();
+        self.keep_for_recovery(ctx);
+        self.keep_chats();
         // Last, so it sees the app's CancelClose.
         craft_quit::on_close_request(ctx);
     }
@@ -1633,6 +1753,7 @@ impl eframe::App for App {
         self.show_picture_dialog(&ctx);
         self.update_prompt(&ctx);
         self.close_prompt(&ctx);
+        self.recovery_prompt(&ctx);
         self.toasts.show(&ctx, self.dark());
         let title = self.active.and_then(|i| self.tabs.get(i)).map_or_else(|| "Pencraft".to_owned(), |t| format!("{} — Pencraft", t.title()));
         let current = ctx.input(|i| i.viewport().title.clone());
@@ -1653,6 +1774,10 @@ impl eframe::App for App {
         }
         if let Err(e) = self.prefs.flush() {
             log::warn!("settings not saved: {e}");
+        }
+        // Human: a run that ends properly has nothing to recover: the user was asked about every unsaved document.
+        if let Some(keeper) = self.recovery.keeper.take() {
+            keeper.finish();
         }
         if let Some(update) = self.install.take()
             && let Err(problem) = update.start()

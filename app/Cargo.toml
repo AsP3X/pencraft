@@ -24,6 +24,9 @@ craft-settings = { git = "https://github.com/storytold/craft-libs", rev = "915fc
 craft-dialogs = { git = "https://github.com/storytold/craft-libs", rev = "915fc544587fb9ce7c3d0110f4be7159bca0ff16" }
 craft-quit = { git = "https://github.com/storytold/craft-libs", rev = "915fc544587fb9ce7c3d0110f4be7159bca0ff16", features = ["egui"] }
 craft-menu = { git = "https://github.com/storytold/craft-libs", rev = "915fc544587fb9ce7c3d0110f4be7159bca0ff16" }
+# Human: Writes PDF exports as vectors with their fonts inside (craft-pdf's writer over the Krilla library, with
+# its own shaping of a line of text). Krilla is the copy craft-libs carries, patched in below, which craft-pdf needs.
+craft-pdf = { git = "https://github.com/storytold/craft-libs", rev = "915fc544587fb9ce7c3d0110f4be7159bca0ff16", features = ["write-simple-text"] }
 # Human: The shared AI data model; Pencraft uses its secret type, which can't be printed or saved by accident.
 craft-ai-core = { git = "https://github.com/storytold/craft-libs", rev = "915fc544587fb9ce7c3d0110f4be7159bca0ff16" }
 
@@ -104,6 +107,7 @@ craft-dialogs.workspace = true
 craft-quit.workspace = true
 craft-menu.workspace = true
 craft-ai-core.workspace = true
+craft-pdf.workspace = true
 keyring.workspace = true
 ureq.workspace = true
 egui.workspace = true
@@ -149,3 +153,5 @@ egui-winit = { git = "https://github.com/storytold/egui.git", rev = "6d518fc7996
 egui-wgpu = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 eframe = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }
+# Human: craft-pdf builds only with the Krilla that craft-libs carries (its patches); the same commit as the libraries.
+krilla = { git = "https://github.com/storytold/craft-libs", rev = "915fc544587fb9ce7c3d0110f4be7159bca0ff16" }

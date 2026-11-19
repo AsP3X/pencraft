@@ -24,6 +24,7 @@ pub mod catalog;
 pub mod code;
 pub mod critic;
 pub mod files;
+pub mod history;
 pub mod openai;
 pub mod plain;
 pub mod steps;

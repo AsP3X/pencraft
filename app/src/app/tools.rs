@@ -208,6 +208,19 @@ impl App {
         }
         self.settle_fonts(ctx);
         for (call, since) in calls {
+            // Human: files a second Pencraft passes on are the user's own doing, whatever the settings say
+            // about AI models: they open in tabs and the window comes to the front.
+            if call.tool == crate::link::OPEN {
+                for path in call.arguments.get("paths").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
+                    self.open_path(Path::new(path));
+                }
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                ctx.request_repaint();
+                // A second Pencraft that stopped waiting opens the files itself; there is no one to tell.
+                let _ = call.reply.send(Ok(Vec::new()));
+                continue;
+            }
             let on = self.prefs.get().agents.tools;
             // Human: a tool the user turned off in the settings is neither offered nor run.
             if on && self.prefs.get().agents.tools_off().contains(&call.tool) {

@@ -66,7 +66,7 @@ pub const QUALITIES: [(&str, u8); 3] = [("High", 95), ("Medium", 75), ("Low", 50
 /// The scales a picture can be exported at (1x, 2x, 3x).
 pub const SCALES: [u8; 3] = [1, 2, 3];
 /// Pixels per unit a PDF page's picture is drawn at.
-const PDF_SCALE: f32 = 2.0;
+pub(crate) const PDF_SCALE: f32 = 2.0;
 /// JPEG quality of a PDF page's picture.
 const PDF_QUALITY: u8 = 92;
 
@@ -99,7 +99,7 @@ pub struct Picture {
 
 impl Picture {
     /// The pixels with colour not multiplied by alpha, as PNG and WebP store them.
-    fn straight(&self) -> Vec<u8> {
+    pub(crate) fn straight(&self) -> Vec<u8> {
         let mut out = self.rgba.clone();
         for pixel in out.as_chunks_mut::<4>().0 {
             let a = u16::from(pixel[3]);
@@ -262,10 +262,16 @@ pub fn run(list: &DisplayList, editor: &Editor, ctx: &egui::Context, options: Op
     let folder = editor.folder();
     let draw = |scale: f32| list.snapshot(&layers, scale, vars, ctx, folder).ok_or_else(|| "The layers are empty or too large to export.".to_owned());
     let bytes = match options.format {
+        // Human: a PDF is vectors and real text wherever a PDF can say what the design shows; a design with a
+        // material, a background blur or a shader in it is one picture on its page, as it always was.
         Format::Pdf => {
-            let picture = draw(PDF_SCALE)?;
-            let size = (narrow_len(picture.w) / PDF_SCALE, narrow_len(picture.h) / PDF_SCALE);
-            pdf(&[Page { size, jpeg: picture.jpeg(PDF_QUALITY)?, pixels: (picture.w, picture.h) }])
+            if let Some(vectors) = list.pdf(&layers, vars, ctx, folder) {
+                vectors?
+            } else {
+                let picture = draw(PDF_SCALE)?;
+                let size = (narrow_len(picture.w) / PDF_SCALE, narrow_len(picture.h) / PDF_SCALE);
+                pdf(&[Page { size, jpeg: picture.jpeg(PDF_QUALITY)?, pixels: (picture.w, picture.h) }])
+            }
         }
         Format::Svg => list.svg(&layers, vars, ctx, folder).ok_or("The layers have no size to export.")?.into_bytes(),
         Format::Png | Format::Jpeg | Format::WebP => draw(f32::from(options.scale.max(1)))?.encode(options.format, options.quality)?,
@@ -275,7 +281,7 @@ pub fn run(list: &DisplayList, editor: &Editor, ctx: &egui::Context, options: Op
 
 /// A count of pixels as a length.
 #[expect(clippy::cast_precision_loss, reason = "pictures are far smaller than f32's exact range")]
-fn narrow_len(pixels: usize) -> f32 {
+pub(crate) fn narrow_len(pixels: usize) -> f32 {
     pixels as f32
 }
 

@@ -27,6 +27,16 @@
    "value": 60
   },
   {
+   "name": "crash recovery: seconds between two writes of a document",
+   "group": "file",
+   "value": 5
+  },
+  {
+   "name": "chat history: most lines kept",
+   "group": "file",
+   "value": 200
+  },
+  {
    "name": "frame layout when unset",
    "group": "layout",
    "value": "horizontal"

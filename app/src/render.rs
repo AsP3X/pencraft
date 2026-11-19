@@ -31,6 +31,7 @@ use crate::images::{ImageStore, Picture};
 mod bake;
 mod glass;
 mod pattern;
+mod pdf_out;
 mod svg_out;
 
 pub use bake::Seen;
@@ -911,6 +912,26 @@ impl DisplayList {
         Some(Survey { picture, origin, scale, materials: baked.seen() })
     }
 
+    /// `scenes` together as a PDF page of vectors, with the layers a PDF has no word for as pictures at the
+    /// export's scale; `None` when the design shows what is behind a layer through it, which only a picture
+    /// of the whole page shows.
+    ///
+    /// # Errors
+    /// A sentence when the layers have no size or the PDF can't be made.
+    // Agent: MAIN-THREAD; lays text out through `ctx` and READS the fonts and pictures the layers name.
+    pub fn pdf(
+        &self,
+        scenes: &[&SceneNode],
+        vars: Vars<'_>,
+        ctx: &egui::Context,
+        folder: Option<&std::path::Path>,
+    ) -> Option<Result<Vec<u8>, String>> {
+        let baked = bake::Baked::default();
+        baked.begin();
+        let works = crate::app::lock(&self.works);
+        Self::builder(crate::export::PDF_SCALE, vars, ctx, folder, &works.images, &baked).pdf(scenes)
+    }
+
     /// `scenes` together as one SVG file, or `None` when they have no size.
     pub fn svg(&self, scenes: &[&SceneNode], vars: Vars<'_>, ctx: &egui::Context, folder: Option<&std::path::Path>) -> Option<String> {
         let baked = bake::Baked::default();
@@ -1178,6 +1199,26 @@ struct Pen {
     width: f32,
     cap: LineCap,
     join: LineJoin,
+}
+
+/// The pen `node`'s stroke of `width` is drawn with.
+// Human: a connector's line ends and turns round unless it says otherwise; every other stroke is cut off square
+// and turns in a point, as SVG does.
+fn pen_for(node: &Node, width: f32) -> Pen {
+    let wire = node.kind == Kind::Connector;
+    let cap = match node.extra.get("strokeLinecap").and_then(Value::as_str) {
+        Some("round") => LineCap::Round,
+        Some("square") => LineCap::Square,
+        None if wire => LineCap::Round,
+        Some(_) | None => LineCap::Butt,
+    };
+    let join = match node.extra.get("strokeLinejoin").and_then(Value::as_str) {
+        Some("round") => LineJoin::Round,
+        Some("bevel") => LineJoin::Bevel,
+        None if wire => LineJoin::Round,
+        Some(_) | None => LineJoin::Miter,
+    };
+    Pen { width, cap, join }
 }
 
 impl Builder<'_> {
@@ -1745,23 +1786,7 @@ impl Builder<'_> {
         clip: Option<Rect>,
         out: &mut Vec<Item>,
     ) {
-        let node = &scene.node;
-        // Human: a connector's line ends and turns round unless it says otherwise; every other stroke is cut
-        // off square and turns in a point, as SVG does.
-        let wire = node.kind == Kind::Connector;
-        let cap = match node.extra.get("strokeLinecap").and_then(Value::as_str) {
-            Some("round") => LineCap::Round,
-            Some("square") => LineCap::Square,
-            None if wire => LineCap::Round,
-            Some(_) | None => LineCap::Butt,
-        };
-        let join = match node.extra.get("strokeLinejoin").and_then(Value::as_str) {
-            Some("round") => LineJoin::Round,
-            Some("bevel") => LineJoin::Bevel,
-            None if wire => LineJoin::Round,
-            Some(_) | None => LineJoin::Miter,
-        };
-        self.stroke_pen(shape, brush, Pen { width, cap, join }, scene, opacity, bounds, clip, out);
+        self.stroke_pen(shape, brush, pen_for(&scene.node, width), scene, opacity, bounds, clip, out);
     }
 
     #[expect(clippy::too_many_arguments, reason = "a stroke needs its shape, brush, pen, node, opacity, bounds and clip")]
@@ -2322,22 +2347,27 @@ fn paint_galley(painter: &Painter, pos: Pos2, galley: std::sync::Arc<egui::Galle
 /// Where a text's paragraph starts in the document, and the angle it is drawn at; `text_h` is the height of
 /// the laid-out paragraph in document units.
 fn text_anchor(text: &TextItem, text_h: f32) -> (Point, f32) {
-    let (w, h) = text.size;
+    // Human: the angle of the node's local x axis on screen (rotation; flips are not mirrored for text).
+    (text.to_doc.apply(text_corner(&text.style, text.size, text_h)), text.to_doc.m[1].atan2(text.to_doc.m[0]))
+}
+
+/// Where the paragraph of a text in `style` starts in its own box of `size`, the paragraph being `text_h` high.
+fn text_corner(style: &TextStyle, size: (f32, f32), text_h: f32) -> Point {
+    let (w, h) = size;
     // Human: the paragraph starts half a letter-spacing to the left (`x = -letterSpacing / 2`),
     // and vertical alignment applies only to fixed-size text (not `auto`).
-    let anchor_x = -text.style.letter_spacing / 2.0
-        + match text.style.align {
+    let anchor_x = -style.letter_spacing / 2.0
+        + match style.align {
             TextAlign::Left | TextAlign::Justify => 0.0,
             TextAlign::Center => w / 2.0,
             TextAlign::Right => w,
         };
-    let top = match (text.style.wrap.is_some(), text.style.valign) {
+    let top = match (style.wrap.is_some(), style.valign) {
         (false, _) | (true, TextVAlign::Top) => 0.0,
         (true, TextVAlign::Middle) => (h - text_h) / 2.0,
         (true, TextVAlign::Bottom) => h - text_h,
     };
-    // Human: the angle of the node's local x axis on screen (rotation; flips are not mirrored for text).
-    (text.to_doc.apply(Point::new(anchor_x, top)), text.to_doc.m[1].atan2(text.to_doc.m[0]))
+    Point::new(anchor_x, top)
 }
 
 #[cfg(test)]
@@ -2415,6 +2445,54 @@ mod tests {
             _ => None,
         };
         list.items.iter().filter_map(textured).collect()
+    }
+
+    #[test]
+    fn a_pdf_is_vectors_with_pictures_only_for_what_it_has_no_word_for() {
+        let open = |layers: &str| {
+            let json = format!(
+                r##"{{"version":"2.22","children":[{{"type":"frame","id":"page","x":0,"y":0,"width":200,"height":80,"layout":"none","clip":true,"fill":"#ffffff","children":[{layers}]}}]}}"##
+            );
+            let mut editor = crate::editor::Editor::new(pen_doc::read(&json).unwrap(), None, 1);
+            editor.refresh(&|_| (10.0, 10.0));
+            editor
+        };
+        let ctx = egui::Context::default();
+        let write = |editor: &crate::editor::Editor| {
+            let scenes: Vec<&SceneNode> = editor.scene.iter().collect();
+            DisplayList::default().pdf(&scenes, Vars::new(&editor.doc), &ctx, None)
+        };
+        // The layers that go on the page as pictures of themselves, by id.
+        let pictured = |editor: &crate::editor::Editor| {
+            let scenes: Vec<&SceneNode> = editor.scene.iter().collect();
+            let (list, baked) = (DisplayList::default(), bake::Baked::default());
+            baked.begin();
+            let works = crate::app::lock(&list.works);
+            DisplayList::builder(crate::export::PDF_SCALE, Vars::new(&editor.doc), &ctx, None, &works.images, &baked).pdf_pictured(&scenes)
+        };
+        // Shapes, a gradient, a stroke and a faded layer: a page of vectors, without a single picture.
+        let plain = open(
+            r##"{"type":"rectangle","id":"r","x":10,"y":10,"width":60,"height":40,"cornerRadius":8,"stroke":"#000000","strokeWidth":2,
+                 "fill":{"type":"gradient","gradientType":"linear","colors":[{"position":0,"color":"#ff0000"},{"position":1,"color":"#0000ff"}]}},
+                {"type":"ellipse","id":"e","x":90,"y":10,"width":50,"height":50,"fill":"#00aa00","opacity":0.5}"##,
+        );
+        assert!(write(&plain).unwrap().unwrap().starts_with(b"%PDF-"));
+        assert_eq!(pictured(&plain), Vec::<String>::new());
+        // A blurred layer, one with a pattern and one with an angular gradient are pictures of themselves; the
+        // plain one beside them stays a shape.
+        let mixed = open(
+            r##"{"type":"rectangle","id":"r","x":10,"y":10,"width":60,"height":40,"fill":"#ff0000"},
+                {"type":"ellipse","id":"blur","x":90,"y":10,"width":50,"height":50,"fill":"#00aa00","effect":{"type":"blur","radius":4}},
+                {"type":"rectangle","id":"dots","x":150,"y":10,"width":20,"height":20,"fill":{"type":"pattern","shape":"dots","color":"#000000"}},
+                {"type":"rectangle","id":"sweep","x":150,"y":40,"width":20,"height":20,
+                 "fill":{"type":"gradient","gradientType":"angular","colors":[{"position":0,"color":"#ff0000"},{"position":1,"color":"#0000ff"}]}}"##,
+        );
+        assert_eq!(pictured(&mixed), vec!["blur".to_owned(), "dots".to_owned(), "sweep".to_owned()]);
+        let (with, without) = (write(&mixed).unwrap().unwrap(), write(&plain).unwrap().unwrap());
+        assert!(with.starts_with(b"%PDF-") && with.len() > without.len());
+        // A material shows what is behind it: no page of vectors is written, and the page stays one picture.
+        let glass = open(r#"{"type":"rectangle","id":"g","x":10,"y":10,"width":60,"height":40,"material":"frosted"}"#);
+        assert!(write(&glass).is_none());
     }
 
     #[test]

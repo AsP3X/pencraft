@@ -329,6 +329,14 @@ impl Editor {
         self.needs_layout = true;
     }
 
+    /// Puts `doc`, kept from a run that didn't end properly, in the place of the document: its changes count as
+    /// unsaved, and one step back is the document as its file has it.
+    pub fn restore(&mut self, doc: Document) {
+        self.checkpoint();
+        self.doc = doc;
+        self.after_history();
+    }
+
     /// Steps back one change; while the pen is drawing a path, that is its last point.
     pub fn undo(&mut self) {
         if self.pen.pop() {
@@ -698,6 +706,20 @@ mod tests {
         let mut editor = Editor::new(pen_doc::read(json).unwrap(), None, 1);
         editor.refresh(&measure);
         editor
+    }
+
+    #[test]
+    fn a_restored_document_counts_as_unsaved_and_one_step_back_is_the_files() {
+        let mut editor = editor();
+        let (before, mut kept) = (pen_doc::write(&editor.doc).unwrap(), editor.doc.clone());
+        kept.children.pop();
+        editor.selection = vec!["from".to_owned()];
+        assert!(!editor.dirty);
+        editor.restore(kept.clone());
+        editor.refresh(&|_| (0.0, 0.0));
+        assert!(editor.dirty && editor.scene.len() == kept.children.len());
+        editor.undo();
+        assert_eq!(pen_doc::write(&editor.doc).unwrap(), before);
     }
 
     fn measure(style: &pen_doc::layout::TextStyle) -> (f32, f32) {

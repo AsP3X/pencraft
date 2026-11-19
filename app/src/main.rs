@@ -42,6 +42,7 @@ mod path_edit;
 mod pen;
 mod prefs;
 mod raster;
+mod recover;
 mod render;
 mod review;
 mod samples;
@@ -98,6 +99,11 @@ fn main() -> ExitCode {
     // Human: an AI client asks for the app in the background; when a Pencraft is already running there is
     // nothing to start, and no second window opens.
     if launch.background && launch.ask.is_none() && link::serving() {
+        return ExitCode::SUCCESS;
+    }
+    // Human: files opened from the Explorer or the command line go to the Pencraft that is already running.
+    let own_window = launch.screenshot.is_some() || launch.private || launch.background || launch.ask.is_some();
+    if !launch.files.is_empty() && !own_window && link::hand_over(&launch.files) {
         return ExitCode::SUCCESS;
     }
     let shooting = launch.screenshot.is_some() || launch.background;
