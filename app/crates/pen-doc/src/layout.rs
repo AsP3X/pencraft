@@ -94,6 +94,15 @@ pub type Measure<'a> = dyn Fn(&TextStyle) -> (f32, f32) + 'a;
 // fill), positions. Each pass walks the whole tree, so a parent sees its children's final width before heights.
 // Agent: WRITES SceneNode::local and ::to_doc for every node; CALLS measure about twice per text node.
 pub fn layout(scene: &mut [SceneNode], vars: Vars<'_>, measure: &Measure<'_>) {
+    layout_roots(scene, vars, measure);
+    crate::connector::route(scene, vars);
+}
+
+/// Lays out the top-level nodes `scene` and what is in them, without routing connectors: each is laid out by
+/// itself, so some of a scene's can be laid out again while the others stay as they are. Call
+/// [`crate::connector::route`] on the whole scene afterwards when it has connectors.
+// Agent: WRITES SceneNode::local and ::to_doc for every node; CALLS measure about twice per text node.
+pub fn layout_roots(scene: &mut [SceneNode], vars: Vars<'_>, measure: &Measure<'_>) {
     let engine = Engine { vars, measure };
     for root in scene.iter_mut() {
         engine.init(root);
@@ -119,7 +128,6 @@ pub fn layout(scene: &mut [SceneNode], vars: Vars<'_>, measure: &Measure<'_>) {
     for root in scene.iter_mut() {
         place(root, &Affine::IDENTITY);
     }
-    crate::connector::route(scene, vars);
 }
 
 /// The text style of a text or note node.

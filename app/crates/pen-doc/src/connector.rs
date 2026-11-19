@@ -102,23 +102,28 @@ enum Route {
 // Agent: WRITES `geometry`, `view_box`, `local` and `to_doc` of every `Kind::Connector` scene node; READS the
 // `from`, `to`, `route`, `startMarker`, `endMarker`, `markerSize` keys in `node.extra` and `cornerRadius`.
 pub fn route(scene: &mut [SceneNode], vars: Vars<'_>) {
+    // A scene without connectors (most are) is only looked through, at no cost in memory.
+    if !scene.iter().any(has_connector) {
+        return;
+    }
     let mut boxes = HashMap::new();
-    let mut any = false;
     for root in scene.iter() {
         root.walk(
             &mut |node, _| {
-                any |= node.node.kind == Kind::Connector;
                 boxes.insert(node.id.clone(), doc_bounds(node));
             },
             0,
         );
     }
-    if !any {
-        return;
-    }
     for root in scene.iter_mut() {
         connect(root, &Affine::IDENTITY, &boxes, vars);
     }
+}
+
+/// Whether `scene` or anything in it is a connector.
+#[must_use]
+pub fn has_connector(scene: &SceneNode) -> bool {
+    scene.node.kind == Kind::Connector || scene.children.iter().any(has_connector)
 }
 
 fn connect(scene: &mut SceneNode, parent: &Affine, boxes: &HashMap<String, Rect>, vars: Vars<'_>) {

@@ -171,12 +171,14 @@ impl Canvas {
             editor.generation,
             editor.camera.zoom,
             visible,
-            Vars::new(&editor.doc),
+            &editor.doc,
             ui.ctx(),
             folder.as_deref(),
             self.background,
             editor.activity.hidden(),
             stamp,
+            // A stage of a model's change is a scene of its own, without stamps: it is built whole.
+            if stage.is_some() { &[] } else { editor.stamps() },
         );
         self.list.draw(&painter, &editor.camera, view);
         // Human: a path being drawn becomes a layer when the tool changes (Escape goes back to Move) or with

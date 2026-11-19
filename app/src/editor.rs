@@ -88,6 +88,18 @@ pub fn find_in<'a>(nodes: &'a [SceneNode], id: &str) -> Option<&'a SceneNode> {
     nodes.iter().find_map(|n| if n.id == id { Some(n) } else { find_in(&n.children, id) })
 }
 
+/// The ids the instances in `node` show (their `ref`), `node` itself included.
+fn shown_by(node: &Node) -> Vec<String> {
+    let mut shown: Vec<String> = node.reference.iter().cloned().collect();
+    shown.extend(node.kids().iter().flat_map(shown_by));
+    shown
+}
+
+/// Whether `node` or anything in it is a component, or is among `shown` (the ids instances show).
+fn holds_shown(node: &Node, shown: &HashSet<&str>) -> bool {
+    node.reusable == Some(true) || shown.contains(node.id.as_str()) || node.kids().iter().any(|kid| holds_shown(kid, shown))
+}
+
 /// One open document.
 pub struct Editor {
     /// A number of its own among the documents opened in this run; it stays the same however its tab moves.
@@ -134,6 +146,31 @@ pub struct Editor {
     ids: IdMaker,
     needs_layout: bool,
     needs_fit: bool,
+    /// What the scene was last built from, to tell which of its top-level nodes an edit changed.
+    laid: Laid,
+}
+
+/// What a scene was built from, and what is known of each of its top-level nodes.
+// Human: a design is dozens of screens side by side, and an edit changes one of them. Building and laying out
+// only that one, and drawing only that one anew, is what keeps a large design quick to work on.
+#[derive(Default)]
+struct Laid {
+    /// The document without its top-level nodes: its variables, themes and imports.
+    rest: Option<Document>,
+    /// The top-level nodes, as they were.
+    nodes: Vec<Node>,
+    /// The theme that was in force at the top level.
+    theme: pen_doc::vars::ThemeContext,
+    /// A number for each top-level scene node, another one each time it is built again.
+    stamps: Vec<u64>,
+    /// The ids each top-level node's instances show (`ref`), anywhere in it.
+    shows: Vec<Vec<String>>,
+    /// Whether each top-level scene node has a connector in it.
+    wired: Vec<bool>,
+    /// The last stamp given out.
+    stamped: u64,
+    /// Whether everything is to be built again whatever changed (fonts became ready, the theme changed).
+    all: bool,
 }
 
 impl Editor {
@@ -165,6 +202,7 @@ impl Editor {
             ids: IdMaker::new(seed),
             needs_layout: true,
             needs_fit: true,
+            laid: Laid::default(),
         }
     }
 
@@ -336,13 +374,88 @@ impl Editor {
 
     /// Rebuilds the scene and its layout if the document changed.
     // Agent: MAIN-THREAD; ALLOCATES the scene; CALLS measure for every text node.
+    // Human: only the top-level nodes that changed are built and laid out again, when that is all that
+    // changed (`changed_roots`); the others keep their scene nodes and their stamps.
     pub fn refresh(&mut self, measure: &Measure<'_>) {
         if !self.needs_layout {
             return;
         }
         self.needs_layout = false;
-        self.scene = self.laid_out(measure);
         self.generation += 1;
+        let theme = self.root_theme();
+        let Some(changed) = self.changed_roots(&theme) else {
+            self.scene = self.laid_out(measure);
+            let laid = &mut self.laid;
+            let mut rest = self.doc.clone();
+            laid.nodes = std::mem::take(&mut rest.children);
+            (laid.rest, laid.theme, laid.all) = (Some(rest), theme, false);
+            laid.stamps = (1..=self.scene.len() as u64).map(|step| laid.stamped + step).collect();
+            laid.stamped += self.scene.len() as u64;
+            laid.shows = laid.nodes.iter().map(shown_by).collect();
+            laid.wired = self.scene.iter().map(pen_doc::connector::has_connector).collect();
+            return;
+        };
+        let vars = Vars::new(&self.doc);
+        let mut built = scene::build_some(&self.doc, &theme, &changed);
+        layout::layout_roots(&mut built, vars, measure);
+        for (at, root) in changed.iter().copied().zip(built) {
+            let (Some(node), Some(place)) = (self.doc.children.get(at), self.scene.get_mut(at)) else { continue };
+            self.laid.wired[at] = pen_doc::connector::has_connector(&root);
+            *place = root;
+            self.laid.nodes[at] = node.clone();
+            self.laid.shows[at] = shown_by(node);
+            self.laid.stamped += 1;
+            self.laid.stamps[at] = self.laid.stamped;
+        }
+        // Human: a connector follows layers that may lie in another top-level node, so every one is routed
+        // again, and every top-level node with a connector in it counts as changed.
+        if self.laid.wired.contains(&true) {
+            pen_doc::connector::route(&mut self.scene, vars);
+            for (stamp, _) in self.laid.stamps.iter_mut().zip(&self.laid.wired).filter(|(_, wired)| **wired) {
+                self.laid.stamped += 1;
+                *stamp = self.laid.stamped;
+            }
+        }
+    }
+
+    /// A number for each top-level node of [`Editor::scene`] that is another one each time that node is built
+    /// again: what was drawn for a node whose number is the same still holds.
+    #[must_use]
+    pub fn stamps(&self) -> &[u64] {
+        &self.laid.stamps
+    }
+
+    /// The top-level nodes that changed since the scene was built, by their place; `None` when the whole
+    /// scene has to be built again.
+    // Human: everything is built again when what all nodes share changed (variables, themes, the theme
+    // chosen, the fonts), when top-level nodes came, went or changed places, and when a changed node holds
+    // a component or anything else an instance somewhere shows: that instance has to follow.
+    fn changed_roots(&mut self, theme: &pen_doc::vars::ThemeContext) -> Option<Vec<usize>> {
+        let laid = &self.laid;
+        let count = self.doc.children.len();
+        if laid.all
+            || laid.theme != *theme
+            || [laid.nodes.len(), laid.stamps.len(), laid.shows.len(), laid.wired.len(), self.scene.len()] != [count; 5]
+        {
+            return None;
+        }
+        // The document is compared without its children, which are compared one by one below.
+        let children = std::mem::take(&mut self.doc.children);
+        let same_rest = self.laid.rest.as_ref() == Some(&self.doc);
+        self.doc.children = children;
+        if !same_rest {
+            return None;
+        }
+        let laid = &self.laid;
+        let changed: Vec<usize> = (0..count).filter(|at| laid.nodes.get(*at) != self.doc.children.get(*at)).collect();
+        let shown: HashSet<&str> = laid.shows.iter().flatten().map(String::as_str).collect();
+        for at in &changed {
+            let (Some(was), Some(is)) = (laid.nodes.get(*at), self.doc.children.get(*at)) else { return None };
+            if was.id != is.id || holds_shown(was, &shown) || holds_shown(is, &shown) {
+                return None;
+            }
+        }
+        Some(changed)
     }
 
     /// The document as it is now, with instances expanded and laid out; [`Editor::scene`] is not touched.
@@ -360,9 +473,10 @@ impl Editor {
         self.needs_layout
     }
 
-    /// Forces a relayout (after the theme changed).
+    /// Forces a relayout of everything (after the theme or the fonts changed).
     pub fn relayout(&mut self) {
         self.needs_layout = true;
+        self.laid.all = true;
     }
 
     /// The laid-out scene node for an id: a document node's id, or `instance/inner` for a node inside an instance.
@@ -556,5 +670,87 @@ fn image_urls(doc: &mut Document, visit: &mut dyn FnMut(&mut String)) {
     }
     for top in &mut doc.children {
         in_node(top, visit);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A design of three boards: one holds a component, one an instance of it, and one a plain rectangle with
+    /// a connector to a rectangle on the board before it.
+    fn editor() -> Editor {
+        let json = r##"{"version":"2.22","children":[
+            {"type":"frame","id":"parts","x":0,"y":0,"width":200,"height":100,"layout":"none","children":[
+                {"type":"rectangle","id":"chip","reusable":true,"x":10,"y":10,"width":40,"height":20,"fill":"#ff0000"}]},
+            {"type":"frame","id":"uses","x":300,"y":0,"width":200,"height":100,"layout":"none","children":[
+                {"type":"ref","id":"one","ref":"chip","x":20,"y":20},
+                {"type":"rectangle","id":"from","x":100,"y":10,"width":30,"height":30,"fill":"#00ff00"}]},
+            {"type":"frame","id":"plain","x":600,"y":0,"width":200,"height":100,"layout":"none","children":[
+                {"type":"rectangle","id":"to","x":20,"y":50,"width":30,"height":30,"fill":"#0000ff"},
+                {"type":"connector","id":"wire","from":"from","to":"to","stroke":"#000000"}]},
+            {"type":"frame","id":"alone","x":900,"y":0,"width":200,"height":100,"layout":"none","children":[
+                {"type":"text","id":"word","x":10,"y":10,"content":"Hello","fontSize":16}]}
+        ]}"##;
+        let mut editor = Editor::new(pen_doc::read(json).unwrap(), None, 1);
+        editor.refresh(&measure);
+        editor
+    }
+
+    fn measure(style: &pen_doc::layout::TextStyle) -> (f32, f32) {
+        #[expect(clippy::cast_precision_loss, reason = "a short test text")]
+        let long = style.content.chars().count() as f32;
+        (long * style.size * 0.5, style.size * 1.2)
+    }
+
+    /// Changes the layer `id`, lays the document out again, and says which top-level nodes got another
+    /// stamp. The scene must be the one a build of the whole document gives.
+    fn edit(editor: &mut Editor, id: &str, change: &dyn Fn(&mut Node)) -> Vec<bool> {
+        let before = editor.stamps().to_vec();
+        assert!(editor.change(id, change));
+        editor.touched();
+        editor.refresh(&measure);
+        assert_eq!(format!("{:?}", editor.scene), format!("{:?}", editor.laid_out(&measure)), "after changing {id}");
+        before.iter().zip(editor.stamps()).map(|(was, is)| was != is).collect()
+    }
+
+    #[test]
+    fn an_edit_lays_out_only_the_top_level_node_it_is_in() {
+        let mut editor = editor();
+        // A text on a board of its own: that board alone. (The board with the connector counts as changed
+        // with every edit, since what a connector follows may lie anywhere.)
+        let rebuilt = edit(&mut editor, "word", &|node| node.content = Some("Hello there".to_owned()));
+        assert_eq!(rebuilt, [false, false, true, true]);
+        let wider = editor.scene_node("word").unwrap().local.w;
+        assert!((wider - 11.0 * 8.0).abs() < 1e-3, "{wider}");
+        // The layer a connector starts at moves: its own board, and the connector's board follows.
+        let rebuilt = edit(&mut editor, "from", &|node| node.x = Some(140.into()));
+        assert_eq!(rebuilt, [false, true, true, false]);
+        // Nothing changed at all: nothing is built again.
+        editor.touched();
+        let before = editor.stamps().to_vec();
+        editor.refresh(&measure);
+        assert_eq!(editor.stamps()[..2], before[..2]);
+    }
+
+    #[test]
+    fn a_change_to_a_component_or_to_what_all_nodes_share_builds_everything_again() {
+        let mut editor = editor();
+        // The component changes: the instance on another board has to follow.
+        let rebuilt = edit(&mut editor, "chip", &|node| node.width = Some(pen_doc::value::Num::new(60.0)));
+        assert_eq!(rebuilt, [true; 4]);
+        assert!((editor.scene_node("one").unwrap().local.w - 60.0).abs() < 1e-3);
+        // The fonts became ready, or the theme changed: everything.
+        let before = editor.stamps().to_vec();
+        editor.relayout();
+        editor.refresh(&measure);
+        assert!(before.iter().zip(editor.stamps()).all(|(was, is)| was != is));
+        // An undo is an edit like any other: back to the scene of the whole document.
+        editor.checkpoint();
+        edit(&mut editor, "word", &|node| node.content = Some("Bye".to_owned()));
+        editor.undo();
+        editor.refresh(&measure);
+        assert_eq!(format!("{:?}", editor.scene), format!("{:?}", editor.laid_out(&measure)));
+        assert_eq!(editor.scene_node("word").unwrap().node.content.as_deref(), Some("Hello"));
     }
 }

@@ -434,6 +434,7 @@ impl Builder<'_> {
         };
         let back = Grid::new(expand(&grid.rect(), reach), None, 0.0, grid.scale / coarse, false)?;
         let area = back.rect();
+        self.reads_behind(area);
         let behind: Vec<&Item> = behind.iter().copied().filter(|item| extent(item).is_some_and(|e| e.intersects(&area))).collect();
         let shader = if glass && gpu::ready() { program() } else { None };
 

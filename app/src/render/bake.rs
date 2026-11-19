@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, TryRecvError};
 
 use egui::epaint::{ClippedShape, Mesh, Primitive, TextShape, Vertex};
@@ -141,7 +141,8 @@ pub struct Seen {
 }
 
 /// The pictures effects were baked into, by a hash of what each was made from.
-// Agent: MAIN-THREAD only (RefCell); a picture not used by a build is dropped at the end of that build.
+// Agent: one thread at a time (RefCell): the display list keeps it behind a lock. A picture not used by a
+// build is let go at the end of that build.
 #[derive(Default)]
 pub(super) struct Baked {
     pictures: RefCell<HashMap<u64, Picture>>,
@@ -158,27 +159,27 @@ pub(super) struct Baked {
     blank: RefCell<Option<TextureHandle>>,
     /// How each tile of a mask asked about so far lies to its outline, by a hash of the two.
     tiles: RefCell<HashMap<u64, Cover>>,
-    /// How long this build may spend getting pictures ready to be made; `None` makes all it needs itself.
-    allowed: Cell<Option<std::time::Duration>>,
-    /// How long it has spent on that so far.
-    spent: Cell<std::time::Duration>,
-    /// How many pictures and mask tiles this build has made so far.
-    fresh: Cell<usize>,
-    /// Whether this build left a picture out because its time was up or the picture is still being made.
+    /// Whether this build left a picture out because it is still being made.
     late: Cell<bool>,
-    /// Whether this build stopped handing out work because its time was up.
+    /// Whether this build had more pictures to hand out than the threads' line takes.
     cut: Cell<bool>,
-    /// Whether this build has its pictures made on other threads and goes on without them.
-    apart: Cell<bool>,
+    /// For a build that has its pictures made on other threads and goes on without them: the flag that
+    /// calls it off. `None` for a build that makes its pictures itself.
+    stop: RefCell<Option<Arc<AtomicBool>>>,
     /// The pictures being made on other threads, by key: where each arrives, and the build that last asked.
-    pending: RefCell<HashMap<u64, (Receiver<Made>, u64)>>,
+    pending: RefCell<HashMap<u64, Awaited>>,
     /// How many of them are not made yet (the threads count it down).
     under_way: Arc<AtomicUsize>,
     /// The pictures whose making failed; they stay clear instead of being tried with every build.
     failed: RefCell<HashSet<u64>>,
-    /// A copy of egui's font picture and the pass it was taken in (see [`Builder::letters`]).
-    font: RefCell<Option<(u64, Arc<ColorImage>)>>,
+    /// A copy of egui's font picture, with the pass it was taken in and how full the font picture was then
+    /// (see [`Builder::letters`]).
+    font: RefCell<Option<(u64, f32, Arc<ColorImage>)>>,
 }
+
+/// A picture being made on another thread: where it arrives (`None` when its build was called off before the
+/// job's turn came), and the build that last asked for it.
+type Awaited = (Receiver<Option<Made>>, u64);
 
 /// A picture as a thread made it, with what making it found out about its material.
 pub(super) struct Made {
@@ -203,8 +204,17 @@ fn most_at_once() -> usize {
 
 /// How many pictures wait to be made, at most, for each thread that makes them.
 // Human: long enough that a large design is handed out in a few goes (each go walks the whole design), and
-// short enough that a zoom left behind doesn't leave hours of work in the line.
+// short enough that the copies of what the waiting jobs paint don't fill the memory.
 const WAITING_A_THREAD: usize = 32;
+
+/// Whether a build that left pictures out should be gone through again: `under_way` of its pictures are
+/// still being made, and `cut` says it had more to hand out than the threads' line took.
+// Human: going through a large design again takes tens of milliseconds, so it is done as seldom as will do:
+// when every picture asked for has been made (the list can then be whole), or when there is more work to
+// hand out and the threads are about to run out of it.
+pub(super) fn go_on(under_way: usize, cut: bool) -> bool {
+    under_way == 0 || (cut && under_way <= most_at_once())
+}
 
 /// One piece of work for the threads that make pictures.
 type Task = Box<dyn FnOnce() + Send>;
@@ -251,54 +261,55 @@ impl Baked {
     // Human: baking is by far the most of a build (a blur is worked out pixel by pixel on the CPU), and the
     // pixels grow fourfold with every doubling of the zoom. Zoomed in, most of a design is off screen: its
     // effects are left until the view comes near them.
-    // Human: with `allowed`, the build doesn't wait for its pictures. Each one new to it is handed to
-    // another thread and left clear for now, and once that much time has gone into getting them ready no more are handed out;
-    // [`Baked::late`] says so afterwards, and a later build finds the pictures that have arrived and goes on
-    // from there. The first picture is handed out however late it is, so every build gets somewhere.
-    // Human: painting a picture and blurring it is the bulk of the work and needs nothing of the window, so
-    // it can be done beside it. What the window does itself is small: laying out text and copying meshes.
-    // Human: only the getting ready is counted. Going through the design takes its time whatever is handed
-    // out; counted in, a large design used the time up before it came to its first picture.
-    pub(super) fn begin_within(&self, cover: Option<Rect>, allowed: Option<std::time::Duration>) {
+    // Human: with `stop`, the build doesn't wait for its pictures. Each one new to it is handed to another
+    // thread and left clear for now; [`Baked::late`] says so afterwards, and the build is gone through again
+    // when pictures have arrived, until it is whole. `stop` is the flag that calls such a build off: set, the
+    // jobs still waiting are dropped and the walk through the design ends early.
+    // Human: painting a picture and blurring it is the bulk of the work and needs nothing but what was got
+    // ready for it, so several are made at the same time.
+    pub(super) fn begin_within(&self, cover: Option<Rect>, stop: Option<Arc<AtomicBool>>) {
         self.round.set(self.round.get().wrapping_add(1));
         self.seen.borrow_mut().clear();
         self.cover.set(cover);
         self.skipped.set(false);
-        self.allowed.set(allowed);
-        self.spent.set(std::time::Duration::ZERO);
-        self.fresh.set(0);
         self.late.set(false);
         self.cut.set(false);
-        self.apart.set(allowed.is_some());
+        *self.stop.borrow_mut() = stop;
     }
 
-    /// Whether this build bakes pictures for `area`; says so afterwards ([`Baked::skipped`], or
-    /// [`Baked::late`] when only its time was up) when it doesn't.
+    /// Whether the build was called off.
+    pub(super) fn stopped(&self) -> bool {
+        self.stop.borrow().as_ref().is_some_and(|stop| stop.load(Ordering::Relaxed))
+    }
+
+    /// Whether this build bakes pictures for `area`; says so afterwards ([`Baked::skipped`]) when it doesn't.
     fn covers(&self, area: &Rect) -> bool {
         let covered = self.cover.get().is_none_or(|cover| cover.intersects(area));
         if !covered {
             self.skipped.set(true);
         }
-        covered && !self.out_of_time()
+        covered
     }
 
-    /// Whether the build's time is up; notes that something was left out for it.
-    fn out_of_time(&self) -> bool {
-        let over = self.fresh.get() > 0 && self.allowed.get().is_some_and(|allowed| self.spent.get() >= allowed);
-        if over {
-            self.late.set(true);
-            self.cut.set(true);
+    /// What says when an unfinished build should be gone through again: how many pictures are still being
+    /// made, and whether the build had more to hand out ([`go_on`]).
+    pub(super) fn waiting(&self) -> (Arc<AtomicUsize>, bool) {
+        (self.under_way.clone(), self.cut.get())
+    }
+
+    /// Counts the pictures `shown` (their textures) as used by this build, so [`Baked::finish`] keeps them: a
+    /// build that takes over items of the list before it never asked for their pictures.
+    pub(super) fn hold(&self, shown: &HashSet<TextureId>) {
+        let round = self.round.get();
+        for picture in self.pictures.borrow_mut().values_mut().filter(|picture| shown.contains(&picture.handle.id())) {
+            picture.round = round;
         }
-        over
     }
 
-    /// Whether a build left unfinished should be gone through again now.
-    // Human: going through a large design again takes tens of milliseconds, so it is done as seldom as will
-    // do: when every picture asked for has been made (the list can then be whole), or when the last build
-    // had more work to hand out and the threads are about to run out of it. In between, the window is free.
-    pub(super) fn wants_build(&self) -> bool {
-        let under_way = self.under_way.load(Ordering::Relaxed);
-        under_way == 0 || (self.cut.get() && under_way <= most_at_once())
+    /// Whether the picture with `texture` is still held.
+    #[cfg(test)]
+    pub(super) fn holds(&self, texture: TextureId) -> bool {
+        self.pictures.borrow().values().any(|picture| picture.handle.id() == texture)
     }
 
     /// Whether `texture` is the clear picture that stands in for one left out.
@@ -306,8 +317,8 @@ impl Baked {
         self.blank.borrow().as_ref().is_some_and(|blank| blank.id() == texture)
     }
 
-    /// Whether the build since the last [`Baked::begin_within`] left pictures out because its time was up or
-    /// they are still being made.
+    /// Whether the build since the last [`Baked::begin_within`] left pictures out because they are still
+    /// being made.
     pub(super) fn late(&self) -> bool {
         self.late.get()
     }
@@ -331,9 +342,12 @@ impl Baked {
     }
 
     /// Ends a build: pictures it didn't use are let go, the longest unused first, down to [`KEPT_PIXELS`].
+    /// They are handed back: the list on screen may still show them, and whoever shows the new list lets
+    /// them go after that.
     // Human: the ones kept are those of the zoom step just left and of the part of the canvas just scrolled
     // away from, so going back to either costs nothing.
-    pub(super) fn finish(&self) {
+    #[must_use]
+    pub(super) fn finish(&self) -> Vec<TextureHandle> {
         let round = self.round.get();
         let mut pictures = self.pictures.borrow_mut();
         let mut unused: Vec<(u64, u64, usize)> = pictures
@@ -343,10 +357,11 @@ impl Baked {
             .collect();
         unused.sort_by_key(|(_, last, _)| std::cmp::Reverse(*last));
         let mut kept = 0usize;
+        let mut let_go = Vec::new();
         for (key, _, size) in unused {
             kept += size;
             if kept > KEPT_PIXELS {
-                pictures.remove(&key);
+                let_go.extend(pictures.remove(&key).map(|picture| picture.handle));
             }
         }
         self.learned.borrow_mut().retain(|key, _| pictures.contains_key(key));
@@ -356,11 +371,12 @@ impl Baked {
         if self.tiles.borrow().len() > KEPT_COVERS {
             self.tiles.borrow_mut().clear();
         }
+        let_go
     }
 
     /// The texture for `key`, made by the job `prepare` gives unless an earlier build already made it. `area`
-    /// is the part of the document the picture shows. A picture outside what this build covers, one the
-    /// build has no time left for, and one that is still being made on another thread come back clear.
+    /// is the part of the document the picture shows. A picture outside what this build covers and one that
+    /// is still being made on another thread come back clear.
     // Human: `prepare` runs here and gathers what the picture is made from; it gives no job when one of those
     // things is itself a picture not made yet. The job it gives is run at once by a build that waits for
     // its pictures (an export, an edit), and on another thread by one that doesn't.
@@ -368,7 +384,7 @@ impl Baked {
         self.texture_from(ctx, key, area, false, prepare)
     }
 
-    /// [`Baked::texture`] for a picture that can only be made on this thread: its job is run at once.
+    /// [`Baked::texture`] for a picture that is made as it is got ready: its job is run at once.
     pub(super) fn texture_here(&self, ctx: &egui::Context, key: u64, area: Rect, make: impl FnOnce() -> Bitmap) -> TextureId {
         self.texture_from(ctx, key, area, true, || {
             let bitmap = make();
@@ -385,27 +401,31 @@ impl Baked {
             self.skipped.set(true);
             return self.blank(ctx);
         }
+        let apart = self.stop.borrow().is_some();
         let under_way = self.pending.borrow_mut().remove(&key);
         if let Some((arrives, _)) = under_way {
             // A build that waits for its pictures waits for this one too: that is sooner than making it again.
-            let arrived = if self.apart.get() { arrives.try_recv() } else { arrives.recv().map_err(|_| TryRecvError::Disconnected) };
+            let arrived = if apart { arrives.try_recv() } else { arrives.recv().map_err(|_| TryRecvError::Disconnected) };
             match arrived {
-                Ok(made) => return self.keep(ctx, key, made),
+                Ok(Some(made)) => return self.keep(ctx, key, made),
+                // Its build was called off before the job's turn came: it is made for this one.
+                Ok(None) => {}
                 Err(TryRecvError::Empty) => {
                     self.pending.borrow_mut().insert(key, (arrives, self.round.get()));
                     self.late.set(true);
+                    return self.blank(ctx);
                 }
                 Err(TryRecvError::Disconnected) => {
                     log::warn!("an effect's picture could not be made; the effect is left out");
                     self.failed.borrow_mut().insert(key);
+                    return self.blank(ctx);
                 }
             }
+        }
+        if self.failed.borrow().contains(&key) || self.stopped() {
             return self.blank(ctx);
         }
-        if self.failed.borrow().contains(&key) || self.out_of_time() {
-            return self.blank(ctx);
-        }
-        let line = workers().filter(|_| self.apart.get() && !here);
+        let line = workers().filter(|_| apart && !here);
         if line.is_some() && self.pending.borrow().len() >= most_at_once() * WAITING_A_THREAD {
             // There is more to hand out once the threads have caught up.
             self.late.set(true);
@@ -413,26 +433,23 @@ impl Baked {
             return self.blank(ctx);
         }
         // `prepare` reads other pictures, so nothing is borrowed while it runs.
-        let began = std::time::Instant::now();
-        let prepared = prepare();
-        self.spent.set(self.spent.get() + began.elapsed());
-        let Some(job) = prepared else { return self.blank(ctx) };
-        self.fresh.set(self.fresh.get() + 1);
+        let Some(job) = prepare() else { return self.blank(ctx) };
         let Some(line) = line else { return self.keep(ctx, key, job()) };
         self.late.set(true);
         let (send, arrives) = std::sync::mpsc::channel();
-        let (wake, under_way) = (ctx.clone(), self.under_way.clone());
+        let (under_way, stop) = (self.under_way.clone(), self.stop.borrow().clone());
         under_way.fetch_add(1, Ordering::Relaxed);
         let task: Task = Box::new(move || {
-            // The build that asked may be gone by now; then nobody takes the picture.
-            drop(send.send(job()));
+            // A job whose build was called off is not run. The build that asked may also be gone; then
+            // nobody takes the picture.
+            let called_off = stop.is_some_and(|stop| stop.load(Ordering::Relaxed));
+            drop(send.send((!called_off).then(job)));
             under_way.fetch_sub(1, Ordering::Relaxed);
-            wake.request_repaint();
         });
         if line.send(task).is_ok() {
             self.pending.borrow_mut().insert(key, (arrives, self.round.get()));
         } else {
-            // The threads are gone; the next build makes the picture itself.
+            // The threads are gone; the next go makes the picture itself.
             self.under_way.fetch_sub(1, Ordering::Relaxed);
             self.cut.set(true);
         }
@@ -570,6 +587,9 @@ impl Grid {
         if self.fine == 2 { bitmap.halved() } else { bitmap }
     }
 }
+
+/// How often a painting's texts are laid out again because the font picture was emptied meanwhile.
+const MOST_FONT_TRIES: usize = 4;
 
 /// One thing a painting paints, placed in the pixels of its picture.
 enum Stroke {
@@ -887,11 +907,8 @@ impl Builder<'_> {
         if let Some(known) = self.baked.tiles.borrow().get(&key) {
             return *known;
         }
-        self.baked.fresh.set(self.baked.fresh.get() + 1);
-        let began = std::time::Instant::now();
         let mut solid = grid.bitmap();
         self.paint(&grid, &[outline], true, &mut solid);
-        self.baked.spent.set(self.baked.spent.get() + began.elapsed());
         let (mut any, mut all) = (false, true);
         for pixel in &solid.px {
             any |= pixel[3] > 0.0;
@@ -1142,6 +1159,7 @@ impl Builder<'_> {
         let uses_background = passes.iter().any(|(program, effect)| sources(program, effect).iter().any(|(_, s)| *s == Source::Background));
         let area = grid.rect();
         let behind: Vec<&Item> = if uses_background {
+            self.reads_behind(area);
             behind.iter().copied().filter(|item| extent(item).is_some_and(|e| e.intersects(&area))).collect()
         } else {
             Vec::new()
@@ -1204,10 +1222,27 @@ impl Builder<'_> {
         let lay_out = || -> Vec<Vec<Mesh>> {
             items.iter().map(|item| if let Item::Text { text, .. } = item { self.text_meshes(text, grid) } else { Vec::new() }).collect()
         };
-        let first = lay_out();
-        let texts = if first.iter().any(|meshes| !meshes.is_empty()) { lay_out() } else { first };
-        let font = texts.iter().any(|meshes| !meshes.is_empty()).then(|| self.letters(&texts));
-        let mut painting = Painting { strokes: Vec::new(), solid, starved: false };
+        // Human: a build beside the window lays text out while the window draws. When the font picture is
+        // nearly full the window empties it at the start of a frame, and letters laid out before that point
+        // at places that hold other letters afterwards. The font picture only ever gets fuller otherwise, so
+        // one that is less full after the texts were laid out and copied was emptied in between: once more.
+        // (Without a text among the items the font picture is not asked about at all.)
+        let wordy = items.iter().any(|item| matches!(item, Item::Text { .. }));
+        let mut tries = 0;
+        let (texts, font, settled) = loop {
+            let before = if wordy { self.font_fill() } else { 0.0 };
+            let first = lay_out();
+            let any = first.iter().any(|meshes| !meshes.is_empty());
+            let texts = if any { lay_out() } else { first };
+            let font = any.then(|| self.letters(&texts));
+            tries += 1;
+            let settled = !any || self.font_fill() >= before;
+            if settled || tries >= MOST_FONT_TRIES {
+                break (texts, font, settled);
+            }
+        };
+        // Never settled: the picture waits for the next go.
+        let mut painting = Painting { strokes: Vec::new(), solid, starved: !settled };
         for (item, text) in items.iter().zip(texts) {
             match item {
                 Item::Mesh { mesh, clip, .. } => {
@@ -1265,16 +1300,27 @@ impl Builder<'_> {
         reason = "the method's path is not general over the font view's lifetime and doesn't compile"
     )]
     fn letters(&self, texts: &[Vec<Mesh>]) -> Arc<ColorImage> {
-        let pass = self.ctx.cumulative_pass_nr();
-        if let Some((taken, copy)) = self.baked.font.borrow().as_ref()
+        let (pass, fill) = (self.ctx.cumulative_pass_nr(), self.font_fill());
+        // Emptied since the copy was taken (see `plan`), and the copy is of what was there before.
+        if let Some((taken, full, copy)) = self.baked.font.borrow().as_ref()
             && *taken == pass
+            && fill >= *full
             && texts.iter().flatten().all(|mesh| inked(mesh, copy))
         {
             return copy.clone();
         }
         let copy = Arc::new(self.ctx.fonts(|fonts| fonts.image()));
-        *self.baked.font.borrow_mut() = Some((pass, copy.clone()));
+        *self.baked.font.borrow_mut() = Some((pass, fill, copy.clone()));
         copy
+    }
+
+    /// How full egui's font picture is.
+    #[expect(
+        clippy::redundant_closure_for_method_calls,
+        reason = "the method's path is not general over the font view's lifetime and doesn't compile"
+    )]
+    fn font_fill(&self) -> f32 {
+        self.ctx.fonts(|fonts| fonts.font_atlas_fill_ratio())
     }
 
     /// A text as triangles in `grid`'s painted pixels, textured with egui's font picture.
@@ -1451,6 +1497,7 @@ impl Builder<'_> {
         let pad = sigma * REACH + 1.0 / self.scale;
         let grid = Grid::new(expand(&extent_of(shape)?, pad), look.clip, pad, self.scale, true)?;
         let area = grid.rect();
+        self.reads_behind(area);
         let behind: Vec<&Item> = behind.iter().copied().filter(|item| extent(item).is_some_and(|e| e.intersects(&area))).collect();
         let sigma = sigma * grid.scale;
         let key = Self::key("backdrop", &grid, &[(&behind, false), (shape, true)], &[sigma], self.background);

@@ -56,6 +56,20 @@ pub fn build(doc: &Document, theme: &ThemeContext) -> Vec<SceneNode> {
     doc.children.iter().map(|node| builder.convert(node, theme, None, true, 0)).collect()
 }
 
+/// The scene nodes of the top-level nodes `which` of `doc` alone (by their place among its children), in that
+/// order: what [`build`] gives for them, without building the rest of the document.
+// Human: an edit changes one screen of a design with dozens. Its instances may still show components that
+// live anywhere in the document, so every node is looked at for the index; none but the asked ones is copied.
+#[must_use]
+pub fn build_some(doc: &Document, theme: &ThemeContext, which: &[usize]) -> Vec<SceneNode> {
+    let mut index: HashMap<&str, &Node> = HashMap::new();
+    for child in &doc.children {
+        index_nodes(child, &mut index);
+    }
+    let builder = Builder { index };
+    which.iter().filter_map(|at| doc.children.get(*at)).map(|node| builder.convert(node, theme, None, true, 0)).collect()
+}
+
 fn index_nodes<'a>(node: &'a Node, index: &mut HashMap<&'a str, &'a Node>) {
     index.insert(node.id.as_str(), node);
     for child in node.kids() {

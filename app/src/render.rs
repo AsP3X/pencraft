@@ -409,9 +409,18 @@ pub struct DisplayList {
     /// The canvas colour the list was built on; a background blur blurs it too.
     background: Color32,
     items: Vec<Item>,
-    images: ImageStore,
-    /// The pictures effects were baked into, kept from one build to the next.
-    baked: bake::Baked,
+    /// Which of the items belong to which top-level node of the scene; empty when that isn't known (a list
+    /// with pictures still missing), and nothing can be taken over from it.
+    parts: Vec<Part>,
+    /// The design's pictures and the pictures its effects were baked into, kept from one build to the next;
+    /// behind a lock, since a build beside the window uses them too.
+    works: std::sync::Arc<std::sync::Mutex<Works>>,
+    /// How many pixels the baked pictures had between them after the last build.
+    held: usize,
+    /// The scene and document a build beside the window works on: a copy, taken once for each scene.
+    frozen: Option<(u64, u64, std::sync::Arc<Frozen>)>,
+    /// The build that is being made beside the window.
+    running: Option<Running>,
     /// The part of the document whose effects are baked, when the last build left some out; `None` when it
     /// baked them all.
     cover: Option<Rect>,
@@ -432,14 +441,200 @@ pub struct DisplayList {
     stage: u64,
     /// Whether the zoom was on the move at the last look: text is then drawn at the nearest zoom step.
     zooming: bool,
-    /// The build that is not whole yet (it ran out of time, or its pictures are still being made) and goes on
-    /// with a later frame: its zoom step and the part of the document it bakes effects for.
-    unfinished: Option<(i32, Rect)>,
-    /// How long a build of the scene already on screen may spend getting pictures started; `None` is
-    /// [`BAKE_BUDGET`].
-    budget: Option<std::time::Duration>,
     /// Which letters the canvas has drawn at which sizes.
     warmth: Warmth,
+}
+
+/// What a build needs besides the scene: the design's pictures, and the pictures effects were baked into.
+#[derive(Default)]
+struct Works {
+    images: ImageStore,
+    baked: bake::Baked,
+}
+
+/// A scene and its document as they were when a build beside the window began.
+struct Frozen {
+    scene: Vec<SceneNode>,
+    doc: pen_doc::Document,
+    /// The scene's stamps (see [`DisplayList::update`]).
+    stamps: Vec<u64>,
+}
+
+/// What the list holds for one top-level node of the scene: a run of its items.
+// Human: a design is dozens of screens side by side, and an edit changes one. The list remembers which of its
+// items came from which top-level node, so the nodes an edit left alone keep theirs.
+#[derive(Clone)]
+struct Part {
+    /// The node's stamp when its items were built.
+    stamp: u64,
+    /// How many items it has; the parts' items follow each other in the list.
+    len: usize,
+    /// The part of the document it reads to draw what is behind it (glass, a background blur), if it does:
+    /// it is built again when a node under it changes there.
+    reads: Option<Rect>,
+    /// The part of the document its items paint on.
+    extent: Option<Rect>,
+}
+
+/// What a build is made for.
+#[derive(Clone)]
+struct Order {
+    /// The zoom, for how finely curves are flattened.
+    zoom: f32,
+    /// The zoom step.
+    bucket: i32,
+    /// The part of the document effects are baked for; `None` bakes them all.
+    cover: Option<Rect>,
+    folder: Option<std::path::PathBuf>,
+    background: Color32,
+    hidden: std::collections::HashSet<String>,
+}
+
+/// A build being made beside the window.
+struct Running {
+    generation: u64,
+    stage: u64,
+    bucket: i32,
+    cover: Rect,
+    /// Set to call the build off.
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Where its lists arrive: unfinished ones as pictures come in, then the whole one.
+    arrives: std::sync::mpsc::Receiver<Built>,
+}
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+/// A list as a build beside the window made it.
+struct Built {
+    items: Vec<Item>,
+    parts: Vec<Part>,
+    /// Whether every picture in it is there; else some are still being made and a later list follows.
+    whole: bool,
+    /// Whether effects outside the part built for were left out.
+    skipped: bool,
+    /// How many pixels the baked pictures have between them.
+    held: usize,
+    /// Pictures the build no longer keeps; the list on screen may still show them, so they are let go
+    /// only once this list has taken its place.
+    let_go: Vec<egui::TextureHandle>,
+}
+
+/// One walk through `scene`: its items, with the effects' pictures taken from `works` or started there, and
+/// which of them belong to which top-level node. `stamps` are the scene's (see [`DisplayList::update`]).
+/// With `kept` (the list on screen and its parts, built for the same order), a node whose stamp is the one
+/// its part was built at keeps that part's items, and only the others are built.
+// Human: a kept part is still built again when it draws what is behind it (glass, a background blur) and
+// a node under it changed there, in what it painted before or in what it paints now.
+fn walk(
+    works: &Works,
+    (scene, stamps): (&[SceneNode], &[u64]),
+    doc: &pen_doc::Document,
+    ctx: &egui::Context,
+    order: &Order,
+    stop: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    kept: Option<(Vec<Item>, Vec<Part>)>,
+) -> (Vec<Item>, Vec<Part>) {
+    works.baked.begin_within(order.cover, stop);
+    let builder = Builder {
+        vars: Vars::new(doc),
+        tolerance: (0.25 / order.zoom).clamp(0.002, 4.0),
+        images: &works.images,
+        ctx,
+        folder: order.folder.as_deref(),
+        baked: &works.baked,
+        background: order.background,
+        scale: 2.0_f32.powi(order.bucket) * ctx.pixels_per_point(),
+        merged: std::cell::Cell::new(false),
+        hidden: Some(&order.hidden),
+        reads: std::cell::Cell::new(None),
+    };
+    let taking_over = kept.is_some();
+    let (was, had) = kept.unwrap_or_default();
+    let mut was = was.into_iter();
+    let (mut items, mut parts) = (Vec::new(), Vec::with_capacity(scene.len()));
+    // Where the nodes built again painted before and paint now.
+    let mut changed: Vec<Rect> = Vec::new();
+    for (at, node) in scene.iter().enumerate() {
+        let stamp = stamps.get(at).copied().unwrap_or_default();
+        let part = had.get(at);
+        let holds = |part: &&Part| part.stamp == stamp && !part.reads.is_some_and(|area| changed.iter().any(|there| there.intersects(&area)));
+        if let Some(part) = part.filter(holds) {
+            items.extend(was.by_ref().take(part.len));
+            parts.push(part.clone());
+            continue;
+        }
+        if let Some(part) = part {
+            was.by_ref().take(part.len).for_each(drop);
+            changed.extend(part.extent);
+        }
+        let start = items.len();
+        builder.reads.set(None);
+        builder.node(node, 1.0, None, &mut items);
+        let extent = items.get(start..).unwrap_or_default().iter().filter_map(bake::extent).reduce(|a, b| a.union(&b));
+        changed.extend(extent);
+        parts.push(Part { stamp, len: items.len() - start, reads: builder.reads.get(), extent });
+    }
+    if taking_over {
+        // The pictures of the parts taken over were not asked for by this walk; they are still in use.
+        let textured = |item: &Item| match item {
+            Item::Mesh { mesh, .. } if mesh.texture_id != egui::TextureId::default() => Some(mesh.texture_id),
+            _ => None,
+        };
+        works.baked.hold(&items.iter().filter_map(textured).collect());
+    }
+    (items, parts)
+}
+
+/// How long a build beside the window sleeps between looks at whether it can go on.
+const BUILD_NAP: std::time::Duration = std::time::Duration::from_millis(2);
+
+/// Builds the list for `order` from `frozen`, beside the window, and sends it to `out`: after each walk when
+/// `showing` (the list on screen is of the same zoom step, so one with pictures still missing is the better
+/// one to show), and the whole one at the end. Ends early once `stop` is set.
+// Human: a walk through a large design takes tens of milliseconds, and one that hands pictures out to be made
+// has to be gone through again when they arrive, several times where glass lies behind glass. All of that
+// is done here, away from the window, which only swaps the finished list in.
+// Agent: runs on a thread of its own; HOLDS the lock on `works` for the length of one walk, never while it waits.
+fn build_apart(
+    works: &std::sync::Mutex<Works>,
+    frozen: &Frozen,
+    ctx: &egui::Context,
+    order: &Order,
+    showing: bool,
+    stop: &std::sync::Arc<std::sync::atomic::AtomicBool>,
+    out: &std::sync::mpsc::Sender<Built>,
+) {
+    use std::sync::atomic::Ordering::Relaxed;
+    loop {
+        let (built, under_way, more) = {
+            let works = crate::app::lock(works);
+            let (items, parts) = walk(&works, (&frozen.scene, &frozen.stamps), &frozen.doc, ctx, order, Some(stop.clone()), None);
+            if stop.load(Relaxed) {
+                return;
+            }
+            let whole = !works.baked.late();
+            let let_go = if whole { works.baked.finish() } else { Vec::new() };
+            let (under_way, more) = works.baked.waiting();
+            (Built { items, parts, whole, skipped: works.baked.skipped(), held: works.baked.pixels_held(), let_go }, under_way, more)
+        };
+        let whole = built.whole;
+        if (whole || showing) && out.send(built).is_ok() {
+            ctx.request_repaint();
+        }
+        if whole {
+            return;
+        }
+        while !bake::go_on(under_way.load(Relaxed), more) {
+            if stop.load(Relaxed) {
+                return;
+            }
+            std::thread::sleep(BUILD_NAP);
+        }
+    }
 }
 
 /// How long the zoom must hold still before the list is rebuilt for its new step.
@@ -450,10 +645,6 @@ const BAKE_MARGIN: f32 = 0.5;
 const BAKE_ON_AFTER: std::time::Duration = std::time::Duration::from_millis(300);
 /// Effects further out are only baked while the pictures held are fewer pixels than this (128 MB).
 const BAKE_ON_BELOW: usize = 32_000_000;
-/// How long one frame spends getting new pictures started for a scene that is on screen already; the rest
-/// waits for the next.
-const BAKE_BUDGET: std::time::Duration = std::time::Duration::from_millis(6);
-
 impl DisplayList {
     /// Rebuilds the list when the scene changed, when the zoom has come to rest on another power of two, or when
     /// `visible` (the part of the document on screen) has left the part whose effects are baked.
@@ -467,18 +658,19 @@ impl DisplayList {
     // that were left out would otherwise be seen missing. And while the view rests, the part that is baked
     // grows a step at a time, until it is the whole design or the pictures would take too much memory: after
     // a short rest panning costs nothing.
-    // Human: even so, baking what a new zoom step or a new part of the canvas needs took a fifth of a second
-    // and more in one go, with the window frozen. A build for a scene that is on screen already therefore
-    // has its pictures made on other threads and doesn't wait for them, and what it does itself to get them
-    // started (laying out text, copying meshes) is kept to a few milliseconds a frame. At the same zoom step
-    // each frame shows the pictures that have arrived so far. For another zoom step the list on screen stays, scaled, until the new
-    // one is whole, so effects are never seen going away and coming back. A scene that changed (an edit, a
-    // file just opened) is still built in one go: an edit must not be seen without its effects.
+    // Human: even so, a build for a new zoom step or a new part of the canvas took from a fifth of a second
+    // to several seconds in one go, with the window frozen. A build for a scene that is on screen already is
+    // therefore made beside the window, on a thread of its own, from a copy of the scene; the window goes on
+    // drawing the list it has. At the same zoom step it shows the build's list after each walk, with the
+    // pictures that have arrived so far. For another zoom step the list on screen stays, scaled, until the
+    // new one is whole, so effects are never seen going away and coming back. A scene that changed (an
+    // edit, a file just opened) is still built here in one go: an edit must not be seen without its effects.
     // Human: `hidden` are layers a model made that are not shown yet (it shows its work a layer at a time): they
     // are left out with everything in them, and the list is built again when they change. `stage` says which
     // step of such a change `scene` is: it has the document's `generation`, and is another scene each time.
-    // Agent: CALLS ctx.request_repaint_after while a rebuild is waiting for the zoom to settle or the view to rest,
-    // and ctx.request_repaint while a build is unfinished.
+    // Agent: CALLS ctx.request_repaint_after while a rebuild is waiting for the zoom to settle or the view to
+    // rest; a build beside the window asks for a frame when it has sent a list. BLOCKS on the lock a build
+    // beside the window holds only when the scene changed, after calling that build off.
     #[expect(clippy::too_many_arguments, reason = "the scene, what it was built from, where its pictures live, and what is on screen")]
     pub fn update(
         &mut self,
@@ -486,12 +678,13 @@ impl DisplayList {
         generation: u64,
         zoom: f32,
         visible: Rect,
-        vars: Vars<'_>,
+        doc: &pen_doc::Document,
         ctx: &egui::Context,
         folder: Option<&std::path::Path>,
         background: Color32,
         hidden: &std::collections::HashSet<String>,
         stage: u64,
+        stamps: &[u64],
     ) {
         let bucket = zoom_bucket(zoom);
         let now = std::time::Instant::now();
@@ -505,7 +698,6 @@ impl DisplayList {
             self.view_moved = Some(now);
         }
         let wait = self.zoom_moved.and_then(|moved| ZOOM_SETTLE.checked_sub(now.duration_since(moved)));
-        let rest = self.view_moved.and_then(|moved| BAKE_ON_AFTER.checked_sub(now.duration_since(moved)));
         // Text drawn at a zoom step is drawn sharp once the zoom rests.
         self.zooming = wait.is_some();
         if let Some(wait) = wait {
@@ -517,89 +709,166 @@ impl DisplayList {
             && self.background == background
             && self.hidden == *hidden
             && self.stage == stage;
+        let margin_of = |margin: f32| {
+            Rect::new(
+                visible.x - visible.w * margin,
+                visible.y - visible.h * margin,
+                visible.w * (1.0 + 2.0 * margin),
+                visible.h * (1.0 + 2.0 * margin),
+            )
+        };
         if !same {
-            self.unfinished = None;
-        }
-        let covered = self.cover.is_none_or(|cover| cover.holds(&visible));
-        let current = same && covered && self.zoom_bucket == bucket;
-        // Effects were left out, there is room for more, and nothing is moving: bake on.
-        let more = current && self.cover.is_some() && self.baked.pixels_held() < BAKE_ON_BELOW;
-        if self.unfinished.is_some() {
-            // A build that is not whole goes on, unless the zoom is on the move again or there is nothing
-            // new to build with yet (see `Baked::wants_build`).
-            if covered && (wait.is_some() || !self.baked.wants_build()) {
-                return;
+            // Human: the scene changed: a build beside the window is of the old one. It is called off (it
+            // lets go of the pictures within a moment), and the new scene is built here and now.
+            self.running = None;
+            // Human: an edit leaves most of a design as it was. When nothing else differs from the list on
+            // screen (same zoom step, same part baked), only the top-level nodes with another stamp are
+            // built, and the rest of the list is taken over as it is.
+            let alike = !self.items.is_empty()
+                && self.folder.as_deref() == folder
+                && self.background == background
+                && self.hidden == *hidden
+                && self.stage == stage;
+            let covered = self.cover.is_none_or(|cover| cover.holds(&visible));
+            let kept = (alike && covered && self.zoom_bucket == bucket && self.parts.len() == scene.len() && stamps.len() == scene.len())
+                .then(|| (std::mem::take(&mut self.items), std::mem::take(&mut self.parts)));
+            let taken_over = kept.is_some();
+            let cover = if taken_over {
+                self.cover
+            } else {
+                self.margin = BAKE_MARGIN;
+                self.view_moved = Some(now);
+                Some(margin_of(self.margin))
+            };
+            let order = Order { zoom, bucket, cover, folder: folder.map(std::path::Path::to_path_buf), background, hidden: hidden.clone() };
+            let works = crate::app::lock(&self.works);
+            (self.items, self.parts) = walk(&works, (scene, stamps), doc, ctx, &order, None, kept);
+            drop(works.baked.finish());
+            self.held = works.baked.pixels_held();
+            // A list taken over keeps the part that was baked for it.
+            self.cover = if taken_over { cover } else { cover.filter(|_| works.baked.skipped()) };
+            drop(works);
+            (self.folder, self.background, self.hidden) = (order.folder, background, order.hidden);
+            (self.generation, self.stage, self.zoom_bucket) = (generation, stage, bucket);
+            if self.cover.is_some() {
+                ctx.request_repaint_after(BAKE_ON_AFTER);
             }
-        } else if (current && !(more && rest.is_none())) || (same && covered && wait.is_some()) {
-            if let Some(rest) = rest.filter(|_| more && wait.is_none()) {
+            return;
+        }
+        self.take_in(ctx, now);
+        let rest = self.view_moved.and_then(|moved| BAKE_ON_AFTER.checked_sub(now.duration_since(moved)));
+        let covered = self.cover.is_none_or(|cover| cover.holds(&visible));
+        let current = covered && self.zoom_bucket == bucket;
+        // Effects were left out, there is room for more, and nothing is moving: bake on.
+        let more = current && self.cover.is_some() && self.held < BAKE_ON_BELOW;
+        if current && !(more && rest.is_none()) {
+            // A build for a zoom step the zoom has left again is of no use.
+            if self.running.as_ref().is_some_and(|running| running.bucket != bucket) {
+                self.running = None;
+            }
+            if let Some(rest) = rest.filter(|_| more && wait.is_none() && self.running.is_none()) {
                 ctx.request_repaint_after(rest);
             }
             return;
         }
+        if covered && wait.is_some() {
+            return;
+        }
+        // The build being made is the one wanted: it sends its list when it has one.
+        if self.running.as_ref().is_some_and(|running| running.bucket == bucket && running.cover.holds(&visible)) {
+            return;
+        }
         // The next step out waits for another rest.
         self.view_moved = Some(now);
-        let resumed = self.unfinished.take().filter(|(step, cover)| *step == bucket && cover.holds(&visible));
-        let cover = if let Some((_, cover)) = resumed {
-            cover
-        } else {
-            self.margin = if current { self.margin * 2.0 + BAKE_MARGIN } else { BAKE_MARGIN };
-            Rect::new(
-                visible.x - visible.w * self.margin,
-                visible.y - visible.h * self.margin,
-                visible.w * (1.0 + 2.0 * self.margin),
-                visible.h * (1.0 + 2.0 * self.margin),
-            )
-        };
-        self.baked.begin_within(Some(cover), same.then(|| self.budget.unwrap_or(BAKE_BUDGET)));
-        let builder = Builder {
-            vars,
-            tolerance: (0.25 / zoom).clamp(0.002, 4.0),
-            images: &self.images,
-            ctx,
-            folder,
-            baked: &self.baked,
-            background,
-            scale: 2.0_f32.powi(bucket) * ctx.pixels_per_point(),
-            merged: std::cell::Cell::new(false),
-            hidden: Some(hidden),
-        };
-        let mut items = Vec::new();
-        for node in scene {
-            builder.node(node, 1.0, None, &mut items);
-        }
-        let late = self.baked.late();
-        if late {
-            self.unfinished = Some((bucket, cover));
-            // Human: a build with more to hand out goes on with the next frame. One that waits for its
-            // pictures is woken by each as it arrives, and goes on once there is something to go on with.
-            if self.baked.wants_build() {
-                ctx.request_repaint();
+        self.margin = if current { self.margin * 2.0 + BAKE_MARGIN } else { BAKE_MARGIN };
+        let cover = margin_of(self.margin);
+        let order = Order { zoom, bucket, cover: Some(cover), folder: folder.map(std::path::Path::to_path_buf), background, hidden: hidden.clone() };
+        self.build_beside((scene, stamps), doc, (generation, stage, cover), order, ctx);
+    }
+
+    /// Starts the build for `order` beside the window; with it come the scene's generation and stage
+    /// and `cover` the part of the document it bakes effects for.
+    fn build_beside(
+        &mut self,
+        (scene, stamps): (&[SceneNode], &[u64]),
+        doc: &pen_doc::Document,
+        (generation, stage, cover): (u64, u64, Rect),
+        order: Order,
+        ctx: &egui::Context,
+    ) {
+        let bucket = order.bucket;
+        // Human: the build works on a copy of the scene and the document, since the ones here change with
+        // the next edit. The copy is taken once for a scene and serves every build of it.
+        let frozen = match &self.frozen {
+            Some((of, at, frozen)) if (*of, *at) == (generation, stage) => frozen.clone(),
+            _ => {
+                let frozen = std::sync::Arc::new(Frozen { scene: scene.to_vec(), doc: doc.clone(), stamps: stamps.to_vec() });
+                self.frozen = Some((generation, stage, frozen.clone()));
+                frozen
             }
-            // Human: the list on screen is of another zoom step and whole; this one has holes where its
-            // pictures are still to be baked. The one on screen stays, with its pictures, until this one is whole.
-            if self.zoom_bucket != bucket {
-                return;
+        };
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (send, arrives) = std::sync::mpsc::channel();
+        let (works, wake, showing, called_off) = (self.works.clone(), ctx.clone(), self.zoom_bucket == bucket, stop.clone());
+        let at = bucket;
+        let build = move || build_apart(&works, &frozen, &wake, &order, showing, &called_off, &send);
+        match std::thread::Builder::new().name("pencraft-build".to_owned()).spawn(build) {
+            // Starting it calls off the build that was being made, if there was one.
+            Ok(_) => self.running = Some(Running { generation, stage, bucket: at, cover, stop, arrives }),
+            Err(error) => {
+                log::warn!("no thread to build the canvas on; it is tried again: {error}");
+                ctx.request_repaint_after(BAKE_ON_AFTER);
             }
         }
-        self.items = items;
-        self.folder = folder.map(std::path::Path::to_path_buf);
-        self.generation = generation;
-        self.zoom_bucket = bucket;
-        self.background = background;
-        self.hidden.clone_from(hidden);
-        self.stage = stage;
-        if !late {
-            self.baked.finish();
+    }
+
+    /// Takes in what the build beside the window has sent: the newest of its lists that can be shown.
+    fn take_in(&mut self, ctx: &egui::Context, now: std::time::Instant) {
+        let Some(running) = &self.running else { return };
+        if (running.generation, running.stage) != (self.generation, self.stage) {
+            self.running = None;
+            return;
         }
-        self.cover = (late || self.baked.skipped()).then_some(cover);
-        if self.cover.is_some() && !late {
-            ctx.request_repaint_after(BAKE_ON_AFTER);
+        let mut newest = None;
+        let ended = loop {
+            match running.arrives.try_recv() {
+                Ok(built) => {
+                    // An unfinished list of another zoom step has holes where the one on screen has pictures.
+                    if built.whole || running.bucket == self.zoom_bucket {
+                        newest = Some(built);
+                    }
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => break false,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => break true,
+            }
+        };
+        let (bucket, cover) = (running.bucket, running.cover);
+        if let Some(built) = newest {
+            self.items = built.items;
+            // From a list with pictures still missing nothing is taken over.
+            self.parts = if built.whole { built.parts } else { Vec::new() };
+            self.zoom_bucket = bucket;
+            self.held = built.held;
+            self.cover = (built.skipped || !built.whole).then_some(cover);
+            // The list that showed them is gone now.
+            drop(built.let_go);
+            if built.whole {
+                // The next step out waits for a rest from now.
+                self.view_moved = Some(now);
+                if self.cover.is_some() {
+                    ctx.request_repaint_after(BAKE_ON_AFTER);
+                }
+            }
+        }
+        if ended {
+            self.running = None;
         }
     }
 
     /// `scene` (a layer with everything in it) drawn as a picture at `scale` pixels per unit, with its shadows
     /// and whatever else reaches past its box. `None` when it is empty or too large.
-    // Agent: MAIN-THREAD; uses its own effect pictures, dropped when it returns.
+    // Agent: MAIN-THREAD; uses its own effect pictures, dropped when it returns. WAITS for a walk a build
+    // beside the window is in the middle of.
     pub fn snapshot(
         &self,
         scenes: &[&SceneNode],
@@ -610,7 +879,8 @@ impl DisplayList {
     ) -> Option<crate::export::Picture> {
         let baked = bake::Baked::default();
         baked.begin();
-        self.builder(scale, vars, ctx, folder, &baked).snapshot(scenes)
+        let works = crate::app::lock(&self.works);
+        Self::builder(scale, vars, ctx, folder, &works.images, &baked).snapshot(scenes)
     }
 
     /// [`DisplayList::snapshot`] for measuring: the picture with where it lies and what its materials came to.
@@ -618,29 +888,31 @@ impl DisplayList {
     pub fn survey(&self, scenes: &[&SceneNode], scale: f32, vars: Vars<'_>, ctx: &egui::Context, folder: Option<&std::path::Path>) -> Option<Survey> {
         let baked = bake::Baked::default();
         baked.begin();
-        let (picture, origin) = self.builder(scale, vars, ctx, folder, &baked).snapshot_at(scenes)?;
+        let works = crate::app::lock(&self.works);
+        let (picture, origin) = Self::builder(scale, vars, ctx, folder, &works.images, &baked).snapshot_at(scenes)?;
         Some(Survey { picture, origin, scale, materials: baked.seen() })
     }
 
     /// `scenes` together as one SVG file, or `None` when they have no size.
     pub fn svg(&self, scenes: &[&SceneNode], vars: Vars<'_>, ctx: &egui::Context, folder: Option<&std::path::Path>) -> Option<String> {
         let baked = bake::Baked::default();
-        self.builder(1.0, vars, ctx, folder, &baked).svg(scenes)
+        let works = crate::app::lock(&self.works);
+        Self::builder(1.0, vars, ctx, folder, &works.images, &baked).svg(scenes)
     }
 
     /// A builder for exports: on a clear background, at `scale` pixels per unit.
     fn builder<'a>(
-        &'a self,
         scale: f32,
         vars: Vars<'a>,
         ctx: &'a egui::Context,
         folder: Option<&'a std::path::Path>,
+        images: &'a ImageStore,
         baked: &'a bake::Baked,
     ) -> Builder<'a> {
         Builder {
             vars,
             tolerance: (0.25 / scale).clamp(0.002, 4.0),
-            images: &self.images,
+            images,
             ctx,
             folder,
             baked,
@@ -648,6 +920,7 @@ impl DisplayList {
             scale,
             merged: std::cell::Cell::new(false),
             hidden: None,
+            reads: std::cell::Cell::new(None),
         }
     }
 
@@ -868,6 +1141,9 @@ struct Builder<'a> {
     merged: std::cell::Cell<bool>,
     /// The layers left out (by scene id); a picture for a file or a model leaves none out.
     hidden: Option<&'a std::collections::HashSet<String>>,
+    /// The part of the document whose items the nodes built so far read to draw what is behind them
+    /// (glass, a background blur); `None` while none did. The list takes it down for each top-level node.
+    reads: std::cell::Cell<Option<Rect>>,
 }
 
 /// The line a stroke is drawn with.
@@ -879,6 +1155,11 @@ struct Pen {
 }
 
 impl Builder<'_> {
+    /// Notes that what is being built draws what lies behind it in `area`.
+    fn reads_behind(&self, area: Rect) {
+        self.reads.set(Some(self.reads.get().map_or(area, |read| read.union(&area))));
+    }
+
     /// Whether `scene` is left out for now.
     fn hides(&self, scene: &SceneNode) -> bool {
         self.hidden.is_some_and(|hidden| hidden.contains(&scene.id))
@@ -978,7 +1259,8 @@ impl Builder<'_> {
         let theme = &scene.theme;
         // Whether the glass group this node is in draws its material; said by `children` just before.
         let merged = self.merged.replace(false);
-        if self.hides(scene) {
+        // A build that was called off ends its walk here; what it has so far is thrown away.
+        if self.hides(scene) || self.baked.stopped() {
             return;
         }
         if node.enabled.as_ref().and_then(|e| self.vars.flag(e, theme)) == Some(false) {
@@ -2110,67 +2392,160 @@ mod tests {
     }
 
     #[test]
-    fn another_zoom_step_is_baked_beside_the_window_while_the_list_on_screen_stays() {
+    fn another_zoom_step_is_built_beside_the_window_while_the_list_on_screen_stays() {
         let editor = blurred();
         let ctx = egui::Context::default();
         let hidden = std::collections::HashSet::new();
         let visible = Rect::new(0.0, 0.0, 200.0, 80.0);
-        // No time at all: a build of a scene already on screen gets one picture started and leaves the rest.
-        let mut list = DisplayList { budget: Some(std::time::Duration::ZERO), ..Default::default() };
+        let mut list = DisplayList::default();
         let look = |list: &mut DisplayList, zoom: f32| {
             // The zoom is looked at as one that has come to rest.
             list.zoom_seen = zoom;
             list.zoom_moved = None;
-            list.update(&editor.scene, editor.generation, zoom, visible, Vars::new(&editor.doc), &ctx, None, Color32::WHITE, &hidden, 0);
+            list.update(&editor.scene, editor.generation, zoom, visible, &editor.doc, &ctx, None, Color32::WHITE, &hidden, 0, &[]);
         };
-        // The first build is made in one go, whatever the time.
+        // Looks until the build beside the window has sent its whole list; the list on screen is `shown` until then.
+        let until_whole = |list: &mut DisplayList, zoom: f32, shown: &[egui::TextureId], step: i32| {
+            for _ in 0..5000 {
+                look(list, zoom);
+                if list.zoom_bucket == step && list.running.is_none() {
+                    return;
+                }
+                assert_eq!(pictures(list), shown);
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            panic!("the build beside the window never sent its list");
+        };
+        // The first build is made here, in one go.
         look(&mut list, 1.0);
         let first = pictures(&list);
-        assert_eq!((first.len(), list.unfinished, list.zoom_bucket), (3, None, 0));
+        assert_eq!((first.len(), list.running.is_some(), list.zoom_bucket), (3, false, 0));
         assert_eq!(first.iter().collect::<std::collections::HashSet<_>>().len(), 3);
-        // Zoomed in two steps: the pictures are made on other threads, one more started with each frame, and
-        // the list on screen stays as it is until they are all there. That takes three frames at the least.
-        let mut frames = 0;
-        loop {
-            look(&mut list, 4.0);
-            frames += 1;
-            if list.unfinished.is_none() {
-                break;
-            }
-            assert_eq!((pictures(&list), list.zoom_bucket), (first.clone(), 0));
-            assert!(frames < 2000, "the pictures never arrived");
-            std::thread::sleep(std::time::Duration::from_millis(2));
-        }
-        assert!(frames >= 3, "{frames}");
-        // The new list is whole and shown.
+        // Zoomed in two steps: the look starts a build beside the window and leaves the list as it is.
+        look(&mut list, 4.0);
+        assert_eq!((pictures(&list), list.zoom_bucket, list.running.is_some()), (first.clone(), 0, true));
+        until_whole(&mut list, 4.0, &first, 2);
+        // The new list is whole and shown, with pictures of its own.
         let second = pictures(&list);
-        assert_eq!((second.len(), list.zoom_bucket), (3, 2));
+        assert_eq!(second.len(), 3);
         assert!(second.iter().all(|picture| !first.contains(picture)));
         assert_eq!(second.iter().collect::<std::collections::HashSet<_>>().len(), 3);
-        // Going back finds the pictures of the step before: one frame, nothing made.
+        // Going back builds beside the window too, and finds the pictures of the step before.
         look(&mut list, 1.0);
-        assert_eq!((pictures(&list), list.unfinished), (first, None));
+        until_whole(&mut list, 1.0, &second, 0);
+        assert_eq!(pictures(&list), first);
     }
 
     #[test]
-    fn a_changed_scene_is_built_in_one_go_whatever_the_time() {
+    fn a_changed_scene_is_built_at_once_and_calls_off_the_build_beside_the_window() {
         let mut editor = blurred();
         let ctx = egui::Context::default();
         let hidden = std::collections::HashSet::new();
         let visible = Rect::new(0.0, 0.0, 200.0, 80.0);
-        let mut list = DisplayList { budget: Some(std::time::Duration::ZERO), ..Default::default() };
-        list.update(&editor.scene, editor.generation, 1.0, visible, Vars::new(&editor.doc), &ctx, None, Color32::WHITE, &hidden, 0);
+        let mut list = DisplayList::default();
+        list.update(&editor.scene, editor.generation, 1.0, visible, &editor.doc, &ctx, None, Color32::WHITE, &hidden, 0, &[]);
         let first = pictures(&list);
-        // Every layer gets another colour: all three pictures are baked anew, and at once.
+        // A build for another zoom step is started beside the window.
+        list.zoom_seen = 4.0;
+        list.update(&editor.scene, editor.generation, 4.0, visible, &editor.doc, &ctx, None, Color32::WHITE, &hidden, 0, &[]);
+        let called_off = list.running.as_ref().map(|running| running.stop.clone()).unwrap();
+        // Every layer gets another colour: all three pictures are made anew, here and at once, at the zoom
+        // the window is at, and the build of the scene as it was is called off.
         for n in 0..3 {
             editor.change(&format!("e{n}"), &|node| node.fill = serde_json::from_str(r##""#0000ff""##).ok());
         }
         editor.touched();
         editor.refresh(&|_| (10.0, 10.0));
-        list.update(&editor.scene, editor.generation, 1.0, visible, Vars::new(&editor.doc), &ctx, None, Color32::WHITE, &hidden, 0);
+        list.update(&editor.scene, editor.generation, 4.0, visible, &editor.doc, &ctx, None, Color32::WHITE, &hidden, 0, &[]);
         let second = pictures(&list);
-        assert_eq!((second.len(), list.unfinished), (3, None));
+        assert_eq!((second.len(), list.running.is_some(), list.zoom_bucket), (3, false, 2));
         assert!(second.iter().all(|picture| !first.contains(picture)));
+        assert!(called_off.load(std::sync::atomic::Ordering::Relaxed));
+    }
+
+    /// Two boards side by side, each with a blurred dot, and a third board with a glass pane that lies over
+    /// the first board alone. Laid out.
+    fn boards() -> crate::editor::Editor {
+        let board = |id: &str, x: u16, inside: &str| {
+            format!(
+                r##"{{"type":"frame","id":"{id}","x":{x},"y":0,"width":100,"height":100,"layout":"none","fill":"#ffffff","children":[{inside}]}}"##
+            )
+        };
+        let dot = |id: &str| {
+            format!(
+                r##"{{"type":"ellipse","id":"{id}","x":20,"y":20,"width":40,"height":30,"fill":"#ff0000","effect":{{"type":"blur","radius":4}}}}"##
+            )
+        };
+        let pane = r#"{"type":"frame","id":"pane","x":20,"y":40,"width":60,"height":40,"cornerRadius":8,"material":{"type":"frosted","thickness":"ultra_thin","appearance":"light"}}"#;
+        let json = format!(
+            r#"{{"version":"2.22","children":[{},{},{{"type":"frame","id":"over","x":0,"y":0,"width":100,"height":100,"layout":"none","children":[{pane}]}}]}}"#,
+            board("left", 0, &dot("a")),
+            board("right", 200, &dot("b"))
+        );
+        let mut editor = crate::editor::Editor::new(pen_doc::read(&json).unwrap(), None, 1);
+        editor.refresh(&|_| (10.0, 10.0));
+        editor
+    }
+
+    /// The textures of the pictures in each part of the list.
+    fn pictures_by_part(list: &DisplayList) -> Vec<Vec<egui::TextureId>> {
+        let mut start = 0;
+        let mut found = Vec::new();
+        for part in &list.parts {
+            let textured = |item: &Item| match item {
+                Item::Mesh { mesh, .. } if mesh.texture_id != egui::TextureId::default() => Some(mesh.texture_id),
+                _ => None,
+            };
+            found.push(list.items[start..start + part.len].iter().filter_map(textured).collect());
+            start += part.len;
+        }
+        found
+    }
+
+    #[test]
+    fn an_edit_builds_only_the_top_level_nodes_it_changed_and_the_glass_over_them() {
+        let mut editor = boards();
+        let ctx = egui::Context::default();
+        let hidden = std::collections::HashSet::new();
+        let visible = Rect::new(0.0, 0.0, 300.0, 100.0);
+        let mut list = DisplayList::default();
+        let look = |list: &mut DisplayList, editor: &crate::editor::Editor| {
+            list.update(&editor.scene, editor.generation, 1.0, visible, &editor.doc, &ctx, None, Color32::WHITE, &hidden, 0, editor.stamps());
+        };
+        let recolour = |editor: &mut crate::editor::Editor, id: &str, fill: &str| {
+            editor.change(id, &|node| node.fill = serde_json::from_str(&format!("\"{fill}\"")).ok());
+            editor.touched();
+            editor.refresh(&|_| (10.0, 10.0));
+        };
+        look(&mut list, &editor);
+        let first = pictures_by_part(&list);
+        assert_eq!(first.iter().map(Vec::len).collect::<Vec<_>>(), [1, 1, 1]);
+        let stamps = editor.stamps().to_vec();
+        // The dot on the right board gets another colour: only that board is built again, in the scene and
+        // in the list. The left board and the pane over it keep their items and their pictures.
+        recolour(&mut editor, "b", "#0000ff");
+        assert_eq!((editor.stamps()[0], editor.stamps()[2]), (stamps[0], stamps[2]));
+        assert_ne!(editor.stamps()[1], stamps[1]);
+        look(&mut list, &editor);
+        let second = pictures_by_part(&list);
+        assert_eq!((&second[0], &second[2]), (&first[0], &first[2]));
+        assert_ne!(second[1], first[1]);
+        // The dot on the left board changes: its board is built again, and so is the pane, which shows a
+        // blur of what is under it; the right board is left alone.
+        recolour(&mut editor, "a", "#00ff00");
+        look(&mut list, &editor);
+        let third = pictures_by_part(&list);
+        assert_eq!(third[1], second[1]);
+        assert_ne!(third[0], second[0]);
+        assert_ne!(third[2], second[2]);
+        // What the list has now is what a list built from nothing has: as many items in each part.
+        let mut whole = DisplayList::default();
+        look(&mut whole, &editor);
+        let lens = |list: &DisplayList| list.parts.iter().map(|part| part.len).collect::<Vec<_>>();
+        assert_eq!((lens(&list), list.items.len()), (lens(&whole), whole.items.len()));
+        // The pictures of the parts taken over are kept alive: every picture in the list is still held.
+        let works = crate::app::lock(&list.works);
+        assert!(third.iter().flatten().all(|picture| works.baked.holds(*picture)));
     }
 
     #[test]
