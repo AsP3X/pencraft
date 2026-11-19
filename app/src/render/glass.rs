@@ -21,7 +21,7 @@ use pen_doc::scene::SceneNode;
 use serde_json::Value;
 
 use super::bake::{Grid, Look, Made, REACH, Seen, Shadow, expand, extent, length, sigma};
-use super::{Brush, Builder, Item, rounded_rect};
+use super::{Brush, Builder, Item, Memo, rounded_rect};
 use crate::gpu;
 use crate::material::{Lookup, Material, Params};
 use crate::raster::{self, Bitmap, Pixel};
@@ -323,7 +323,7 @@ impl Builder<'_> {
     /// `scene`'s outline as an item that paints it.
     fn mask_of(&self, scene: &SceneNode, path: &lyon_tessellation::path::Path, clip: Option<Rect>) -> Option<Item> {
         self.fill_mesh(path, &Brush::Solid(Rgba::WHITE), FillRule::NonZero, (scene.local.w, scene.local.h), &scene.to_doc, 1.0)
-            .map(|mesh| Item::Mesh { mesh, bounds: layout::doc_bounds(scene), clip })
+            .map(|mesh| Item::Mesh { mesh: mesh.into(), bounds: layout::doc_bounds(scene), clip, memo: Memo::default() })
     }
 
     /// Whether `child`'s glass is drawn by the glass group `parent` it is in, not by itself: both lie straight

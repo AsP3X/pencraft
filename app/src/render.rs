@@ -88,12 +88,24 @@ fn glyph_scale(size: f32, z: f32, per_point: f32, steady: bool) -> (f32, f32) {
 /// One thing to draw, in document coordinates.
 #[derive(Clone)]
 enum Item {
-    /// Filled triangles (shapes, strokes).
-    Mesh { mesh: Mesh, bounds: Rect, clip: Option<Rect> },
+    /// Filled triangles (shapes, strokes), shared with the jobs that paint them into effect pictures. `memo`
+    /// keeps what was worked out from the mesh (it never changes).
+    Mesh { mesh: std::sync::Arc<Mesh>, bounds: Rect, clip: Option<Rect>, memo: Memo },
     /// A text block.
     Text { text: Box<TextItem>, bounds: Rect, clip: Option<Rect> },
     /// A soft drop shadow under an unrotated box that hides what is under it.
     Shadow { rect: Rect, radius: f32, offset: Point, blur: f32, color: Color32, clip: Option<Rect> },
+}
+
+/// What was worked out from a mesh item's triangles, kept with the item.
+// Human: a design with hundreds of glass panes asks of every mesh behind each pane where it lies and what it
+// looks like. Going through a mesh's corners for every pane that asks was most of a build of a large design.
+#[derive(Clone, Default)]
+struct Memo {
+    /// The part of the document the mesh paints on.
+    extent: std::cell::Cell<Option<Rect>>,
+    /// A hash of the mesh's look at so many painted pixels per unit (the bits of that number, then the hash).
+    look: std::cell::Cell<Option<(u32, u64)>>,
 }
 
 #[derive(Clone)]
@@ -513,8 +525,9 @@ impl DisplayList {
         // Effects were left out, there is room for more, and nothing is moving: bake on.
         let more = current && self.cover.is_some() && self.baked.pixels_held() < BAKE_ON_BELOW;
         if self.unfinished.is_some() {
-            // A build that ran out of time goes on, unless the zoom is on the move again.
-            if covered && wait.is_some() {
+            // A build that is not whole goes on, unless the zoom is on the move again or there is nothing
+            // new to build with yet (see `Baked::wants_build`).
+            if covered && (wait.is_some() || !self.baked.wants_build()) {
                 return;
             }
         } else if (current && !(more && rest.is_none())) || (same && covered && wait.is_some()) {
@@ -537,7 +550,7 @@ impl DisplayList {
                 visible.h * (1.0 + 2.0 * self.margin),
             )
         };
-        self.baked.begin_within(Some(cover), same.then(|| now + self.budget.unwrap_or(BAKE_BUDGET)));
+        self.baked.begin_within(Some(cover), same.then(|| self.budget.unwrap_or(BAKE_BUDGET)));
         let builder = Builder {
             vars,
             tolerance: (0.25 / zoom).clamp(0.002, 4.0),
@@ -557,9 +570,9 @@ impl DisplayList {
         let late = self.baked.late();
         if late {
             self.unfinished = Some((bucket, cover));
-            // Human: a build that ran out of time goes on with the next frame. One that only waits for its
-            // pictures is woken by each as it arrives, and builds nothing in between.
-            if self.baked.cut_short() {
+            // Human: a build with more to hand out goes on with the next frame. One that waits for its
+            // pictures is woken by each as it arrives, and goes on once there is something to go on with.
+            if self.baked.wants_build() {
                 ctx.request_repaint();
             }
             // Human: the list on screen is of another zoom step and whole; this one has holes where its
@@ -646,13 +659,13 @@ impl DisplayList {
         let to_screen = |p: Pos2| screen(camera, view, Point::new(p.x, p.y));
         for item in &self.items {
             match item {
-                Item::Mesh { mesh, bounds, clip } => {
+                Item::Mesh { mesh, bounds, clip, .. } => {
                     // Human: a mesh without triangles (a picture fill on a frame with no height) must not
                     // reach the GPU, which refuses to draw nothing and would end the app.
                     if !bounds.intersects(&visible) || mesh.indices.is_empty() {
                         continue;
                     }
-                    let mut moved = mesh.clone();
+                    let mut moved = Mesh::clone(mesh);
                     for v in &mut moved.vertices {
                         v.pos = to_screen(v.pos);
                     }
@@ -977,7 +990,12 @@ impl Builder<'_> {
         let fills = node.fill.as_ref().map(|f| self.brushes(f.as_slice(), theme)).unwrap_or_default();
         let strokes = node.stroke.as_ref().map(|f| self.brushes(f.as_slice(), theme)).unwrap_or_default();
         let fill_item = |shape: &Path, brush: &Brush, fill_rule: FillRule| {
-            self.fill_mesh(shape, brush, fill_rule, (w, h), &scene.to_doc, opacity).map(|mesh| Item::Mesh { mesh, bounds, clip })
+            self.fill_mesh(shape, brush, fill_rule, (w, h), &scene.to_doc, opacity).map(|mesh| Item::Mesh {
+                mesh: mesh.into(),
+                bounds,
+                clip,
+                memo: Memo::default(),
+            })
         };
         // Human: effects need to know which of the node's items are its fill, its stroke and its children: a
         // shadow is cast by the fill and stroke, an inner shadow falls on the fill, under the stroke.
@@ -1253,7 +1271,7 @@ impl Builder<'_> {
         let (shape, rule) = self.shape_of(scene)?;
         let bounds = layout::doc_bounds(scene);
         let mesh = self.fill_mesh(&shape, &Brush::Solid(Rgba::WHITE), rule, (scene.local.w, scene.local.h), &scene.to_doc, 1.0)?;
-        Some((Item::Mesh { mesh, bounds, clip: None }, bounds))
+        Some((Item::Mesh { mesh: mesh.into(), bounds, clip: None, memo: Memo::default() }, bounds))
     }
 
     /// Adds the items of `scene`'s children, clipped to its box when it clips.
@@ -1298,7 +1316,7 @@ impl Builder<'_> {
         if let (true, Some(cut)) = (rounded, child_clip) {
             let outline = self
                 .fill_mesh(&rounded_rect(0.0, 0.0, w, h, radii), &Brush::Solid(Rgba::WHITE), FillRule::NonZero, (w, h), &scene.to_doc, 1.0)
-                .map(|mesh| Item::Mesh { mesh, bounds, clip: None });
+                .map(|mesh| Item::Mesh { mesh: mesh.into(), bounds, clip: None, memo: Memo::default() });
             match outline {
                 Some(outline) => self.round_off(&outline, radii, bounds, cut, inside, out),
                 None => out.extend(inside),
@@ -1457,7 +1475,12 @@ impl Builder<'_> {
             .tessellate_path(shape, &options, &mut BuffersBuilder::new(&mut buffers, |v: StrokeVertex| v.position().to_array()))
             .is_ok()
         {
-            out.push(Item::Mesh { mesh: colored_mesh(&buffers, brush, (scene.local.w, scene.local.h), &scene.to_doc, opacity), bounds, clip });
+            out.push(Item::Mesh {
+                mesh: colored_mesh(&buffers, brush, (scene.local.w, scene.local.h), &scene.to_doc, opacity).into(),
+                bounds,
+                clip,
+                memo: Memo::default(),
+            });
         }
     }
 
@@ -1474,7 +1497,7 @@ impl Builder<'_> {
                 for strip in strips.iter().filter(|s| s.w > 0.0 && s.h > 0.0) {
                     let shape = rounded_rect(strip.x, strip.y, strip.w, strip.h, [0.0; 4]);
                     if let Some(mesh) = self.fill_mesh(&shape, brush, FillRule::NonZero, (w, h), &scene.to_doc, opacity) {
-                        out.push(Item::Mesh { mesh, bounds, clip });
+                        out.push(Item::Mesh { mesh: mesh.into(), bounds, clip, memo: Memo::default() });
                     }
                 }
             }

@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, TryRecvError};
 
 use egui::epaint::{ClippedShape, Mesh, Primitive, TextShape, Vertex};
@@ -27,7 +28,7 @@ use pen_doc::value::{Flag, Num, narrow};
 use serde_json::Value;
 
 use super::glass::Pane;
-use super::{Builder, Item, TextItem, color32, glyph_scale, intersect, to_u8};
+use super::{Builder, Item, Memo, TextItem, color32, glyph_scale, intersect, to_u8};
 use crate::effects::{self, EffectKind};
 use crate::raster::{self, Bitmap, Span};
 use crate::shader::{self, Program, Role, Source, Type};
@@ -157,8 +158,10 @@ pub(super) struct Baked {
     blank: RefCell<Option<TextureHandle>>,
     /// How each tile of a mask asked about so far lies to its outline, by a hash of the two.
     tiles: RefCell<HashMap<u64, Cover>>,
-    /// When this build stops baking; `None` bakes all it needs.
-    deadline: Cell<Option<std::time::Instant>>,
+    /// How long this build may spend getting pictures ready to be made; `None` makes all it needs itself.
+    allowed: Cell<Option<std::time::Duration>>,
+    /// How long it has spent on that so far.
+    spent: Cell<std::time::Duration>,
     /// How many pictures and mask tiles this build has made so far.
     fresh: Cell<usize>,
     /// Whether this build left a picture out because its time was up or the picture is still being made.
@@ -169,6 +172,8 @@ pub(super) struct Baked {
     apart: Cell<bool>,
     /// The pictures being made on other threads, by key: where each arrives, and the build that last asked.
     pending: RefCell<HashMap<u64, (Receiver<Made>, u64)>>,
+    /// How many of them are not made yet (the threads count it down).
+    under_way: Arc<AtomicUsize>,
     /// The pictures whose making failed; they stay clear instead of being tried with every build.
     failed: RefCell<HashSet<u64>>,
     /// A copy of egui's font picture and the pass it was taken in (see [`Builder::letters`]).
@@ -196,6 +201,45 @@ fn most_at_once() -> usize {
     std::thread::available_parallelism().map_or(2, |threads| threads.get().saturating_sub(1)).clamp(1, 6)
 }
 
+/// How many pictures wait to be made, at most, for each thread that makes them.
+// Human: long enough that a large design is handed out in a few goes (each go walks the whole design), and
+// short enough that a zoom left behind doesn't leave hours of work in the line.
+const WAITING_A_THREAD: usize = 32;
+
+/// One piece of work for the threads that make pictures.
+type Task = Box<dyn FnOnce() + Send>;
+
+/// The line the threads that make pictures take their work from; `None` when no thread could be started.
+// Human: a few threads that last as long as the app, each taking the next job when it has finished one. (A
+// thread of its own for every picture was hundreds of threads for a large design.)
+fn workers() -> Option<&'static std::sync::mpsc::Sender<Task>> {
+    static LINE: std::sync::OnceLock<Option<std::sync::mpsc::Sender<Task>>> = std::sync::OnceLock::new();
+    LINE.get_or_init(|| {
+        let (send, take) = std::sync::mpsc::channel::<Task>();
+        let take = Arc::new(std::sync::Mutex::new(take));
+        let mut started = 0;
+        for _ in 0..most_at_once() {
+            let take = take.clone();
+            let work = move || {
+                loop {
+                    // The lock is let go before the job runs, so the others can take theirs.
+                    let next = crate::app::lock(&take).recv();
+                    match next {
+                        Ok(task) => task(),
+                        Err(_) => break,
+                    }
+                }
+            };
+            match std::thread::Builder::new().name("pencraft-bake".to_owned()).spawn(work) {
+                Ok(_) => started += 1,
+                Err(error) => log::warn!("no thread to make effect pictures on: {error}"),
+            }
+        }
+        (started > 0).then_some(send)
+    })
+    .as_ref()
+}
+
 impl Baked {
     /// Starts a build of the display list that bakes every picture.
     pub(super) fn begin(&self) {
@@ -207,22 +251,25 @@ impl Baked {
     // Human: baking is by far the most of a build (a blur is worked out pixel by pixel on the CPU), and the
     // pixels grow fourfold with every doubling of the zoom. Zoomed in, most of a design is off screen: its
     // effects are left until the view comes near them.
-    // Human: with `deadline`, the build doesn't wait for its pictures. Each one new to it is handed to
-    // another thread and left clear for now, and after the deadline no more are handed out;
+    // Human: with `allowed`, the build doesn't wait for its pictures. Each one new to it is handed to
+    // another thread and left clear for now, and once that much time has gone into getting them ready no more are handed out;
     // [`Baked::late`] says so afterwards, and a later build finds the pictures that have arrived and goes on
     // from there. The first picture is handed out however late it is, so every build gets somewhere.
     // Human: painting a picture and blurring it is the bulk of the work and needs nothing of the window, so
     // it can be done beside it. What the window does itself is small: laying out text and copying meshes.
-    pub(super) fn begin_within(&self, cover: Option<Rect>, deadline: Option<std::time::Instant>) {
+    // Human: only the getting ready is counted. Going through the design takes its time whatever is handed
+    // out; counted in, a large design used the time up before it came to its first picture.
+    pub(super) fn begin_within(&self, cover: Option<Rect>, allowed: Option<std::time::Duration>) {
         self.round.set(self.round.get().wrapping_add(1));
         self.seen.borrow_mut().clear();
         self.cover.set(cover);
         self.skipped.set(false);
-        self.deadline.set(deadline);
+        self.allowed.set(allowed);
+        self.spent.set(std::time::Duration::ZERO);
         self.fresh.set(0);
         self.late.set(false);
         self.cut.set(false);
-        self.apart.set(deadline.is_some());
+        self.apart.set(allowed.is_some());
     }
 
     /// Whether this build bakes pictures for `area`; says so afterwards ([`Baked::skipped`], or
@@ -237,7 +284,7 @@ impl Baked {
 
     /// Whether the build's time is up; notes that something was left out for it.
     fn out_of_time(&self) -> bool {
-        let over = self.fresh.get() > 0 && self.deadline.get().is_some_and(|deadline| std::time::Instant::now() >= deadline);
+        let over = self.fresh.get() > 0 && self.allowed.get().is_some_and(|allowed| self.spent.get() >= allowed);
         if over {
             self.late.set(true);
             self.cut.set(true);
@@ -245,10 +292,13 @@ impl Baked {
         over
     }
 
-    /// Whether the build stopped handing out work because its time was up: there is more to do right away.
-    /// (When it only waits for pictures being made, their arrival asks for the next frame.)
-    pub(super) fn cut_short(&self) -> bool {
-        self.cut.get()
+    /// Whether a build left unfinished should be gone through again now.
+    // Human: going through a large design again takes tens of milliseconds, so it is done as seldom as will
+    // do: when every picture asked for has been made (the list can then be whole), or when the last build
+    // had more work to hand out and the threads are about to run out of it. In between, the window is free.
+    pub(super) fn wants_build(&self) -> bool {
+        let under_way = self.under_way.load(Ordering::Relaxed);
+        under_way == 0 || (self.cut.get() && under_way <= most_at_once())
     }
 
     /// Whether `texture` is the clear picture that stands in for one left out.
@@ -355,32 +405,36 @@ impl Baked {
         if self.failed.borrow().contains(&key) || self.out_of_time() {
             return self.blank(ctx);
         }
-        let apart = self.apart.get() && !here;
-        if apart && self.pending.borrow().len() >= most_at_once() {
+        let line = workers().filter(|_| self.apart.get() && !here);
+        if line.is_some() && self.pending.borrow().len() >= most_at_once() * WAITING_A_THREAD {
+            // There is more to hand out once the threads have caught up.
             self.late.set(true);
+            self.cut.set(true);
             return self.blank(ctx);
         }
         // `prepare` reads other pictures, so nothing is borrowed while it runs.
-        let Some(job) = prepare() else { return self.blank(ctx) };
+        let began = std::time::Instant::now();
+        let prepared = prepare();
+        self.spent.set(self.spent.get() + began.elapsed());
+        let Some(job) = prepared else { return self.blank(ctx) };
         self.fresh.set(self.fresh.get() + 1);
-        if !apart {
-            return self.keep(ctx, key, job());
-        }
+        let Some(line) = line else { return self.keep(ctx, key, job()) };
         self.late.set(true);
         let (send, arrives) = std::sync::mpsc::channel();
-        let wake = ctx.clone();
-        let made = std::thread::Builder::new().name("pencraft-bake".to_owned()).spawn(move || {
+        let (wake, under_way) = (ctx.clone(), self.under_way.clone());
+        under_way.fetch_add(1, Ordering::Relaxed);
+        let task: Task = Box::new(move || {
             // The build that asked may be gone by now; then nobody takes the picture.
             drop(send.send(job()));
+            under_way.fetch_sub(1, Ordering::Relaxed);
             wake.request_repaint();
         });
-        match made {
-            Ok(_) => drop(self.pending.borrow_mut().insert(key, (arrives, self.round.get()))),
-            // The next build tries again, and is asked for at once: no picture's arrival would ask for it.
-            Err(error) => {
-                log::warn!("no thread to make an effect's picture on: {error}");
-                self.cut.set(true);
-            }
+        if line.send(task).is_ok() {
+            self.pending.borrow_mut().insert(key, (arrives, self.round.get()));
+        } else {
+            // The threads are gone; the next build makes the picture itself.
+            self.under_way.fetch_sub(1, Ordering::Relaxed);
+            self.cut.set(true);
         }
         self.blank(ctx)
     }
@@ -519,8 +573,9 @@ impl Grid {
 
 /// One thing a painting paints, placed in the pixels of its picture.
 enum Stroke {
-    /// Triangles, textured with `picture` when they have one.
-    Mesh { mesh: Mesh, clip: Option<Span>, picture: Option<Arc<ColorImage>> },
+    /// Triangles, textured with `picture` when they have one. `on` is the grid a mesh still in document
+    /// coordinates is placed on; a text's meshes are in pixels already.
+    Mesh { mesh: Arc<Mesh>, on: Option<Grid>, clip: Option<Span>, picture: Option<Arc<ColorImage>> },
     /// The outlines round a text's letters, the outermost first: each one's colour and how far it reaches
     /// out of the letters, in pixels. `letters` are the text's meshes, `font` the picture they point into.
     Outline { letters: Vec<Mesh>, font: Option<Arc<ColorImage>>, pad: usize, rings: Vec<(raster::Pixel, f32)>, clip: Option<Span> },
@@ -544,7 +599,10 @@ impl Painting {
     pub(super) fn onto(&self, bitmap: &mut Bitmap) {
         for stroke in &self.strokes {
             match stroke {
-                Stroke::Mesh { mesh, clip, picture } => bitmap.triangles(mesh, |p| [p.x, p.y], *clip, picture.as_deref(), self.solid),
+                Stroke::Mesh { mesh, on: Some(grid), clip, picture } => {
+                    bitmap.triangles(mesh, |p| grid.place(Point::new(p.x, p.y)), *clip, picture.as_deref(), self.solid);
+                }
+                Stroke::Mesh { mesh, on: None, clip, picture } => bitmap.triangles(mesh, |p| [p.x, p.y], *clip, picture.as_deref(), self.solid),
                 Stroke::Outline { letters, font, pad, rings, clip } => {
                     let mut shape = Bitmap::new(bitmap.w + 2 * pad, bitmap.h + 2 * pad);
                     let by = length(*pad);
@@ -589,13 +647,18 @@ fn shows(item: &Item) -> bool {
 /// The part of the document an item paints on.
 pub(super) fn extent(item: &Item) -> Option<Rect> {
     match item {
-        Item::Mesh { mesh, .. } => {
+        Item::Mesh { mesh, memo, .. } => {
+            if let Some(known) = memo.extent.get() {
+                return Some(known);
+            }
             let first = mesh.vertices.first()?.pos;
             let (mut min, mut max) = (first, first);
             for v in &mesh.vertices {
                 (min, max) = (min.min(v.pos), max.max(v.pos));
             }
-            Some(Rect::new(min.x, min.y, max.x - min.x, max.y - min.y))
+            let found = Rect::new(min.x, min.y, max.x - min.x, max.y - min.y);
+            memo.extent.set(Some(found));
+            Some(found)
         }
         Item::Text { bounds, .. } => Some(*bounds),
         Item::Shadow { rect, offset, blur, .. } => Some(expand(&rect.translate(offset.x, offset.y), blur / 2.0)),
@@ -613,11 +676,25 @@ fn hash_item(item: &Item, grid: &Grid, hasher: &mut DefaultHasher) {
     let at = |p: Point| grid.place(p).map(step);
     let clip_of = |clip: &Option<Rect>| clip.map(|c| grid.span(&c).map(step));
     match item {
-        Item::Mesh { mesh, clip, .. } => {
-            (0_u8, mesh.texture_id, clip_of(clip), &mesh.indices).hash(hasher);
-            for v in &mesh.vertices {
-                (at(Point::new(v.pos.x, v.pos.y)), v.color.to_array(), v.uv.x.to_bits(), v.uv.y.to_bits()).hash(hasher);
-            }
+        // Human: the mesh's own look is hashed once for each density it is asked at, with its corners
+        // measured from the corner of its box; where that corner lies on the grid goes in each time.
+        Item::Mesh { mesh, clip, bounds, memo } => {
+            let density = grid.density();
+            let look = match memo.look.get() {
+                Some((at, look)) if at == density.to_bits() => look,
+                _ => {
+                    let mut own = DefaultHasher::new();
+                    (mesh.texture_id, &mesh.indices).hash(&mut own);
+                    for v in &mesh.vertices {
+                        let from_corner = [step((v.pos.x - bounds.x) * density), step((v.pos.y - bounds.y) * density)];
+                        (from_corner, v.color.to_array(), v.uv.x.to_bits(), v.uv.y.to_bits()).hash(&mut own);
+                    }
+                    let look = own.finish();
+                    memo.look.set(Some((density.to_bits(), look)));
+                    look
+                }
+            };
+            (0_u8, look, at(Point::new(bounds.x, bounds.y)), clip_of(clip)).hash(hasher);
         }
         Item::Text { text, clip, .. } => {
             let m = text.to_doc.m;
@@ -811,8 +888,10 @@ impl Builder<'_> {
             return *known;
         }
         self.baked.fresh.set(self.baked.fresh.get() + 1);
+        let began = std::time::Instant::now();
         let mut solid = grid.bitmap();
         self.paint(&grid, &[outline], true, &mut solid);
+        self.baked.spent.set(self.baked.spent.get() + began.elapsed());
         let (mut any, mut all) = (false, true);
         for pixel in &solid.px {
             any |= pixel[3] > 0.0;
@@ -1116,8 +1195,7 @@ impl Builder<'_> {
 
     /// `items` made ready to be painted onto a bitmap that covers `grid` ([`Painting::onto`]). `solid` paints
     /// their shapes, fully opaque.
-    // Agent: MAIN-THREAD (lays text out through the egui context, reads the pictures); ALLOCATES a placed copy
-    // of every mesh.
+    // Agent: MAIN-THREAD (lays text out through the egui context, reads the pictures); meshes are shared.
     pub(super) fn plan(&self, grid: &Grid, items: &[&Item], solid: bool) -> Painting {
         // Human: texts are laid out first, so the font picture read after that holds all their letters.
         // Human: a letter new to the font picture can make the picture grow, and a mesh made before that points
@@ -1142,12 +1220,8 @@ impl Builder<'_> {
                     } else {
                         self.baked.pixels(mesh.texture_id).or_else(|| self.images.pixels(mesh.texture_id))
                     };
-                    let mut mesh = mesh.clone();
-                    for vertex in &mut mesh.vertices {
-                        let [x, y] = grid.place(Point::new(vertex.pos.x, vertex.pos.y));
-                        vertex.pos = Pos2::new(x, y);
-                    }
-                    painting.strokes.push(Stroke::Mesh { mesh, clip: clip.map(|c| grid.span(&c)), picture });
+                    // The mesh is shared, not copied; the job places it on the grid as it paints.
+                    painting.strokes.push(Stroke::Mesh { mesh: mesh.clone(), on: Some(*grid), clip: clip.map(|c| grid.span(&c)), picture });
                 }
                 Item::Text { text: item, clip, .. } => {
                     let clip = clip.map(|c| grid.span(&c));
@@ -1164,7 +1238,7 @@ impl Builder<'_> {
                             clip,
                         });
                     }
-                    painting.strokes.extend(text.into_iter().map(|mesh| Stroke::Mesh { mesh, clip, picture: font.clone() }));
+                    painting.strokes.extend(text.into_iter().map(|mesh| Stroke::Mesh { mesh: mesh.into(), on: None, clip, picture: font.clone() }));
                 }
                 // A box's own soft shadow is no part of its shape.
                 Item::Shadow { rect, radius, offset, blur, color, clip } if !solid => painting.strokes.push(Stroke::SoftBox {
@@ -1266,7 +1340,7 @@ impl Builder<'_> {
             corner(bounds.right(), bounds.bottom(), 1.0, 1.0),
             corner(bounds.x, bounds.bottom(), 0.0, 1.0),
         ];
-        Item::Mesh { mesh: Mesh { indices: vec![0, 1, 2, 0, 2, 3], vertices, texture_id: texture }, bounds, clip }
+        Item::Mesh { mesh: Mesh { indices: vec![0, 1, 2, 0, 2, 3], vertices, texture_id: texture }.into(), bounds, clip, memo: Memo::default() }
     }
 
     /// The shadow `shape` casts: its blurred outline in the shadow's colour, moved by the offset.
@@ -1437,9 +1511,10 @@ mod tests {
             let corner = |x: f32, y: f32| Vertex { pos: Pos2::new(x, y), uv: egui::epaint::WHITE_UV, color };
             let vertices = vec![corner(x, 0.0), corner(x + 10.0, 0.0), corner(x + 10.0, 10.0), corner(x, 10.0)];
             Item::Mesh {
-                mesh: Mesh { indices: vec![0, 1, 2, 0, 2, 3], vertices, ..Default::default() },
+                mesh: Mesh { indices: vec![0, 1, 2, 0, 2, 3], vertices, ..Default::default() }.into(),
                 bounds: Rect::new(x, 0.0, 10.0, 10.0),
                 clip: None,
+                memo: Memo::default(),
             }
         };
         let key = |item: &Item| {
