@@ -9,14 +9,10 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
-### Changed
+## [0.3.21] - 2026-11-19
 
-- **A selected group moves as one, and only a double click goes inside.**
-  With a group, a frame or an instance selected, a press on anything in it
-  takes the whole of it, so a drag moves all of it; before, the click went
-  to the layer under the pointer. Double-click a layer to step inside and
-  select it; from then on a click picks the other layers in there. The same
-  holds for a selected board: drag any of its layers to move the board.
+Paste pictures and SVG, lock layers, pick colours, and move a selected group
+as one.
 
 ### Added
 
@@ -39,6 +35,15 @@ in the app before they download the update. Write it for them.
   it fades, or be drawn in with a negative value: the Spread field is under
   Blur in a shadow's settings. Files that already had a `spread` now show
   it.
+
+### Changed
+
+- **A selected group moves as one, and only a double click goes inside.**
+  With a group, a frame or an instance selected, a press on anything in it
+  takes the whole of it, so a drag moves all of it; before, the click went
+  to the layer under the pointer. Double-click a layer to step inside and
+  select it; from then on a click picks the other layers in there. The same
+  holds for a selected board: drag any of its layers to move the board.
 
 ## [0.3.20] - 2026-11-19
 
@@ -645,7 +650,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.20...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.21...HEAD
+[0.3.21]: https://github.com/AsP3X/pencraft/compare/v0.3.20...v0.3.21
 [0.3.20]: https://github.com/AsP3X/pencraft/compare/v0.3.19...v0.3.20
 [0.3.19]: https://github.com/AsP3X/pencraft/compare/v0.3.18...v0.3.19
 [0.3.18]: https://github.com/AsP3X/pencraft/compare/v0.3.17...v0.3.18
