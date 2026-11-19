@@ -51,6 +51,8 @@ pub enum Command {
     Ungroup,
     /// Align the selection.
     Align(AlignTo),
+    /// Spread the selection at equal gaps, across the page (`true`) or down it.
+    Distribute(bool),
     /// Mirror the selection; `true` is left to right.
     Flip(bool),
     /// Turn the selection by this many degrees, counter-clockwise.
@@ -150,7 +152,7 @@ const fn action(
 
 /// Every action, in the order and under the headings the search lists them.
 // Agent: icons MUST be bundled Lucide names; a test checks it.
-pub const ACTIONS: [Action; 77] = [
+pub const ACTIONS: [Action; 79] = [
     action(Command::Dashboard, "layout-grid", "Open dashboard", "File", &[], "home files projects recent"),
     action(Command::Save, "save", "Save", "File", &["⌘", "S"], "write store disk"),
     action(Command::SaveAs, "save-all", "Save as…", "File", &["⌘", "⇧", "S"], "copy duplicate file disk"),
@@ -176,6 +178,8 @@ pub const ACTIONS: [Action; 77] = [
     action(Command::Align(AlignTo::Top), "align-start-horizontal", "Align top", "Arrange", &["⌥", "W"], ""),
     action(Command::Align(AlignTo::Middle), "align-center-horizontal", "Align middle", "Arrange", &["⌥", "V"], "vertical"),
     action(Command::Align(AlignTo::Bottom), "align-end-horizontal", "Align bottom", "Arrange", &["⌥", "S"], ""),
+    action(Command::Distribute(true), "align-horizontal-space-between", "Distribute horizontally", "Arrange", &[], "spacing equal gaps spread"),
+    action(Command::Distribute(false), "align-vertical-space-between", "Distribute vertically", "Arrange", &[], "spacing equal gaps spread"),
     action(Command::Flip(true), "square-centerline-dashed-vertical", "Flip horizontal", "Arrange", &["⇧", "H"], "mirror"),
     action(Command::Flip(false), "square-centerline-dashed-horizontal", "Flip vertical", "Arrange", &["⇧", "V"], "mirror"),
     action(Command::Rotate(-90.0), "rotate-cw", "Rotate 90° right", "Arrange", &[], "turn clockwise quarter"),

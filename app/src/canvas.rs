@@ -12,10 +12,12 @@ use pen_doc::vars::Vars;
 use crate::editor::{Camera, Editor, FIT_PADDING, MAX_ZOOM, MIN_ZOOM, Role, Tool};
 use crate::ops::{is_free, set_position, stored_position};
 use crate::render::{DisplayList, doc_point, screen};
+use crate::snap::{Lines, line_up, pulled};
 use crate::theme::{
     self, ACCENT, COMPONENT, EDGE_GRAB, FRAME_NAME_GAP, FRAME_NAME_LEAST, FRAME_NAME_MORPH, FRAME_NAME_PILL, FRAME_NAME_PILL_RADIUS,
     FRAME_NAME_PLATE, FRAME_NAME_PLATE_RADIUS, FRAME_NAME_TEXT, HANDLE_SIZE, INSTANCE, PEN_ANCHOR, PEN_HANDLE, PEN_REACH, RADIUS_HANDLE,
-    RADIUS_HANDLE_INSET, RADIUS_HANDLE_ROOM, ROTATE_DOT, ROTATE_DOT_GAP, ROTATE_DOT_GRAB, ROTATE_REACH, SIZE_LABEL_TEXT, WIRE_REACH,
+    RADIUS_HANDLE_INSET, RADIUS_HANDLE_ROOM, ROTATE_DOT, ROTATE_DOT_GAP, ROTATE_DOT_GRAB, ROTATE_REACH, SIZE_LABEL_TEXT, SNAP_GAP_BAR, SNAP_GUIDE,
+    SNAP_GUIDE_OVER, SNAP_REACH, WIRE_REACH,
 };
 
 /// Wheel and trackpad panning: screen points per scroll point.
@@ -63,6 +65,9 @@ enum Drag {
         start: Point,
         origins: Vec<(String, f32, f32)>,
         moved: bool,
+        /// The box around the moved layers as the drag began, in the document, for snapping; `None` when it
+        /// isn't known (the copies of a duplicate went elsewhere).
+        bounds: Option<Rect>,
     },
     Reorder {
         id: String,
@@ -79,6 +84,9 @@ enum Drag {
         original: Rect,
         to_local: Affine,
         from_local: Affine,
+        /// The layer's selection box as the drag began, in the document, for snapping; `None` for a layer
+        /// whose sides don't run along the document's (turned, mirrored, or in such a parent).
+        shown: Option<Rect>,
     },
     /// Turning the selection: the layers as they were, the angle of the pointer from the turning point then,
     /// and how far it has been turned.
@@ -114,9 +122,12 @@ enum Drag {
 
 /// The user's canvas settings the pointer handling follows; set from the settings each frame.
 #[derive(Clone, Copy, Debug, Default)]
+#[expect(clippy::struct_excessive_bools, reason = "each is one switch of the settings, as the user set it")]
 pub struct Options {
     /// New and drawn things land on whole pixels.
     pub snap_to_pixels: bool,
+    /// A layer moved or resized lines up with the edges and middles of the layers beside it.
+    pub snap_to_objects: bool,
     /// The wheel zooms without ⌘ or ctrl.
     pub wheel_zooms: bool,
     /// Zooming goes the other way.
@@ -135,6 +146,10 @@ pub struct Canvas {
     /// Where each board's name was drawn in the last frame, by the board's id and in the order drawn: a press
     /// on a name takes its board.
     names: Vec<(String, ScreenRect)>,
+    /// The lines through what the dragged layer lined up with in this frame.
+    guides: Vec<crate::snap::Guide>,
+    /// The equal gaps the dragged layer stands at in this frame, each as a line across it.
+    gaps: Vec<crate::snap::Guide>,
     list: DisplayList,
     /// The canvas background this frame (for the text tool's colour choice).
     background: Color32,
@@ -292,6 +307,8 @@ impl Canvas {
         let middle = ui.input(|i| i.pointer.middle_down());
         let modifiers = ui.input(|i| i.modifiers);
         let snap = self.options.snap_to_pixels;
+        self.guides.clear();
+        self.gaps.clear();
         let pointer = response.interact_pointer_pos().or_else(|| ui.input(|i| i.pointer.hover_pos()));
         if editor.tool == Tool::Hand || space || middle || matches!(self.drag, Some(Drag::Pan)) {
             ui.ctx().set_cursor_icon(if response.dragged() { CursorIcon::Grabbing } else { CursorIcon::Grab });
@@ -373,8 +390,9 @@ impl Canvas {
                     let to_parent = parent_transform(editor, &id).invert().unwrap_or(Affine::IDENTITY);
                     let (to_local, from_local) = (scene.to_doc.invert().unwrap_or(Affine::IDENTITY), to_parent.then(&scene.to_doc));
                     let original = scene.local;
+                    let shown = upright(&scene.to_doc).then(|| selection_box(scene));
                     editor.checkpoint();
-                    self.drag = Some(Drag::Resize { id, handle, start: at, original, to_local, from_local });
+                    self.drag = Some(Drag::Resize { id, handle, start: at, original, to_local, from_local, shown });
                 }
             } else if rotate_zone(editor, view, grab)
                 && let Some(from) = editor.rotate_start()
@@ -411,7 +429,7 @@ impl Canvas {
                     editor.camera.center.x -= delta.x / editor.camera.zoom;
                     editor.camera.center.y -= delta.y / editor.camera.zoom;
                 }
-                Some(Drag::Move { start, origins, moved }) => {
+                Some(Drag::Move { start, origins, moved, bounds }) => {
                     if !*moved && (p - screen(&editor.camera, view, *start)).length() < DRAG_THRESHOLD {
                         return;
                     }
@@ -419,7 +437,16 @@ impl Canvas {
                         editor.checkpoint();
                         *moved = true;
                     }
-                    let (dx, dy) = (at.x - start.x, at.y - start.y);
+                    let (mut dx, mut dy) = (at.x - start.x, at.y - start.y);
+                    // Human: near a neighbour's edge or middle the layers go the rest of the way and a line says so.
+                    if self.options.snap_to_objects
+                        && let Some(bounds) = bounds
+                    {
+                        let reach = SNAP_REACH / editor.camera.zoom;
+                        let lined = line_up(&bounds.translate(dx, dy), &snap_targets(editor, view), reach, Lines::ALL, Lines::ALL, false);
+                        (dx, dy) = (dx + lined.dx, dy + lined.dy);
+                        (self.guides, self.gaps) = (lined.guides, lined.gaps);
+                    }
                     for (id, x, y) in origins.iter() {
                         let local = linear_inverse(&parent_transform(editor, id), dx, dy);
                         if let Some(node) = edit::find_mut(&mut editor.doc, id) {
@@ -431,8 +458,21 @@ impl Canvas {
                 Some(Drag::Reorder { id, parent, target }) => {
                     *target = reorder_target(editor, parent, id, at);
                 }
-                Some(Drag::Resize { id, handle, start, original, to_local, from_local }) => {
-                    let pull = linear(to_local, at.x - start.x, at.y - start.y);
+                Some(Drag::Resize { id, handle, start, original, to_local, from_local, shown }) => {
+                    let (mut dx, mut dy) = (at.x - start.x, at.y - start.y);
+                    // Human: the pulled edge lines up like a moved layer does. Not while ⇧ keeps the proportions:
+                    // an edge that jumped would take the other side's size with it.
+                    if self.options.snap_to_objects
+                        && !modifiers.shift
+                        && let Some(shown) = shown
+                    {
+                        let (xs, ys) = (Lines::pulled(handle.x), Lines::pulled(handle.y));
+                        let reach = SNAP_REACH / editor.camera.zoom;
+                        let lined = line_up(&pulled(shown, xs, ys, dx, dy), &snap_targets(editor, view), reach, xs, ys, true);
+                        (dx, dy) = (dx + lined.dx, dy + lined.dy);
+                        self.guides = lined.guides;
+                    }
+                    let pull = linear(to_local, dx, dy);
                     resize(editor, id, *handle, *original, pull, modifiers.shift, from_local);
                 }
                 Some(Drag::Rotate { from, start_angle, turned }) => {
@@ -732,6 +772,7 @@ impl Canvas {
             painter.rect_stroke(ScreenRect::from_min_max(min, max), 0.0, Stroke::new(1.5, ACCENT), StrokeKind::Inside);
         }
         self.handles(ui, painter, editor, view);
+        guide_lines(painter, cam, view, &self.guides, &self.gaps);
         if let Some((rect, text)) = badge {
             size_label(painter, rect, &text);
         }
@@ -1109,6 +1150,33 @@ pub fn fitted_part(node: &SceneNode) -> Rect {
     Rect::new(t.x / node.local.w, t.y / node.local.h, (t.w / node.local.w).max(1e-3), (t.h / node.local.h).max(1e-3))
 }
 
+/// Draws the lines through what the dragged layer lined up with, each a little longer than what it joins, and
+/// a line with a bar at each end across every gap of `gaps`, which are the equal ones.
+fn guide_lines(painter: &egui::Painter, cam: &Camera, view: ScreenRect, guides: &[crate::snap::Guide], gaps: &[crate::snap::Guide]) {
+    let ends = |guide: &crate::snap::Guide| {
+        let (from, to) = if guide.vertical {
+            (Point::new(guide.at, guide.from), Point::new(guide.at, guide.to))
+        } else {
+            (Point::new(guide.from, guide.at), Point::new(guide.to, guide.at))
+        };
+        (screen(cam, view, from), screen(cam, view, to))
+    };
+    let stroke = Stroke::new(1.0, SNAP_GUIDE);
+    for guide in guides {
+        let (from, to) = ends(guide);
+        let over = if guide.vertical { egui::vec2(0.0, SNAP_GUIDE_OVER) } else { egui::vec2(SNAP_GUIDE_OVER, 0.0) };
+        painter.line_segment([from - over, to + over], stroke);
+    }
+    for gap in gaps {
+        let (from, to) = ends(gap);
+        let bar = if gap.vertical { egui::vec2(SNAP_GAP_BAR, 0.0) } else { egui::vec2(0.0, SNAP_GAP_BAR) };
+        painter.line_segment([from, to], stroke);
+        for end in [from, to] {
+            painter.line_segment([end - bar, end + bar], stroke);
+        }
+    }
+}
+
 /// The selection box of a layer in document coordinates (see [`tight`]).
 fn selection_box(node: &SceneNode) -> Rect {
     node.to_doc.bounds(&tight(node))
@@ -1386,24 +1454,61 @@ fn start_move(editor: &mut Editor, id: &str, at: Point, alt: bool) -> Drag {
     // its ends are.
     let wire = |id: &str| edit::find(&editor.doc, id).is_some_and(|node| node.kind == Kind::Connector);
     if editor.role(id) == Role::Inside || wire(id) {
-        return Drag::Move { start: at, origins: Vec::new(), moved: false };
+        return Drag::Move { start: at, origins: Vec::new(), moved: false, bounds: None };
     }
     let in_flex = !is_free(editor, id);
     if in_flex && editor.selection.len() == 1 {
         let parent = edit::slot(&editor.doc, id).and_then(|s| s.parent).unwrap_or_default();
         return Drag::Reorder { id: id.to_owned(), parent, target: None };
     }
+    // Agent: the scene knows the layers as they are now; a duplicate's copies aren't in it until the next frame.
+    // The copies lie on their originals, so the originals' box is theirs; where they don't (a lone board's
+    // copy goes beside it), the box isn't known and the drag doesn't snap.
+    let before = movable(editor);
+    let boxes: Option<Vec<Rect>> = before.iter().map(|(id, ..)| editor.scene_node(id).map(layout::doc_bounds)).collect();
     if alt {
         // Human: ⌥-drag drags off a duplicate.
         editor.duplicate();
     }
-    let origins = editor
+    let origins = movable(editor);
+    let same = before.len() == origins.len() && before.iter().zip(&origins).all(|(a, b)| (a.1, a.2) == (b.1, b.2));
+    let bounds = boxes.filter(|_| same).and_then(|boxes| boxes.into_iter().reduce(|a, b| a.union(&b)));
+    Drag::Move { start: at, origins, moved: alt, bounds }
+}
+
+/// The selected layers a drag moves, each with its stored place: those not placed by a layout, connectors apart.
+fn movable(editor: &Editor) -> Vec<(String, f32, f32)> {
+    editor
         .selection
         .iter()
         .filter(|s| is_free(editor, s) && !edit::find(&editor.doc, s).is_some_and(|node| node.kind == Kind::Connector))
         .filter_map(|s| edit::find(&editor.doc, s).map(|n| (s.clone(), stored_position(n).0, stored_position(n).1)))
+        .collect()
+}
+
+/// What a dragged layer may line up with, as boxes in the document: the layers beside the selected ones that
+/// are in view, and the frame that holds them.
+// Human: a layer lines up with its neighbours and with the frame it is in (its edges and its middle), not with
+// layers in other frames or deep inside its neighbours; those would catch it everywhere.
+// Agent: worked out each frame of a drag from the scene; the selected layers are left out, so the frame's lag
+// behind the document doesn't matter. Only what is in view counts, which also bounds the work on a large design.
+fn snap_targets(editor: &Editor, view: ScreenRect) -> Vec<Rect> {
+    let visible = crate::render::view_to_doc(&editor.camera, view);
+    let parent = editor.selection.first().and_then(|id| edit::slot(&editor.doc, id)).and_then(|s| s.parent);
+    let mut targets: Vec<Rect> = selectable_level(editor)
+        .into_iter()
+        .filter(|node| node.node.kind != Kind::Connector && !node.doc_id.as_ref().is_some_and(|id| editor.selection.contains(id)))
+        .map(layout::doc_bounds)
+        .filter(|bounds| bounds.intersects(&visible))
         .collect();
-    Drag::Move { start: at, origins, moved: alt }
+    targets.extend(parent.as_deref().and_then(|p| editor.scene_node(p)).map(layout::doc_bounds));
+    targets
+}
+
+/// Whether a layer's sides run along the document's: neither turned nor mirrored nor scaled, nor in such a parent.
+fn upright(to_doc: &Affine) -> bool {
+    let ((a, b), (c, d)) = (linear(to_doc, 1.0, 0.0), linear(to_doc, 0.0, 1.0));
+    (a - 1.0).abs() < 1e-4 && b.abs() < 1e-4 && c.abs() < 1e-4 && (d - 1.0).abs() < 1e-4
 }
 
 /// The index among a flex parent's children where the dragged node would land.
@@ -2093,6 +2198,81 @@ mod tests {
         assert!(dot.distance(middle) > foot.distance(middle) && (dot.x - foot.x).abs() > 1.0);
         editor.selection.clear();
         assert!(rotate_dot(&editor, view).is_none());
+    }
+
+    #[test]
+    fn a_moved_or_resized_layer_lines_up_with_its_neighbours_when_the_setting_is_on() {
+        /// The line segments painted in the guide colour.
+        fn lines(shape: &egui::Shape, into: &mut Vec<[Pos2; 2]>) {
+            match shape {
+                egui::Shape::Vec(shapes) => shapes.iter().for_each(|shape| lines(shape, into)),
+                egui::Shape::LineSegment { points, stroke } if stroke.color == SNAP_GUIDE => into.push(*points),
+                _ => {}
+            }
+        }
+        let json = r##"{"version":"2.22","children":[{"type":"frame","id":"board","x":0,"y":0,"width":800,"height":600,"layout":"none","fill":"#ffffff","children":[
+            {"type":"rectangle","id":"a","x":100,"y":100,"width":100,"height":80,"fill":"#cccccc"},
+            {"type":"rectangle","id":"b","x":400,"y":300,"width":60,"height":40,"fill":"#cccccc"}]}]}"##;
+        let place = |editor: &Editor, id: &str| edit::find(&editor.doc, id).map(stored_position).unwrap();
+        let open = || {
+            let mut editor = Editor::new(serde_json::from_str::<pen_doc::Document>(json).unwrap(), None, 7);
+            editor.refresh(&|_| (0.0, 0.0));
+            fit(&mut editor, ScreenRect::from_min_size(Pos2::ZERO, WINDOW), Some(Rect::new(0.0, 0.0, 800.0, 600.0)), 1.0);
+            editor.selection = vec!["b".to_owned()];
+            editor
+        };
+        let ctx = egui::Context::default();
+        // Dragged 297 left and 37 down, "b" would stand at 103 / 337: 3 off the left edge of "a", its top far from
+        // everything. It lands on that edge and a line runs down it.
+        let (mut canvas, mut editor) = (Canvas::default(), open());
+        canvas.options.snap_to_objects = true;
+        // A drag is known as one a few points after the press; from there the pointer goes 297 left and 37 down.
+        let (from, known, to) = (Point::new(430.0, 320.0), Point::new(420.0, 320.0), Point::new(123.0, 357.0));
+        let view = ScreenRect::from_min_size(Pos2::ZERO, WINDOW);
+        let at = |editor: &Editor, p: Point| screen(&editor.camera, view, p);
+        let button = |pos: Pos2, pressed: bool| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let (first, second, last) = (at(&editor, from), at(&editor, known), at(&editor, to));
+        frame(&mut canvas, &ctx, &mut editor, vec![egui::Event::PointerMoved(first)]);
+        frame(&mut canvas, &ctx, &mut editor, vec![button(first, true)]);
+        frame(&mut canvas, &ctx, &mut editor, vec![egui::Event::PointerMoved(second)]);
+        frame(&mut canvas, &ctx, &mut editor, vec![egui::Event::PointerMoved(last)]);
+        assert_eq!(canvas.guides.len(), 1, "{:?}", canvas.guides);
+        assert!(canvas.guides[0].vertical && (canvas.guides[0].at - 100.0).abs() < 1e-3);
+        // The line is painted in the guide colour down the shared edge, from above "a" to below "b".
+        editor.refresh(&|_| (0.0, 0.0));
+        let input = egui::RawInput { screen_rect: Some(view), events: vec![egui::Event::PointerMoved(last)], focused: true, ..Default::default() };
+        let drawn = ctx.run_ui(input, |ui| canvas.show(ui, &mut editor, false));
+        let mut painted = Vec::new();
+        drawn.shapes.iter().for_each(|clipped| lines(&clipped.shape, &mut painted));
+        let (top, foot) = (at(&editor, Point::new(100.0, 100.0)), at(&editor, Point::new(100.0, 377.0)));
+        assert_eq!(painted.len(), 1, "{painted:?}");
+        let [start, end] = painted[0];
+        assert!((start.x - top.x).abs() < 1e-3 && (end.x - top.x).abs() < 1e-3, "{start:?} {end:?} {top:?}");
+        assert!(
+            (start.y - (top.y - SNAP_GUIDE_OVER)).abs() < 1e-3 && (end.y - (foot.y + SNAP_GUIDE_OVER)).abs() < 1e-3,
+            "{start:?} {end:?} {top:?} {foot:?}"
+        );
+        frame(&mut canvas, &ctx, &mut editor, vec![button(last, false)]);
+        let (x, y) = place(&editor, "b");
+        assert!((x - 100.0).abs() < 1e-3 && (y - 337.0).abs() < 0.6, "{x} {y}");
+        // The lines go when the layer is let go.
+        frame(&mut canvas, &ctx, &mut editor, vec![]);
+        assert_eq!(canvas.guides, []);
+        // With the setting off the same drag leaves it where the pointer put it.
+        let (mut canvas, mut editor) = (Canvas::default(), open());
+        drag(&mut canvas, &ctx, &mut editor, &[from, known, to]);
+        assert!((place(&editor, "b").0 - 103.0).abs() < 0.6, "{:?}", place(&editor, "b"));
+        // Pulling the left side of "b" from 400 to 197 brings it to the right edge of "a" at 200; its right side stays.
+        let (mut canvas, mut editor) = (Canvas::default(), open());
+        canvas.options.snap_to_objects = true;
+        drag(&mut canvas, &ctx, &mut editor, &[Point::new(400.0, 320.0), Point::new(390.0, 320.0), Point::new(187.0, 320.0)]);
+        let width = edit::find(&editor.doc, "b").and_then(|node| node.width.as_ref().and_then(Num::literal)).unwrap();
+        assert!((place(&editor, "b").0 - 200.0).abs() < 1e-3 && (width - 260.0).abs() < 1e-3, "{:?} {width}", place(&editor, "b"));
     }
 
     #[test]

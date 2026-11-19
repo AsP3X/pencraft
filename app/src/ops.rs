@@ -849,6 +849,39 @@ impl Editor {
         }
     }
 
+    /// Spreads three or more selected layers so the gaps between them are equal, `across` the page or down it:
+    /// the two outermost stay and the others go between them in the order they lie in.
+    // Human: with less room than the layers take, the equal gap is negative and they overlap by the same amount.
+    // Layers a layout places are left alone, as in aligning, and so is anything when fewer than three can move.
+    pub fn distribute(&mut self, across: bool) {
+        let ids: Vec<String> = self.selection.iter().filter(|id| is_free(self, id)).cloned().collect();
+        let span = |b: &Rect| if across { (b.x, b.w) } else { (b.y, b.h) };
+        let mut boxes: Vec<(String, f32, f32)> =
+            ids.iter().filter_map(|id| self.local_box(id).map(|b| (id.clone(), span(&b).0, span(&b).1))).collect();
+        if boxes.len() < 3 {
+            return;
+        }
+        boxes.sort_by(|a, b| a.1.total_cmp(&b.1).then((a.1 + a.2).total_cmp(&(b.1 + b.2))));
+        let Some(start) = boxes.first().map(|b| b.1) else { return };
+        let end = boxes.iter().map(|b| b.1 + b.2).fold(f32::MIN, f32::max);
+        let taken: f32 = boxes.iter().map(|b| b.2).sum();
+        let gaps = u16::try_from(boxes.len() - 1).map_or(1.0, f32::from);
+        let gap = (end - start - taken) / gaps;
+        self.checkpoint();
+        let mut at = start;
+        for (id, was, size) in boxes {
+            if let Some(node) = edit::find_mut(&mut self.doc, &id) {
+                let (sx, sy) = stored_position(node);
+                if across {
+                    set_position(node, sx + (at - was), sy);
+                } else {
+                    set_position(node, sx, sy + (at - was));
+                }
+            }
+            at += size + gap;
+        }
+    }
+
     /// Sets `textAlign` on selected text (⌥⌘L/T/R/J).
     pub fn text_align(&mut self, align: &str) {
         self.set_on_selection(|n| {
@@ -1272,6 +1305,34 @@ mod tests {
 
     fn item(id: &str, x: f32, y: f32, w: f32, h: f32) -> Item {
         Item { id: id.to_owned(), outer: Rect::new(x, y, w, h), text: false }
+    }
+
+    #[test]
+    fn three_layers_are_spread_at_equal_gaps_between_the_two_outermost() {
+        let doc: pen_doc::Document = serde_json::from_str(
+            r#"{"version":"2.22","children":[
+                {"type":"rectangle","id":"c","x":300,"y":90,"width":100,"height":10},
+                {"type":"rectangle","id":"a","x":0,"y":0,"width":40,"height":10},
+                {"type":"rectangle","id":"b","x":50,"y":20,"width":60,"height":30}]}"#,
+        )
+        .unwrap();
+        let mut editor = Editor::new(doc, None, 7);
+        editor.refresh(&|_| (0.0, 0.0));
+        let place = |editor: &Editor, id: &str| edit::find(&editor.doc, id).map(stored_position).unwrap();
+        // Two layers have no gap to make equal.
+        editor.selection = vec!["a".to_owned(), "c".to_owned()];
+        editor.distribute(true);
+        assert_eq!((place(&editor, "a"), place(&editor, "c")), ((0.0, 0.0), (300.0, 90.0)));
+        // Across: 400 wide, 200 of it taken, two gaps of 100. "b" goes to 140; the outer two and every y stay.
+        editor.selection = vec!["c".to_owned(), "a".to_owned(), "b".to_owned()];
+        editor.distribute(true);
+        assert_eq!((place(&editor, "a"), place(&editor, "b"), place(&editor, "c")), ((0.0, 0.0), (140.0, 20.0), (300.0, 90.0)));
+        // Down: 100 high, 50 taken, two gaps of 25. "b" goes to 35. One step back undoes it.
+        editor.refresh(&|_| (0.0, 0.0));
+        editor.distribute(false);
+        assert_eq!(place(&editor, "b"), (140.0, 35.0));
+        editor.undo();
+        assert_eq!(place(&editor, "b"), (140.0, 20.0));
     }
 
     #[test]

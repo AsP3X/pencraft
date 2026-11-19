@@ -541,6 +541,23 @@
    "source": "Pencraft's own rule (theme ROTATE_REACH)"
   },
   {
+   "name": "snap to objects",
+   "group": "editing",
+   "value": true
+  },
+  {
+   "name": "distribute: fewest layers",
+   "group": "editing",
+   "value": 3
+  },
+  {
+   "name": "snap to objects reach",
+   "group": "editing",
+   "value": 5,
+   "unit": "pt",
+   "source": "Pencraft's own rule (theme SNAP_REACH), estimated"
+  },
+  {
    "name": "export formats",
    "group": "export",
    "value": "PNG, JPEG, WEBP, PDF, SVG"

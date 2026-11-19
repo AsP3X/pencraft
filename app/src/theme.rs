@@ -232,6 +232,14 @@ pub const ASSISTANT_MENU_WIDTH: f32 = 240.0;
 pub const HANDLE_SIZE: f32 = 8.0;
 /// How near an edge of the selection box a press must be to resize by that edge.
 pub const EDGE_GRAB: f32 = 4.0;
+/// How near, in screen points, a dragged layer's edge or middle must be to another's to land on it.
+pub const SNAP_REACH: f32 = 5.0;
+/// The colour of the line through what a dragged layer lined up with.
+pub const SNAP_GUIDE: Color32 = Color32::from_rgb(0xf4, 0x3f, 0x5e);
+/// How far such a line runs on past what it joins, at each end.
+pub const SNAP_GUIDE_OVER: f32 = 6.0;
+/// How far the bar at each end of an equal gap's line reaches to either side of it.
+pub const SNAP_GAP_BAR: f32 = 4.0;
 /// How far outside a corner of the selection box a press still turns the layer.
 pub const ROTATE_REACH: f32 = 22.0;
 /// Radius of the rotation handle's dot.

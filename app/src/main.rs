@@ -51,6 +51,7 @@ mod settings;
 mod shader;
 mod sidebar;
 mod skills;
+mod snap;
 mod theme;
 mod toast;
 mod tool_icons;

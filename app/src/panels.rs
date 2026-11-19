@@ -371,6 +371,8 @@ struct Shown<'a> {
     part: pen_doc::geom::Rect,
     /// Positioned by x and y, not by its parent's layout.
     free: bool,
+    /// How many layers are selected.
+    selected: usize,
     /// What the layer is to components.
     role: Role,
     /// A plain layer somewhere inside a component.
@@ -473,6 +475,7 @@ fn node_panel(ui: &mut Ui, editor: &mut Editor, id: &str, dark: bool, pictures: 
         // Human: inside an instance a layer is placed by x and y when the frame it is in has no layout.
         free: crate::ops::is_free(editor, id)
             || (role == Role::Inside && editor.scene_parent(id).is_some_and(|p| p.node.layout_mode() == pen_doc::model::LayoutMode::None)),
+        selected: editor.selection.len(),
         role,
         in_component,
         slot: if role == Role::Inside && node.kind == Kind::Frame { slot_info(editor, id, &node) } else { None },
@@ -685,7 +688,25 @@ fn align(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
         Some(AlignTo::Bottom) => Some(|e| e.align(AlignTo::Bottom)),
         None => edits.command,
     };
+    // Human: spreading layers at equal gaps takes three of them; with fewer the buttons would do nothing.
+    if shown.selected >= 3 {
+        edits.command = match distribution(ui, shown.palette) {
+            Some(true) => Some(|e| e.distribute(true)),
+            Some(false) => Some(|e| e.distribute(false)),
+            None => edits.command,
+        };
+    }
     end(ui, true);
+}
+
+/// The two buttons that spread the selection at equal gaps, under the alignment buttons' first group; whether
+/// the one clicked spreads across the page.
+fn distribution(ui: &mut Ui, palette: Palette) -> Option<bool> {
+    ui.add_space(PROPS_GAP);
+    let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), PROPS_ROW), Sense::hover());
+    let group = Rect::from_min_size(row.min, vec2((row.width() - PROPS_GAP) / 2.0, row.height()));
+    let buttons = [("align-horizontal-space-between", "Distribute horizontally"), ("align-vertical-space-between", "Distribute vertically")];
+    icon_group(ui, group, &buttons, palette).map(|index| index == 0)
 }
 
 /// Position: x and y, rotation, and bring to front and the two flips.
@@ -2355,6 +2376,8 @@ mod tests {
             "align-start-horizontal",
             "align-center-horizontal",
             "align-end-horizontal",
+            "align-horizontal-space-between",
+            "align-vertical-space-between",
             "rotate-cw",
             "bring-to-front",
             "square-centerline-dashed-horizontal",

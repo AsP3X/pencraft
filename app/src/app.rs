@@ -1673,6 +1673,7 @@ fn run_on(editor: &mut Editor, command: Command, view: egui::Rect) {
         Command::FrameSelection => editor.wrap_selection(&pen_doc::Kind::Frame),
         Command::Ungroup => editor.ungroup(),
         Command::Align(to) => editor.align(to),
+        Command::Distribute(across) => editor.distribute(across),
         Command::Flip(horizontal) => editor.flip(horizontal),
         Command::Rotate(degrees) => editor.rotate_selection(degrees),
         Command::Reorder(order) => editor.reorder(order),
@@ -1809,6 +1810,7 @@ fn canvas_options(prefs: &Prefs) -> canvas::Options {
     };
     canvas::Options {
         snap_to_pixels: prefs.canvas.snap_to_pixels,
+        snap_to_objects: prefs.canvas.snap_to_objects,
         wheel_zooms: prefs.canvas.wheel_zooms,
         invert_zoom: prefs.canvas.invert_zoom,
         agent_cursor,
