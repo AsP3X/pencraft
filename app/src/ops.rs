@@ -112,7 +112,54 @@ pub fn is_free(editor: &Editor, id: &str) -> bool {
     }
 }
 
+/// A colour as the file writes it: `#rrggbb`, with its alpha behind it when it isn't fully solid.
+#[must_use]
+pub fn hex_of(color: pen_doc::color::Rgba) -> String {
+    if color.a == 255 { format!("#{:02x}{:02x}{:02x}", color.r, color.g, color.b) } else { color.to_hex() }
+}
+
+/// The property that locks a layer: `locked: true`.
+pub const LOCKED: &str = "locked";
+
+/// Whether `node` says it is locked.
+#[must_use]
+pub fn is_locked(node: &Node) -> bool {
+    node.extra.get(LOCKED) == Some(&serde_json::Value::Bool(true))
+}
+
 impl Editor {
+    /// Whether the layer with `id` is locked: it says so itself, or a layer it is in does.
+    // Human: a locked layer stays where it is. A click on the canvas goes through it to what is behind, so a
+    // background, a guide picture or a finished part can't be picked up and moved by accident; it is still
+    // selected from the layers list, where it is unlocked again. Locking a frame locks everything in it.
+    #[must_use]
+    pub fn locked(&self, id: &str) -> bool {
+        let root = id.split('/').next().unwrap_or(id);
+        edit::ancestry(&self.doc, root).iter().any(|layer| edit::find(&self.doc, layer).is_some_and(is_locked))
+            || self.scene_node(id).is_some_and(|scene| is_locked(&scene.node))
+    }
+
+    /// Gives the selected layers the colour `color`: as their fill, or as their stroke when `stroke` says so or
+    /// the layer is a line or a connector, which have no fill. One undo step.
+    pub fn drop_color(&mut self, color: pen_doc::color::Rgba, stroke: bool) {
+        // Human: a colour that is fully solid is written the short way, without its alpha.
+        let hex = hex_of(color);
+        self.set_on_selection(|node| {
+            let paint = Some(pen_doc::model::Paints::One(pen_doc::model::Paint::Solid(hex.clone())));
+            if stroke || matches!(node.kind, Kind::Line | Kind::Connector) {
+                node.stroke = paint;
+            } else {
+                node.fill = paint;
+            }
+        });
+    }
+
+    /// Locks the selected layers, or unlocks them when every one of them is locked already (⇧⌘L).
+    pub fn toggle_lock(&mut self) {
+        let unlock = !self.selection.is_empty() && self.selection.iter().all(|id| self.scene_node(id).is_some_and(|scene| is_locked(&scene.node)));
+        self.set_on_selection(|node| lock(node, !unlock));
+    }
+
     /// The selection's common parent and the selected slots in stack order, when all share one parent.
     fn siblings(&self) -> Option<Siblings> {
         let mut parent: Option<Option<String>> = None;
@@ -833,7 +880,7 @@ impl Editor {
         if self.nudge_path_points(dx, dy) {
             return;
         }
-        let ids: Vec<String> = self.selection.iter().filter(|id| is_free(self, id)).cloned().collect();
+        let ids: Vec<String> = self.selection.iter().filter(|id| is_free(self, id) && !self.locked(id)).cloned().collect();
         if ids.is_empty() {
             return;
         }
@@ -848,7 +895,7 @@ impl Editor {
 
     /// Aligns the selection: several nodes to their common bounds, one node within its parent.
     pub fn align(&mut self, to: AlignTo) {
-        let ids: Vec<String> = self.selection.iter().filter(|id| is_free(self, id)).cloned().collect();
+        let ids: Vec<String> = self.selection.iter().filter(|id| is_free(self, id) && !self.locked(id)).cloned().collect();
         let boxes: Vec<(String, Rect)> = ids.iter().filter_map(|id| self.local_box(id).map(|b| (id.clone(), b))).collect();
         let target = if boxes.len() > 1 {
             boxes.iter().map(|(_, b)| *b).reduce(|a, b| a.union(&b))
@@ -884,7 +931,7 @@ impl Editor {
     // Human: with less room than the layers take, the equal gap is negative and they overlap by the same amount.
     // Layers a layout places are left alone, as in aligning, and so is anything when fewer than three can move.
     pub fn distribute(&mut self, across: bool) {
-        let ids: Vec<String> = self.selection.iter().filter(|id| is_free(self, id)).cloned().collect();
+        let ids: Vec<String> = self.selection.iter().filter(|id| is_free(self, id) && !self.locked(id)).cloned().collect();
         let span = |b: &Rect| if across { (b.x, b.w) } else { (b.y, b.h) };
         let mut boxes: Vec<(String, f32, f32)> =
             ids.iter().filter_map(|id| self.local_box(id).map(|b| (id.clone(), span(&b).0, span(&b).1))).collect();
@@ -1031,6 +1078,15 @@ pub const SCALE_MIN: f32 = 0.01;
 pub const SCALE_MAX: f32 = 100.0;
 /// The part of the view an imported picture may fill at most.
 const IMPORT_ROOM: f32 = 0.8;
+
+/// Locks `node`, or unlocks it: an unlocked layer has no such property at all.
+pub fn lock(node: &mut Node, locked: bool) {
+    if locked {
+        node.extra.insert(LOCKED.to_owned(), serde_json::Value::Bool(true));
+    } else {
+        node.extra.remove(LOCKED);
+    }
+}
 
 /// The selected layers as they were when a turn began: each one's id, rotation and top left corner (document
 /// coordinates), and the point they turn around.
@@ -1669,6 +1725,35 @@ mod tests {
         let size = (node.width.as_ref().and_then(Num::literal), node.height.as_ref().and_then(Num::literal));
         assert_eq!((&node.kind, node.name.as_deref(), size), (&Kind::Rectangle, Some("Pasted picture"), (Some(800.0), Some(200.0))));
         assert!(pen_doc::write(&editor.doc).unwrap().contains("./images/pasted-picture-0001.png"));
+    }
+
+    #[test]
+    fn a_locked_layer_stays_where_it_is_and_a_dropped_colour_goes_to_the_selection() {
+        let mut editor = two_boards();
+        editor.selection = vec!["box".to_owned()];
+        let was = position(&editor, "box");
+        editor.toggle_lock();
+        editor.refresh(&|_| (0.0, 0.0));
+        assert!(editor.locked("box") && !editor.locked("one"));
+        // The arrow keys and aligning leave it alone.
+        editor.nudge(5.0, 0.0);
+        editor.align(AlignTo::Right);
+        assert_eq!(position(&editor, "box"), was);
+        // Locking the board it is on locks it too, also once it is unlocked itself; an unlocked layer says nothing.
+        editor.toggle_lock();
+        editor.refresh(&|_| (0.0, 0.0));
+        assert!(!editor.locked("box") && !pen_doc::write(&editor.doc).unwrap().contains("locked"));
+        editor.selection = vec!["one".to_owned()];
+        editor.toggle_lock();
+        editor.refresh(&|_| (0.0, 0.0));
+        assert!(editor.locked("box") && editor.locked("one"));
+        editor.toggle_lock();
+        // A colour dropped on the selection is its fill, or its stroke when asked; a solid one is written short.
+        editor.selection = vec!["box".to_owned()];
+        editor.drop_color(pen_doc::color::Rgba { r: 255, g: 0, b: 16, a: 255 }, false);
+        editor.drop_color(pen_doc::color::Rgba { r: 0, g: 0, b: 0, a: 128 }, true);
+        let written = pen_doc::write(&editor.doc).unwrap();
+        assert!(written.contains("\"fill\": \"#ff0010\"") && written.contains("\"stroke\": \"#00000080\""), "{written}");
     }
 
     #[test]

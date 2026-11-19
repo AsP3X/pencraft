@@ -63,6 +63,9 @@ pub(super) struct Shadow {
     pub blur: f32,
     /// Its colour.
     pub color: Rgba,
+    /// How far the shape is grown (shrunk, when negative) before it casts the shadow; an inner shadow reaches
+    /// that much further in.
+    pub spread: f32,
 }
 
 /// The effects of a node that are switched on and can be drawn.
@@ -955,8 +958,7 @@ impl Builder<'_> {
     }
 
     /// The effects of `scene` that are switched on, variables looked up.
-    // Human: a shadow is its offset, colour (black when unset) and `blur`; `spread` is
-    // not read at all.
+    // Human: a shadow is its offset, colour (black when unset), `blur` and `spread`.
     pub(super) fn effects_of(&self, scene: &SceneNode) -> Effects {
         let mut found = Effects::default();
         let theme = &scene.theme;
@@ -983,7 +985,7 @@ impl Builder<'_> {
                         continue;
                     }
                     let offset = effect.get("offset").map_or(Point::default(), |o| Point::new(number(o.get("x")), number(o.get("y"))));
-                    let shadow = Shadow { offset, blur: number(effect.get("blur")).max(0.0), color };
+                    let shadow = Shadow { offset, blur: number(effect.get("blur")).max(0.0), color, spread: number(effect.get("spread")) };
                     if kind == EffectKind::DropShadow { found.drops.push(shadow) } else { found.inners.push(shadow) }
                 }
                 Some(EffectKind::LayerBlur) => found.layer_blur = Some(sigma(number(effect.get("radius")))).filter(|s| *s > 0.0),
@@ -1034,9 +1036,10 @@ impl Builder<'_> {
             .drops
             .iter()
             .filter_map(|shadow| match plain {
+                // A box grown by the spread is a box again, its corners rounder by as much.
                 Some(radius) => Some(Item::Shadow {
-                    rect: layout::doc_bounds(scene),
-                    radius,
+                    rect: expand(&layout::doc_bounds(scene), shadow.spread),
+                    radius: (radius + shadow.spread).max(0.0),
                     offset: shadow.offset,
                     blur: shadow.blur,
                     color: color32(shadow.color.with_opacity(look.opacity)),
@@ -1395,14 +1398,14 @@ impl Builder<'_> {
     // shadow through its fill.
     pub(super) fn drop_shadow(&self, shape: &[&Item], shadow: &Shadow, look: &Look) -> Option<Item> {
         let sigma = sigma(shadow.blur);
-        let pad = sigma * REACH + 1.0 / self.scale;
+        let pad = sigma * REACH + shadow.spread.max(0.0) + 1.0 / self.scale;
         // The shadow is clipped where it lands, which is `offset` away from the shape it is made from.
         let limit = look.clip.map(|c| c.translate(-shadow.offset.x, -shadow.offset.y));
         let grid = Grid::new(expand(&extent_of(shape)?, pad), limit, pad, self.scale, sigma * self.scale < 1.0)?;
-        let (sigma, offset) = (sigma * grid.scale, [shadow.offset.x * grid.scale, shadow.offset.y * grid.scale]);
+        let (sigma, offset, grown) = (sigma * grid.scale, [shadow.offset.x * grid.scale, shadow.offset.y * grid.scale], shadow.spread * grid.scale);
         let color = color32(shadow.color);
         let cut = !look.opaque;
-        let key = Self::key(if cut { "drop-cut" } else { "drop" }, &grid, &[(shape, true)], &[sigma, offset[0], offset[1]], color);
+        let key = Self::key(if cut { "drop-cut" } else { "drop" }, &grid, &[(shape, true)], &[sigma, offset[0], offset[1], grown], color);
         let texture = self.baked.texture(self.ctx, key, grid.rect(), || {
             let shape = self.plan(&grid, shape, true);
             if shape.starved {
@@ -1413,6 +1416,7 @@ impl Builder<'_> {
                 shape.onto(&mut solid);
                 let solid = grid.settle(solid);
                 let mut soft = solid.clone();
+                soft.spread(grown);
                 soft.blur(sigma);
                 let tint = raster::pixel(color);
                 for y in 0..soft.h {
@@ -1438,9 +1442,9 @@ impl Builder<'_> {
         let sigma = sigma(shadow.blur);
         let pad = sigma * REACH + shadow.offset.x.abs().max(shadow.offset.y.abs()) + 1.0 / self.scale;
         let grid = Grid::new(expand(&extent_of(shape)?, 1.0 / self.scale), look.clip, pad, self.scale, true)?;
-        let (sigma, offset) = (sigma * grid.scale, [shadow.offset.x * grid.scale, shadow.offset.y * grid.scale]);
+        let (sigma, offset, grown) = (sigma * grid.scale, [shadow.offset.x * grid.scale, shadow.offset.y * grid.scale], shadow.spread * grid.scale);
         let color = color32(shadow.color);
-        let key = Self::key("inner", &grid, &[(shape, true)], &[sigma, offset[0], offset[1]], color);
+        let key = Self::key("inner", &grid, &[(shape, true)], &[sigma, offset[0], offset[1], grown], color);
         let texture = self.baked.texture(self.ctx, key, grid.rect(), || {
             let shape = self.plan(&grid, shape, true);
             if shape.starved {
@@ -1450,7 +1454,10 @@ impl Builder<'_> {
                 let mut solid = grid.bitmap();
                 shape.onto(&mut solid);
                 let mut solid = grid.settle(solid);
+                // Human: the light that leaves the rim dark comes through a smaller opening the more the
+                // shadow spreads.
                 let mut soft = solid.clone();
+                soft.spread(-grown);
                 soft.blur(sigma);
                 let tint = raster::pixel(color);
                 for y in 0..solid.h {

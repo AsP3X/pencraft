@@ -240,6 +240,10 @@ pub const SNAP_GUIDE: Color32 = Color32::from_rgb(0xf4, 0x3f, 0x5e);
 pub const SNAP_GUIDE_OVER: f32 = 6.0;
 /// How far the bar at each end of an equal gap's line reaches to either side of it.
 pub const SNAP_GAP_BAR: f32 = 4.0;
+/// The radius of the eyedropper's swatch beside the pointer, and how far its middle is from the pointer each way.
+pub const EYEDROPPER_SWATCH: f32 = 11.0;
+/// See [`EYEDROPPER_SWATCH`].
+pub const EYEDROPPER_OFFSET: f32 = 20.0;
 /// How far outside a corner of the selection box a press still turns the layer.
 pub const ROTATE_REACH: f32 = 22.0;
 /// Radius of the rotation handle's dot.

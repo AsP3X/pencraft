@@ -219,7 +219,11 @@ enum Does {
 type Entry = (&'static str, &'static str, &'static str, Does);
 
 /// The pointer tools' menu: Move and Scale.
-const POINTER_MENU: [Entry; 2] = [("mouse-pointer-2", "Move", "V", Does::Tool(Tool::Move)), ("scaling", "Scale", "K", Does::Tool(Tool::Scale))];
+const POINTER_MENU: [Entry; 3] = [
+    ("mouse-pointer-2", "Move", "V", Does::Tool(Tool::Move)),
+    ("scaling", "Scale", "K", Does::Tool(Tool::Scale)),
+    ("pipette", "Eyedropper", "I", Does::Tool(Tool::Eyedropper)),
+];
 /// The shapes' menu.
 const SHAPE_MENU: [Entry; 7] = [
     ("square", "Rectangle", "R", Does::Tool(Tool::Rectangle)),
@@ -265,7 +269,7 @@ enum Act {
 
 /// The tool rail's entries from top to bottom: icon, hint, what it does.
 const RAIL: [(&str, &str, Act); 14] = [
-    ("mouse-pointer-2", "Move (V), Scale (K)", Act::Pointer),
+    ("mouse-pointer-2", "Move (V), Scale (K), Eyedropper (I)", Act::Pointer),
     ("chevron-down", "Move tools", Act::Menu(&POINTER_MENU)),
     ("square", "Shapes", Act::Shape),
     ("chevron-down", "Shapes", Act::Menu(&SHAPE_MENU)),
@@ -913,7 +917,7 @@ impl Sidebar {
                 let response = ui.interact(slot, ui.scope_id().with(("tool", index)), Sense::click());
                 let active = match act {
                     Act::Pick(tool) => editor.tool == tool,
-                    Act::Pointer => matches!(editor.tool, Tool::Move | Tool::Scale),
+                    Act::Pointer => matches!(editor.tool, Tool::Move | Tool::Scale | Tool::Eyedropper),
                     Act::Shape => shape_icon.is_some(),
                     Act::Menu(_) | Act::Component | Act::Find | Act::Later(_) => false,
                 };
@@ -923,6 +927,7 @@ impl Sidebar {
                 let (icon, size) = match act {
                     Act::Menu(_) => (icon, 10.0),
                     Act::Pointer if editor.tool == Tool::Scale => ("scaling", ICON_SIZE),
+                    Act::Pointer if editor.tool == Tool::Eyedropper => ("pipette", ICON_SIZE),
                     Act::Shape => (shape_icon.unwrap_or(icon), ICON_SIZE),
                     _ => (icon, ICON_SIZE),
                 };

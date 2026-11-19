@@ -1040,6 +1040,9 @@ impl App {
         if hit(Key::G, cmd) {
             editor.wrap_selection(&pen_doc::Kind::Group);
         }
+        if hit(Key::L, cmd_shift) {
+            editor.toggle_lock();
+        }
         if hit(Key::G, cmd_shift) || hit(Key::Backspace, cmd) {
             editor.ungroup();
         }
@@ -1148,6 +1151,7 @@ impl App {
             (Key::P, Tool::Pen),
             (Key::C, Tool::Connector),
             (Key::K, Tool::Scale),
+            (Key::I, Tool::Eyedropper),
         ] {
             if hit(key, none) {
                 editor.tool = tool;
@@ -1827,6 +1831,7 @@ fn run_on(editor: &mut Editor, command: Command, view: egui::Rect) {
         Command::Group => editor.wrap_selection(&pen_doc::Kind::Group),
         Command::FrameSelection => editor.wrap_selection(&pen_doc::Kind::Frame),
         Command::Ungroup => editor.ungroup(),
+        Command::ToggleLock => editor.toggle_lock(),
         Command::Align(to) => editor.align(to),
         Command::Distribute(across) => editor.distribute(across),
         Command::Flip(horizontal) => editor.flip(horizontal),

@@ -405,6 +405,7 @@ impl Builder<'_> {
                 offset: Point::new(0.0, drop),
                 blur,
                 color: Rgba::BLACK.with_opacity(light.shadow * strength),
+                spread: 0.0,
             };
             items.extend(self.drop_shadow(shape, &shadow(light.shadow_drop, light.shadow_blur, 1.0), &cast));
             items.extend(self.drop_shadow(shape, &shadow(1.0, 4.0, CONTACT), &cast));

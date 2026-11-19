@@ -119,18 +119,22 @@ pub fn layers(ui: &mut Ui, editor: &mut Editor, dark: bool) {
 enum LayerAction {
     Select { id: String, add: bool },
     ToggleHidden(String),
+    ToggleLocked(String),
 }
 
 /// What the layers list says after a mask layer's name, and what it means.
 const MASK_TAG: (&str, &str) = ("mask", "Cuts the layers above it in this group to its shape");
 
 /// One line of the layers list.
+#[expect(clippy::struct_excessive_bools, reason = "each says one independent thing about the layer")]
 struct Row<'a> {
     /// The layer's id: a document id, or `instance/inner` inside an instance.
     id: &'a str,
     name: String,
     kind: &'a Kind,
     hidden: bool,
+    /// The layer itself says it is locked.
+    locked: bool,
     /// The colour of a component's name, or of an instance's and what is inside it.
     linked: Option<Color32>,
     has_kids: bool,
@@ -191,6 +195,13 @@ fn row(ui: &mut Ui, editor: &Editor, line: &Row, depth: usize, dark: bool, actio
             {
                 *action = Some(LayerAction::ToggleHidden(id.to_owned()));
             }
+            // Human: a closed lock on a locked layer, a faint open one on the others; a click turns it.
+            let (lock, response) = ui.allocate_exact_size(Vec2::splat(13.0), Sense::click());
+            let (icon, ink) = if line.locked { ("lock", palette.foreground) } else { ("lock-open", palette.muted.gamma_multiply(0.45)) };
+            icons::paint(ui.painter(), lock, icon, ink);
+            if response.on_hover_text(if line.locked { "Unlock" } else { "Lock" }).clicked() {
+                *action = Some(LayerAction::ToggleLocked(id.to_owned()));
+            }
         });
     });
     if selected {
@@ -211,6 +222,7 @@ fn layer_row(ui: &mut Ui, editor: &Editor, node: &Node, depth: usize, dark: bool
         name: instance.map_or_else(|| node.display_name(), |shown| shown.node.display_name()),
         kind: &node.kind,
         hidden: matches!(node.enabled, Some(Flag::Value(false))),
+        locked: crate::ops::is_locked(node),
         linked: if node.kind == Kind::Ref {
             Some(theme::INSTANCE)
         } else if node.reusable == Some(true) {
@@ -246,6 +258,7 @@ fn inside_row(ui: &mut Ui, editor: &Editor, shown: &SceneNode, depth: usize, dar
         name: shown.node.display_name(),
         kind: &shown.node.kind,
         hidden: matches!(shown.node.enabled, Some(Flag::Value(false))),
+        locked: crate::ops::is_locked(&shown.node),
         linked: Some(theme::INSTANCE),
         has_kids: !shown.children.is_empty(),
         top: false,
@@ -270,6 +283,11 @@ fn apply_layer_action(editor: &mut Editor, action: LayerAction) {
             } else {
                 editor.selection = vec![id];
             }
+        }
+        LayerAction::ToggleLocked(id) => {
+            editor.checkpoint();
+            let locked = editor.scene_node(&id).is_some_and(|scene| crate::ops::is_locked(&scene.node));
+            editor.change(&id, &|node| crate::ops::lock(node, !locked));
         }
         LayerAction::ToggleHidden(id) => {
             editor.checkpoint();
@@ -1448,6 +1466,19 @@ fn effect_fields(ui: &mut Ui, shown: &Shown, effect: &Value, kind: Option<Effect
             }
             caption(ui, "Blur");
             changed = effect_blur(ui, shown, effect, "blur", true).or(changed);
+            // Human: how far the shadow reaches past the shape before it fades; below 0 it draws in.
+            caption(ui, "Spread");
+            let (spread, bound) = effect_number(shown, effect.get("spread"));
+            let [left, _] = pair(ui);
+            if let Some(new) = number(ui, left, Tag::Icon("expand"), Some(spread), bound.as_deref(), 0.1, palette) {
+                changed = Some(effects::with(effect, |keys| {
+                    if new == 0.0 {
+                        keys.remove("spread");
+                    } else {
+                        keys.insert("spread".to_owned(), effects::number(new));
+                    }
+                }));
+            }
         }
         EffectKind::LayerBlur | EffectKind::BackgroundBlur => {
             caption(ui, "Blur");
@@ -2376,6 +2407,9 @@ mod tests {
             "align-start-horizontal",
             "align-center-horizontal",
             "align-end-horizontal",
+            "expand",
+            "lock",
+            "lock-open",
             "align-horizontal-space-between",
             "align-vertical-space-between",
             "rotate-cw",

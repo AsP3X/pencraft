@@ -302,6 +302,24 @@ impl Bitmap {
         }
     }
 
+    /// Grows what is painted by `reach` pixels on every side, or shrinks it by as much for a negative `reach`;
+    /// what is left is painted solid white, as far as it is covered.
+    // Human: a shadow's `spread`. Growing is an outline of the shape's own colour round it; shrinking is the
+    // same done to everything that is clear, which eats into the shape from its edge.
+    pub fn spread(&mut self, reach: f32) {
+        if reach.is_nan() || reach == 0.0 {
+            return;
+        }
+        let mut cover =
+            Bitmap { w: self.w, h: self.h, px: self.px.iter().map(|pixel| [if reach > 0.0 { pixel[3] } else { 1.0 - pixel[3] }; 4]).collect() };
+        let shape = cover.clone();
+        // An outline is measured from the middles of the painted pixels; their edge lies half a pixel further out.
+        cover.outline(&shape, 0, reach.abs() + 0.5, [1.0; 4], None);
+        for (pixel, cover) in self.px.iter_mut().zip(&cover.px) {
+            *pixel = [if reach > 0.0 { cover[3] } else { 1.0 - cover[3] }; 4];
+        }
+    }
+
     /// Paints a rounded box whose edge fades over `blur` pixels, half inside and half outside it.
     // Human: this is how egui draws the soft shadow of a box; here it is worked out for each pixel from its
     // distance to the box's edge.
@@ -647,6 +665,34 @@ mod tests {
         let painted: Vec<f32> = bitmap.px.iter().map(|p| p[3]).filter(|a| *a > 0.0).collect();
         assert_eq!(painted.len(), 36);
         assert!(painted.iter().all(|a| (a - 128.0 / 255.0).abs() < 1e-4));
+    }
+
+    #[test]
+    fn a_spread_grows_what_is_painted_and_a_negative_one_shrinks_it() {
+        // A block of 6 by 6 pixels, from 7 to 13 each way, in a bitmap of 20.
+        let block = || {
+            let mut bitmap = Bitmap { w: 20, h: 20, px: vec![[0.0; 4]; 400] };
+            for y in 7..13 {
+                for x in 7..13 {
+                    bitmap.px[y * 20 + x] = [1.0; 4];
+                }
+            }
+            bitmap
+        };
+        let cover = |bitmap: &Bitmap, x: usize, y: usize| bitmap.px[y * 20 + x][3];
+        let mut grown = block();
+        grown.spread(3.0);
+        // Three pixels out it is covered, five out it is clear, and the corner is round: 3 out both ways is clear.
+        assert!(cover(&grown, 4, 10) > 0.9 && cover(&grown, 15, 10) > 0.9 && cover(&grown, 10, 4) > 0.9);
+        assert!(cover(&grown, 2, 10) < 0.01 && cover(&grown, 4, 4) < 0.01 && cover(&grown, 10, 10) > 0.99);
+        let mut shrunk = block();
+        shrunk.spread(-2.0);
+        // Two pixels are gone from every side; the middle stays.
+        assert!(cover(&shrunk, 7, 10) < 0.01 && cover(&shrunk, 8, 10) < 0.01 && cover(&shrunk, 10, 12) < 0.01);
+        assert!(cover(&shrunk, 9, 10) > 0.9 && cover(&shrunk, 10, 10) > 0.99 && cover(&shrunk, 2, 2) < 0.01);
+        let mut same = block();
+        same.spread(0.0);
+        assert_eq!(same.px, block().px);
     }
 
     #[test]

@@ -14,10 +14,10 @@ use crate::ops::{is_free, set_position, stored_position};
 use crate::render::{DisplayList, doc_point, screen};
 use crate::snap::{Lines, line_up, pulled};
 use crate::theme::{
-    self, ACCENT, COMPONENT, EDGE_GRAB, FRAME_NAME_GAP, FRAME_NAME_LEAST, FRAME_NAME_MORPH, FRAME_NAME_PILL, FRAME_NAME_PILL_RADIUS,
-    FRAME_NAME_PLATE, FRAME_NAME_PLATE_RADIUS, FRAME_NAME_TEXT, HANDLE_SIZE, INSTANCE, PEN_ANCHOR, PEN_HANDLE, PEN_REACH, RADIUS_HANDLE,
-    RADIUS_HANDLE_INSET, RADIUS_HANDLE_ROOM, ROTATE_DOT, ROTATE_DOT_GAP, ROTATE_DOT_GRAB, ROTATE_REACH, SIZE_LABEL_TEXT, SNAP_GAP_BAR, SNAP_GUIDE,
-    SNAP_GUIDE_OVER, SNAP_REACH, WIRE_REACH,
+    self, ACCENT, COMPONENT, EDGE_GRAB, EYEDROPPER_OFFSET, EYEDROPPER_SWATCH, FRAME_NAME_GAP, FRAME_NAME_LEAST, FRAME_NAME_MORPH, FRAME_NAME_PILL,
+    FRAME_NAME_PILL_RADIUS, FRAME_NAME_PLATE, FRAME_NAME_PLATE_RADIUS, FRAME_NAME_TEXT, HANDLE_SIZE, INSTANCE, PEN_ANCHOR, PEN_HANDLE, PEN_REACH,
+    RADIUS_HANDLE, RADIUS_HANDLE_INSET, RADIUS_HANDLE_ROOM, ROTATE_DOT, ROTATE_DOT_GAP, ROTATE_DOT_GRAB, ROTATE_REACH, SIZE_LABEL_TEXT, SNAP_GAP_BAR,
+    SNAP_GUIDE, SNAP_GUIDE_OVER, SNAP_REACH, WIRE_REACH,
 };
 
 /// Wheel and trackpad panning: screen points per scroll point.
@@ -314,7 +314,16 @@ impl Canvas {
             ui.ctx().set_cursor_icon(if response.dragged() { CursorIcon::Grabbing } else { CursorIcon::Grab });
         } else if matches!(
             editor.tool,
-            Tool::Frame | Tool::Rectangle | Tool::Ellipse | Tool::Polygon | Tool::Icon | Tool::Text | Tool::Note | Tool::Pen | Tool::Connector
+            Tool::Frame
+                | Tool::Rectangle
+                | Tool::Ellipse
+                | Tool::Polygon
+                | Tool::Icon
+                | Tool::Text
+                | Tool::Note
+                | Tool::Pen
+                | Tool::Connector
+                | Tool::Eyedropper
         ) {
             ui.ctx().set_cursor_icon(CursorIcon::Crosshair);
         }
@@ -337,7 +346,7 @@ impl Canvas {
         if response.double_clicked()
             && let Some(p) = pointer
         {
-            let chain = hit_chain(&editor.scene, doc_point(&editor.camera, view, p), Vars::new(&editor.doc), WIRE_REACH / editor.camera.zoom);
+            let chain = hit_free(&editor.scene, doc_point(&editor.camera, view, p), Vars::new(&editor.doc), WIRE_REACH / editor.camera.zoom);
             let current = editor.selection.first().and_then(|s| chain.iter().position(|c| c == s));
             match current {
                 Some(i) if chain.get(i + 1).is_some() => editor.selection = vec![chain[i + 1].clone()],
@@ -359,6 +368,8 @@ impl Canvas {
             self.editing = None;
             if editor.tool == Tool::Hand || space || middle {
                 self.drag = Some(Drag::Pan);
+            } else if editor.tool == Tool::Eyedropper {
+                // Human: the eyedropper takes a colour with a click; a pull with it moves nothing.
             } else if editor.tool == Tool::Pen {
                 // Human: a press and pull places a point where the button went down and pulls its handles out.
                 if pen_press(editor, doc_point(&editor.camera, view, grab), modifiers.shift, snap) {
@@ -514,6 +525,7 @@ impl Canvas {
                         if layout::doc_bounds(node).intersects(&area)
                             && let Some(id) = &node.doc_id
                             && !selection.contains(id)
+                            && !editor.locked(id)
                         {
                             selection.push(id.clone());
                         }
@@ -572,6 +584,19 @@ impl Canvas {
                 // Human: a click places a corner point; on the first point it closes the path.
                 Tool::Pen => {
                     pen_press(editor, at, modifiers.shift, snap);
+                }
+                // Human: the colour under the pointer goes to the selected layers, as their fill, or with ⌥ as
+                // their stroke; with nothing selected it goes to the clipboard as a hex colour. Then the pointer
+                // is back. A click on nothing that has a colour of its own leaves the tool on.
+                Tool::Eyedropper => {
+                    if let Some(color) = color_under(editor, at) {
+                        if editor.selection.is_empty() {
+                            ui.ctx().copy_text(crate::ops::hex_of(color));
+                        } else {
+                            editor.drop_color(color, modifiers.alt);
+                        }
+                        editor.tool = Tool::Move;
+                    }
                 }
                 Tool::Move | Tool::Scale => {
                     self.editing = None;
@@ -773,6 +798,7 @@ impl Canvas {
         }
         self.handles(ui, painter, editor, view);
         guide_lines(painter, cam, view, &self.guides, &self.gaps);
+        eyedropper_swatch(ui, painter, editor, view, &palette);
         if let Some((rect, text)) = badge {
             size_label(painter, rect, &text);
         }
@@ -826,6 +852,7 @@ impl Canvas {
             && let Some(node) = editor.scene_node(id)
             && resizable(node)
             && editor.role(id) != Role::Inside
+            && !editor.locked(id)
         {
             // Human: a square handle at each corner; the edges resize too, without a handle.
             // The handles sit on the box's own corners, so they turn with a turned layer.
@@ -1150,6 +1177,18 @@ pub fn fitted_part(node: &SceneNode) -> Rect {
     Rect::new(t.x / node.local.w, t.y / node.local.h, (t.w / node.local.w).max(1e-3), (t.h / node.local.h).max(1e-3))
 }
 
+/// With the eyedropper, shows the colour it would take in a round swatch beside the pointer.
+fn eyedropper_swatch(ui: &egui::Ui, painter: &egui::Painter, editor: &Editor, view: ScreenRect, palette: &theme::Palette) {
+    if editor.tool == Tool::Eyedropper
+        && let Some(p) = ui.input(|i| i.pointer.hover_pos()).filter(|p| view.contains(*p))
+        && let Some(color) = color_under(editor, doc_point(&editor.camera, view, p))
+    {
+        let middle = p + egui::vec2(EYEDROPPER_OFFSET, EYEDROPPER_OFFSET);
+        painter.circle(middle, EYEDROPPER_SWATCH + 1.0, Color32::TRANSPARENT, Stroke::new(1.0, palette.muted));
+        painter.circle(middle, EYEDROPPER_SWATCH, crate::render::color32(color), Stroke::new(2.0, Color32::WHITE));
+    }
+}
+
 /// Draws the lines through what the dragged layer lined up with, each a little longer than what it joins, and
 /// a line with a bar at each end across every gap of `gaps`, which are the equal ones.
 fn guide_lines(painter: &egui::Painter, cam: &Camera, view: ScreenRect, guides: &[crate::snap::Guide], gaps: &[crate::snap::Guide]) {
@@ -1227,6 +1266,9 @@ fn inside_outline(points: &[Point], p: Point) -> bool {
 // Human: a round handle shows inside each corner of a selected rectangle; pulling one towards the
 // middle rounds all four corners. A handle sits at its corner's radius, but never nearer the corner than 12 points.
 fn radius_handles(editor: &Editor, view: ScreenRect, id: &str, node: &SceneNode) -> Option<[(Pos2, (f32, f32)); 4]> {
+    if editor.locked(id) {
+        return None;
+    }
     let cam = &editor.camera;
     let b = layout::doc_bounds(node);
     let fits = b.w.min(b.h) * cam.zoom >= RADIUS_HANDLE_ROOM;
@@ -1278,6 +1320,9 @@ fn on_selection(editor: &Editor, view: ScreenRect, p: Pos2) -> Option<(String, R
 /// One layer has it above the middle of its top side, turned with the layer; several have it above the middle
 /// of the selection. `None` when nothing that can be turned is selected.
 fn rotate_dot(editor: &Editor, view: ScreenRect) -> Option<(Pos2, Pos2)> {
+    if holds_locked(editor) {
+        return None;
+    }
     let cam = &editor.camera;
     match editor.selection.as_slice() {
         [] => None,
@@ -1306,6 +1351,9 @@ fn rotate_dot(editor: &Editor, view: ScreenRect) -> Option<(Pos2, Pos2)> {
 
 /// Whether `p` is where a press turns the selected layer: outside its box, near one of its corners.
 fn rotate_zone(editor: &Editor, view: ScreenRect, p: Pos2) -> bool {
+    if holds_locked(editor) {
+        return false;
+    }
     let Some((_, frame, local, unit)) = on_selection(editor, view, p) else { return false };
     let outside = !frame.contains(local);
     let grip = (HANDLE_SIZE / 2.0 + 3.0) * unit;
@@ -1316,6 +1364,9 @@ fn rotate_zone(editor: &Editor, view: ScreenRect, p: Pos2) -> bool {
 }
 
 fn handle_at(editor: &Editor, view: ScreenRect, p: Pos2) -> Option<(String, Handle)> {
+    if holds_locked(editor) {
+        return None;
+    }
     // Human: worked out in the layer's own coordinates, so a turned layer's handles are where they are drawn.
     let (id, frame, local, unit) = on_selection(editor, view, p)?;
     let grip = (HANDLE_SIZE / 2.0 + 3.0) * unit;
@@ -1362,8 +1413,17 @@ fn linear(t: &Affine, dx: f32, dy: f32) -> (f32, f32) {
 // Human: a connector is hit on its line, within `reach` of it (in the document's units), never on the box
 // around it, which would cover the layers it runs between. With a reach of 0 connectors are passed over.
 pub(crate) fn hit_chain(scene: &[SceneNode], p: Point, vars: Vars<'_>, reach: f32) -> Vec<String> {
-    fn visit(node: &SceneNode, p: Point, vars: Vars<'_>, reach: f32) -> Option<Vec<String>> {
-        if node.node.enabled.as_ref().and_then(|e| vars.flag(e, &node.theme)) == Some(false) {
+    hit(scene, p, vars, reach, false)
+}
+
+/// [`hit_chain`] for picking a layer up: a locked layer, with everything in it, is not there.
+fn hit_free(scene: &[SceneNode], p: Point, vars: Vars<'_>, reach: f32) -> Vec<String> {
+    hit(scene, p, vars, reach, true)
+}
+
+fn hit(scene: &[SceneNode], p: Point, vars: Vars<'_>, reach: f32, free: bool) -> Vec<String> {
+    fn visit(node: &SceneNode, p: Point, vars: Vars<'_>, reach: f32, free: bool) -> Option<Vec<String>> {
+        if node.node.enabled.as_ref().and_then(|e| vars.flag(e, &node.theme)) == Some(false) || (free && crate::ops::is_locked(&node.node)) {
             return None;
         }
         if node.node.kind == Kind::Connector {
@@ -1380,7 +1440,7 @@ pub(crate) fn hit_chain(scene: &[SceneNode], p: Point, vars: Vars<'_>, reach: f3
         let clips = node.node.clip.as_ref().and_then(|c| vars.flag(c, &node.theme)).unwrap_or(false);
         if !clips || inside {
             for child in node.children.iter().rev() {
-                if let Some(mut chain) = visit(child, p, vars, reach) {
+                if let Some(mut chain) = visit(child, p, vars, reach, free) {
                     chain.insert(0, node.id.clone());
                     return Some(chain);
                 }
@@ -1392,7 +1452,7 @@ pub(crate) fn hit_chain(scene: &[SceneNode], p: Point, vars: Vars<'_>, reach: f3
         None
     }
     for node in scene.iter().rev() {
-        if let Some(chain) = visit(node, p, vars, reach) {
+        if let Some(chain) = visit(node, p, vars, reach, free) {
             return chain;
         }
     }
@@ -1403,16 +1463,18 @@ pub(crate) fn hit_chain(scene: &[SceneNode], p: Point, vars: Vars<'_>, reach: f3
 // Human: the rules:
 // - ⌘ picks the deepest layer.
 // - A top-level frame passes the click to the child under the pointer; its empty background picks it only when it
-//   has a flex layout or no children (a free board is picked by its name label).
-// - A nested frame is picked whole until it is selected; then the click goes to its child.
-// - A group is picked whole until it is selected; then the click goes to its child.
-// - A component instance is picked whole until it is selected; then the click goes to the layer inside it,
-//   which is edited as an override of that instance.
+//   has a flex layout or no children (a free board is picked by its name label). A board that is selected is
+//   picked itself wherever one of its layers lies, so a drag there moves the whole board.
+// - A nested frame, a group and a component instance are picked whole, also while they are selected: a press on
+//   a selected one takes all of it, and a drag moves all of it. Only a double click steps inside (the pointer's
+//   double-click rule selects the layer under it, one level down).
+// - Once a layer inside one of them is selected, a click on another layer inside it picks that layer: the user
+//   has stepped in, and stays in until something outside is clicked.
 // - Anything else is picked itself.
-// Agent: "selected" here also means holding the selection, so after stepping into a frame, group or instance a
-// click on a sibling of the selected layer stays inside it.
+// Agent: `own` is "this container is selected itself", `inside` "a layer somewhere in it is". The first keeps the
+// click on the container; only the second lets it through.
 fn pick(editor: &Editor, p: Point, deep: bool) -> Option<String> {
-    let chain = hit_chain(&editor.scene, p, Vars::new(&editor.doc), WIRE_REACH / editor.camera.zoom);
+    let chain = hit_free(&editor.scene, p, Vars::new(&editor.doc), WIRE_REACH / editor.camera.zoom);
     if deep {
         return chain.last().cloned();
     }
@@ -1420,12 +1482,16 @@ fn pick(editor: &Editor, p: Point, deep: bool) -> Option<String> {
     while let Some(id) = chain.get(i) {
         let scene = editor.scene_node(id)?;
         let instance = editor.role(id) == Role::Instance;
-        let mut entered = false;
-        scene.walk(&mut |inner, _| entered |= editor.selection.contains(&inner.id), 0);
+        let own = editor.selection.contains(id);
+        let mut inside = false;
+        scene.walk(&mut |inner, depth| inside |= depth > 0 && editor.selection.contains(&inner.id), 0);
+        let entered = inside && !own;
         let deeper = chain.get(i + 1).is_some();
         match scene.node.kind {
             Kind::Frame if i == 0 && !instance => {
-                if deeper {
+                if deeper && own {
+                    return Some(id.clone());
+                } else if deeper {
                     i += 1;
                 } else {
                     let background = scene.node.layout_mode() != LayoutMode::None || scene.children.is_empty();
@@ -1438,6 +1504,11 @@ fn pick(editor: &Editor, p: Point, deep: bool) -> Option<String> {
         }
     }
     None
+}
+
+/// Whether a locked layer is among the selected ones: the selection then has no handles and isn't turned.
+fn holds_locked(editor: &Editor) -> bool {
+    editor.selection.iter().any(|id| editor.locked(id))
 }
 
 /// The scene nodes a box selection picks from: the selection's siblings, or the top level.
@@ -1453,7 +1524,7 @@ fn start_move(editor: &mut Editor, id: &str, at: Point, alt: bool) -> Drag {
     // A layer inside an instance is placed by its component and isn't dragged about; a connector lies where
     // its ends are.
     let wire = |id: &str| edit::find(&editor.doc, id).is_some_and(|node| node.kind == Kind::Connector);
-    if editor.role(id) == Role::Inside || wire(id) {
+    if editor.role(id) == Role::Inside || wire(id) || editor.locked(id) {
         return Drag::Move { start: at, origins: Vec::new(), moved: false, bounds: None };
     }
     let in_flex = !is_free(editor, id);
@@ -1481,7 +1552,7 @@ fn movable(editor: &Editor) -> Vec<(String, f32, f32)> {
     editor
         .selection
         .iter()
-        .filter(|s| is_free(editor, s) && !edit::find(&editor.doc, s).is_some_and(|node| node.kind == Kind::Connector))
+        .filter(|s| is_free(editor, s) && !editor.locked(s) && !edit::find(&editor.doc, s).is_some_and(|node| node.kind == Kind::Connector))
         .filter_map(|s| edit::find(&editor.doc, s).map(|n| (s.clone(), stored_position(n).0, stored_position(n).1)))
         .collect()
 }
@@ -1766,7 +1837,7 @@ fn create(editor: &mut Editor, tool: Tool, area: Rect) {
             n.polygon_count = Some(Num::new(POLYGON_CORNERS));
             n
         }
-        Tool::Text | Tool::Note | Tool::Icon | Tool::Move | Tool::Scale | Tool::Hand | Tool::Pen | Tool::Connector => return,
+        Tool::Text | Tool::Note | Tool::Icon | Tool::Move | Tool::Scale | Tool::Hand | Tool::Pen | Tool::Connector | Tool::Eyedropper => return,
     };
     node.width = Some(Num::new(area.w));
     node.height = Some(Num::new(area.h));
@@ -2273,6 +2344,80 @@ mod tests {
         drag(&mut canvas, &ctx, &mut editor, &[Point::new(400.0, 320.0), Point::new(390.0, 320.0), Point::new(187.0, 320.0)]);
         let width = edit::find(&editor.doc, "b").and_then(|node| node.width.as_ref().and_then(Num::literal)).unwrap();
         assert!((place(&editor, "b").0 - 200.0).abs() < 1e-3 && (width - 260.0).abs() < 1e-3, "{:?} {width}", place(&editor, "b"));
+    }
+
+    #[test]
+    fn a_click_goes_through_a_locked_layer_and_the_eyedropper_takes_the_colour_under_it() {
+        let json = r##"{"version":"2.22","children":[{"type":"frame","id":"board","x":0,"y":0,"width":400,"height":300,"layout":"none","fill":"#ffffff","children":[
+            {"type":"rectangle","id":"under","x":50,"y":50,"width":200,"height":100,"fill":"#00aa00"},
+            {"type":"rectangle","id":"over","x":100,"y":70,"width":60,"height":40,"fill":"#ff0000","locked":true},
+            {"type":"rectangle","id":"other","x":300,"y":200,"width":40,"height":40,"fill":"#0000ff"}]}]}"##;
+        let mut editor = Editor::new(serde_json::from_str::<pen_doc::Document>(json).unwrap(), None, 7);
+        editor.refresh(&|_| (0.0, 0.0));
+        let on_both = Point::new(120.0, 90.0);
+        // The locked layer isn't picked, not even with the key that picks the deepest; the one under it is.
+        assert_eq!(pick(&editor, on_both, false).as_deref(), Some("under"));
+        assert_eq!(pick(&editor, on_both, true).as_deref(), Some("under"));
+        // Selected from the layers list it has no handles and no turning handle.
+        editor.selection = vec!["over".to_owned()];
+        let view = ScreenRect::from_min_size(Pos2::ZERO, WINDOW);
+        let corner = screen(&editor.camera, view, Point::new(160.0, 110.0));
+        assert!(handle_at(&editor, view, corner).is_none() && rotate_dot(&editor, view).is_none());
+        // The eyedropper sees it all the same: its colour goes to the selected layer with a click, and the
+        // pointer is back.
+        let (mut canvas, ctx) = (Canvas::default(), egui::Context::default());
+        fit(&mut editor, view, Some(Rect::new(0.0, 0.0, 400.0, 300.0)), 1.0);
+        editor.selection = vec!["other".to_owned()];
+        editor.tool = Tool::Eyedropper;
+        let at = screen(&editor.camera, view, on_both);
+        let button =
+            |pressed: bool| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
+        frame(&mut canvas, &ctx, &mut editor, vec![egui::Event::PointerMoved(at)]);
+        frame(&mut canvas, &ctx, &mut editor, vec![button(true)]);
+        frame(&mut canvas, &ctx, &mut editor, vec![button(false)]);
+        let written = pen_doc::write(&editor.doc).unwrap();
+        assert!(editor.tool == Tool::Move && written.matches("#ff0000").count() == 2, "{written}");
+    }
+
+    #[test]
+    fn a_selected_container_is_taken_whole_and_only_a_double_click_steps_inside() {
+        let json = r##"{"version":"2.22","children":[{"type":"frame","id":"board","x":0,"y":0,"width":600,"height":400,"layout":"none","fill":"#ffffff","children":[
+            {"type":"group","id":"pair","x":100,"y":100,"children":[
+                {"type":"rectangle","id":"left","x":0,"y":0,"width":80,"height":60,"fill":"#ff0000"},
+                {"type":"rectangle","id":"right","x":120,"y":0,"width":80,"height":60,"fill":"#0000ff"}]}]}]}"##;
+        let mut editor = Editor::new(serde_json::from_str::<pen_doc::Document>(json).unwrap(), None, 7);
+        editor.refresh(&|_| (0.0, 0.0));
+        let on_left = Point::new(140.0, 130.0);
+        let picked = |editor: &Editor, p: Point| pick(editor, p, false);
+        // A click on a layer of the group takes the group, and goes on taking it while the group is selected.
+        assert_eq!(picked(&editor, on_left).as_deref(), Some("pair"));
+        editor.selection = vec!["pair".to_owned()];
+        assert_eq!(picked(&editor, on_left).as_deref(), Some("pair"));
+        // A selected board is taken where its layers lie; its empty ground still lets go of it.
+        editor.selection = vec!["board".to_owned()];
+        assert_eq!(picked(&editor, on_left).as_deref(), Some("board"));
+        assert_eq!(picked(&editor, Point::new(500.0, 350.0)), None);
+        // A drag on a layer of the selected group moves the whole group, not the layer.
+        let (mut canvas, ctx) = (Canvas::default(), egui::Context::default());
+        let view = ScreenRect::from_min_size(Pos2::ZERO, WINDOW);
+        fit(&mut editor, view, Some(Rect::new(0.0, 0.0, 600.0, 400.0)), 1.0);
+        editor.selection = vec!["pair".to_owned()];
+        drag(&mut canvas, &ctx, &mut editor, &[on_left, Point::new(150.0, 130.0), Point::new(190.0, 150.0)]);
+        let place = |editor: &Editor, id: &str| edit::find(&editor.doc, id).map(stored_position).unwrap();
+        assert_eq!((editor.selection.clone(), place(&editor, "pair"), place(&editor, "left")), (vec!["pair".to_owned()], (140.0, 120.0), (0.0, 0.0)));
+        // A double click on a layer of the selected group steps in and selects that layer.
+        editor.refresh(&|_| (0.0, 0.0));
+        let at = screen(&editor.camera, view, Point::new(300.0, 150.0));
+        let button =
+            |pressed: bool| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
+        frame(&mut canvas, &ctx, &mut editor, vec![egui::Event::PointerMoved(at)]);
+        for _ in 0..2 {
+            frame(&mut canvas, &ctx, &mut editor, vec![button(true)]);
+            frame(&mut canvas, &ctx, &mut editor, vec![button(false)]);
+        }
+        assert_eq!(editor.selection, vec!["right".to_owned()]);
+        // Inside now, a click on the other layer picks that one.
+        assert_eq!(picked(&editor, Point::new(180.0, 150.0)).as_deref(), Some("left"));
     }
 
     #[test]

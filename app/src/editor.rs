@@ -49,6 +49,8 @@ pub enum Tool {
     Pen,
     /// Draw a connector from one layer to another (C).
     Connector,
+    /// Take the colour under the pointer for the selected layers (I).
+    Eyedropper,
 }
 
 /// What a layer is to components.

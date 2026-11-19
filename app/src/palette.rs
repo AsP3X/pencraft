@@ -53,6 +53,8 @@ pub enum Command {
     Align(AlignTo),
     /// Spread the selection at equal gaps, across the page (`true`) or down it.
     Distribute(bool),
+    /// Lock the selected layers, or unlock them.
+    ToggleLock,
     /// Mirror the selection; `true` is left to right.
     Flip(bool),
     /// Turn the selection by this many degrees, counter-clockwise.
@@ -152,7 +154,7 @@ const fn action(
 
 /// Every action, in the order and under the headings the search lists them.
 // Agent: icons MUST be bundled Lucide names; a test checks it.
-pub const ACTIONS: [Action; 79] = [
+pub const ACTIONS: [Action; 81] = [
     action(Command::Dashboard, "layout-grid", "Open dashboard", "File", &[], "home files projects recent"),
     action(Command::Save, "save", "Save", "File", &["⌘", "S"], "write store disk"),
     action(Command::SaveAs, "save-all", "Save as…", "File", &["⌘", "⇧", "S"], "copy duplicate file disk"),
@@ -180,6 +182,7 @@ pub const ACTIONS: [Action; 79] = [
     action(Command::Align(AlignTo::Bottom), "align-end-horizontal", "Align bottom", "Arrange", &["⌥", "S"], ""),
     action(Command::Distribute(true), "align-horizontal-space-between", "Distribute horizontally", "Arrange", &[], "spacing equal gaps spread"),
     action(Command::Distribute(false), "align-vertical-space-between", "Distribute vertically", "Arrange", &[], "spacing equal gaps spread"),
+    action(Command::ToggleLock, "lock", "Lock or unlock selection", "Arrange", &["⌘", "⇧", "L"], "locked freeze pin protect"),
     action(Command::Flip(true), "square-centerline-dashed-vertical", "Flip horizontal", "Arrange", &["⇧", "H"], "mirror"),
     action(Command::Flip(false), "square-centerline-dashed-horizontal", "Flip vertical", "Arrange", &["⇧", "V"], "mirror"),
     action(Command::Rotate(-90.0), "rotate-cw", "Rotate 90° right", "Arrange", &[], "turn clockwise quarter"),
@@ -220,6 +223,7 @@ pub const ACTIONS: [Action; 79] = [
     action(Command::Tool(Tool::Move), "mouse-pointer-2", "Move tool", "Tools", &["V"], "select pointer cursor arrow"),
     action(Command::Tool(Tool::Hand), "hand", "Hand tool", "Tools", &["H"], "pan drag"),
     action(Command::Tool(Tool::Scale), "scaling", "Scale tool", "Tools", &["K"], "resize proportional"),
+    action(Command::Tool(Tool::Eyedropper), "pipette", "Eyedropper", "Tools", &["I"], "pick colour color sample dropper"),
     action(Command::Tool(Tool::Frame), "frame", "Frame tool", "Tools", &["F"], "artboard board container"),
     action(Command::Tool(Tool::Text), "type", "Text tool", "Tools", &["T"], "type write"),
     action(Command::Tool(Tool::Note), "sticky-note", "Sticky note tool", "Tools", &["N"], "comment memo"),

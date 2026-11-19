@@ -9,6 +9,15 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Changed
+
+- **A selected group moves as one, and only a double click goes inside.**
+  With a group, a frame or an instance selected, a press on anything in it
+  takes the whole of it, so a drag moves all of it; before, the click went
+  to the layer under the pointer. Double-click a layer to step inside and
+  select it; from then on a click picks the other layers in there. The same
+  holds for a selected board: drag any of its layers to move the board.
+
 ### Added
 
 - **Paste pictures and SVG.** A picture on the clipboard, such as a
@@ -16,6 +25,20 @@ in the app before they download the update. Write it for them.
   kept with the design's other pictures. SVG copied as text, as icon sites
   and other design tools offer it, is pasted as the shape it describes
   instead of as a page of code.
+- **Lock layers.** A locked layer stays where it is: clicks on the canvas
+  go through it to what is behind, and it can't be moved, resized or
+  turned. Lock or unlock the selection with ⇧⌘L or from the action search,
+  or click the lock beside a layer in the layers list, which is also where
+  a locked layer is selected. Locking a frame locks everything in it.
+- **Eyedropper.** Press I and click anything on the canvas to give its
+  colour to the selected layers, as their fill, or as their stroke with ⌥
+  held. With nothing selected the colour is copied as a hex value. It
+  takes solid fills; over a gradient or a picture it takes the fill
+  underneath.
+- **Shadow spread.** A shadow can reach further out than its shape before
+  it fades, or be drawn in with a negative value: the Spread field is under
+  Blur in a shadow's settings. Files that already had a `spread` now show
+  it.
 
 ## [0.3.20] - 2026-11-19
 
