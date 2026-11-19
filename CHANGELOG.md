@@ -9,6 +9,14 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Added
+
+- **Paste pictures and SVG.** A picture on the clipboard, such as a
+  screenshot, is pasted with ⌘V as a layer filled with it; the picture is
+  kept with the design's other pictures. SVG copied as text, as icon sites
+  and other design tools offer it, is pasted as the shape it describes
+  instead of as a page of code.
+
 ## [0.3.20] - 2026-11-19
 
 Layers snap to each other, unsaved work survives a crash, chats are

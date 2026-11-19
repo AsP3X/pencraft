@@ -350,14 +350,7 @@ impl Editor {
             // every system, so the document shows its pictures on a Mac and on Windows alike.
             let parts = |rel: &std::path::Path| rel.iter().map(|part| part.to_string_lossy()).collect::<Vec<_>>().join("/");
             let url = folder.and_then(|f| path.strip_prefix(f).ok()).map_or_else(|| path.display().to_string(), |rel| format!("./{}", parts(rel)));
-            let mut node = Node::new(Kind::Rectangle, self.fresh_id());
-            let (w, h) = (pen_doc::value::narrow(f64::from(w)), pen_doc::value::narrow(f64::from(h)));
-            let fit = (visible.w * IMPORT_ROOM / w).min(visible.h * IMPORT_ROOM / h).min(1.0);
-            (node.width, node.height) = (Some(Num::new((w * fit).round().max(1.0))), Some(Num::new((h * fit).round().max(1.0))));
-            node.fill = Some(pen_doc::model::Paints::One(pen_doc::model::Paint::Object(
-                serde_json::json!({ "type": "image", "url": url }).as_object().cloned().unwrap_or_default(),
-            )));
-            node
+            self.picture_layer(&url, (w, h), visible)
         };
         node.name = name;
         let size = |n: &Option<Num>| n.as_ref().and_then(Num::literal).unwrap_or(0.0);
@@ -368,6 +361,43 @@ impl Editor {
         self.selection = vec![node.id.clone()];
         edit::insert(&mut self.doc, None, usize::MAX, node);
         Ok(())
+    }
+
+    /// A new rectangle filled with the picture an image fill names as `url`, as large as the picture's `pixels`,
+    /// shrunk to fit the `visible` part of the canvas when it is larger.
+    fn picture_layer(&mut self, url: &str, pixels: (u32, u32), visible: Rect) -> Node {
+        let mut node = Node::new(Kind::Rectangle, self.fresh_id());
+        let (w, h) = (pen_doc::value::narrow(f64::from(pixels.0)), pen_doc::value::narrow(f64::from(pixels.1)));
+        let fit = (visible.w * IMPORT_ROOM / w).min(visible.h * IMPORT_ROOM / h).min(1.0);
+        (node.width, node.height) = (Some(Num::new((w * fit).round().max(1.0))), Some(Num::new((h * fit).round().max(1.0))));
+        node.fill = Some(pen_doc::model::Paints::One(pen_doc::model::Paint::Object(
+            serde_json::json!({ "type": "image", "url": url }).as_object().cloned().unwrap_or_default(),
+        )));
+        node
+    }
+
+    /// Pastes a picture that was on the clipboard and is now the file an image fill names as `url`: a rectangle
+    /// of the picture's size (`pixels`, shrunk to fit the view) with the picture as its fill, placed as any
+    /// paste is and selected.
+    pub fn paste_picture(&mut self, url: &str, pixels: (u32, u32), visible: Rect) {
+        let mut node = self.picture_layer(url, pixels, visible);
+        node.name = Some("Pasted picture".to_owned());
+        set_position(&mut node, 0.0, 0.0);
+        self.paste(&[node], visible);
+    }
+
+    /// Pastes SVG text as one path layer, placed as any paste is and selected; `false` when the text is no SVG
+    /// or has no shape this version reads.
+    // Human: an icon copied from a website or another design tool arrives as the SVG's text. Pasted as a text
+    // layer it would be a page of angle brackets; it is drawn instead, the way "Import Image or SVG" draws a file.
+    pub fn paste_svg(&mut self, text: &str, visible: Rect) -> bool {
+        let start = text.trim_start();
+        let looks_like_one = start.starts_with("<svg") || (start.starts_with("<?xml") || start.starts_with("<!DOCTYPE")) && start.contains("<svg");
+        let Some(mut node) = looks_like_one.then(|| crate::icons::svg_layer(text, self.fresh_id())).flatten() else { return false };
+        node.name = Some("Pasted SVG".to_owned());
+        set_position(&mut node, 0.0, 0.0);
+        self.paste(&[node], visible);
+        true
     }
 
     /// Turns every component in `copy` (a copy of document layers, still with their ids) into an instance of it.
@@ -1613,6 +1643,32 @@ mod tests {
 
     fn position(editor: &Editor, id: &str) -> (f32, f32) {
         stored_position(edit::find(&editor.doc, id).unwrap())
+    }
+
+    #[test]
+    fn pasted_svg_text_is_a_path_and_a_pasted_picture_a_rectangle_filled_with_it() {
+        let mut editor = two_boards();
+        let visible = Rect::new(0.0, 0.0, 1000.0, 400.0);
+        // SVG text becomes one path layer, selected; one undo step takes it away again.
+        let layers = |editor: &Editor| pen_doc::write(&editor.doc).unwrap().matches("\"id\"").count();
+        let before = layers(&editor);
+        assert!(editor.paste_svg(r#"<?xml version="1.0"?><svg viewBox="0 0 24 24"><path d="M2 2 L22 22"/></svg>"#, visible));
+        let [pasted] = editor.selection.clone().try_into().unwrap();
+        let node = edit::find(&editor.doc, &pasted).unwrap();
+        assert_eq!((&node.kind, node.name.as_deref()), (&Kind::Path, Some("Pasted SVG")));
+        editor.undo();
+        assert_eq!(layers(&editor), before);
+        // Words that only mention SVG, and an SVG without a shape, are left to be pasted as text.
+        assert!(!editor.paste_svg("Export it as <svg> please", visible));
+        assert!(!editor.paste_svg("<svg viewBox=\"0 0 24 24\"></svg>", visible));
+        // A picture 4000 by 1000 is shrunk to fit four fifths of the view (800 by 200) and named.
+        editor.selection.clear();
+        editor.paste_picture("./images/pasted-picture-0001.png", (4000, 1000), visible);
+        let [pasted] = editor.selection.clone().try_into().unwrap();
+        let node = edit::find(&editor.doc, &pasted).unwrap();
+        let size = (node.width.as_ref().and_then(Num::literal), node.height.as_ref().and_then(Num::literal));
+        assert_eq!((&node.kind, node.name.as_deref(), size), (&Kind::Rectangle, Some("Pasted picture"), (Some(800.0), Some(200.0))));
+        assert!(pen_doc::write(&editor.doc).unwrap().contains("./images/pasted-picture-0001.png"));
     }
 
     #[test]

@@ -905,7 +905,7 @@ impl App {
                 .iter()
                 .filter(|e| match e {
                     egui::Event::Copy | egui::Event::Cut => !words_selected,
-                    egui::Event::Paste(_) => true,
+                    egui::Event::Paste(_) | egui::Event::PasteImage(_) => true,
                     _ => false,
                 })
                 .cloned()
@@ -993,6 +993,12 @@ impl App {
         if typing || self.canvas.busy() {
             return;
         }
+        // Human: a picture on the clipboard (a screenshot, a picture copied in a browser) is pasted as a layer.
+        for event in &clipboard_events {
+            if let egui::Event::PasteImage(picture) = event {
+                self.paste_picture(picture, ctx);
+            }
+        }
         let view = self.canvas_view;
         let clipboard = self.clipboard.clone();
         let (nudge, big_nudge) = (self.prefs.get().canvas.small_nudge, self.prefs.get().canvas.big_nudge);
@@ -1008,7 +1014,9 @@ impl App {
                 egui::Event::Paste(text) => {
                     let nodes = parse_clipboard(&text).unwrap_or_else(|| clipboard.clone());
                     let visible = editor.visible_area(view.width(), view.height());
-                    if nodes.is_empty() && !text.trim().is_empty() {
+                    if nodes.is_empty() && editor.paste_svg(&text, visible) {
+                        // Drawn as the shapes it describes.
+                    } else if nodes.is_empty() && !text.trim().is_empty() {
                         paste_text(editor, &text, visible);
                     } else {
                         editor.paste(&nodes, visible);
@@ -1546,6 +1554,28 @@ impl App {
         }
     }
 
+    /// Pastes a picture from the clipboard into the document in front: it is written as a PNG file where the
+    /// document's pictures are kept (`images/` beside it, or the home folder's until it has a file) and
+    /// becomes a rectangle with that picture as its fill.
+    // Agent: WRITES the file and its line in the credits in the window's thread; a screenshot takes a few
+    // dozen milliseconds to pack.
+    fn paste_picture(&mut self, picture: &egui::ColorImage, view_of: &egui::Context) {
+        let view = self.canvas_view;
+        let Some(editor) = self.editor() else { return };
+        let saved = png_of(picture).and_then(|bytes| {
+            let credit = serde_json::json!({ "source": "clipboard" });
+            crate::imagery::store::save(editor.anchor().as_deref(), crate::imagery::store::home().as_deref(), &bytes, "Pasted picture", &credit)
+        });
+        match saved {
+            Ok(saved) => {
+                let visible = editor.visible_area(view.width(), view.height());
+                editor.paste_picture(&saved.url, (saved.width, saved.height), visible);
+                view_of.request_repaint();
+            }
+            Err(problem) => self.say(format!("Couldn't paste the picture: {problem}")),
+        }
+    }
+
     /// Hands the documents with unsaved changes to the keeper, and asks for another look when some wait their turn.
     // Human: not in the middle of a drag, which changes the document with every frame; it is kept when the drag ends.
     fn keep_for_recovery(&mut self, ctx: &egui::Context) {
@@ -1959,6 +1989,21 @@ fn text_measure(ctx: &egui::Context) -> impl Fn(&pen_doc::layout::TextStyle) -> 
 pub fn parse_clipboard(text: &str) -> Option<Vec<Node>> {
     let value: serde_json::Value = serde_json::from_str(text).ok()?;
     serde_json::from_value(value.get(CLIPBOARD_KEY)?.clone()).ok()
+}
+
+/// A picture from the clipboard as the bytes of a PNG file.
+///
+/// # Errors
+/// A sentence when the picture has no size or can't be packed.
+fn png_of(picture: &egui::ColorImage) -> Result<Vec<u8>, String> {
+    let (Ok(width), Ok(height)) = (u32::try_from(picture.size[0]), u32::try_from(picture.size[1])) else {
+        return Err("it is too large".to_owned());
+    };
+    let pixels: Vec<u8> = picture.pixels.iter().flat_map(egui::Color32::to_srgba_unmultiplied).collect();
+    let straight = image::RgbaImage::from_raw(width, height, pixels).filter(|_| width > 0 && height > 0).ok_or("it is empty")?;
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    straight.write_to(&mut bytes, image::ImageFormat::Png).map_err(|error| error.to_string())?;
+    Ok(bytes.into_inner())
 }
 
 /// Pasting plain text makes a text layer with it.
