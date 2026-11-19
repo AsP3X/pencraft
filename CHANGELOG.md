@@ -9,6 +9,26 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.16] - 2026-11-19
+
+Zooming stays smooth, also on designs with a lot of text or glass.
+
+### Changed
+
+- **Zooming no longer stutters on text.** While you zoomed, Pencraft drew
+  every letter anew at each size the zoom passed through, which made the
+  window lag and now and then freeze for a moment. Text now keeps up with
+  the zoom and is sharp again the moment the zoom rests. On a Mac at 120
+  pictures a second, a zoom in and out that came 20 to 29 pictures late
+  now comes at most one late.
+- **Glass, blurs and shadows no longer hold the window up.** After a zoom
+  or a long scroll their pictures are made in the background. Until they
+  are ready you see the ones you had, and the window keeps moving.
+- **Less memory for text.** The picture Pencraft keeps its letters in is
+  at most a quarter of the size it could grow to before.
+- **Very large letters are a little softer.** Letters that stand more than
+  384 pixels high on screen are drawn enlarged from that size.
+
 ## [0.3.15] - 2026-11-19
 
 The canvas reaches the top of the window.
@@ -494,7 +514,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.15...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.16...HEAD
+[0.3.16]: https://github.com/AsP3X/pencraft/compare/v0.3.15...v0.3.16
 [0.3.15]: https://github.com/AsP3X/pencraft/compare/v0.3.14...v0.3.15
 [0.3.14]: https://github.com/AsP3X/pencraft/compare/v0.3.13...v0.3.14
 [0.3.13]: https://github.com/AsP3X/pencraft/compare/v0.3.12...v0.3.13
