@@ -1326,7 +1326,7 @@ impl App {
             let view = ui.max_rect();
             self.canvas_view = view;
             editor.covered = covered(hide, open, !editor.selection.is_empty());
-            self.canvas.options = canvas_options(self.prefs.get());
+            (self.canvas.options, self.canvas.animations) = (canvas_options(self.prefs.get()), self.prefs.get().appearance.animations);
             self.canvas.show(ui, editor, dark);
             if !hide {
                 let rect = egui::Rect::from_min_max(egui::pos2(view.left(), view.top() + TAB_BAR_HEIGHT), view.max);

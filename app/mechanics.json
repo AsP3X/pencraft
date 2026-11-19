@@ -754,6 +754,19 @@
    "unit": "pt"
   },
   {
+   "name": "board name gap above the board",
+   "group": "canvas",
+   "value": 4,
+   "unit": "pt"
+  },
+  {
+   "name": "board name: seconds to move and to turn into the pill",
+   "group": "canvas",
+   "value": 0.22,
+   "unit": "s",
+   "source": "estimated"
+  },
+  {
    "name": "board name needs a board width on screen of",
    "group": "canvas",
    "value": 40,

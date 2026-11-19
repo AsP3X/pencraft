@@ -282,6 +282,18 @@ pub const SIZE_LABEL_TEXT: f32 = 12.5;
 pub const FRAME_NAME_TEXT: f32 = 11.0;
 /// A board narrower than this on screen shows no name, unless it is selected or under the pointer.
 pub const FRAME_NAME_LEAST: f32 = 40.0;
+/// Space between a board's top edge and its name.
+pub const FRAME_NAME_GAP: f32 = 4.0;
+/// How far the plate behind a whole name reaches past the text, sideways and up and down.
+pub const FRAME_NAME_PLATE: egui::Vec2 = egui::vec2(3.0, 1.0);
+/// Corner radius of the plate behind a whole name.
+pub const FRAME_NAME_PLATE_RADIUS: f32 = 3.0;
+/// How far the pill of a selected board's name reaches past the text; the size label's padding.
+pub const FRAME_NAME_PILL: egui::Vec2 = egui::vec2(6.0, 2.5);
+/// Corner radius of the pill of a selected board's name; the size label's.
+pub const FRAME_NAME_PILL_RADIUS: f32 = 5.0;
+/// Seconds a board's name takes to move to a new place and to turn into the pill or back.
+pub const FRAME_NAME_MORPH: f32 = 0.22;
 
 /// The colours of one appearance.
 #[derive(Clone, Copy, Debug)]
