@@ -88,6 +88,12 @@ pub fn find_in<'a>(nodes: &'a [SceneNode], id: &str) -> Option<&'a SceneNode> {
     nodes.iter().find_map(|n| if n.id == id { Some(n) } else { find_in(&n.children, id) })
 }
 
+/// A number no scene and no top-level node of one has had yet, in any open document.
+fn next_number() -> u64 {
+    static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    LAST.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1
+}
+
 /// The ids the instances in `node` show (their `ref`), `node` itself included.
 fn shown_by(node: &Node) -> Vec<String> {
     let mut shown: Vec<String> = node.reference.iter().cloned().collect();
@@ -167,8 +173,6 @@ struct Laid {
     shows: Vec<Vec<String>>,
     /// Whether each top-level scene node has a connector in it.
     wired: Vec<bool>,
-    /// The last stamp given out.
-    stamped: u64,
     /// Whether everything is to be built again whatever changed (fonts became ready, the theme changed).
     all: bool,
 }
@@ -381,7 +385,9 @@ impl Editor {
             return;
         }
         self.needs_layout = false;
-        self.generation += 1;
+        // Human: the numbers are not this document's own but every open document's together: the canvas of a
+        // window draws whichever document's tab is in front, and tells by these numbers what it has drawn.
+        self.generation = next_number();
         let theme = self.root_theme();
         let Some(changed) = self.changed_roots(&theme) else {
             self.scene = self.laid_out(measure);
@@ -389,8 +395,7 @@ impl Editor {
             let mut rest = self.doc.clone();
             laid.nodes = std::mem::take(&mut rest.children);
             (laid.rest, laid.theme, laid.all) = (Some(rest), theme, false);
-            laid.stamps = (1..=self.scene.len() as u64).map(|step| laid.stamped + step).collect();
-            laid.stamped += self.scene.len() as u64;
+            laid.stamps = self.scene.iter().map(|_| next_number()).collect();
             laid.shows = laid.nodes.iter().map(shown_by).collect();
             laid.wired = self.scene.iter().map(pen_doc::connector::has_connector).collect();
             return;
@@ -404,16 +409,14 @@ impl Editor {
             *place = root;
             self.laid.nodes[at] = node.clone();
             self.laid.shows[at] = shown_by(node);
-            self.laid.stamped += 1;
-            self.laid.stamps[at] = self.laid.stamped;
+            self.laid.stamps[at] = next_number();
         }
         // Human: a connector follows layers that may lie in another top-level node, so every one is routed
         // again, and every top-level node with a connector in it counts as changed.
         if self.laid.wired.contains(&true) {
             pen_doc::connector::route(&mut self.scene, vars);
             for (stamp, _) in self.laid.stamps.iter_mut().zip(&self.laid.wired).filter(|(_, wired)| **wired) {
-                self.laid.stamped += 1;
-                *stamp = self.laid.stamped;
+                *stamp = next_number();
             }
         }
     }

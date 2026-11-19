@@ -417,8 +417,9 @@ pub struct DisplayList {
     works: std::sync::Arc<std::sync::Mutex<Works>>,
     /// How many pixels the baked pictures had between them after the last build.
     held: usize,
-    /// The scene and document a build beside the window works on: a copy, taken once for each scene.
-    frozen: Option<(u64, u64, std::sync::Arc<Frozen>)>,
+    /// The copies of the scene's top-level nodes that builds beside the window work on, each with the
+    /// stamp its node had when it was copied: a node is copied again only when its stamp is another one.
+    frozen: Vec<(u64, std::sync::Arc<SceneNode>)>,
     /// The build that is being made beside the window.
     running: Option<Running>,
     /// The part of the document whose effects are baked, when the last build left some out; `None` when it
@@ -452,12 +453,14 @@ struct Works {
     baked: bake::Baked,
 }
 
-/// A scene and its document as they were when a build beside the window began.
+/// A scene as it was when a build beside the window began: its top-level nodes, their stamps (see
+/// [`DisplayList::update`]) and the document's variables.
+// Human: the build can't read the scene the window has, which changes with the next edit. Its top-level
+// nodes are copied for it, each one once: an edit changes one of dozens, and only that one is copied again.
 struct Frozen {
-    scene: Vec<SceneNode>,
-    doc: pen_doc::Document,
-    /// The scene's stamps (see [`DisplayList::update`]).
+    scene: Vec<std::sync::Arc<SceneNode>>,
     stamps: Vec<u64>,
+    variables: Option<serde_json::Map<String, Value>>,
 }
 
 /// What the list holds for one top-level node of the scene: a run of its items.
@@ -531,8 +534,8 @@ struct Built {
 // a node under it changed there, in what it painted before or in what it paints now.
 fn walk(
     works: &Works,
-    (scene, stamps): (&[SceneNode], &[u64]),
-    doc: &pen_doc::Document,
+    (scene, stamps): (&[&SceneNode], &[u64]),
+    vars: Vars<'_>,
     ctx: &egui::Context,
     order: &Order,
     stop: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
@@ -540,7 +543,7 @@ fn walk(
 ) -> (Vec<Item>, Vec<Part>) {
     works.baked.begin_within(order.cover, stop);
     let builder = Builder {
-        vars: Vars::new(doc),
+        vars,
         tolerance: (0.25 / order.zoom).clamp(0.002, 4.0),
         images: &works.images,
         ctx,
@@ -558,7 +561,7 @@ fn walk(
     let (mut items, mut parts) = (Vec::new(), Vec::with_capacity(scene.len()));
     // Where the nodes built again painted before and paint now.
     let mut changed: Vec<Rect> = Vec::new();
-    for (at, node) in scene.iter().enumerate() {
+    for (at, node) in scene.iter().copied().enumerate() {
         let stamp = stamps.get(at).copied().unwrap_or_default();
         let part = had.get(at);
         let holds = |part: &&Part| part.stamp == stamp && !part.reads.is_some_and(|area| changed.iter().any(|there| there.intersects(&area)));
@@ -609,10 +612,12 @@ fn build_apart(
     out: &std::sync::mpsc::Sender<Built>,
 ) {
     use std::sync::atomic::Ordering::Relaxed;
+    let scene: Vec<&SceneNode> = frozen.scene.iter().map(std::convert::AsRef::as_ref).collect();
     loop {
         let (built, under_way, more) = {
             let works = crate::app::lock(works);
-            let (items, parts) = walk(&works, (&frozen.scene, &frozen.stamps), &frozen.doc, ctx, order, Some(stop.clone()), None);
+            let vars = Vars::of(frozen.variables.as_ref());
+            let (items, parts) = walk(&works, (&scene, &frozen.stamps), vars, ctx, order, Some(stop.clone()), None);
             if stop.load(Relaxed) {
                 return;
             }
@@ -637,6 +642,17 @@ fn build_apart(
     }
 }
 
+/// A mesh or a shadow smaller than this many pixels of the screen, both ways, is not drawn.
+// Human: measured on a design of 11,000 layers shown whole on a sharp screen: a quarter of everything drawn
+// is smaller than this, and without it a frame takes 6.5 ms of the processor's time instead of 10. At half
+// a pixel next to nothing was left out; at two pixels icons went missing that could still be told.
+const SMALLEST_DRAWN: f32 = 1.0;
+
+/// Whether something `long` document units long on its longer side is too small to draw at `shown_px` pixels
+/// of the screen per unit.
+fn too_small(long: f32, shown_px: f32) -> bool {
+    long * shown_px < SMALLEST_DRAWN
+}
 /// How long the zoom must hold still before the list is rebuilt for its new step.
 const ZOOM_SETTLE: std::time::Duration = std::time::Duration::from_millis(120);
 /// How far past the visible part of the canvas effects are baked at first, as a share of its width and height.
@@ -742,7 +758,8 @@ impl DisplayList {
             };
             let order = Order { zoom, bucket, cover, folder: folder.map(std::path::Path::to_path_buf), background, hidden: hidden.clone() };
             let works = crate::app::lock(&self.works);
-            (self.items, self.parts) = walk(&works, (scene, stamps), doc, ctx, &order, None, kept);
+            let roots: Vec<&SceneNode> = scene.iter().collect();
+            (self.items, self.parts) = walk(&works, (&roots, stamps), Vars::new(doc), ctx, &order, None, kept);
             drop(works.baked.finish());
             self.held = works.baked.pixels_held();
             // A list taken over keeps the part that was baked for it.
@@ -797,16 +814,17 @@ impl DisplayList {
         ctx: &egui::Context,
     ) {
         let bucket = order.bucket;
-        // Human: the build works on a copy of the scene and the document, since the ones here change with
-        // the next edit. The copy is taken once for a scene and serves every build of it.
-        let frozen = match &self.frozen {
-            Some((of, at, frozen)) if (*of, *at) == (generation, stage) => frozen.clone(),
-            _ => {
-                let frozen = std::sync::Arc::new(Frozen { scene: scene.to_vec(), doc: doc.clone(), stamps: stamps.to_vec() });
-                self.frozen = Some((generation, stage, frozen.clone()));
-                frozen
-            }
+        // Human: the build works on copies of the scene's top-level nodes, since the ones here change with
+        // the next edit. A node whose stamp is the one its copy was taken at keeps that copy.
+        let stamped = stamps.len() == scene.len();
+        let copy = |(at, node): (usize, &SceneNode)| match (stamps.get(at), self.frozen.get(at)) {
+            (Some(stamp), Some((taken, copy))) if stamped && stamp == taken => copy.clone(),
+            _ => std::sync::Arc::new(node.clone()),
         };
+        let copies: Vec<std::sync::Arc<SceneNode>> = scene.iter().enumerate().map(copy).collect();
+        // A scene without stamps (a stage of a model's change) is copied whole each time.
+        self.frozen = if stamped { stamps.iter().copied().zip(copies.iter().cloned()).collect() } else { Vec::new() };
+        let frozen = Frozen { scene: copies, stamps: stamps.to_vec(), variables: doc.variables.clone() };
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let (send, arrives) = std::sync::mpsc::channel();
         let (works, wake, showing, called_off) = (self.works.clone(), ctx.clone(), self.zoom_bucket == bucket, stop.clone());
@@ -928,6 +946,8 @@ impl DisplayList {
     // Agent: HOT-PATH per frame; ALLOCATES one transformed mesh per visible item (egui takes ownership).
     pub fn draw(&self, painter: &Painter, camera: &Camera, view: egui::Rect) {
         let visible = view_to_doc(camera, view);
+        // Pixels of the screen per document unit.
+        let shown_px = camera.zoom * painter.ctx().pixels_per_point();
         self.warmth.begin(painter.ctx());
         let to_screen = |p: Pos2| screen(camera, view, Point::new(p.x, p.y));
         for item in &self.items {
@@ -936,6 +956,12 @@ impl DisplayList {
                     // Human: a mesh without triangles (a picture fill on a frame with no height) must not
                     // reach the GPU, which refuses to draw nothing and would end the app.
                     if !bounds.intersects(&visible) || mesh.indices.is_empty() {
+                        continue;
+                    }
+                    // Human: zoomed far out, most of a large design's layers are smaller than a pixel: an
+                    // icon is a speck, and thousands of specks cost as much to draw as thousands of icons.
+                    // A mesh under a pixel both ways is left out. (A hairline is long one way and stays.)
+                    if bake::extent(item).is_some_and(|painted| too_small(painted.w.max(painted.h), shown_px)) {
                         continue;
                     }
                     let mut moved = Mesh::clone(mesh);
@@ -950,7 +976,7 @@ impl DisplayList {
                     }
                 }
                 Item::Shadow { rect, radius, offset, blur, color, clip } => {
-                    if !rect.intersects(&visible) {
+                    if !rect.intersects(&visible) || too_small(rect.w.max(rect.h) + blur, shown_px) {
                         continue;
                     }
                     let z = camera.zoom;
@@ -2546,6 +2572,16 @@ mod tests {
         // The pictures of the parts taken over are kept alive: every picture in the list is still held.
         let works = crate::app::lock(&list.works);
         assert!(third.iter().flatten().all(|picture| works.baked.holds(*picture)));
+    }
+
+    #[test]
+    fn what_is_smaller_than_a_pixel_both_ways_is_not_drawn() {
+        // A 16-unit icon on a sharp screen: drawn at 5 %, a speck that is left out at 3 %.
+        assert!(!too_small(16.0, 0.05 * 2.0) && too_small(16.0, 0.03 * 2.0));
+        // A hairline is as long as its longer side: it stays however thin it is.
+        assert!(!too_small(400.0_f32.max(0.5), 0.03 * 2.0));
+        // At 100 % nothing a design holds is left out.
+        assert!(!too_small(1.0, 1.0));
     }
 
     #[test]

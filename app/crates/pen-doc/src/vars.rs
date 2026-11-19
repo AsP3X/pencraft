@@ -73,6 +73,12 @@ impl<'a> Vars<'a> {
         Vars { variables: doc.variables.as_ref() }
     }
 
+    /// The variables `variables`, as a document holds them ([`Document::variables`]), without the document.
+    #[must_use]
+    pub fn of(variables: Option<&'a Map<String, Value>>) -> Vars<'a> {
+        Vars { variables }
+    }
+
     /// The raw value of variable `name` for `context`, following `$other` chains.
     // Human: A variable's value is either one value, or a list of `{value, theme}` entries. The last entry
     // whose theme matches wins, so the unthemed default (listed first) gives way to `Mode: Dark` when dark.

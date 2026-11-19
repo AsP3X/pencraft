@@ -132,6 +132,9 @@ pub struct Canvas {
     pub options: Options,
     /// The user's "Animations & effects" setting: things on the canvas move to their new place and look.
     pub animations: bool,
+    /// Where each board's name was drawn in the last frame, by the board's id and in the order drawn: a press
+    /// on a name takes its board.
+    names: Vec<(String, ScreenRect)>,
     list: DisplayList,
     /// The canvas background this frame (for the text tool's colour choice).
     background: Color32,
@@ -384,7 +387,7 @@ impl Canvas {
             } else if let Some((id, bounds, inward)) = radius_handle_at(editor, view, grab) {
                 editor.checkpoint();
                 self.drag = Some(Drag::Radius { id, bounds, inward });
-            } else if let Some(id) = pick(editor, at, modifiers.command) {
+            } else if let Some(id) = self.named_at(editor, grab).or_else(|| pick(editor, at, modifiers.command)) {
                 if !editor.selection.contains(&id) {
                     if modifiers.shift {
                         editor.selection.push(id.clone());
@@ -532,7 +535,7 @@ impl Canvas {
                 }
                 Tool::Move | Tool::Scale => {
                     self.editing = None;
-                    match pick(editor, at, modifiers.command) {
+                    match self.named_at(editor, screen(&editor.camera, view, at)).or_else(|| pick(editor, at, modifiers.command)) {
                         Some(id) if modifiers.shift => {
                             if let Some(i) = editor.selection.iter().position(|s| *s == id) {
                                 editor.selection.remove(i);
@@ -549,7 +552,113 @@ impl Canvas {
         }
     }
 
-    fn overlay(&self, ui: &egui::Ui, painter: &egui::Painter, editor: &Editor, view: ScreenRect, dark: bool) {
+    /// The board whose name is at `on` on the screen, if any.
+    // Human: a board's name is the handle one reaches for to take the whole board, the more so on a board full
+    // of layers, where a click inside takes one of them. A press on it comes before what [`pick`] finds, as
+    // the name lies over the design; the name drawn last lies on top and wins.
+    fn named_at(&self, editor: &Editor, on: Pos2) -> Option<String> {
+        let named = self.names.iter().rev().find(|(id, name)| name.contains(on) && editor.scene_node(id).is_some());
+        named.map(|(id, _)| id.clone())
+    }
+
+    /// Draws the top-level frames' names above their boards, placed by [`place_names`]; `over` is the pointer in
+    /// the document. With `animate` a name moves to a new place and turns into the pill and back over
+    /// `FRAME_NAME_MORPH` seconds; without, at once. Returns where each name shown stands, by its board's id, for
+    /// [`Self::named_at`].
+    // Human: a name that jumped to its place above the handle when its board was clicked read as two things, one
+    // gone and one new. It is one thing that goes there: it slides to the middle and up while the pill grows
+    // around it and the colours turn, and the same way back when the board is let go.
+    // Agent: MAIN-THREAD; the motion is kept by egui under the board's id, which asks for frames while it runs.
+    // How far the pill has come is a share of the way, so a zoom or pan under way doesn't leave the name behind.
+    fn board_names(
+        &self,
+        painter: &egui::Painter,
+        editor: &Editor,
+        view: ScreenRect,
+        palette: &theme::Palette,
+        over: Option<Point>,
+        covering: Covering,
+    ) -> Vec<(String, ScreenRect)> {
+        let cam = &editor.camera;
+        let font = egui::FontId::proportional(FRAME_NAME_TEXT);
+        let (mut boards, mut drawn) = (Vec::new(), Vec::new());
+        for node in editor.activity.shown(&editor.scene) {
+            if node.node.kind != Kind::Frame {
+                continue;
+            }
+            let b = layout::doc_bounds(node);
+            let board = ScreenRect::from_min_max(screen(cam, view, Point::new(b.x, b.y)), screen(cam, view, Point::new(b.right(), b.bottom())));
+            let selected = node.doc_id.as_ref().is_some_and(|id| editor.selection.contains(id));
+            // Human: the pointer on a board's name counts as on the board, so the name stays whole under it.
+            let on_name = over.map(|p| screen(cam, view, p)).is_some_and(|p| self.names.iter().any(|(id, name)| *id == node.id && name.contains(p)));
+            let whole = selected || on_name || over.is_some_and(|p| b.contains(p));
+            // Agent: a board off the window is left out before its name is measured; a large design has thousands.
+            if !whole && !view.intersects(board.expand(2.0 * FRAME_NAME_TEXT)) {
+                continue;
+            }
+            let (ink, tint) = if node.node.reusable == Some(true) { (COMPONENT, COMPONENT) } else { (palette.muted, ACCENT) };
+            let galley = painter.layout_no_wrap(node.node.display_name(), font.clone(), Color32::PLACEHOLDER);
+            boards.push(NamedBoard { board, whole, selected, text: galley.size() });
+            drawn.push((galley, ink, tint, &node.id));
+        }
+        let places = place_names(&boards, covering);
+        let (ctx, time) = (painter.ctx(), if self.animations { FRAME_NAME_MORPH } else { 0.0 });
+        // The names that are whole or on their way go over the cut ones.
+        let (mut over_the_rest, mut shown) = (Vec::new(), Vec::new());
+        for ((place, named), (galley, ink, tint, id)) in places.iter().zip(&boards).zip(&drawn) {
+            let rest = name_rest(named);
+            let (lift, pill) = match place {
+                NamePlace::Whole { text, pill, .. } => (text.min.y - rest.y, *pill),
+                NamePlace::Hidden | NamePlace::Cut(_) => (0.0, false),
+            };
+            let share = ctx.animate_bool_with_time_and_easing(egui::Id::unique(("board-name-pill", id)), pill, time, egui::emath::easing::cubic_out);
+            let lift = ctx.animate_value_with_time(egui::Id::unique(("board-name-lift", id)), lift, time);
+            if share > 0.0 || lift.abs() > 0.01 {
+                // Human: on its way, the name is where its share of the way puts it, and looks that share like the pill.
+                let min = rest + egui::vec2(share * (named.board.width() - named.text.x) / 2.0, lift);
+                let pad = FRAME_NAME_PLATE + (FRAME_NAME_PILL - FRAME_NAME_PLATE) * share;
+                // A name that ends up not shown at all goes out as it gets there.
+                let fade = if *place == NamePlace::Hidden { share } else { 1.0 };
+                let plate = palette.canvas.lerp_to_gamma(*tint, share).gamma_multiply(fade);
+                let radius = FRAME_NAME_PLATE_RADIUS + (FRAME_NAME_PILL_RADIUS - FRAME_NAME_PLATE_RADIUS) * share;
+                over_the_rest.push((
+                    *id,
+                    ScreenRect::from_min_size(min, named.text),
+                    Some((pad, radius, plate)),
+                    galley,
+                    ink.lerp_to_gamma(Color32::WHITE, share).gamma_multiply(fade),
+                ));
+                continue;
+            }
+            match place {
+                NamePlace::Hidden => {}
+                NamePlace::Cut(text) => {
+                    let galley = if galley.size().x > text.width() {
+                        let mut job = egui::text::LayoutJob::simple_singleline(galley.text().to_owned(), font.clone(), Color32::PLACEHOLDER);
+                        job.wrap = egui::text::TextWrapping::truncate_at_width(text.width());
+                        painter.layout_job(job)
+                    } else {
+                        galley.clone()
+                    };
+                    painter.galley(text.min, galley, *ink);
+                    shown.push(((*id).clone(), text.expand2(FRAME_NAME_PLATE)));
+                }
+                NamePlace::Whole { text, plate, .. } => {
+                    over_the_rest.push((*id, *text, plate.then_some((FRAME_NAME_PLATE, FRAME_NAME_PLATE_RADIUS, palette.canvas)), galley, *ink));
+                }
+            }
+        }
+        for (id, text, plate, galley, ink) in over_the_rest {
+            if let Some((pad, radius, fill)) = plate {
+                painter.rect_filled(text.expand2(pad), radius, fill);
+            }
+            painter.galley(text.min, galley.clone(), ink);
+            shown.push((id.clone(), text.expand2(plate.map_or(FRAME_NAME_PLATE, |(pad, _, _)| pad))));
+        }
+        shown
+    }
+
+    fn overlay(&mut self, ui: &egui::Ui, painter: &egui::Painter, editor: &Editor, view: ScreenRect, dark: bool) {
         let cam = &editor.camera;
         let palette = theme::palette(dark);
         let over = if self.drag.is_none() { ui.input(|i| i.pointer.hover_pos()).filter(|p| view.contains(*p)) } else { None };
@@ -559,7 +668,7 @@ impl Canvas {
         let stem = rotate_dot(editor, view).map(|(foot, dot)| ScreenRect::from_two_pos(foot, dot).expand(ROTATE_DOT + 1.5));
         let badge = self.size_badge(editor, view).map(|(at, text)| (size_label_rect(painter, at, &text), text));
         let covering = Covering { stem, badge: badge.as_ref().map(|(rect, _)| *rect) };
-        board_names(painter, editor, view, &palette, over, covering, self.animations);
+        self.names = self.board_names(painter, editor, view, &palette, over, covering);
         // Human: a component's origin is marked with a magenta box, and its name above it when it isn't a board
         // that is named already — but only while it is selected or the pointer is over it; left alone the
         // design shows clean.
@@ -593,7 +702,7 @@ impl Canvas {
         // Hover outline.
         if self.drag.is_none()
             && let Some(p) = ui.input(|i| i.pointer.hover_pos()).filter(|p| view.contains(*p))
-            && let Some(id) = pick(editor, doc_point(cam, view, p), ui.input(|i| i.modifiers.command))
+            && let Some(id) = self.named_at(editor, p).or_else(|| pick(editor, doc_point(cam, view, p), ui.input(|i| i.modifiers.command)))
             && !editor.selection.contains(&id)
             && let Some(node) = editor.scene_node(&id)
         {
@@ -920,96 +1029,6 @@ fn place_names(boards: &[NamedBoard], covering: Covering) -> Vec<NamePlace> {
         }
     }
     places
-}
-
-/// Draws the top-level frames' names above their boards, placed by [`place_names`]; `over` is the pointer in
-/// the document. With `animate` a name moves to a new place and turns into the pill and back over
-/// `FRAME_NAME_MORPH` seconds; without, at once.
-// Human: a name that jumped to its place above the handle when its board was clicked read as two things, one
-// gone and one new. It is one thing that goes there: it slides to the middle and up while the pill grows
-// around it and the colours turn, and the same way back when the board is let go.
-// Agent: MAIN-THREAD; the motion is kept by egui under the board's id, which asks for frames while it runs.
-// How far the pill has come is a share of the way, so a zoom or pan under way doesn't leave the name behind.
-fn board_names(
-    painter: &egui::Painter,
-    editor: &Editor,
-    view: ScreenRect,
-    palette: &theme::Palette,
-    over: Option<Point>,
-    covering: Covering,
-    animate: bool,
-) {
-    let cam = &editor.camera;
-    let font = egui::FontId::proportional(FRAME_NAME_TEXT);
-    let (mut boards, mut drawn) = (Vec::new(), Vec::new());
-    for node in editor.activity.shown(&editor.scene) {
-        if node.node.kind != Kind::Frame {
-            continue;
-        }
-        let b = layout::doc_bounds(node);
-        let board = ScreenRect::from_min_max(screen(cam, view, Point::new(b.x, b.y)), screen(cam, view, Point::new(b.right(), b.bottom())));
-        let selected = node.doc_id.as_ref().is_some_and(|id| editor.selection.contains(id));
-        let whole = selected || over.is_some_and(|p| b.contains(p));
-        // Agent: a board off the window is left out before its name is measured; a large design has thousands.
-        if !whole && !view.intersects(board.expand(2.0 * FRAME_NAME_TEXT)) {
-            continue;
-        }
-        let (ink, tint) = if node.node.reusable == Some(true) { (COMPONENT, COMPONENT) } else { (palette.muted, ACCENT) };
-        let galley = painter.layout_no_wrap(node.node.display_name(), font.clone(), Color32::PLACEHOLDER);
-        boards.push(NamedBoard { board, whole, selected, text: galley.size() });
-        drawn.push((galley, ink, tint, &node.id));
-    }
-    let places = place_names(&boards, covering);
-    let (ctx, time) = (painter.ctx(), if animate { FRAME_NAME_MORPH } else { 0.0 });
-    // The names that are whole or on their way go over the cut ones.
-    let mut over_the_rest = Vec::new();
-    for ((place, named), (galley, ink, tint, id)) in places.iter().zip(&boards).zip(&drawn) {
-        let rest = name_rest(named);
-        let (lift, pill) = match place {
-            NamePlace::Whole { text, pill, .. } => (text.min.y - rest.y, *pill),
-            NamePlace::Hidden | NamePlace::Cut(_) => (0.0, false),
-        };
-        let share = ctx.animate_bool_with_time_and_easing(egui::Id::unique(("board-name-pill", id)), pill, time, egui::emath::easing::cubic_out);
-        let lift = ctx.animate_value_with_time(egui::Id::unique(("board-name-lift", id)), lift, time);
-        if share > 0.0 || lift.abs() > 0.01 {
-            // Human: on its way, the name is where its share of the way puts it, and looks that share like the pill.
-            let min = rest + egui::vec2(share * (named.board.width() - named.text.x) / 2.0, lift);
-            let pad = FRAME_NAME_PLATE + (FRAME_NAME_PILL - FRAME_NAME_PLATE) * share;
-            // A name that ends up not shown at all goes out as it gets there.
-            let fade = if *place == NamePlace::Hidden { share } else { 1.0 };
-            let plate = palette.canvas.lerp_to_gamma(*tint, share).gamma_multiply(fade);
-            let radius = FRAME_NAME_PLATE_RADIUS + (FRAME_NAME_PILL_RADIUS - FRAME_NAME_PLATE_RADIUS) * share;
-            over_the_rest.push((
-                ScreenRect::from_min_size(min, named.text),
-                Some((pad, radius, plate)),
-                galley,
-                ink.lerp_to_gamma(Color32::WHITE, share).gamma_multiply(fade),
-            ));
-            continue;
-        }
-        match place {
-            NamePlace::Hidden => {}
-            NamePlace::Cut(text) => {
-                let galley = if galley.size().x > text.width() {
-                    let mut job = egui::text::LayoutJob::simple_singleline(galley.text().to_owned(), font.clone(), Color32::PLACEHOLDER);
-                    job.wrap = egui::text::TextWrapping::truncate_at_width(text.width());
-                    painter.layout_job(job)
-                } else {
-                    galley.clone()
-                };
-                painter.galley(text.min, galley, *ink);
-            }
-            NamePlace::Whole { text, plate, .. } => {
-                over_the_rest.push((*text, plate.then_some((FRAME_NAME_PLATE, FRAME_NAME_PLATE_RADIUS, palette.canvas)), galley, *ink));
-            }
-        }
-    }
-    for (text, plate, galley, ink) in over_the_rest {
-        if let Some((pad, radius, fill)) = plate {
-            painter.rect_filled(text.expand2(pad), radius, fill);
-        }
-        painter.galley(text.min, galley.clone(), ink);
-    }
 }
 
 /// The box of the blue label under a selection box, centred under `at`.
@@ -1814,6 +1833,33 @@ mod tests {
             place_names(&[selected(0.0, 100.0, 300.0)], Covering { stem, badge: None }),
             [NamePlace::Whole { text: lifted, plate: true, pill: true }]
         );
+    }
+
+    #[test]
+    fn a_press_on_a_boards_name_takes_the_board_and_a_drag_from_it_moves_the_board() {
+        let doc: pen_doc::Document = serde_json::from_str(
+            r##"{"version":"2.22","children":[{"type":"frame","id":"home","name":"Home","x":0,"y":0,"width":400,"height":300,"layout":"none","fill":"#ffffff","children":[
+            {"type":"rectangle","id":"a","x":0,"y":0,"width":400,"height":300,"fill":"#333333"}]}]}"##,
+        )
+        .unwrap();
+        let (ctx, mut canvas, mut editor) = (egui::Context::default(), Canvas::default(), Editor::new(doc, None, 7));
+        frame(&mut canvas, &ctx, &mut editor, Vec::new());
+        // On the name, 10 points right of and above the board's corner; a click inside takes the layer there.
+        let on_name = |editor: &Editor| Point::new(10.0 / editor.camera.zoom, -10.0 / editor.camera.zoom);
+        drag(&mut canvas, &ctx, &mut editor, &[Point::new(200.0, 150.0)]);
+        assert_eq!(editor.selection, ["a"]);
+        let at = on_name(&editor);
+        drag(&mut canvas, &ctx, &mut editor, &[at]);
+        assert_eq!(editor.selection, ["home"]);
+        // Beside the name nothing is taken.
+        drag(&mut canvas, &ctx, &mut editor, &[Point::new(at.x + 300.0, at.y)]);
+        assert_eq!(editor.selection, Vec::<String>::new());
+        // Pulled by its name, the board comes along: as far as the pointer goes on from where the pull was seen
+        // to be one (the first step here), as with any layer.
+        let at = on_name(&editor);
+        drag(&mut canvas, &ctx, &mut editor, &[at, Point::new(at.x + 30.0, at.y), Point::new(at.x + 60.0, at.y + 20.0)]);
+        let moved = &editor.doc.children[0];
+        assert_eq!((editor.selection.clone(), stored_position(moved)), (vec!["home".to_owned()], (30.0, 20.0)));
     }
 
     /// Draws the canvas at `time` seconds and says where the name "Home" stands and what colour its letters have.
