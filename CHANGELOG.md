@@ -9,6 +9,24 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.19] - 2026-11-19
+
+Board names stay readable when you zoom out.
+
+### Changed
+
+- **Board names no longer crowd each other when you zoom out.** A board's
+  name used to be drawn in full at every zoom, so on a canvas of many
+  boards the names ran into one another. A name now gets only the width of
+  its board and ends in "…" where it doesn't fit. Very small boards show
+  no name, and neither does a board whose name would lie on the board
+  above it. Point at a board to read its whole name.
+- **A selected board shows its name as a label above it.** The name sits
+  in the selection colour above the turning handle, the counterpart of the
+  size under the board, and no longer has the handle running through it.
+  It moves there and back as you select and let go; with "Animations &
+  effects" switched off it changes at once.
+
 ## [0.3.18] - 2026-11-19
 
 Large designs are quick to work on.
@@ -544,7 +562,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.18...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.19...HEAD
+[0.3.19]: https://github.com/AsP3X/pencraft/compare/v0.3.18...v0.3.19
 [0.3.18]: https://github.com/AsP3X/pencraft/compare/v0.3.17...v0.3.18
 [0.3.17]: https://github.com/AsP3X/pencraft/compare/v0.3.16...v0.3.17
 [0.3.16]: https://github.com/AsP3X/pencraft/compare/v0.3.15...v0.3.16
