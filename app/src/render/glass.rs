@@ -20,7 +20,7 @@ use pen_doc::model::Kind;
 use pen_doc::scene::SceneNode;
 use serde_json::Value;
 
-use super::bake::{Grid, Look, REACH, Seen, Shadow, expand, extent, length, sigma};
+use super::bake::{Grid, Look, Made, REACH, Seen, Shadow, expand, extent, length, sigma};
 use super::{Brush, Builder, Item, rounded_rect};
 use crate::gpu;
 use crate::material::{Lookup, Material, Params};
@@ -446,30 +446,46 @@ impl Builder<'_> {
         let tag = format!("material-{:016x}", hasher.finish());
         let [left, top, right, bottom] = grid.span(&frame);
         let key = Self::key(&tag, &grid, &[(&behind, false), (shape, true)], &[left, top, right, bottom], self.background);
+        let ground = raster::pixel(self.background);
+        let form = pane.form.clone();
         let texture = self.baked.texture(self.ctx, key, grid.rect().union(&back.rect()), || {
-            let mut bitmap = back.bitmap();
-            bitmap.fill(raster::pixel(self.background));
-            self.paint(&back, &behind, false, &mut bitmap);
-            for pixel in &mut bitmap.px {
-                *pixel = recode(*pixel, to_linear);
+            let behind = self.plan(&back, &behind, false);
+            // A shape without a worked-out edge is cut out with what it paints, at twice the size and halved.
+            let fine = Grid { fine: 2, ..grid };
+            let painted = form.is_none().then(|| self.plan(&fine, shape, true));
+            if behind.starved || painted.as_ref().is_some_and(|painted| painted.starved) {
+                return None;
             }
-            let (lightness, spread) = levels(&bitmap, &back, &frame);
-            let params = if lightness < DARK_BELOW { params[1] } else { params[0] };
-            self.baked.learn(key, Seen { id: String::new(), dark: params.dark, lightness, spread, tint_opacity: params.tint_opacity });
-            let rim = glass.then(|| {
-                let mut rim = bitmap.clone();
-                rim.blur(blur * RIM_BLUR * back.scale);
-                rim
-            });
-            bitmap.blur(blur * back.scale);
-            let behind = Behind { grid: back, bitmap, rim };
-            if let (Some(program), Some(form)) = (&shader, &pane.form) {
-                match Self::glass(program, &grid, &behind, form, &params) {
-                    Ok(drawn) => return drawn,
-                    Err(error) => log::warn!("liquid glass: {error}; drawn frosted instead"),
+            Some(Box::new(move || {
+                let mut bitmap = back.bitmap();
+                bitmap.fill(ground);
+                behind.onto(&mut bitmap);
+                for pixel in &mut bitmap.px {
+                    *pixel = recode(*pixel, to_linear);
                 }
-            }
-            self.frosted(&grid, &behind, pane.form.as_ref(), shape, &params)
+                let (lightness, spread) = levels(&bitmap, &back, &frame);
+                let params = if lightness < DARK_BELOW { params[1] } else { params[0] };
+                let seen = Some(Seen { id: String::new(), dark: params.dark, lightness, spread, tint_opacity: params.tint_opacity });
+                let rim = glass.then(|| {
+                    let mut rim = bitmap.clone();
+                    rim.blur(blur * RIM_BLUR * back.scale);
+                    rim
+                });
+                bitmap.blur(blur * back.scale);
+                let behind = Behind { grid: back, bitmap, rim };
+                if let (Some(program), Some(form)) = (&shader, &form) {
+                    match Self::glass(program, &grid, &behind, form, &params) {
+                        Ok(bitmap) => return Made { bitmap, seen },
+                        Err(error) => log::warn!("liquid glass: {error}; drawn frosted instead"),
+                    }
+                }
+                let cut = painted.map(|painted| {
+                    let mut solid = fine.bitmap();
+                    painted.onto(&mut solid);
+                    fine.settle(solid)
+                });
+                Made { bitmap: frosted(&grid, &behind, form.as_ref(), cut.as_ref(), &params), seen }
+            }))
         });
         for id in &pane.ids {
             self.baked.note(key, id);
@@ -525,43 +541,38 @@ impl Builder<'_> {
         let bytes = gpu::run(program, (whole(grid.w)?, whole(grid.h)?), &block, &inputs)?;
         Bitmap::from_bytes(grid.w, grid.h, &bytes).ok_or_else(|| "the GPU returned a picture of the wrong size".to_owned())
     }
+}
 
-    /// `behind` tinted and edged on the CPU, as a picture on `grid`: the frosted material, and glass where no
-    /// shader can run. A shape without a worked-out edge (`form` is `None`) is cut out with what `shape` paints.
-    fn frosted(&self, grid: &Grid, behind: &Behind, form: Option<&Form>, shape: &[&Item], params: &Params) -> Bitmap {
-        let tint = linear(params.tint);
-        let mut out = grid.bitmap();
-        let painted = form.is_none().then(|| {
-            let fine = Grid { fine: 2, ..*grid };
-            let mut solid = fine.bitmap();
-            self.paint(&fine, shape, true, &mut solid);
-            fine.settle(solid)
-        });
-        let area = grid.rect();
-        for y in 0..out.h {
-            for x in 0..out.w {
-                let doc = Point::new(area.x + (length(x) + 0.5) / grid.scale, area.y + (length(y) + 0.5) / grid.scale);
-                let (cover, edge) = match (form, &painted) {
-                    (Some(form), _) => {
-                        let p = form.local(doc);
-                        let distance = form.distance(p);
-                        let cover = (0.5 - distance * grid.scale).clamp(0.0, 1.0);
-                        // Far from the edge there is no light to work out.
-                        let near = cover > 0.0 && -distance < HAIRLINE;
-                        (cover, Some(if near { ((-distance).max(0.0), form.outward(p)) } else { (HAIRLINE, [0.0; 2]) }))
-                    }
-                    (None, Some(solid)) => (solid.px.get(y * solid.w + x).map_or(0.0, |p| p[3]), None),
-                    (None, None) => (0.0, None),
-                };
-                if cover > 0.0
-                    && let Some(pixel) = out.px.get_mut(y * out.w + x)
-                {
-                    *pixel = frosted_pixel(behind.at(doc), params, tint, cover, edge);
+/// `behind` tinted and edged on the CPU, as a picture on `grid`: the frosted material, and glass where no
+/// shader can run. A shape without a worked-out edge (`form` is `None`) is cut out with `painted`, what the
+/// shape paints on `grid`.
+fn frosted(grid: &Grid, behind: &Behind, form: Option<&Form>, painted: Option<&Bitmap>, params: &Params) -> Bitmap {
+    let tint = linear(params.tint);
+    let mut out = grid.bitmap();
+    let area = grid.rect();
+    for y in 0..out.h {
+        for x in 0..out.w {
+            let doc = Point::new(area.x + (length(x) + 0.5) / grid.scale, area.y + (length(y) + 0.5) / grid.scale);
+            let (cover, edge) = match (form, painted) {
+                (Some(form), _) => {
+                    let p = form.local(doc);
+                    let distance = form.distance(p);
+                    let cover = (0.5 - distance * grid.scale).clamp(0.0, 1.0);
+                    // Far from the edge there is no light to work out.
+                    let near = cover > 0.0 && -distance < HAIRLINE;
+                    (cover, Some(if near { ((-distance).max(0.0), form.outward(p)) } else { (HAIRLINE, [0.0; 2]) }))
                 }
+                (None, Some(solid)) => (solid.px.get(y * solid.w + x).map_or(0.0, |p| p[3]), None),
+                (None, None) => (0.0, None),
+            };
+            if cover > 0.0
+                && let Some(pixel) = out.px.get_mut(y * out.w + x)
+            {
+                *pixel = frosted_pixel(behind.at(doc), params, tint, cover, edge);
             }
         }
-        out
     }
+    out
 }
 
 #[cfg(test)]

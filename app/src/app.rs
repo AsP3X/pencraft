@@ -1584,6 +1584,12 @@ impl eframe::App for App {
         if let Some(menu) = &mut self.native_menu {
             menu.raw_input(raw_input);
         }
+        // Human: egui sizes its font atlas by the largest picture the graphics card takes; a smaller one is
+        // enough, and is sent to the graphics card far quicker when it grows.
+        // Agent: egui-winit sends the limit once, with the first input; it is cut down as it passes.
+        if let Some(side) = &mut raw_input.max_texture_side {
+            *side = (*side).min(crate::render::MAX_ATLAS_SIDE);
+        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {

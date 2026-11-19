@@ -4,11 +4,18 @@
 //! what lies behind it) is drawn into a bitmap on the CPU, blurred there, and put on the canvas as a picture.
 //! Pictures are kept from one build of the display list to the next and found again by what they were made
 //! from, so moving a layer or editing another one bakes nothing anew.
+//!
+//! Making a picture has two halves. Getting it ready needs the window (text is laid out through it, and it
+//! holds the pictures a picture is made from): [`Builder::plan`]. Painting and blurring needs only what was
+//! got ready, and is the bulk of the work: a [`Job`], which a build that must not stall the window hands to
+//! another thread ([`Baked::texture`]).
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
+use std::sync::mpsc::{Receiver, TryRecvError};
 
 use egui::epaint::{ClippedShape, Mesh, Primitive, TextShape, Vertex};
 use egui::{Color32, ColorImage, Pos2, TextureHandle, TextureId, TextureOptions};
@@ -150,12 +157,49 @@ pub(super) struct Baked {
     blank: RefCell<Option<TextureHandle>>,
     /// How each tile of a mask asked about so far lies to its outline, by a hash of the two.
     tiles: RefCell<HashMap<u64, Cover>>,
+    /// When this build stops baking; `None` bakes all it needs.
+    deadline: Cell<Option<std::time::Instant>>,
+    /// How many pictures and mask tiles this build has made so far.
+    fresh: Cell<usize>,
+    /// Whether this build left a picture out because its time was up or the picture is still being made.
+    late: Cell<bool>,
+    /// Whether this build stopped handing out work because its time was up.
+    cut: Cell<bool>,
+    /// Whether this build has its pictures made on other threads and goes on without them.
+    apart: Cell<bool>,
+    /// The pictures being made on other threads, by key: where each arrives, and the build that last asked.
+    pending: RefCell<HashMap<u64, (Receiver<Made>, u64)>>,
+    /// The pictures whose making failed; they stay clear instead of being tried with every build.
+    failed: RefCell<HashSet<u64>>,
+    /// A copy of egui's font picture and the pass it was taken in (see [`Builder::letters`]).
+    font: RefCell<Option<(u64, Arc<ColorImage>)>>,
+}
+
+/// A picture as a thread made it, with what making it found out about its material.
+pub(super) struct Made {
+    /// The picture.
+    pub bitmap: Bitmap,
+    /// What a material's picture found out about what is behind it.
+    pub seen: Option<Seen>,
+}
+
+/// The making of one picture: everything it needs is in it, so it can run on any thread.
+pub(super) type Job = Box<dyn FnOnce() -> Made + Send>;
+
+/// A job that makes a plain picture.
+pub(super) fn job(make: impl FnOnce() -> Bitmap + Send + 'static) -> Job {
+    Box::new(move || Made { bitmap: make(), seen: None })
+}
+
+/// How many pictures are made at the same time: a thread each, one processor left for the window.
+fn most_at_once() -> usize {
+    std::thread::available_parallelism().map_or(2, |threads| threads.get().saturating_sub(1)).clamp(1, 6)
 }
 
 impl Baked {
     /// Starts a build of the display list that bakes every picture.
     pub(super) fn begin(&self) {
-        self.begin_within(None);
+        self.begin_within(None, None);
     }
 
     /// Starts a build of the display list. With `cover`, only the pictures that reach into that part of the
@@ -163,20 +207,67 @@ impl Baked {
     // Human: baking is by far the most of a build (a blur is worked out pixel by pixel on the CPU), and the
     // pixels grow fourfold with every doubling of the zoom. Zoomed in, most of a design is off screen: its
     // effects are left until the view comes near them.
-    pub(super) fn begin_within(&self, cover: Option<Rect>) {
+    // Human: with `deadline`, the build doesn't wait for its pictures. Each one new to it is handed to
+    // another thread and left clear for now, and after the deadline no more are handed out;
+    // [`Baked::late`] says so afterwards, and a later build finds the pictures that have arrived and goes on
+    // from there. The first picture is handed out however late it is, so every build gets somewhere.
+    // Human: painting a picture and blurring it is the bulk of the work and needs nothing of the window, so
+    // it can be done beside it. What the window does itself is small: laying out text and copying meshes.
+    pub(super) fn begin_within(&self, cover: Option<Rect>, deadline: Option<std::time::Instant>) {
         self.round.set(self.round.get().wrapping_add(1));
         self.seen.borrow_mut().clear();
         self.cover.set(cover);
         self.skipped.set(false);
+        self.deadline.set(deadline);
+        self.fresh.set(0);
+        self.late.set(false);
+        self.cut.set(false);
+        self.apart.set(deadline.is_some());
     }
 
-    /// Whether this build bakes pictures for `area`; says so afterwards ([`Baked::skipped`]) when it doesn't.
+    /// Whether this build bakes pictures for `area`; says so afterwards ([`Baked::skipped`], or
+    /// [`Baked::late`] when only its time was up) when it doesn't.
     fn covers(&self, area: &Rect) -> bool {
         let covered = self.cover.get().is_none_or(|cover| cover.intersects(area));
         if !covered {
             self.skipped.set(true);
         }
-        covered
+        covered && !self.out_of_time()
+    }
+
+    /// Whether the build's time is up; notes that something was left out for it.
+    fn out_of_time(&self) -> bool {
+        let over = self.fresh.get() > 0 && self.deadline.get().is_some_and(|deadline| std::time::Instant::now() >= deadline);
+        if over {
+            self.late.set(true);
+            self.cut.set(true);
+        }
+        over
+    }
+
+    /// Whether the build stopped handing out work because its time was up: there is more to do right away.
+    /// (When it only waits for pictures being made, their arrival asks for the next frame.)
+    pub(super) fn cut_short(&self) -> bool {
+        self.cut.get()
+    }
+
+    /// Whether `texture` is the clear picture that stands in for one left out.
+    fn is_blank(&self, texture: TextureId) -> bool {
+        self.blank.borrow().as_ref().is_some_and(|blank| blank.id() == texture)
+    }
+
+    /// Whether the build since the last [`Baked::begin_within`] left pictures out because its time was up or
+    /// they are still being made.
+    pub(super) fn late(&self) -> bool {
+        self.late.get()
+    }
+
+    /// The clear picture that stands in for one left out.
+    fn blank(&self, ctx: &egui::Context) -> TextureId {
+        self.blank
+            .borrow_mut()
+            .get_or_insert_with(|| ctx.load_texture("effect-left-out", ColorImage::filled([1, 1], Color32::TRANSPARENT), TextureOptions::LINEAR))
+            .id()
     }
 
     /// How many pixels the pictures held now have between them.
@@ -209,38 +300,101 @@ impl Baked {
             }
         }
         self.learned.borrow_mut().retain(|key, _| pictures.contains_key(key));
+        // A picture still being made that this build didn't ask for is for a zoom or a scene left behind.
+        self.pending.borrow_mut().retain(|_, (_, asked)| *asked == round);
         // The tiles of masks are few; a long session over many designs is what fills this.
         if self.tiles.borrow().len() > KEPT_COVERS {
             self.tiles.borrow_mut().clear();
         }
     }
 
-    /// The texture for `key`, baked with `make` unless an earlier build already did. `area` is the part of the
-    /// document the picture shows; one outside what this build covers is not baked and comes back clear.
-    pub(super) fn texture(&self, ctx: &egui::Context, key: u64, area: Rect, make: impl FnOnce() -> Bitmap) -> TextureId {
+    /// The texture for `key`, made by the job `prepare` gives unless an earlier build already made it. `area`
+    /// is the part of the document the picture shows. A picture outside what this build covers, one the
+    /// build has no time left for, and one that is still being made on another thread come back clear.
+    // Human: `prepare` runs here and gathers what the picture is made from; it gives no job when one of those
+    // things is itself a picture not made yet. The job it gives is run at once by a build that waits for
+    // its pictures (an export, an edit), and on another thread by one that doesn't.
+    pub(super) fn texture(&self, ctx: &egui::Context, key: u64, area: Rect, prepare: impl FnOnce() -> Option<Job>) -> TextureId {
+        self.texture_from(ctx, key, area, false, prepare)
+    }
+
+    /// [`Baked::texture`] for a picture that can only be made on this thread: its job is run at once.
+    pub(super) fn texture_here(&self, ctx: &egui::Context, key: u64, area: Rect, make: impl FnOnce() -> Bitmap) -> TextureId {
+        self.texture_from(ctx, key, area, true, || {
+            let bitmap = make();
+            Some(Box::new(move || Made { bitmap, seen: None }))
+        })
+    }
+
+    fn texture_from(&self, ctx: &egui::Context, key: u64, area: Rect, here: bool, prepare: impl FnOnce() -> Option<Job>) -> TextureId {
         if let Some(picture) = self.pictures.borrow_mut().get_mut(&key) {
             picture.round = self.round.get();
             return picture.handle.id();
         }
         if self.cover.get().is_some_and(|cover| !cover.intersects(&area)) {
             self.skipped.set(true);
-            return self
-                .blank
-                .borrow_mut()
-                .get_or_insert_with(|| ctx.load_texture("effect-left-out", ColorImage::filled([1, 1], Color32::TRANSPARENT), TextureOptions::LINEAR))
-                .id();
+            return self.blank(ctx);
         }
-        // `make` reads other pictures, so nothing is borrowed while it runs.
-        let image = make().image();
-        let handle = ctx.load_texture(format!("effect-{key:016x}"), image.clone(), TextureOptions::LINEAR);
-        let id = handle.id();
-        self.pictures.borrow_mut().insert(key, Picture { handle, pixels: Arc::new(image), round: self.round.get() });
-        id
+        let under_way = self.pending.borrow_mut().remove(&key);
+        if let Some((arrives, _)) = under_way {
+            // A build that waits for its pictures waits for this one too: that is sooner than making it again.
+            let arrived = if self.apart.get() { arrives.try_recv() } else { arrives.recv().map_err(|_| TryRecvError::Disconnected) };
+            match arrived {
+                Ok(made) => return self.keep(ctx, key, made),
+                Err(TryRecvError::Empty) => {
+                    self.pending.borrow_mut().insert(key, (arrives, self.round.get()));
+                    self.late.set(true);
+                }
+                Err(TryRecvError::Disconnected) => {
+                    log::warn!("an effect's picture could not be made; the effect is left out");
+                    self.failed.borrow_mut().insert(key);
+                }
+            }
+            return self.blank(ctx);
+        }
+        if self.failed.borrow().contains(&key) || self.out_of_time() {
+            return self.blank(ctx);
+        }
+        let apart = self.apart.get() && !here;
+        if apart && self.pending.borrow().len() >= most_at_once() {
+            self.late.set(true);
+            return self.blank(ctx);
+        }
+        // `prepare` reads other pictures, so nothing is borrowed while it runs.
+        let Some(job) = prepare() else { return self.blank(ctx) };
+        self.fresh.set(self.fresh.get() + 1);
+        if !apart {
+            return self.keep(ctx, key, job());
+        }
+        self.late.set(true);
+        let (send, arrives) = std::sync::mpsc::channel();
+        let wake = ctx.clone();
+        let made = std::thread::Builder::new().name("pencraft-bake".to_owned()).spawn(move || {
+            // The build that asked may be gone by now; then nobody takes the picture.
+            drop(send.send(job()));
+            wake.request_repaint();
+        });
+        match made {
+            Ok(_) => drop(self.pending.borrow_mut().insert(key, (arrives, self.round.get()))),
+            // The next build tries again, and is asked for at once: no picture's arrival would ask for it.
+            Err(error) => {
+                log::warn!("no thread to make an effect's picture on: {error}");
+                self.cut.set(true);
+            }
+        }
+        self.blank(ctx)
     }
 
-    /// Keeps what baking the material picture `key` found out.
-    pub(super) fn learn(&self, key: u64, found: Seen) {
-        self.learned.borrow_mut().insert(key, found);
+    /// Takes in the picture made for `key` and gives its texture.
+    fn keep(&self, ctx: &egui::Context, key: u64, made: Made) -> TextureId {
+        if let Some(seen) = made.seen {
+            self.learned.borrow_mut().insert(key, seen);
+        }
+        let pixels = Arc::new(made.bitmap.image());
+        let handle = ctx.load_texture(format!("effect-{key:016x}"), pixels.clone(), TextureOptions::LINEAR);
+        let id = handle.id();
+        self.pictures.borrow_mut().insert(key, Picture { handle, pixels, round: self.round.get() });
+        id
     }
 
     /// Notes that the layer `id` is drawn with the material picture `key`, baked now or kept from before.
@@ -363,10 +517,64 @@ impl Grid {
     }
 }
 
-/// egui's font picture, which text meshes are textured with.
-#[expect(clippy::redundant_closure_for_method_calls, reason = "the method's path is not general over the font view's lifetime and doesn't compile")]
-fn font_picture(ctx: &egui::Context) -> ColorImage {
-    ctx.fonts(|fonts| fonts.image())
+/// One thing a painting paints, placed in the pixels of its picture.
+enum Stroke {
+    /// Triangles, textured with `picture` when they have one.
+    Mesh { mesh: Mesh, clip: Option<Span>, picture: Option<Arc<ColorImage>> },
+    /// The outlines round a text's letters, the outermost first: each one's colour and how far it reaches
+    /// out of the letters, in pixels. `letters` are the text's meshes, `font` the picture they point into.
+    Outline { letters: Vec<Mesh>, font: Option<Arc<ColorImage>>, pad: usize, rings: Vec<(raster::Pixel, f32)>, clip: Option<Span> },
+    /// The soft shadow of a box.
+    SoftBox { span: Span, radius: f32, blur: f32, color: raster::Pixel, clip: Option<Span> },
+}
+
+/// Items made ready to be painted onto a bitmap: text laid out, meshes placed, the pictures they show at hand.
+// Human: getting items ready needs the window (text is laid out through it, and it has the pictures); painting
+// them needs nothing but this, so it can be done on another thread.
+pub(super) struct Painting {
+    strokes: Vec<Stroke>,
+    /// Whether the shapes are painted, fully opaque, instead of their colours.
+    solid: bool,
+    /// Whether one of the items shows a picture that isn't made yet: the painting would have a hole.
+    pub starved: bool,
+}
+
+impl Painting {
+    /// Paints onto `bitmap`, which covers the grid the painting was made ready for.
+    pub(super) fn onto(&self, bitmap: &mut Bitmap) {
+        for stroke in &self.strokes {
+            match stroke {
+                Stroke::Mesh { mesh, clip, picture } => bitmap.triangles(mesh, |p| [p.x, p.y], *clip, picture.as_deref(), self.solid),
+                Stroke::Outline { letters, font, pad, rings, clip } => {
+                    let mut shape = Bitmap::new(bitmap.w + 2 * pad, bitmap.h + 2 * pad);
+                    let by = length(*pad);
+                    for mesh in letters {
+                        shape.triangles(mesh, |p| [p.x + by, p.y + by], None, font.as_deref(), true);
+                    }
+                    for (color, reach) in rings {
+                        bitmap.outline(&shape, *pad, *reach, *color, *clip);
+                    }
+                }
+                Stroke::SoftBox { span, radius, blur, color, clip } => bitmap.soft_box(*span, *radius, *blur, *color, *clip),
+            }
+        }
+    }
+}
+
+/// Whether every triangle of `mesh` (letters pointing into the font picture) has ink where it points into `font`.
+#[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "texture coordinates are within the picture, and clamped to it")]
+fn inked(mesh: &Mesh, font: &ColorImage) -> bool {
+    let [w, h] = font.size;
+    if w == 0 || h == 0 {
+        return false;
+    }
+    let at = |v: f32, side: usize| ((v * length(side)).floor().max(0.0) as usize).min(side - 1);
+    mesh.indices.as_chunks::<3>().0.iter().all(|corners| {
+        let uvs = corners.map(|index| usize::try_from(index).ok().and_then(|index| mesh.vertices.get(index)).map_or(Pos2::ZERO, |vertex| vertex.uv));
+        let (x0, x1) = (at(uvs[0].x.min(uvs[1].x).min(uvs[2].x), w), at(uvs[0].x.max(uvs[1].x).max(uvs[2].x), w));
+        let (y0, y1) = (at(uvs[0].y.min(uvs[1].y).min(uvs[2].y), h), at(uvs[0].y.max(uvs[1].y).max(uvs[2].y), h));
+        (y0..=y1).any(|y| font.pixels.get(y * w + x0..=y * w + x1).is_some_and(|row| row.iter().any(|pixel| pixel.a() > 0)))
+    })
 }
 
 /// Whether an item paints anything.
@@ -514,17 +722,7 @@ impl Builder<'_> {
             let here: Vec<&Item> = inside.iter().filter(|item| reaches(item, &corner).is_some()).collect();
             let Some(grid) = Grid::new(corner, None, 0.0, self.scale, true).filter(|_| !here.is_empty()) else { continue };
             let key = Self::key("corner", &grid, &[(&here, false), (&[outline], true)], &[], Color32::TRANSPARENT);
-            let texture = self.baked.texture(self.ctx, key, grid.rect(), || {
-                let mut bitmap = grid.bitmap();
-                self.paint(&grid, &here, false, &mut bitmap);
-                let mut bitmap = grid.settle(bitmap);
-                let mut solid = grid.bitmap();
-                self.paint(&grid, &[outline], true, &mut solid);
-                for (pixel, cover) in bitmap.px.iter_mut().zip(&grid.settle(solid).px) {
-                    *pixel = pixel.map(|c| c * cover[3]);
-                }
-                bitmap
-            });
+            let texture = self.baked.texture(self.ctx, key, grid.rect(), || self.cut_out(&grid, &here, outline));
             out.push(Self::picture(texture, &grid, Point::default(), 1.0, Some(corner)));
         }
         for item in inside {
@@ -612,6 +810,7 @@ impl Builder<'_> {
         if let Some(known) = self.baked.tiles.borrow().get(&key) {
             return *known;
         }
+        self.baked.fresh.set(self.baked.fresh.get() + 1);
         let mut solid = grid.bitmap();
         self.paint(&grid, &[outline], true, &mut solid);
         let (mut any, mut all) = (false, true);
@@ -636,18 +835,27 @@ impl Builder<'_> {
             .collect();
         let Some(grid) = Grid::new(tile, None, 0.0, self.scale, true).filter(|_| !here.is_empty()) else { return };
         let key = Self::key("mask", &grid, &[(&here, false), (&[outline], true)], &[], Color32::TRANSPARENT);
-        let texture = self.baked.texture(self.ctx, key, grid.rect(), || {
+        let texture = self.baked.texture(self.ctx, key, grid.rect(), || self.cut_out(&grid, &here, outline));
+        out.push(Self::picture(texture, &grid, Point::default(), 1.0, cut));
+    }
+
+    /// The making of a picture of `inside` on `grid` with everything outside `outline` rubbed out.
+    fn cut_out(&self, grid: &Grid, inside: &[&Item], outline: &Item) -> Option<Job> {
+        let (inside, outline, grid) = (self.plan(grid, inside, false), self.plan(grid, &[outline], true), *grid);
+        if inside.starved || outline.starved {
+            return None;
+        }
+        Some(job(move || {
             let mut bitmap = grid.bitmap();
-            self.paint(&grid, &here, false, &mut bitmap);
+            inside.onto(&mut bitmap);
             let mut bitmap = grid.settle(bitmap);
             let mut solid = grid.bitmap();
-            self.paint(&grid, &[outline], true, &mut solid);
+            outline.onto(&mut solid);
             for (pixel, cover) in bitmap.px.iter_mut().zip(&grid.settle(solid).px) {
                 *pixel = pixel.map(|c| c * cover[3]);
             }
             bitmap
-        });
-        out.push(Self::picture(texture, &grid, Point::default(), 1.0, cut));
+        }))
     }
 
     /// The effects of `scene` that are switched on, variables looked up.
@@ -875,7 +1083,8 @@ impl Builder<'_> {
         }
         let tag = format!("shader-{:016x}", hasher.finish());
         let key = Self::key(&tag, &grid, &[(layer, false), (&behind, false)], &[left, top, right, bottom], self.background);
-        let texture = self.baked.texture(self.ctx, key, grid.rect(), || {
+        // A shader reads files and variables as it runs: its picture is made here, not on another thread.
+        let texture = self.baked.texture_here(self.ctx, key, grid.rect(), || {
             let mut object = grid.bitmap();
             self.paint(&grid, layer, false, &mut object);
             let background = uses_background.then(|| {
@@ -902,6 +1111,14 @@ impl Builder<'_> {
 
     /// Paints `items` onto `bitmap`, which covers `grid`. `solid` paints their shapes, fully opaque.
     pub(super) fn paint(&self, grid: &Grid, items: &[&Item], solid: bool, bitmap: &mut Bitmap) {
+        self.plan(grid, items, solid).onto(bitmap);
+    }
+
+    /// `items` made ready to be painted onto a bitmap that covers `grid` ([`Painting::onto`]). `solid` paints
+    /// their shapes, fully opaque.
+    // Agent: MAIN-THREAD (lays text out through the egui context, reads the pictures); ALLOCATES a placed copy
+    // of every mesh.
+    pub(super) fn plan(&self, grid: &Grid, items: &[&Item], solid: bool) -> Painting {
         // Human: texts are laid out first, so the font picture read after that holds all their letters.
         // Human: a letter new to the font picture can make the picture grow, and a mesh made before that points
         // at where its letters were. So the texts are laid out twice: once to bring every letter into the
@@ -911,45 +1128,79 @@ impl Builder<'_> {
         };
         let first = lay_out();
         let texts = if first.iter().any(|meshes| !meshes.is_empty()) { lay_out() } else { first };
-        let letters = texts.iter().any(|meshes| !meshes.is_empty()).then(|| font_picture(self.ctx));
-        for (item, text) in items.iter().zip(&texts) {
+        let font = texts.iter().any(|meshes| !meshes.is_empty()).then(|| self.letters(&texts));
+        let mut painting = Painting { strokes: Vec::new(), solid, starved: false };
+        for (item, text) in items.iter().zip(texts) {
             match item {
                 Item::Mesh { mesh, clip, .. } => {
                     let picture = if mesh.texture_id == TextureId::default() {
                         None
+                    } else if self.baked.is_blank(mesh.texture_id) {
+                        // A picture left out of this build: whatever is made from it has to wait for it.
+                        painting.starved = true;
+                        continue;
                     } else {
                         self.baked.pixels(mesh.texture_id).or_else(|| self.images.pixels(mesh.texture_id))
                     };
-                    bitmap.triangles(mesh, |p| grid.place(Point::new(p.x, p.y)), clip.map(|c| grid.span(&c)), picture.as_deref(), solid);
+                    let mut mesh = mesh.clone();
+                    for vertex in &mut mesh.vertices {
+                        let [x, y] = grid.place(Point::new(vertex.pos.x, vertex.pos.y));
+                        vertex.pos = Pos2::new(x, y);
+                    }
+                    painting.strokes.push(Stroke::Mesh { mesh, clip: clip.map(|c| grid.span(&c)), picture });
                 }
                 Item::Text { text: item, clip, .. } => {
                     let clip = clip.map(|c| grid.span(&c));
                     // Human: the outline round letters is everything within its width of them, found from one
                     // painting of the letters; the shape of an outlined text has its outline in it.
                     if let Some((_, widest)) = item.outlines.first() {
-                        let pad = pixels(widest * grid.density() + 2.0);
-                        let mut shape = Bitmap::new(bitmap.w + 2 * pad, bitmap.h + 2 * pad);
-                        let by = length(pad);
-                        for mesh in text {
-                            shape.triangles(mesh, |p| [p.x + by, p.y + by], None, letters.as_ref(), true);
-                        }
-                        for (ink, width) in &item.outlines {
-                            let color = if solid { [1.0; 4] } else { raster::pixel(*ink) };
-                            bitmap.outline(&shape, pad, width * grid.density(), color, clip);
-                        }
+                        let rings =
+                            item.outlines.iter().map(|(ink, width)| (if solid { [1.0; 4] } else { raster::pixel(*ink) }, width * grid.density()));
+                        painting.strokes.push(Stroke::Outline {
+                            letters: text.clone(),
+                            font: font.clone(),
+                            pad: pixels(widest * grid.density() + 2.0),
+                            rings: rings.collect(),
+                            clip,
+                        });
                     }
-                    for mesh in text {
-                        bitmap.triangles(mesh, |p| [p.x, p.y], clip, letters.as_ref(), solid);
-                    }
+                    painting.strokes.extend(text.into_iter().map(|mesh| Stroke::Mesh { mesh, clip, picture: font.clone() }));
                 }
                 // A box's own soft shadow is no part of its shape.
-                Item::Shadow { rect, radius, offset, blur, color, clip } if !solid => {
-                    let span = grid.span(&rect.translate(offset.x, offset.y));
-                    bitmap.soft_box(span, radius * grid.density(), blur * grid.density(), raster::pixel(*color), clip.map(|c| grid.span(&c)));
-                }
+                Item::Shadow { rect, radius, offset, blur, color, clip } if !solid => painting.strokes.push(Stroke::SoftBox {
+                    span: grid.span(&rect.translate(offset.x, offset.y)),
+                    radius: radius * grid.density(),
+                    blur: blur * grid.density(),
+                    color: raster::pixel(*color),
+                    clip: clip.map(|c| grid.span(&c)),
+                }),
                 Item::Shadow { .. } => {}
             }
         }
+        painting
+    }
+
+    /// egui's font picture, which the text meshes `texts` are textured with.
+    // Human: the font picture is large (tens of megabytes on a sharp screen) and egui only hands out a copy
+    // of all of it. Copying it for every picture with text in it cost more than painting the text. So one
+    // copy is kept for as long as it is good. Within one pass of the window the font picture only gains
+    // letters; a letter the copy was taken before is still clear in it. So the copy is good for these meshes
+    // when every letter they show has ink in it, and is taken anew when one hasn't.
+    #[expect(
+        clippy::redundant_closure_for_method_calls,
+        reason = "the method's path is not general over the font view's lifetime and doesn't compile"
+    )]
+    fn letters(&self, texts: &[Vec<Mesh>]) -> Arc<ColorImage> {
+        let pass = self.ctx.cumulative_pass_nr();
+        if let Some((taken, copy)) = self.baked.font.borrow().as_ref()
+            && *taken == pass
+            && texts.iter().flatten().all(|mesh| inked(mesh, copy))
+        {
+            return copy.clone();
+        }
+        let copy = Arc::new(self.ctx.fonts(|fonts| fonts.image()));
+        *self.baked.font.borrow_mut() = Some((pass, copy.clone()));
+        copy
     }
 
     /// A text as triangles in `grid`'s painted pixels, textured with egui's font picture.
@@ -964,7 +1215,7 @@ impl Builder<'_> {
         }
         // Human: text larger than the font atlas holds is laid out smaller and its triangles are scaled up
         // (see `glyph_scale`); a poster's headline must not vanish from the picture of it.
-        let (laid, grow) = glyph_scale(text.style.size, z);
+        let (laid, grow) = glyph_scale(text.style.size, z, per_point, true);
         // Human: set on a circle, each letter is a paragraph of its own. (An outline is painted from these.)
         let parts = super::text_placed(text, text.color, laid, &mut |job| self.ctx.fonts_mut(|fonts| fonts.layout_job(job)));
         let mut meshes = Vec::new();
@@ -1033,23 +1284,29 @@ impl Builder<'_> {
         let cut = !look.opaque;
         let key = Self::key(if cut { "drop-cut" } else { "drop" }, &grid, &[(shape, true)], &[sigma, offset[0], offset[1]], color);
         let texture = self.baked.texture(self.ctx, key, grid.rect(), || {
-            let mut solid = grid.bitmap();
-            self.paint(&grid, shape, true, &mut solid);
-            let solid = grid.settle(solid);
-            let mut soft = solid.clone();
-            soft.blur(sigma);
-            let tint = raster::pixel(color);
-            for y in 0..soft.h {
-                for x in 0..soft.w {
-                    // This pixel of the shadow lands `offset` further on, where the shape may be.
-                    let covered = if cut { solid.sample(length(x) + 0.5 + offset[0], length(y) + 0.5 + offset[1])[3] } else { 0.0 };
-                    if let Some(pixel) = soft.px.get_mut(y * soft.w + x) {
-                        let strength = pixel[3] * (1.0 - covered);
-                        *pixel = tint.map(|c| c * strength);
+            let shape = self.plan(&grid, shape, true);
+            if shape.starved {
+                return None;
+            }
+            Some(job(move || {
+                let mut solid = grid.bitmap();
+                shape.onto(&mut solid);
+                let solid = grid.settle(solid);
+                let mut soft = solid.clone();
+                soft.blur(sigma);
+                let tint = raster::pixel(color);
+                for y in 0..soft.h {
+                    for x in 0..soft.w {
+                        // This pixel of the shadow lands `offset` further on, where the shape may be.
+                        let covered = if cut { solid.sample(length(x) + 0.5 + offset[0], length(y) + 0.5 + offset[1])[3] } else { 0.0 };
+                        if let Some(pixel) = soft.px.get_mut(y * soft.w + x) {
+                            let strength = pixel[3] * (1.0 - covered);
+                            *pixel = tint.map(|c| c * strength);
+                        }
                     }
                 }
-            }
-            soft
+                soft
+            }))
         });
         Some(Self::picture(texture, &grid, shadow.offset, look.opacity, look.clip))
     }
@@ -1065,22 +1322,28 @@ impl Builder<'_> {
         let color = color32(shadow.color);
         let key = Self::key("inner", &grid, &[(shape, true)], &[sigma, offset[0], offset[1]], color);
         let texture = self.baked.texture(self.ctx, key, grid.rect(), || {
-            let mut solid = grid.bitmap();
-            self.paint(&grid, shape, true, &mut solid);
-            let mut solid = grid.settle(solid);
-            let mut soft = solid.clone();
-            soft.blur(sigma);
-            let tint = raster::pixel(color);
-            for y in 0..solid.h {
-                for x in 0..solid.w {
-                    let lit = soft.sample(length(x) + 0.5 - offset[0], length(y) + 0.5 - offset[1])[3];
-                    if let Some(pixel) = solid.px.get_mut(y * solid.w + x) {
-                        let strength = pixel[3] * (1.0 - lit);
-                        *pixel = tint.map(|c| c * strength);
+            let shape = self.plan(&grid, shape, true);
+            if shape.starved {
+                return None;
+            }
+            Some(job(move || {
+                let mut solid = grid.bitmap();
+                shape.onto(&mut solid);
+                let mut solid = grid.settle(solid);
+                let mut soft = solid.clone();
+                soft.blur(sigma);
+                let tint = raster::pixel(color);
+                for y in 0..solid.h {
+                    for x in 0..solid.w {
+                        let lit = soft.sample(length(x) + 0.5 - offset[0], length(y) + 0.5 - offset[1])[3];
+                        if let Some(pixel) = solid.px.get_mut(y * solid.w + x) {
+                            let strength = pixel[3] * (1.0 - lit);
+                            *pixel = tint.map(|c| c * strength);
+                        }
                     }
                 }
-            }
-            solid
+                solid
+            }))
         });
         Some(Self::picture(texture, &grid, Point::default(), look.opacity, look.clip))
     }
@@ -1092,11 +1355,17 @@ impl Builder<'_> {
         let sigma = sigma * grid.scale;
         let key = Self::key("layer", &grid, &[(layer, false)], &[sigma], Color32::TRANSPARENT);
         let texture = self.baked.texture(self.ctx, key, grid.rect(), || {
-            let mut bitmap = grid.bitmap();
-            self.paint(&grid, layer, false, &mut bitmap);
-            let mut bitmap = grid.settle(bitmap);
-            bitmap.blur(sigma);
-            bitmap
+            let layer = self.plan(&grid, layer, false);
+            if layer.starved {
+                return None;
+            }
+            Some(job(move || {
+                let mut bitmap = grid.bitmap();
+                layer.onto(&mut bitmap);
+                let mut bitmap = grid.settle(bitmap);
+                bitmap.blur(sigma);
+                bitmap
+            }))
         });
         // The items already carry the node's opacity.
         Some(Self::picture(texture, &grid, Point::default(), 1.0, look.clip))
@@ -1111,18 +1380,25 @@ impl Builder<'_> {
         let behind: Vec<&Item> = behind.iter().copied().filter(|item| extent(item).is_some_and(|e| e.intersects(&area))).collect();
         let sigma = sigma * grid.scale;
         let key = Self::key("backdrop", &grid, &[(&behind, false), (shape, true)], &[sigma], self.background);
+        let ground = raster::pixel(self.background);
         let texture = self.baked.texture(self.ctx, key, grid.rect(), || {
-            let mut back = grid.coarse().bitmap();
-            back.fill(raster::pixel(self.background));
-            self.paint(&grid.coarse(), &behind, false, &mut back);
-            back.blur(sigma);
-            let mut solid = grid.bitmap();
-            self.paint(&grid, shape, true, &mut solid);
-            let solid = grid.settle(solid);
-            for (pixel, cover) in back.px.iter_mut().zip(&solid.px) {
-                *pixel = pixel.map(|c| c * cover[3]);
+            let (behind, shape) = (self.plan(&grid.coarse(), &behind, false), self.plan(&grid, shape, true));
+            if behind.starved || shape.starved {
+                return None;
             }
-            back
+            Some(job(move || {
+                let mut back = grid.coarse().bitmap();
+                back.fill(ground);
+                behind.onto(&mut back);
+                back.blur(sigma);
+                let mut solid = grid.bitmap();
+                shape.onto(&mut solid);
+                let solid = grid.settle(solid);
+                for (pixel, cover) in back.px.iter_mut().zip(&solid.px) {
+                    *pixel = pixel.map(|c| c * cover[3]);
+                }
+                back
+            }))
         });
         Some(Self::picture(texture, &grid, Point::default(), look.opacity, look.clip))
     }

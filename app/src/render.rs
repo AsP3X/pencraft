@@ -45,14 +45,43 @@ pub const BOLD_FAMILY: &str = "pencraft-bold";
 pub const ITALIC_FAMILY: &str = "pencraft-italic";
 /// Corner radius of a browser node that sets none.
 pub const BROWSER_RADIUS: f32 = 16.0;
-/// Glyphs are laid out no larger than this many screen points (larger ones would overflow egui's font atlas);
+/// Glyphs are laid out no larger than this many pixels of the screen (larger ones would fill egui's font atlas);
 /// text that is to be larger is laid out at this size and its triangles are scaled up.
-const MAX_GLYPH_PX: f32 = 600.0;
+// Human: the font atlas is one picture all letters share. When it is four fifths full egui empties it and
+// draws every letter again, the interface's too; a letter 1200 pixels high fills it after thirty letters.
+const MAX_GLYPH_PX: f32 = 384.0;
+/// Letters up to this many pixels of the screen high are laid out at exactly the size they are drawn at.
+const EXACT_GLYPH_PX: f32 = 64.0;
+/// How many sizes larger letters are laid out at between one size and its double.
+const GLYPH_STEPS: f32 = 4.0;
+/// The longest side egui's font atlas may have, in pixels (see [`glyph_scale`]); the app sets it each frame.
+// Human: egui makes the atlas as wide as the largest picture the graphics card takes (8192 pixels here) and
+// lets it grow as high: a quarter of a gigabyte, sent to the graphics card whole each time it doubles, which
+// stalled the window. At 4096 it is a quarter of that at most. Pictures in designs are no larger either.
+pub const MAX_ATLAS_SIDE: usize = 4096;
 
-/// The scale to lay text of `size` out at when it is drawn at `z` screen points per unit, and how much its
-/// triangles have to grow afterwards (1 when it fits the font atlas as it is).
-fn glyph_scale(size: f32, z: f32) -> (f32, f32) {
-    let laid = z.min(MAX_GLYPH_PX / size.max(f32::EPSILON));
+/// The scale to lay text of `size` out at when it is drawn at `z` screen points per unit on a screen of
+/// `per_point` pixels a point, and how much its triangles have to be scaled afterwards (1 when it is laid
+/// out at the size it is drawn at). `steady` is whether the zoom is at rest.
+// Human: every size a letter is drawn at is another picture of it in the font atlas. A zoom on the move is
+// another size with every frame, which filled the atlas within a second and stalled the window each time the
+// atlas was sent to the graphics card again. So while the zoom moves, text is laid out at the power of two
+// nearest the zoom and its triangles are scaled to fit: a little soft for a moment, and sharp again at rest.
+// Human: at rest, text up to 64 pixels high is laid out at its very size, where every pixel of a letter
+// counts. Larger letters are the ones that fill the atlas, and they look the same drawn a little smaller
+// than they were laid out: they are laid out at the next of four sizes to each doubling and scaled down by
+// a sixth at most. Resting at one zoom after another then comes back to the same few sizes.
+fn glyph_scale(size: f32, z: f32, per_point: f32, steady: bool) -> (f32, f32) {
+    let step_up = |v: f32, steps: f32| ((v.max(f32::MIN_POSITIVE).log2() * steps).ceil() / steps).exp2();
+    let high = size * z * per_point;
+    let wanted = if !steady {
+        z.max(f32::MIN_POSITIVE).log2().round().exp2()
+    } else if high <= EXACT_GLYPH_PX {
+        z
+    } else {
+        z * step_up(high, GLYPH_STEPS) / high
+    };
+    let laid = wanted.min(MAX_GLYPH_PX / (size * per_point).max(f32::EPSILON));
     (laid, z / laid)
 }
 
@@ -80,6 +109,76 @@ struct TextItem {
     /// The outlines round its letters, the outermost (drawn first) first: each one's colour and how far it
     /// reaches out of the letters.
     outlines: Vec<(Color32, f32)>,
+    /// A number for the letters it shows ([`letters_key`]).
+    key: u64,
+}
+
+/// A number that texts with the same letters in the same face and size share: what one of them has brought
+/// into the font atlas serves the others.
+fn letters_key(style: &TextStyle) -> u64 {
+    use std::hash::{Hash as _, Hasher as _};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    (&style.content, &style.family, style.size.to_bits(), style.weight, style.italic).hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Which letters are in the font atlas at which sizes, as far as the canvas has drawn them.
+// Human: text drawn at a size for the first time has its letters drawn into the font atlas, which takes a
+// few milliseconds a paragraph of large letters. A zoom that reaches a new step, or comes to rest, wants
+// that for every text on screen in the same frame: a frame of 10 to 30 ms. So each frame brings in new
+// sizes for a few milliseconds only; the texts it didn't get to are drawn at the size they had, scaled,
+// and get their turn in the frames after.
+#[derive(Default)]
+struct Warmth {
+    /// The letters and sizes drawn so far.
+    known: std::cell::RefCell<std::collections::HashSet<(u64, u32)>>,
+    /// The size each text's letters were last laid out at.
+    last: std::cell::RefCell<std::collections::HashMap<u64, f32>>,
+    /// When this frame's drawing began, and whether it has brought in a new size yet.
+    frame: std::cell::Cell<Option<(std::time::Instant, bool)>>,
+    /// How full the font atlas was at the last frame; less than that, and it was emptied.
+    fill: std::cell::Cell<f32>,
+}
+
+/// How long one frame draws letters into the font atlas for sizes new to them, when it can draw them at
+/// their last size instead.
+const TEXT_BUDGET: std::time::Duration = std::time::Duration::from_millis(3);
+/// How many letter sizes are remembered before the memory starts over.
+const MOST_KNOWN_SIZES: usize = 50_000;
+
+impl Warmth {
+    /// Starts a frame.
+    #[expect(
+        clippy::redundant_closure_for_method_calls,
+        reason = "the method's path is not general over the font view's lifetime and doesn't compile"
+    )]
+    fn begin(&self, ctx: &egui::Context) {
+        let fill = ctx.fonts(|fonts| fonts.font_atlas_fill_ratio());
+        // Human: egui empties the atlas when it is nearly full; nothing is in it then.
+        if fill < self.fill.get() || self.known.borrow().len() > MOST_KNOWN_SIZES {
+            self.known.borrow_mut().clear();
+            self.last.borrow_mut().clear();
+        }
+        self.fill.set(fill);
+        self.frame.set(Some((std::time::Instant::now(), false)));
+    }
+
+    /// The size to lay the text with the letters `key` out at, when `wanted` is the size it should have: that
+    /// size, or the one it had when this frame has no time left to bring in another. Says with `false` that
+    /// the text is still to get its size.
+    fn size(&self, key: u64, wanted: f32) -> (f32, bool) {
+        let at = (key, wanted.to_bits());
+        if !self.known.borrow().contains(&at) {
+            let late = self.frame.get().is_some_and(|(began, brought)| brought && began.elapsed() >= TEXT_BUDGET);
+            if let Some(had) = self.last.borrow().get(&key).copied().filter(|_| late) {
+                return (had, false);
+            }
+            self.known.borrow_mut().insert(at);
+            self.frame.set(self.frame.get().map(|(began, _)| (began, true)));
+        }
+        self.last.borrow_mut().insert(key, wanted);
+        (wanted, true)
+    }
 }
 
 /// The property of a text layer that sets it along a line: SVG path data in the layer's own coordinates.
@@ -184,6 +283,7 @@ pub fn ink_box(ctx: &egui::Context, scene: &SceneNode, vars: Vars<'_>) -> Option
     let laid = (INK_LETTER / style.size.max(f32::EPSILON)).clamp(0.5, INK_SCALE);
     let galley = ctx.fonts_mut(|fonts| fonts.layout_job(text_job(&style, Color32::WHITE, laid)));
     let text = TextItem {
+        key: letters_key(&style),
         style,
         color: Color32::WHITE,
         to_doc: scene.to_doc,
@@ -318,6 +418,16 @@ pub struct DisplayList {
     hidden: std::collections::HashSet<String>,
     /// Which stage of a model's change the list was built from (see [`crate::activity::Activity::stage`]).
     stage: u64,
+    /// Whether the zoom was on the move at the last look: text is then drawn at the nearest zoom step.
+    zooming: bool,
+    /// The build that is not whole yet (it ran out of time, or its pictures are still being made) and goes on
+    /// with a later frame: its zoom step and the part of the document it bakes effects for.
+    unfinished: Option<(i32, Rect)>,
+    /// How long a build of the scene already on screen may spend getting pictures started; `None` is
+    /// [`BAKE_BUDGET`].
+    budget: Option<std::time::Duration>,
+    /// Which letters the canvas has drawn at which sizes.
+    warmth: Warmth,
 }
 
 /// How long the zoom must hold still before the list is rebuilt for its new step.
@@ -328,6 +438,9 @@ const BAKE_MARGIN: f32 = 0.5;
 const BAKE_ON_AFTER: std::time::Duration = std::time::Duration::from_millis(300);
 /// Effects further out are only baked while the pictures held are fewer pixels than this (128 MB).
 const BAKE_ON_BELOW: usize = 32_000_000;
+/// How long one frame spends getting new pictures started for a scene that is on screen already; the rest
+/// waits for the next.
+const BAKE_BUDGET: std::time::Duration = std::time::Duration::from_millis(6);
 
 impl DisplayList {
     /// Rebuilds the list when the scene changed, when the zoom has come to rest on another power of two, or when
@@ -342,10 +455,18 @@ impl DisplayList {
     // that were left out would otherwise be seen missing. And while the view rests, the part that is baked
     // grows a step at a time, until it is the whole design or the pictures would take too much memory: after
     // a short rest panning costs nothing.
+    // Human: even so, baking what a new zoom step or a new part of the canvas needs took a fifth of a second
+    // and more in one go, with the window frozen. A build for a scene that is on screen already therefore
+    // has its pictures made on other threads and doesn't wait for them, and what it does itself to get them
+    // started (laying out text, copying meshes) is kept to a few milliseconds a frame. At the same zoom step
+    // each frame shows the pictures that have arrived so far. For another zoom step the list on screen stays, scaled, until the new
+    // one is whole, so effects are never seen going away and coming back. A scene that changed (an edit, a
+    // file just opened) is still built in one go: an edit must not be seen without its effects.
     // Human: `hidden` are layers a model made that are not shown yet (it shows its work a layer at a time): they
     // are left out with everything in them, and the list is built again when they change. `stage` says which
     // step of such a change `scene` is: it has the document's `generation`, and is another scene each time.
-    // Agent: CALLS ctx.request_repaint_after while a rebuild is waiting for the zoom to settle or the view to rest.
+    // Agent: CALLS ctx.request_repaint_after while a rebuild is waiting for the zoom to settle or the view to rest,
+    // and ctx.request_repaint while a build is unfinished.
     #[expect(clippy::too_many_arguments, reason = "the scene, what it was built from, where its pictures live, and what is on screen")]
     pub fn update(
         &mut self,
@@ -373,39 +494,50 @@ impl DisplayList {
         }
         let wait = self.zoom_moved.and_then(|moved| ZOOM_SETTLE.checked_sub(now.duration_since(moved)));
         let rest = self.view_moved.and_then(|moved| BAKE_ON_AFTER.checked_sub(now.duration_since(moved)));
+        // Text drawn at a zoom step is drawn sharp once the zoom rests.
+        self.zooming = wait.is_some();
+        if let Some(wait) = wait {
+            ctx.request_repaint_after(wait);
+        }
         let same = !self.items.is_empty()
             && self.generation == generation
             && self.folder.as_deref() == folder
             && self.background == background
             && self.hidden == *hidden
             && self.stage == stage;
+        if !same {
+            self.unfinished = None;
+        }
         let covered = self.cover.is_none_or(|cover| cover.holds(&visible));
         let current = same && covered && self.zoom_bucket == bucket;
         // Effects were left out, there is room for more, and nothing is moving: bake on.
         let more = current && self.cover.is_some() && self.baked.pixels_held() < BAKE_ON_BELOW;
-        if (current && !(more && rest.is_none())) || (same && covered && wait.is_some()) {
-            if let Some(wait) = wait.filter(|_| self.zoom_bucket != bucket).or(rest.filter(|_| more)) {
-                ctx.request_repaint_after(wait);
+        if self.unfinished.is_some() {
+            // A build that ran out of time goes on, unless the zoom is on the move again.
+            if covered && wait.is_some() {
+                return;
+            }
+        } else if (current && !(more && rest.is_none())) || (same && covered && wait.is_some()) {
+            if let Some(rest) = rest.filter(|_| more && wait.is_none()) {
+                ctx.request_repaint_after(rest);
             }
             return;
         }
-        self.margin = if current { self.margin * 2.0 + BAKE_MARGIN } else { BAKE_MARGIN };
         // The next step out waits for another rest.
         self.view_moved = Some(now);
-        let cover = Rect::new(
-            visible.x - visible.w * self.margin,
-            visible.y - visible.h * self.margin,
-            visible.w * (1.0 + 2.0 * self.margin),
-            visible.h * (1.0 + 2.0 * self.margin),
-        );
-        self.folder = folder.map(std::path::Path::to_path_buf);
-        self.items.clear();
-        self.generation = generation;
-        self.zoom_bucket = bucket;
-        self.background = background;
-        self.hidden.clone_from(hidden);
-        self.stage = stage;
-        self.baked.begin_within(Some(cover));
+        let resumed = self.unfinished.take().filter(|(step, cover)| *step == bucket && cover.holds(&visible));
+        let cover = if let Some((_, cover)) = resumed {
+            cover
+        } else {
+            self.margin = if current { self.margin * 2.0 + BAKE_MARGIN } else { BAKE_MARGIN };
+            Rect::new(
+                visible.x - visible.w * self.margin,
+                visible.y - visible.h * self.margin,
+                visible.w * (1.0 + 2.0 * self.margin),
+                visible.h * (1.0 + 2.0 * self.margin),
+            )
+        };
+        self.baked.begin_within(Some(cover), same.then(|| now + self.budget.unwrap_or(BAKE_BUDGET)));
         let builder = Builder {
             vars,
             tolerance: (0.25 / zoom).clamp(0.002, 4.0),
@@ -418,12 +550,36 @@ impl DisplayList {
             merged: std::cell::Cell::new(false),
             hidden: Some(hidden),
         };
+        let mut items = Vec::new();
         for node in scene {
-            builder.node(node, 1.0, None, &mut self.items);
+            builder.node(node, 1.0, None, &mut items);
         }
-        self.baked.finish();
-        self.cover = self.baked.skipped().then_some(cover);
-        if self.cover.is_some() {
+        let late = self.baked.late();
+        if late {
+            self.unfinished = Some((bucket, cover));
+            // Human: a build that ran out of time goes on with the next frame. One that only waits for its
+            // pictures is woken by each as it arrives, and builds nothing in between.
+            if self.baked.cut_short() {
+                ctx.request_repaint();
+            }
+            // Human: the list on screen is of another zoom step and whole; this one has holes where its
+            // pictures are still to be baked. The one on screen stays, with its pictures, until this one is whole.
+            if self.zoom_bucket != bucket {
+                return;
+            }
+        }
+        self.items = items;
+        self.folder = folder.map(std::path::Path::to_path_buf);
+        self.generation = generation;
+        self.zoom_bucket = bucket;
+        self.background = background;
+        self.hidden.clone_from(hidden);
+        self.stage = stage;
+        if !late {
+            self.baked.finish();
+        }
+        self.cover = (late || self.baked.skipped()).then_some(cover);
+        if self.cover.is_some() && !late {
             ctx.request_repaint_after(BAKE_ON_AFTER);
         }
     }
@@ -486,6 +642,7 @@ impl DisplayList {
     // Agent: HOT-PATH per frame; ALLOCATES one transformed mesh per visible item (egui takes ownership).
     pub fn draw(&self, painter: &Painter, camera: &Camera, view: egui::Rect) {
         let visible = view_to_doc(camera, view);
+        self.warmth.begin(painter.ctx());
         let to_screen = |p: Pos2| screen(camera, view, Point::new(p.x, p.y));
         for item in &self.items {
             match item {
@@ -503,7 +660,7 @@ impl DisplayList {
                 }
                 Item::Text { text, bounds, clip } => {
                     if bounds.intersects(&visible) {
-                        draw_text(&clipped(painter, camera, view, *clip), camera, view, text);
+                        draw_text(&clipped(painter, camera, view, *clip), camera, view, text, !self.zooming, &self.warmth);
                     }
                 }
                 Item::Shadow { rect, radius, offset, blur, color, clip } => {
@@ -856,6 +1013,7 @@ impl Builder<'_> {
                 let size = (w - 2.0 * NOTE_PADDING, h - 2.0 * NOTE_PADDING);
                 out.push(Item::Text {
                     text: Box::new(TextItem {
+                        key: letters_key(&style),
                         style,
                         color: color32(text_color.with_opacity(opacity)),
                         to_doc,
@@ -953,6 +1111,7 @@ impl Builder<'_> {
                 let bounds = Rect::new(bounds.x - reach, bounds.y - reach, bounds.w + 2.0 * reach, bounds.h + 2.0 * reach);
                 out.push(Item::Text {
                     text: Box::new(TextItem {
+                        key: letters_key(&style),
                         style,
                         color: color32(color.with_opacity(opacity)),
                         to_doc: scene.to_doc,
@@ -1664,12 +1823,20 @@ pub fn text_job(style: &TextStyle, color: Color32, scale: f32) -> LayoutJob {
     job
 }
 
-fn draw_text(painter: &Painter, camera: &Camera, view: egui::Rect, text: &TextItem) {
+/// Draws `text` through `camera`; `steady` is whether the zoom is at rest (see [`glyph_scale`]), and `warmth`
+/// knows which sizes its letters have been drawn at.
+fn draw_text(painter: &Painter, camera: &Camera, view: egui::Rect, text: &TextItem, steady: bool, warmth: &Warmth) {
     let z = camera.zoom;
     if text.style.content.is_empty() || text.style.size * z < 1.0 {
         return;
     }
-    let (laid, grow) = glyph_scale(text.style.size, z);
+    let (wanted, _) = glyph_scale(text.style.size, z, painter.ctx().pixels_per_point(), steady);
+    let (laid, there) = warmth.size(text.key, wanted);
+    if !there {
+        // The text gets its size in one of the next frames.
+        painter.ctx().request_repaint();
+    }
+    let grow = z / laid;
     let fine = z * painter.ctx().pixels_per_point();
     for (corner, paragraph, angle) in text_parts(text, laid, fine, &mut |job| painter.layout_job(job)) {
         paint_galley(painter, screen(camera, view, corner), paragraph, text.color, angle, grow);
@@ -1799,15 +1966,16 @@ fn letters_along(
     letters
 }
 
-/// Paints `galley` with its top left corner at `pos`, turned by `angle` about that corner and enlarged `grow`
+/// Paints `galley` with its top left corner at `pos`, turned by `angle` about that corner and scaled `grow`
 /// times (1 when it was laid out at the size it is drawn at).
 fn paint_galley(painter: &Painter, pos: Pos2, galley: std::sync::Arc<egui::Galley>, color: Color32, angle: f32, grow: f32) {
-    if grow <= 1.0 {
+    if (grow - 1.0).abs() < 1e-4 {
         painter.add(egui::epaint::TextShape::new(pos, galley, color).with_angle(angle));
         return;
     }
     // Human: a headline zoomed past what the font atlas holds is laid out at the largest size that fits, and
-    // its triangles are scaled up around where the text starts. It is a little soft, and it is there.
+    // text on a moving zoom at the nearest step; its triangles are scaled around where the text starts. It
+    // is a little soft, and it is there.
     let shape = egui::epaint::TextShape::new(Pos2::ZERO, galley, color).with_angle(angle);
     let per_point = painter.ctx().pixels_per_point();
     for clipped in painter.ctx().tessellate(vec![egui::epaint::ClippedShape::new(egui::Rect::EVERYTHING, shape)], per_point) {
@@ -1844,6 +2012,143 @@ fn text_anchor(text: &TextItem, text_h: f32) -> (Point, f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn text_is_laid_out_at_few_sizes_and_no_larger_than_the_atlas_takes() {
+        // At rest text up to 64 pixels high is laid out at the size it is drawn at.
+        assert_eq!(glyph_scale(16.0, 1.3, 2.0, true), (1.3, 1.0));
+        // Larger text at rest is laid out at the next of four sizes to a doubling, and scaled down a little.
+        let mut sizes = std::collections::BTreeSet::new();
+        for step in 0..=100_u8 {
+            let zoom = 4.0 + f32::from(step) * 0.04;
+            let (laid, shrink) = glyph_scale(16.0, zoom, 2.0, true);
+            assert!((laid * shrink - zoom).abs() < 1e-4 && shrink <= 1.0 + 1e-6 && shrink > 0.84, "{zoom}: {laid} × {shrink}");
+            sizes.insert((laid * 1000.0).round().to_bits());
+        }
+        // A hundred zooms between 400 % and 800 %: five sizes.
+        assert_eq!(sizes.len(), 5);
+        // On the move every zoom between two steps shares one size, and the triangles make up the difference.
+        for zoom in [1.5_f32, 1.7, 2.0, 2.4, 2.8] {
+            let (laid, grow) = glyph_scale(16.0, zoom, 2.0, false);
+            assert!((laid - 2.0).abs() < 1e-6 && (laid * grow - zoom).abs() < 1e-5, "{zoom}: {laid} × {grow}");
+        }
+        assert!((glyph_scale(16.0, 0.3, 2.0, false).0 - 0.25).abs() < 1e-6);
+        // A letter is never laid out higher than MAX_GLYPH_PX pixels of the screen, at rest or on the move.
+        for steady in [true, false] {
+            let (laid, grow) = glyph_scale(100.0, 64.0, 2.0, steady);
+            assert!((laid * 100.0 * 2.0 - MAX_GLYPH_PX).abs() < 1e-2 && (laid * grow - 64.0).abs() < 1e-3);
+        }
+    }
+
+    #[test]
+    fn letters_new_to_a_size_are_brought_in_a_few_a_frame_and_drawn_at_their_last_size_meanwhile() {
+        let warmth = Warmth::default();
+        let long_ago = std::time::Instant::now().checked_sub(std::time::Duration::from_secs(1)).unwrap();
+        // A frame with time left: every text gets the size it wants.
+        warmth.frame.set(Some((std::time::Instant::now(), false)));
+        assert_eq!((warmth.size(1, 1.0), warmth.size(2, 1.0)), ((1.0, true), (1.0, true)));
+        // A frame whose time is up: the first text new to a size still gets it, the next keeps its last one,
+        // and a text never drawn before is drawn, having no other size to be drawn at.
+        warmth.frame.set(Some((long_ago, false)));
+        assert_eq!((warmth.size(1, 2.0), warmth.size(2, 2.0), warmth.size(3, 2.0)), ((2.0, true), (1.0, false), (2.0, true)));
+        // A size known already costs nothing and is always given.
+        assert_eq!(warmth.size(1, 1.0), (1.0, true));
+        // The frame after brings in the text that was left.
+        warmth.frame.set(Some((long_ago, false)));
+        assert_eq!(warmth.size(2, 2.0), (2.0, true));
+    }
+
+    /// A page with three blurred layers side by side, laid out. Each has a size of its own: layers that look
+    /// the same share one picture.
+    fn blurred() -> crate::editor::Editor {
+        let layer = |n: u8| {
+            format!(
+                r##"{{"type":"ellipse","id":"e{n}","x":{},"y":20,"width":{},"height":40,"fill":"#ff0000","effect":{{"type":"blur","radius":4}}}}"##,
+                20 + 60 * n,
+                30 + 5 * n
+            )
+        };
+        let layers = [layer(0), layer(1), layer(2)].join(",");
+        let json = format!(
+            r##"{{"version":"2.22","children":[{{"type":"frame","id":"page","x":0,"y":0,"width":200,"height":80,"layout":"none","fill":"#ffffff","children":[{layers}]}}]}}"##
+        );
+        let mut editor = crate::editor::Editor::new(pen_doc::read(&json).unwrap(), None, 1);
+        editor.refresh(&|_| (10.0, 10.0));
+        editor
+    }
+
+    /// The pictures (textured meshes) among the list's items.
+    fn pictures(list: &DisplayList) -> Vec<egui::TextureId> {
+        let textured = |item: &Item| match item {
+            Item::Mesh { mesh, .. } if mesh.texture_id != egui::TextureId::default() => Some(mesh.texture_id),
+            _ => None,
+        };
+        list.items.iter().filter_map(textured).collect()
+    }
+
+    #[test]
+    fn another_zoom_step_is_baked_beside_the_window_while_the_list_on_screen_stays() {
+        let editor = blurred();
+        let ctx = egui::Context::default();
+        let hidden = std::collections::HashSet::new();
+        let visible = Rect::new(0.0, 0.0, 200.0, 80.0);
+        // No time at all: a build of a scene already on screen gets one picture started and leaves the rest.
+        let mut list = DisplayList { budget: Some(std::time::Duration::ZERO), ..Default::default() };
+        let look = |list: &mut DisplayList, zoom: f32| {
+            // The zoom is looked at as one that has come to rest.
+            list.zoom_seen = zoom;
+            list.zoom_moved = None;
+            list.update(&editor.scene, editor.generation, zoom, visible, Vars::new(&editor.doc), &ctx, None, Color32::WHITE, &hidden, 0);
+        };
+        // The first build is made in one go, whatever the time.
+        look(&mut list, 1.0);
+        let first = pictures(&list);
+        assert_eq!((first.len(), list.unfinished, list.zoom_bucket), (3, None, 0));
+        assert_eq!(first.iter().collect::<std::collections::HashSet<_>>().len(), 3);
+        // Zoomed in two steps: the pictures are made on other threads, one more started with each frame, and
+        // the list on screen stays as it is until they are all there. That takes three frames at the least.
+        let mut frames = 0;
+        loop {
+            look(&mut list, 4.0);
+            frames += 1;
+            if list.unfinished.is_none() {
+                break;
+            }
+            assert_eq!((pictures(&list), list.zoom_bucket), (first.clone(), 0));
+            assert!(frames < 2000, "the pictures never arrived");
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        assert!(frames >= 3, "{frames}");
+        // The new list is whole and shown.
+        let second = pictures(&list);
+        assert_eq!((second.len(), list.zoom_bucket), (3, 2));
+        assert!(second.iter().all(|picture| !first.contains(picture)));
+        assert_eq!(second.iter().collect::<std::collections::HashSet<_>>().len(), 3);
+        // Going back finds the pictures of the step before: one frame, nothing made.
+        look(&mut list, 1.0);
+        assert_eq!((pictures(&list), list.unfinished), (first, None));
+    }
+
+    #[test]
+    fn a_changed_scene_is_built_in_one_go_whatever_the_time() {
+        let mut editor = blurred();
+        let ctx = egui::Context::default();
+        let hidden = std::collections::HashSet::new();
+        let visible = Rect::new(0.0, 0.0, 200.0, 80.0);
+        let mut list = DisplayList { budget: Some(std::time::Duration::ZERO), ..Default::default() };
+        list.update(&editor.scene, editor.generation, 1.0, visible, Vars::new(&editor.doc), &ctx, None, Color32::WHITE, &hidden, 0);
+        let first = pictures(&list);
+        // Every layer gets another colour: all three pictures are baked anew, and at once.
+        for n in 0..3 {
+            editor.change(&format!("e{n}"), &|node| node.fill = serde_json::from_str(r##""#0000ff""##).ok());
+        }
+        editor.touched();
+        editor.refresh(&|_| (10.0, 10.0));
+        list.update(&editor.scene, editor.generation, 1.0, visible, Vars::new(&editor.doc), &ctx, None, Color32::WHITE, &hidden, 0);
+        let second = pictures(&list);
+        assert_eq!((second.len(), list.unfinished), (3, None));
+        assert!(second.iter().all(|picture| !first.contains(picture)));
+    }
 
     #[test]
     fn text_on_a_circle_reads_from_left_to_right_at_the_top_and_at_the_bottom() {
