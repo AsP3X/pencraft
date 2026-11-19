@@ -1322,12 +1322,14 @@ impl App {
             let Some(editor) = self.tabs.get_mut(index) else { return };
             // Panel edits made this frame are laid out before the canvas draws.
             editor.refresh(&measure);
-            self.canvas_view = ui.max_rect();
+            // Human: the canvas fills the window, top bar included; the islands keep to the part under the bar.
+            let view = ui.max_rect();
+            self.canvas_view = view;
             editor.covered = covered(hide, open, !editor.selection.is_empty());
             self.canvas.options = canvas_options(self.prefs.get());
             self.canvas.show(ui, editor, dark);
             if !hide {
-                let rect = ui.max_rect();
+                let rect = egui::Rect::from_min_max(egui::pos2(view.left(), view.top() + TAB_BAR_HEIGHT), view.max);
                 let rail = self.sidebar.rail(ui.ctx(), rect.min + egui::vec2(ISLAND_GAP, ISLAND_GAP), editor, dark);
                 asked = rail;
                 // Human: with the properties island showing, the message bar keeps to the left of it.
@@ -1359,7 +1361,6 @@ impl App {
                 }
                 // Human: the zoom island at the canvas's bottom right corner, left of the properties island: smaller,
                 // the zoom (a click sets 100 %), larger.
-                let view = rect;
                 let place = egui::Rect::from_min_size(
                     egui::pos2(rect.right() - ISLAND_GAP - beside - ZOOM_ISLAND[0], rect.bottom() - ISLAND_GAP - ZOOM_ISLAND[1]),
                     egui::Vec2::from(ZOOM_ISLAND),
@@ -1592,13 +1593,22 @@ impl eframe::App for App {
         self.native_menus(&ctx);
         self.shortcuts(&ctx);
         let palette = theme::palette(self.dark());
-        egui::Panel::top("tabs")
-            .exact_size(TAB_BAR_HEIGHT)
-            .show_separator_line(false)
-            .frame(egui::Frame::new().fill(if self.active.is_some() { palette.canvas } else { palette.background }))
-            .show(ui, |ui| {
-                self.tab_bar(ui);
+        if self.active.is_some() {
+            // Human: over a file the top bar has no background of its own: the two islands float over the canvas,
+            // which runs up to the window's top edge behind them.
+            let window = ctx.content_rect();
+            egui::Area::new(egui::Id::unique("tabs")).fade_in(false).fixed_pos(window.min).order(egui::Order::Foreground).show(&ctx, |ui| {
+                let (bar, _) = ui.allocate_exact_size(egui::vec2(window.width(), TAB_BAR_HEIGHT), egui::Sense::hover());
+                ui.scope_builder(egui::UiBuilder::new().max_rect(bar), |ui| self.tab_bar(ui));
             });
+        } else {
+            egui::Panel::top("tabs").exact_size(TAB_BAR_HEIGHT).show_separator_line(false).frame(egui::Frame::new().fill(palette.background)).show(
+                ui,
+                |ui| {
+                    self.tab_bar(ui);
+                },
+            );
+        }
         // Human: the macOS window buttons sit inside the title island, centred on its height.
         frame.set_traffic_lights_position(&ctx, egui::Rangef::new(TITLE_ISLAND_TOP, TITLE_ISLAND_TOP + TITLE_ISLAND_HEIGHT), TRAFFIC_LIGHT_LEFT);
         if self.active.is_some() {
@@ -1714,15 +1724,16 @@ fn run_on(editor: &mut Editor, command: Command, view: egui::Rect) {
 }
 
 /// What the floating islands cover of the canvas's left, top, right and bottom edge, so zoom-to-fit keeps the
-/// design clear of them: the tool rail at the left, the message bar at the bottom while the sidebar is folded
-/// (`open` under a half), and the properties island at the right while something is `selected`.
+/// design clear of them: the tool rail at the left, the top bar's islands (they stay with the interface
+/// `hidden`), the message bar at the bottom while the sidebar is folded (`open` under a half), and the properties
+/// island at the right while something is `selected`.
 fn covered(hidden: bool, open: f32, selected: bool) -> [f32; 4] {
     if hidden {
-        return [0.0; 4];
+        return [0.0, TAB_BAR_HEIGHT, 0.0, 0.0];
     }
     let bar = if open < 0.5 { ISLAND_GAP + MESSAGE_BAR_HEIGHT } else { 0.0 };
     let properties = if selected { ISLAND_GAP + PROPERTIES_WIDTH } else { 0.0 };
-    [ISLAND_GAP + RAIL_WIDTH, 0.0, properties, bar]
+    [ISLAND_GAP + RAIL_WIDTH, TAB_BAR_HEIGHT, properties, bar]
 }
 
 /// A tab in the title island: its button, and whether it was closed with the cross.
