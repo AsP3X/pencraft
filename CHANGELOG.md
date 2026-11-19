@@ -9,6 +9,58 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.20] - 2026-11-19
+
+Layers snap to each other, unsaved work survives a crash, chats are
+remembered, and PDFs are vectors.
+
+### Added
+
+- **Layers line up with their neighbours as you move them.** "Snap to
+  objects" in Settings → Canvas now does what it says. A layer you move or
+  resize lands on the edges and the middle of the layers beside it, and of
+  the frame it is in, when it comes within a few points of them, and a line
+  shows what it lined up with. A layer moved between two others, or to the
+  end of a row, also lands where the gaps are equal, and each equal gap is
+  marked.
+- **Distribute.** "Distribute horizontally" and "Distribute vertically"
+  spread three or more selected layers so the gaps between them are equal.
+  They are in the action search (⌘P) and, with three or more layers
+  selected, under the alignment buttons.
+- **Unsaved work comes back after a crash.** While you work, Pencraft keeps
+  every design that has unsaved changes on the side, every few seconds. If
+  it didn't close properly (a crash, a power cut, a forced quit), the next
+  start names those designs and offers to restore them. A restored design
+  opens with your changes in it, still unsaved; one step back with Undo is
+  the file as it was last saved. Undo steps from before the crash and an
+  answer the assistant was in the middle of are not kept.
+- **A design's chat is remembered.** What you and the assistant said about
+  a design is there again when you open the design the next time, and the
+  assistant is told the last of it. It is kept on this computer, not in the
+  design's file. Notes on the tools the assistant used are not kept, and a
+  design you move or rename starts a new chat.
+
+### Changed
+
+- **A PDF export is vectors, with real text.** Shapes, gradients, pictures,
+  icons and connectors are written as what they are, and text as text in
+  its own font, which goes into the file: the page stays sharp at any size
+  and its words can be selected and searched. A layer with a shadow, a
+  blur, a pattern or an angular gradient, and text set on a circle or along
+  a line, is put on the page as a picture of itself. A design that uses a
+  material, a background blur or a shader is still one picture on its page,
+  as before.
+- **A board's name takes its board.** Click a board's name to select the
+  board, and drag the name to move it, which helps on a board so full that
+  every click inside lands on a layer.
+- **Opening a file while Pencraft is running opens it there.** A design
+  opened from the Windows Explorer or with `pencraft FILE` now opens as a
+  tab in the Pencraft that is already running, which comes to the front,
+  instead of starting a second one. Double-clicking a design in the Finder
+  on a Mac doesn't open it yet.
+- **Large designs draw a little faster when zoomed far out.** What would be
+  smaller than a pixel on screen is no longer drawn.
+
 ## [0.3.19] - 2026-11-19
 
 Board names stay readable when you zoom out.
@@ -562,7 +614,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.19...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.20...HEAD
+[0.3.20]: https://github.com/AsP3X/pencraft/compare/v0.3.19...v0.3.20
 [0.3.19]: https://github.com/AsP3X/pencraft/compare/v0.3.18...v0.3.19
 [0.3.18]: https://github.com/AsP3X/pencraft/compare/v0.3.17...v0.3.18
 [0.3.17]: https://github.com/AsP3X/pencraft/compare/v0.3.16...v0.3.17
