@@ -9,6 +9,18 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.17] - 2026-11-19
+
+Large designs keep moving after a zoom.
+
+### Fixed
+
+- **A large design no longer crawls after zooming.** In 0.3.16, a design
+  with hundreds of glass or frosted layers made the window stutter for up
+  to a minute each time a zoom came to rest, while their pictures were
+  made in the background. That now takes one to three seconds on a design
+  of 11,000 layers, and the window stays usable meanwhile.
+
 ## [0.3.16] - 2026-11-19
 
 Zooming stays smooth, also on designs with a lot of text or glass.
@@ -514,7 +526,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.16...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.17...HEAD
+[0.3.17]: https://github.com/AsP3X/pencraft/compare/v0.3.16...v0.3.17
 [0.3.16]: https://github.com/AsP3X/pencraft/compare/v0.3.15...v0.3.16
 [0.3.15]: https://github.com/AsP3X/pencraft/compare/v0.3.14...v0.3.15
 [0.3.14]: https://github.com/AsP3X/pencraft/compare/v0.3.13...v0.3.14
