@@ -14,14 +14,18 @@ use crate::chips::Chip;
 use crate::editor::{Editor, Tool};
 use crate::icons;
 use crate::theme::{
-    self, CHAT_ASK_WIDTH, CHAT_STATUS_GAP, CHAT_STATUS_STAY, CHIP_CORNER, CHIP_HEIGHT, CHIP_ICON, CHIP_ICON_AT, CHIP_RADIUS, COMPOSER_HEIGHT,
-    ICON_SIZE, IDEA_ROW, IDEA_ROW_GAP, ISLAND_GAP, ISLAND_PADDING, ISLAND_RADIUS, MESSAGE_BAR_HEIGHT, MESSAGE_BAR_SELECTED_WIDTH,
+    self, CHAT_ASK_WIDTH, CHAT_STATUS_GAP, CHAT_STATUS_STAY, CHIP_CORNER, CHIP_HEIGHT, CHIP_ICON, CHIP_ICON_AT, CHIP_RADIUS, CHIP_THUMB,
+    COMPOSER_HEIGHT, ICON_SIZE, IDEA_ROW, IDEA_ROW_GAP, ISLAND_GAP, ISLAND_PADDING, ISLAND_RADIUS, MESSAGE_BAR_HEIGHT, MESSAGE_BAR_SELECTED_WIDTH,
     MESSAGE_BAR_TYPING_ROOM, MESSAGE_BAR_WIDTH, MESSAGE_TEXT_SIZE, Palette, RAIL_ACTIVE, RAIL_ARROW_STEP, RAIL_MENU_ROW, RAIL_MENU_WIDTH, RAIL_STEP,
     RAIL_WIDTH, SELECTION_CHIP_HEIGHT, SEND_BUTTON, SIDEBAR_ANIMATION, SIDEBAR_GROW_START, SIDEBAR_HEADER_PADDING, SIDEBAR_ROW, SIDEBAR_SLIDE_END,
     SIDEBAR_TEXT_SIZE, SIDEBAR_TITLE_SIZE, SIDEBAR_WIDE_WIDTH, SIDEBAR_WIDTH, ZOOM_ISLAND,
 };
 
 /// Said when a chat control is used: the chat has no assistant behind it in this version.
+/// What the user is told when a pasted picture can't be kept for the message.
+const PICTURE_NOT_TAKEN: &str = "Couldn't paste the picture into the message.";
+/// What the user is told when a picture is pasted into a message that carries all it can.
+const TOO_MANY_FILES: &str = "A message can carry 10 files.";
 /// What the user is told when pasted layers are from another document.
 const NOT_IN_DOCUMENT: &str = "Those layers aren't in this document, so the assistant can't be pointed at them.";
 /// What the mode button says.
@@ -170,6 +174,8 @@ pub enum ChatAsk {
         pointed: Vec<crate::chat::Pointed>,
         /// With each pasted layer as its id and name.
         told: String,
+        /// The pictures pasted into it, in the order they stand in it: each one's name and its file.
+        pasted: Vec<(String, PathBuf)>,
         /// The files attached to it.
         files: Vec<PathBuf>,
     },
@@ -187,6 +193,14 @@ pub enum ChatAsk {
     Assistants,
     /// Take what the user did with a question of the assistant's: an answer picked, or the question closed.
     Answer(crate::conversation::Pick),
+}
+
+impl ChatAsk {
+    /// Sending the plain words `text` with the files `files`: a message that points at nothing.
+    #[must_use]
+    pub fn said(text: String, files: Vec<PathBuf>) -> Self {
+        ChatAsk::Send { shown: text.clone(), pointed: Vec::new(), told: text, pasted: Vec::new(), files }
+    }
 }
 
 impl Default for Sidebar {
@@ -694,7 +708,7 @@ impl Sidebar {
         let palette = theme::palette(look.dark);
         let id = egui::Id::unique("message-field");
         if ui.memory(|memory| memory.has_focus(id)) {
-            self.take_pasted_layers(ui, id, editor, notice);
+            self.take_pasted(ui, id, editor, notice);
         }
         let font = FontId::proportional(MESSAGE_TEXT_SIZE);
         let before = self.draft.clone();
@@ -739,12 +753,17 @@ impl Sidebar {
             }
             let chip = Rect::from_min_max(start.left_top(), end.left_bottom()).translate(offset);
             painter.rect_stroke(chip, CHIP_CORNER, Stroke::new(1.0, palette.outline), StrokeKind::Inside);
-            icons::paint(
-                &painter,
-                Rect::from_center_size(pos2(chip.left() + CHIP_ICON_AT, chip.center().y), Vec2::splat(CHIP_ICON)),
-                self.chips[index].icon,
-                palette.muted,
-            );
+            let icon_at = pos2(chip.left() + CHIP_ICON_AT, chip.center().y);
+            // Human: a pasted picture shows itself, tiny, where a layer shows its kind's icon; the pointer
+            // over the chip shows it larger.
+            if let Some(file) = &self.chips[index].picture {
+                if !crate::chat::pasted::paint_thumb(ui, &painter, Rect::from_center_size(icon_at, Vec2::splat(CHIP_THUMB)), file) {
+                    icons::paint(&painter, Rect::from_center_size(icon_at, Vec2::splat(CHIP_ICON)), self.chips[index].icon, palette.muted);
+                }
+                ui.interact(chip, id.with(("chip", index)), Sense::hover()).on_hover_ui(|ui| crate::chat::pasted::show_preview(ui, file));
+                continue;
+            }
+            icons::paint(&painter, Rect::from_center_size(icon_at, Vec2::splat(CHIP_ICON)), self.chips[index].icon, palette.muted);
             if self.chips[index].layers.len() > 1 {
                 ui.interact(chip, id.with(("chip", index)), Sense::hover()).on_hover_text(self.chips[index].names());
             }
@@ -752,42 +771,80 @@ impl Sidebar {
         if let Some(at) = crate::chips::settle(&before, &mut self.draft, &mut self.chips) {
             set_cursor(ui.ctx(), id, at);
         }
+        // A picture whose chip was taken out of the text is not kept.
+        for gone in chips.iter().filter(|chip| !self.chips.contains(chip)).filter_map(|chip| chip.picture.as_deref()) {
+            crate::chat::pasted::forget(gone);
+        }
         output.response.response
     }
 
-    /// Turns layers pasted into the message box into a chip at the text cursor.
-    fn take_pasted_layers(&mut self, ui: &Ui, id: egui::Id, editor: &Editor, notice: &mut Option<&'static str>) {
-        let mut pasted = Vec::new();
+    /// Turns layers and pictures pasted into the message box into chips at the text cursor.
+    // Human: a screenshot or a copied picture pasted while writing a message belongs to the message, at
+    // the place it was pasted: "make the header look like this one", and the picture stands right there.
+    // Agent: WRITES a pasted picture to its file ([`crate::chat::pasted`]) before its chip is made.
+    fn take_pasted(&mut self, ui: &Ui, id: egui::Id, editor: &Editor, notice: &mut Option<&'static str>) {
+        let (mut layers, mut pictures) = (Vec::new(), Vec::new());
         ui.input_mut(|input| {
             input.events.retain(|event| match event {
                 egui::Event::Paste(text) => crate::app::parse_clipboard(text).is_none_or(|nodes| {
-                    pasted.push(nodes.iter().map(|node| node.id.clone()).collect::<Vec<String>>());
+                    layers.push(nodes.iter().map(|node| node.id.clone()).collect::<Vec<String>>());
                     false
                 }),
+                egui::Event::PasteImage(picture) => {
+                    pictures.push(std::sync::Arc::clone(picture));
+                    false
+                }
                 _ => true,
             });
         });
-        for ids in pasted {
-            let Some(chip) = crate::chips::chip(editor, &ids, &self.draft) else {
-                *notice = Some(NOT_IN_DOCUMENT);
-                continue;
-            };
-            let count = self.draft.chars().count();
-            let cursor = egui::TextEdit::load_state(ui.ctx(), id)
-                .and_then(|state| state.cursor.char_range())
-                .map_or(count, |range| range.primary.index.0.min(count));
-            let at = self.draft.char_indices().nth(cursor).map_or(self.draft.len(), |(byte, _)| byte);
-            // Human: a space follows the chip, so the user types on at once.
-            self.draft.insert_str(at, &format!("{} ", chip.token));
-            set_cursor(ui.ctx(), id, cursor + chip.token.chars().count() + 1);
-            self.chips.push(chip);
+        for ids in layers {
+            match crate::chips::chip(editor, &ids, &self.draft) {
+                Some(chip) => self.place_chip(ui, id, chip),
+                None => *notice = Some(NOT_IN_DOCUMENT),
+            }
         }
+        for picture in pictures {
+            let carried = self.attached.len() + self.chips.iter().filter(|chip| chip.picture.is_some()).count();
+            if carried >= crate::chat::files::MOST_FILES {
+                *notice = Some(TOO_MANY_FILES);
+                break;
+            }
+            let chip = crate::chat::pasted::save(&picture).and_then(|file| {
+                crate::chips::picture_chip(&file, &self.draft).ok_or_else(|| {
+                    crate::chat::pasted::forget(&file);
+                    "the message holds too many pictures".to_owned()
+                })
+            });
+            match chip {
+                Ok(chip) => self.place_chip(ui, id, chip),
+                Err(problem) => {
+                    log::warn!("a pasted picture couldn't be taken: {problem}");
+                    *notice = Some(PICTURE_NOT_TAKEN);
+                }
+            }
+        }
+    }
+
+    /// Puts `chip` into the message at the text cursor.
+    fn place_chip(&mut self, ui: &Ui, id: egui::Id, chip: Chip) {
+        let count = self.draft.chars().count();
+        let cursor = egui::TextEdit::load_state(ui.ctx(), id)
+            .and_then(|state| state.cursor.char_range())
+            .map_or(count, |range| range.primary.index.0.min(count));
+        let at = self.draft.char_indices().nth(cursor).map_or(self.draft.len(), |(byte, _)| byte);
+        // Human: a space follows the chip, so the user types on at once.
+        self.draft.insert_str(at, &format!("{} ", chip.token));
+        set_cursor(ui.ctx(), id, cursor + chip.token.chars().count() + 1);
+        self.chips.push(chip);
     }
 
     /// Sends what is typed: the app takes it. The sidebar stays as it is, folded away or open; folded away, the
     /// line over the message bar says what the assistant is doing.
     fn submit(&mut self) {
         // Human: the spaces typed around the message go; a layer's chip at its start or end stays whole.
+        // The mark that says where a pasted picture belongs is the app's own; one that got into the text
+        // some other way (pasted from elsewhere) is not taken for one.
+        self.draft.retain(|letter| letter != crate::chat::files::MARK);
         let text = crate::chips::trimmed(&self.draft).to_owned();
         // Human: files alone can be sent too; the assistant is then asked to look at them.
         if text.is_empty() && self.attached.is_empty() {
@@ -797,9 +854,10 @@ impl Sidebar {
         // the message; the assistant reads each pasted layer's id with the name, and is told the selection.
         let (shown, pasted) = crate::chips::shown(&text, &self.chips);
         let told = crate::chips::written(&text, &self.chips, Chip::told);
-        let selected = self.selected.iter().map(|(icon, name)| crate::chat::Pointed { at: None, icon, name: name.clone() });
+        let selected = self.selected.iter().map(|(icon, name)| crate::chat::Pointed { at: None, icon, name: name.clone(), picture: None });
         let pointed = selected.chain(pasted).collect();
-        self.chat_asks.push(ChatAsk::Send { shown, pointed, told, files: std::mem::take(&mut self.attached) });
+        let pasted = crate::chips::pictures(&text, &self.chips);
+        self.chat_asks.push(ChatAsk::Send { shown, pointed, told, pasted, files: std::mem::take(&mut self.attached) });
         self.chips.clear();
         self.draft.clear();
         self.view = View::Chat;
@@ -1289,7 +1347,7 @@ mod tests {
 
     #[test]
     fn return_sends_with_or_without_ctrl_and_leaves_the_sidebar_as_it_is() {
-        let sent = |text: &str| vec![ChatAsk::Send { shown: text.to_owned(), pointed: Vec::new(), told: text.to_owned(), files: Vec::new() }];
+        let sent = |text: &str| vec![ChatAsk::said(text.to_owned(), Vec::new())];
         let ctrl = egui::Modifiers::CTRL | egui::Modifiers::COMMAND;
         // From the bar of the folded sidebar: sent, and the sidebar stays folded away.
         assert_eq!(typed_then_return(false, egui::Modifiers::NONE), (sent("hi"), String::new(), true));

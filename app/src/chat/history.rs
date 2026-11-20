@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-use super::{Entry, Role};
+use super::{Entry, Pointed, Role};
 
 /// The most lines kept of one conversation: the newest.
 pub const MOST: usize = 200;
@@ -38,13 +38,51 @@ fn kept(entries: &[Entry]) -> Vec<Value> {
     let said: Vec<Value> = entries
         .iter()
         .filter_map(|entry| match entry.role {
-            Role::User => Some(json!({ "role": "user", "text": entry.text })),
+            Role::User => {
+                let mut line = json!({ "role": "user", "text": entry.text });
+                let pictures = pictures_of(entry);
+                if !pictures.is_empty() {
+                    line["pictures"] = Value::Array(pictures);
+                }
+                Some(line)
+            }
             Role::Assistant => Some(json!({ "role": "assistant", "text": entry.text })),
             Role::Step | Role::Problem => None,
         })
         .collect();
     let from = said.len().saturating_sub(MOST);
     said[from..].to_vec()
+}
+
+/// The pictures pasted into the user's message `entry`, as they are kept: where each one's name stands in the
+/// text, the name, and its file.
+// Human: a message with a picture in it still shows the picture when its design is opened another day.
+fn pictures_of(entry: &Entry) -> Vec<Value> {
+    entry
+        .pointed
+        .iter()
+        .filter_map(|pointed| match (&pointed.at, &pointed.picture) {
+            (Some(at), Some(file)) => Some(json!({ "from": at.start, "to": at.end, "name": pointed.name, "file": file.display().to_string() })),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The pictures kept with a line of the user's whose words are `text`; one whose place isn't in the words is
+/// left out.
+fn pictures_in(line: &Value, text: &str) -> Vec<Pointed> {
+    let place = |picture: &Value, key: &str| picture.get(key).and_then(Value::as_u64).and_then(|at| usize::try_from(at).ok());
+    line.get("pictures")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|picture| {
+            let at = place(picture, "from")?..place(picture, "to")?;
+            let name = picture.get("name").and_then(Value::as_str)?;
+            let file = PathBuf::from(picture.get("file").and_then(Value::as_str)?);
+            (text.get(at.clone()) == Some(name)).then(|| Pointed { at: Some(at), icon: "image", name: name.to_owned(), picture: Some(file) })
+        })
+        .collect()
 }
 
 /// Keeps the conversation `entries` for the design at `design`; one in which nothing was said keeps no file.
@@ -89,7 +127,8 @@ fn read_in(root: &Path, design: &Path) -> Vec<Entry> {
                 "assistant" => Role::Assistant,
                 _ => return None,
             };
-            Some(Entry::new(role, line.get("text").and_then(Value::as_str)?))
+            let text = line.get("text").and_then(Value::as_str)?;
+            Some(Entry { pointed: pictures_in(line, text), ..Entry::new(role, text) })
         })
         .collect()
 }
@@ -119,6 +158,24 @@ mod tests {
         assert_eq!(read_in(&root, shop), Vec::new());
         assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0);
         keep_in(&root, blog, &[]).unwrap();
+    }
+
+    #[test]
+    fn a_pasted_picture_comes_back_in_its_place() {
+        let root = root().join("pictures");
+        drop(std::fs::remove_dir_all(&root));
+        let design = Path::new("/designs/shop.pen");
+        let picture = Pointed { at: Some(5..12), icon: "image", name: "Image 1".to_owned(), picture: Some(PathBuf::from("/p/shot.png")) };
+        // A layer that was pointed at is words again another day; the picture is still a picture.
+        let layer = Pointed { at: Some(17..21), icon: "frame", name: "Card".to_owned(), picture: None };
+        let said = [Entry { pointed: vec![picture.clone(), layer], ..Entry::new(Role::User, "Like Image 1 for Card") }];
+        keep_in(&root, design, &said).unwrap();
+        let back = read_in(&root, design);
+        assert_eq!((back[0].text.as_str(), &back[0].pointed), ("Like Image 1 for Card", &vec![picture]));
+        // A place that doesn't hold the picture's name (a file changed by hand) is no chip.
+        let line = json!({ "pictures": [{ "from": 0, "to": 4, "name": "Image 1", "file": "/p/shot.png" }] });
+        assert_eq!(pictures_in(&line, "Like Image 1"), Vec::new());
+        keep_in(&root, design, &[]).unwrap();
     }
 
     #[test]

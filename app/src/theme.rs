@@ -131,6 +131,8 @@ pub const AGENT_LABEL_TEXT: f32 = 11.0;
 pub const CHIP_CORNER: f32 = 4.0;
 /// Size of the icon in a pasted layer's chip.
 pub const CHIP_ICON: f32 = 12.0;
+/// Size of the tiny preview in a pasted picture's chip.
+pub const CHIP_THUMB: f32 = 14.0;
 /// How far from the chip's left edge the middle of its icon is.
 pub const CHIP_ICON_AT: f32 = 10.0;
 /// The colour of a problem the chat reports.

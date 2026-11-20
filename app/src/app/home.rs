@@ -218,7 +218,7 @@ impl App {
                 self.new_file();
                 self.bring_chat();
                 self.sidebar.pose("chat");
-                self.sidebar.chat_asks.push(ChatAsk::Send { shown: text.clone(), pointed: Vec::new(), told: text, files: Vec::new() });
+                self.sidebar.chat_asks.push(ChatAsk::said(text, Vec::new()));
             }
             Act::Assistants => self.settings.open_named("agents"),
         }

@@ -270,7 +270,7 @@ pub fn run(job: &Job<'_>, stop: &AtomicBool, child: &Mutex<Option<Child>>, tell:
                 tell(Event::Problem("Grok is given the message without its pictures: its program takes none this way.".to_owned()));
             }
             let file = folder.clone().unwrap_or_else(std::env::temp_dir).join(format!("message-{}-{}.txt", std::process::id(), job.chat));
-            if let Err(error) = std::fs::write(&file, job.prompt) {
+            if let Err(error) = std::fs::write(&file, super::files::flat(job.prompt)) {
                 tell(Event::Problem(format!("The message couldn't be handed to Grok: {error}")));
                 return;
             }

@@ -324,7 +324,7 @@ impl App {
             app.pose_sidebar(name);
         }
         if let Some(text) = launch.ask {
-            app.sidebar.chat_asks.push(crate::sidebar::ChatAsk::Send { shown: text.clone(), pointed: Vec::new(), told: text, files: launch.attach });
+            app.sidebar.chat_asks.push(crate::sidebar::ChatAsk::said(text, launch.attach));
         }
         cc.egui_ctx.set_visuals(theme::visuals(app.dark()));
         app

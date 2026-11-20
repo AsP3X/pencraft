@@ -28,6 +28,7 @@ pub mod files;
 pub mod history;
 pub mod ollama;
 pub mod openai;
+pub mod pasted;
 pub mod plain;
 pub mod steps;
 
@@ -121,6 +122,8 @@ pub struct Pointed {
     pub icon: &'static str,
     /// Its name, or "3 layers".
     pub name: String,
+    /// For a picture pasted into the sentence instead of layers: its file, shown small in the chip.
+    pub picture: Option<PathBuf>,
 }
 
 /// One line of the conversation as the panel shows it.
@@ -437,8 +440,21 @@ pub struct Waiting {
     pub told: String,
     /// The files attached to it.
     pub files: Vec<PathBuf>,
+    /// The pictures pasted into its text, in the order they stand in it: each one's name and its file.
+    pub pasted: Vec<(String, PathBuf)>,
     /// The layers it points at, as the panel shows them.
     pub pointed: Vec<Pointed>,
+}
+
+impl Waiting {
+    /// Reads what travels with the message: the pictures pasted into it, then the attached files.
+    ///
+    /// # Errors
+    /// A sentence for the user on the first one that can't be read.
+    pub fn read(&self) -> Result<Vec<files::Attachment>, String> {
+        let pasted = self.pasted.iter().map(|(name, path)| files::read_pasted(name, path));
+        pasted.chain(self.files.iter().map(|path| files::read(path))).collect()
+    }
 }
 
 /// The address messages are posted to for a provider reached at `base`.
@@ -574,8 +590,8 @@ pub fn sample() -> Vec<Entry> {
         // The user had the row of cards selected and pasted one card into the sentence.
         Entry {
             pointed: vec![
-                Pointed { at: None, icon: "frame", name: "Cards".to_owned() },
-                Pointed { at: Some(5..14), icon: "frame", name: "Interface".to_owned() },
+                Pointed { at: None, icon: "frame", name: "Cards".to_owned(), picture: None },
+                Pointed { at: Some(5..14), icon: "frame", name: "Interface".to_owned(), picture: None },
             ],
             ..Entry::new(Role::User, "Make Interface stand out a little more.")
         },
@@ -687,10 +703,10 @@ struct Said<'a> {
 fn answer(ask: &Ask, said: Said<'_>, flag: &AtomicBool, held: &Mutex<Option<Child>>, tell: &dyn Fn(Event) -> bool) {
     match &ask.engine {
         Engine::Plain { program, arguments, model } => {
-            if !said.pictures.is_empty() {
-                tell(Event::Problem("This program is given the message without its pictures.".to_owned()));
-            }
-            plain::run(&plain::Job { program, arguments, model, instructions: &ask.instructions, prompt: said.prompt }, flag, held, tell);
+            // Human: a program that only takes text is told where the pictures lie as files; one that can
+            // open files looks at them there.
+            let prompt = if said.pictures.is_empty() { files::flat(said.prompt) } else { files::with_paths(said.prompt, &ask.files) };
+            plain::run(&plain::Job { program, arguments, model, instructions: &ask.instructions, prompt: &prompt }, flag, held, tell);
         }
         Engine::Code { flavor, program, model } => {
             code::run(
@@ -903,7 +919,7 @@ impl Chat {
                 return None;
             }
         };
-        Some(Waiting { shown, told, files: Vec::new(), pointed: Vec::new() })
+        Some(Waiting { shown, told, files: Vec::new(), pasted: Vec::new(), pointed: Vec::new() })
     }
 
     /// Closes what the assistant asks: the user doesn't want to answer it.
@@ -1097,7 +1113,7 @@ impl Chat {
                 let id = format!("review-{round}");
                 tell(Event::Break);
                 tell(Event::Tool { id: id.clone(), name: critic::TOOL.to_owned() });
-                let verdict = critic::judge(&ask.engine, &ask.text, picture, round == critic::ROUNDS, &held);
+                let verdict = critic::judge(&ask.engine, &files::flat(&ask.text), picture, round == critic::ROUNDS, &held);
                 if let Err(error) = &verdict {
                     log::warn!("the design couldn't be reviewed: {error}");
                 }
@@ -1566,7 +1582,8 @@ mod tests {
 
     #[test]
     fn a_message_written_meanwhile_is_steered_or_waits_its_turn() {
-        let message = |text: &str| Waiting { shown: text.to_owned(), told: text.to_owned(), files: Vec::new(), pointed: Vec::new() };
+        let message =
+            |text: &str| Waiting { shown: text.to_owned(), told: text.to_owned(), files: Vec::new(), pasted: Vec::new(), pointed: Vec::new() };
         // Nothing at work: there is nobody to hand it to.
         assert_eq!(Chat::default().steer(message("a"), "note", &[]), Err(message("a")));
         // Human: the test holds the run's sending end, so the run goes on until the test ends it.
@@ -1587,7 +1604,7 @@ mod tests {
         // The run takes one message and says so; another, handed in too late, goes first among the waiting.
         lock(&inbox).clear();
         chat.steer(message("too late"), "note", &[]).unwrap();
-        let chip = Pointed { at: Some(0..5), icon: "frame", name: "wider".to_owned() };
+        let chip = Pointed { at: Some(0..5), icon: "frame", name: "wider".to_owned(), picture: None };
         send.send(Event::Heard(Waiting { pointed: vec![chip.clone()], ..message("wider") })).unwrap();
         send.send(Event::Done).unwrap();
         assert!(chat.poll() && !chat.running());

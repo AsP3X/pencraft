@@ -1,8 +1,12 @@
 //! Layers pasted into the message box: copied on the canvas and pasted into the text, they become a small chip
-//! that stands for them, so the user can point at layers in the middle of a sentence.
+//! that stands for them, so the user can point at layers in the middle of a sentence. A picture pasted from
+//! the clipboard becomes a chip the same way, with a tiny preview of it.
 //!
 //! In the text a chip is a short run of characters (its token) that no one types by accident; the message box
-//! draws it as a chip. Sent to the assistant, the token becomes the layers' ids and names.
+//! draws it as a chip. Sent to the assistant, the token becomes the layers' ids and names, or the picture's
+//! name with the picture itself right behind it.
+
+use std::path::{Path, PathBuf};
 
 use crate::chat::Pointed;
 use crate::editor::Editor;
@@ -17,7 +21,7 @@ const MOST_NAME: usize = 18;
 /// The most chips with the same name one message can hold.
 const MOST_ALIKE: usize = 99;
 
-/// One pasted reference to layers.
+/// One pasted reference to layers, or one pasted picture.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Chip {
     /// What stands for it in the text.
@@ -28,12 +32,18 @@ pub struct Chip {
     pub icon: &'static str,
     /// The layers it stands for: id and name.
     pub layers: Vec<(String, String)>,
+    /// The file of the picture it stands for, when it is a pasted picture.
+    pub picture: Option<PathBuf>,
 }
 
 impl Chip {
-    /// What the assistant reads in the token's place: each layer's id with its name.
+    /// What the assistant reads in the token's place: each layer's id with its name, or the picture's name
+    /// marked as the place its picture belongs.
     #[must_use]
     pub fn told(&self) -> String {
+        if self.picture.is_some() {
+            return crate::chat::files::marker(&self.label);
+        }
         self.layers.iter().map(|(id, name)| format!("{id} ({})", serde_json::Value::String(name.clone()))).collect::<Vec<_>>().join(", ")
     }
 
@@ -67,7 +77,24 @@ pub fn chip(editor: &Editor, copied: &[String], text: &str) -> Option<Chip> {
         .map(|label| (token_for(&label), label))
         .find(|(token, _)| !text.contains(token))
         .map(|(token, label)| (label, token))?;
-    Some(Chip { token, label, icon, layers: found.into_iter().map(|(id, name, _)| (id.to_owned(), name)).collect() })
+    Some(Chip { token, label, icon, layers: found.into_iter().map(|(id, name, _)| (id.to_owned(), name)).collect(), picture: None })
+}
+
+/// A chip for the pasted picture kept in `file`: "Image 1", or the first number no chip in `text` has yet.
+// Human: the pictures of one message are told apart by their numbers, in the text and for the assistant.
+#[must_use]
+pub fn picture_chip(file: &Path, text: &str) -> Option<Chip> {
+    (1..=MOST_ALIKE)
+        .map(|n| format!("Image {n}"))
+        .map(|label| (padded(&label), label))
+        .find(|(token, _)| !text.contains(token))
+        .map(|(token, label)| Chip { token, label, icon: "image", layers: Vec::new(), picture: Some(file.to_path_buf()) })
+}
+
+/// The pasted pictures of `chips` that stand in `text`, from left to right: each one's name and its file.
+#[must_use]
+pub fn pictures(text: &str, chips: &[Chip]) -> Vec<(String, PathBuf)> {
+    places(text, chips).into_iter().filter_map(|(_, index)| chips[index].picture.clone().map(|file| (chips[index].label.clone(), file))).collect()
 }
 
 /// A chip's name as it stands in a line of text: room for its icon in front, and nothing a line can break at.
@@ -96,7 +123,8 @@ pub fn shown(text: &str, chips: &[Chip]) -> (String, Vec<Pointed>) {
         out.push_str(&text[from..place.start]);
         let start = out.len();
         out.push_str(&chips[index].label);
-        pointed.push(Pointed { at: Some(start..out.len()), icon: chips[index].icon, name: chips[index].label.clone() });
+        let chip = &chips[index];
+        pointed.push(Pointed { at: Some(start..out.len()), icon: chip.icon, name: chip.label.clone(), picture: chip.picture.clone() });
         from = place.end;
     }
     out.push_str(&text[from..]);
@@ -200,6 +228,26 @@ mod tests {
     }
 
     #[test]
+    fn pasted_pictures_are_numbered_chips_and_the_assistant_reads_where_they_stand() {
+        let (shot, logo) = (Path::new("/p/shot.png"), Path::new("/p/logo.png"));
+        let one = picture_chip(shot, "").unwrap();
+        assert_eq!((one.label.as_str(), one.icon, one.picture.as_deref()), ("Image 1", "image", Some(shot)));
+        let two = picture_chip(logo, &format!("Like {}", one.token)).unwrap();
+        assert_eq!(two.label, "Image 2");
+        // The second was put in front of the first: names stay, and the order is the text's.
+        let text = format!("Take {} and {} ", two.token, one.token);
+        let chips = vec![one, two];
+        let mark = crate::chat::files::marker;
+        assert_eq!(written(&text, &chips, Chip::told), format!("Take {} and {}", mark("Image 2"), mark("Image 1")));
+        assert_eq!(pictures(&text, &chips), [("Image 2".to_owned(), logo.to_path_buf()), ("Image 1".to_owned(), shot.to_path_buf())]);
+        let (shown, pointed) = shown(trimmed(&text), &chips);
+        assert_eq!(shown, "Take Image 2 and Image 1");
+        assert_eq!((pointed[0].at.clone(), pointed[0].picture.as_deref(), pointed[1].picture.as_deref()), (Some(5..12), Some(logo), Some(shot)));
+        // A picture taken out of the text is no longer sent.
+        assert_eq!(pictures("Take this", &chips), []);
+    }
+
+    #[test]
     fn a_chip_is_removed_whole() {
         let editor = editor();
         let one = chip(&editor, &ids(&["card"]), "").unwrap();
@@ -237,7 +285,7 @@ mod tests {
         let both = [chip.clone(), dot.clone()];
         let (text, pointed) = shown(trimmed(&format!("  {} wider, then {} ", chip.token, dot.token)), &both);
         assert_eq!(text, format!("Card wider, then {}", dot.label));
-        assert_eq!(pointed[0], Pointed { at: Some(0..4), icon: chip.icon, name: "Card".to_owned() });
+        assert_eq!(pointed[0], Pointed { at: Some(0..4), icon: chip.icon, name: "Card".to_owned(), picture: None });
         assert_eq!(pointed[1].at.clone().map(|at| text[at].to_owned()), Some(dot.label.clone()));
         let (text, pointed) = shown(trimmed(&format!("Make {} wider", chip.token)), std::slice::from_ref(&chip));
         assert_eq!((text.as_str(), pointed[0].at.clone()), ("Make Card wider", Some(5..9)));

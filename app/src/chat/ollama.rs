@@ -61,23 +61,42 @@ fn native(history: &[Value]) -> Vec<Value> {
                 out.push(json!({ "role": "tool", "tool_name": name, "content": message["content"] }));
             }
             _ => match message["content"].as_array() {
-                Some(parts) => {
-                    let words: Vec<&str> = parts.iter().filter_map(|part| part["text"].as_str()).collect();
-                    let pictures: Vec<&str> = parts
-                        .iter()
-                        .filter_map(|part| part.pointer("/image_url/url").and_then(Value::as_str))
-                        .filter_map(|url| url.split_once("base64,").map(|(_, data)| data))
-                        .collect();
-                    let mut told = json!({ "role": message["role"], "content": words.join("\n") });
-                    if !pictures.is_empty() {
-                        told["images"] = json!(pictures);
-                    }
-                    out.push(told);
-                }
+                Some(parts) => out.extend(beside(&message["role"], parts)),
                 None => out.push(message.clone()),
             },
         }
     }
+    out
+}
+
+/// A message whose content is `parts` (words and pictures in the Chat Completions shape) as Ollama takes it:
+/// the words with the pictures beside them.
+// Human: Ollama takes a message's pictures beside its words, not among them. So a message with pictures
+// in the middle of its words goes as several, cut behind each run of pictures: every picture then still
+// follows the words that name it ("like [Image 1]", its picture, "but coloured like [Image 2]", its picture).
+fn beside(role: &Value, parts: &[Value]) -> Vec<Value> {
+    let mut out = Vec::new();
+    let (mut words, mut pictures): (Vec<&str>, Vec<&str>) = (Vec::new(), Vec::new());
+    let mut close = |words: &mut Vec<&str>, pictures: &mut Vec<&str>| {
+        let mut told = json!({ "role": role, "content": words.join("\n") });
+        if !pictures.is_empty() {
+            told["images"] = json!(pictures);
+        }
+        out.push(told);
+        words.clear();
+        pictures.clear();
+    };
+    for part in parts {
+        if let Some(text) = part["text"].as_str() {
+            if !pictures.is_empty() {
+                close(&mut words, &mut pictures);
+            }
+            words.push(text);
+        } else if let Some((_, data)) = part.pointer("/image_url/url").and_then(Value::as_str).and_then(|url| url.split_once("base64,")) {
+            pictures.push(data);
+        }
+    }
+    close(&mut words, &mut pictures);
     out
 }
 
@@ -212,8 +231,25 @@ mod tests {
             json!({ "role": "tool", "tool_call_id": "c1", "content": "One document." }),
             json!({ "role": "tool", "tool_call_id": "c2", "content": "A picture." }),
             json!({ "role": "user", "content": "and plain" }),
+            json!({ "role": "user", "content": [
+                { "type": "text", "text": "Like [Image 1]" },
+                { "type": "image_url", "image_url": { "url": "data:image/png;base64,b25l" } },
+                { "type": "text", "text": " but coloured like [Image 2]" },
+                { "type": "image_url", "image_url": { "url": "data:image/png;base64,dHdv" } },
+                { "type": "text", "text": ", please" },
+                { "type": "image_url", "image_url": { "url": "data:image/png;base64,Zm9v" } },
+            ] }),
         ];
         let told = native(&history);
+        // Pictures among the words: the message is cut behind each, so every picture follows its name.
+        assert_eq!(
+            told[5..],
+            [
+                json!({ "role": "user", "content": "Like [Image 1]", "images": ["b25l"] }),
+                json!({ "role": "user", "content": " but coloured like [Image 2]", "images": ["dHdv"] }),
+                json!({ "role": "user", "content": ", please", "images": ["Zm9v"] }),
+            ]
+        );
         assert_eq!(told[0], json!({ "role": "user", "content": "Like this", "images": ["Zm9v"] }));
         assert_eq!(told[1]["content"], json!(""));
         assert_eq!(told[1]["tool_calls"][0], json!({ "function": { "name": "get_state", "arguments": { "deep": true } } }));
@@ -240,7 +276,7 @@ mod tests {
         };
         let body = request(&job, &history, 8192);
         assert_eq!((&body["model"], &body["stream"], &body["options"]["num_ctx"]), (&json!("some-model"), &json!(true), &json!(8192)));
-        assert_eq!((&body["messages"][0]["role"], body["messages"].as_array().map(Vec::len)), (&json!("system"), Some(6)));
+        assert_eq!((&body["messages"][0]["role"], body["messages"].as_array().map(Vec::len)), (&json!("system"), Some(9)));
         assert!(body["tools"].as_array().is_some_and(|all| all.len() >= 8));
         assert_eq!(endpoint(" http://localhost:11434/v1/ "), "http://localhost:11434/api/chat");
         assert_eq!(endpoint("http://box:11434"), "http://box:11434/api/chat");

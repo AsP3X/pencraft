@@ -42,13 +42,25 @@ fn picture(block: &Value) -> Value {
     json!({ "type": "image_url", "image_url": { "url": format!("data:{};base64,{}", kind.unwrap_or("image/png"), data.unwrap_or_default()) } })
 }
 
-/// A message of the user's: the text alone, or the text and then the pictures.
+/// A message of the user's: the text alone, or the text with each pasted picture right behind its name, and
+/// then the attached pictures.
 fn user(text: &str, pictures: &[Value]) -> Value {
+    use super::files::Piece;
     if pictures.is_empty() {
-        return json!({ "role": "user", "content": text });
+        return json!({ "role": "user", "content": super::files::flat(text) });
     }
-    let mut parts = vec![json!({ "type": "text", "text": text })];
-    parts.extend(pictures.iter().map(picture));
+    let mut parts = Vec::new();
+    let mut pasted = 0;
+    for piece in super::files::pieces(text, pictures.len()) {
+        match piece {
+            Piece::Words(words) => parts.push(json!({ "type": "text", "text": words })),
+            Piece::Picture(which) => {
+                parts.extend(pictures.get(which).map(picture));
+                pasted += 1;
+            }
+        }
+    }
+    parts.extend(pictures[pasted..].iter().map(picture));
     json!({ "role": "user", "content": parts })
 }
 
@@ -432,7 +444,7 @@ mod tests {
         assert_eq!(history[0]["content"], json!([{ "type": "text", "text": "Like this" }, { "type": "text", "text": NO_PICTURES }]));
         assert!(!without_pictures(&mut history));
         // A message sent meanwhile joins the conversation once.
-        let message = Waiting { shown: "Wider".to_owned(), told: "Wider".to_owned(), files: Vec::new(), pointed: Vec::new() };
+        let message = Waiting { shown: "Wider".to_owned(), told: "Wider".to_owned(), files: Vec::new(), pasted: Vec::new(), pointed: Vec::new() };
         lock(&inbox).push(api::Steer { message, prompt: "note\n\nWider".to_owned(), pictures: Vec::new() });
         assert!(heard(&job, &mut history, &|_| true) && !heard(&job, &mut history, &|_| true));
         assert_eq!(history[2], json!({ "role": "user", "content": "note\n\nWider" }));

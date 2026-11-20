@@ -18,7 +18,7 @@ use crate::theme::{
     self, CHAT_APPEAR, CHAT_BUBBLE_SHARE, CHAT_COPIED_STAYS, CHAT_DOT, CHAT_DOT_GAP, CHAT_DOT_LIFT, CHAT_DOT_PACE, CHAT_GAP, CHAT_ICON_AT_WORK,
     CHAT_ICON_BREATH, CHAT_ICON_BURST, CHAT_ICON_FROM_OWN, CHAT_ICON_LEAST, CHAT_ICON_RING, CHAT_ICON_SETTLE, CHAT_ICON_SHAKE, CHAT_ICON_TAIL,
     CHAT_ICON_TURN, CHAT_NOTE_GAP, CHAT_NOTE_ICON, CHAT_RISE, CHAT_STATUS_HEIGHT, CHAT_STATUS_HOLD, CHAT_STATUS_MORPH, CHAT_STATUS_PAD,
-    CHAT_THOUGHT_GLIDE, CHAT_THOUGHT_ROWS, CHAT_WAIT_COUNTED, CHAT_WRITE_CATCH_UP, CHAT_WRITE_PACE, CHIP_CORNER, CHIP_ICON, CHIP_ICON_AT,
+    CHAT_THOUGHT_GLIDE, CHAT_THOUGHT_ROWS, CHAT_WAIT_COUNTED, CHAT_WRITE_CATCH_UP, CHAT_WRITE_PACE, CHIP_CORNER, CHIP_ICON, CHIP_ICON_AT, CHIP_THUMB,
     ISLAND_RADIUS, MESSAGE_TEXT_SIZE, PROBLEM, Palette, SIDEBAR_TEXT_SIZE,
 };
 
@@ -323,10 +323,10 @@ fn pointing(ui: &mut Ui, entry: &Entry, scale: f32, palette: Palette) {
     let font = FontId::proportional(MESSAGE_TEXT_SIZE * scale);
     let plain = TextFormat { font_id: font.clone(), color: palette.foreground, ..TextFormat::default() };
     let tinted = TextFormat { font_id: font, color: palette.muted, background: palette.island, ..TextFormat::default() };
-    let mut pasted: Vec<(&std::ops::Range<usize>, &'static str)> = entry
+    let mut pasted: Vec<(&std::ops::Range<usize>, &crate::chat::Pointed)> = entry
         .pointed
         .iter()
-        .filter_map(|layer| layer.at.as_ref().map(|at| (at, layer.icon)))
+        .filter_map(|layer| layer.at.as_ref().map(|at| (at, layer)))
         .filter(|(at, _)| entry.text.get(at.start..at.end).is_some())
         .collect();
     pasted.sort_by_key(|(at, _)| at.start);
@@ -334,7 +334,7 @@ fn pointing(ui: &mut Ui, entry: &Entry, scale: f32, palette: Palette) {
     // Where each chip is in what is laid out, in letters, with its icon.
     let mut chips = Vec::new();
     let (mut from, mut letters) = (0, 0);
-    for (at, icon) in pasted {
+    for (at, layer) in pasted {
         if at.start < from {
             continue;
         }
@@ -343,7 +343,7 @@ fn pointing(ui: &mut Ui, entry: &Entry, scale: f32, palette: Palette) {
         letters += before.chars().count();
         let chip = crate::chips::padded(&entry.text[at.start..at.end]);
         job.append(&chip, 0.0, tinted.clone());
-        chips.push((letters, letters + chip.chars().count(), icon));
+        chips.push((letters, letters + chip.chars().count(), layer));
         letters += chip.chars().count();
         from = at.end;
     }
@@ -371,7 +371,7 @@ fn pointing(ui: &mut Ui, entry: &Entry, scale: f32, palette: Palette) {
         }
         let (place, _) = ui.allocate_exact_size(galley.size(), Sense::hover());
         ui.painter().galley(place.min, std::sync::Arc::clone(&galley), palette.foreground);
-        for (start, end, icon) in chips {
+        for (start, end, layer) in chips {
             let (start, end) = (galley.pos_from_cursor(egui::text::CCursor::new(start)), galley.pos_from_cursor(egui::text::CCursor::new(end)));
             // A chip too long for its line is left as tinted text.
             if (start.top() - end.top()).abs() > 1.0 {
@@ -379,8 +379,16 @@ fn pointing(ui: &mut Ui, entry: &Entry, scale: f32, palette: Palette) {
             }
             let chip = egui::Rect::from_min_max(start.left_top(), end.left_bottom()).translate(place.min.to_vec2());
             ui.painter().rect_stroke(chip, CHIP_CORNER, egui::Stroke::new(1.0, palette.outline), egui::StrokeKind::Inside);
-            let icon_at = egui::Rect::from_center_size(pos2(chip.left() + CHIP_ICON_AT, chip.center().y), Vec2::splat(CHIP_ICON));
-            icons::paint(ui.painter(), icon_at, icon, palette.muted);
+            let middle = pos2(chip.left() + CHIP_ICON_AT, chip.center().y);
+            // A pasted picture shows itself, tiny, and larger under the pointer.
+            if let Some(file) = &layer.picture
+                && crate::chat::pasted::paint_thumb(ui, ui.painter(), egui::Rect::from_center_size(middle, Vec2::splat(CHIP_THUMB)), file)
+            {
+                ui.interact(chip, egui::Id::unique(("sent-picture", file, chip.min.x.to_bits(), chip.min.y.to_bits())), Sense::hover())
+                    .on_hover_ui(|ui| crate::chat::pasted::show_preview(ui, file));
+                continue;
+            }
+            icons::paint(ui.painter(), egui::Rect::from_center_size(middle, Vec2::splat(CHIP_ICON)), layer.icon, palette.muted);
         }
     });
 }

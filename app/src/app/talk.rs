@@ -233,7 +233,7 @@ impl App {
                     self.assistant_asked = None;
                     self.prefs.update(|prefs| prefs.agents.chat_model = id);
                 }
-                ChatAsk::Send { shown, pointed, told, files } => self.send_chat(shown, pointed, told, &files, ctx),
+                ChatAsk::Send { shown, pointed, told, files, pasted } => self.send_chat(shown, pointed, told, &files, pasted, ctx),
                 ChatAsk::Attach => self.ask_attach(),
                 ChatAsk::Answer(pick) => self.answer_chat(&pick, ctx),
             }
@@ -304,7 +304,15 @@ impl App {
     /// at once or to the end of the waiting messages.
     // Human: "Always steer messages" hands a message to a working assistant that can take one (an API
     // assistant, between its steps); without it, or with Claude Code, the message waits for the run to end.
-    fn send_chat(&mut self, shown: String, mut pointed: Vec<chat::Pointed>, text: String, paths: &[PathBuf], ctx: &egui::Context) {
+    fn send_chat(
+        &mut self,
+        shown: String,
+        mut pointed: Vec<chat::Pointed>,
+        text: String,
+        paths: &[PathBuf],
+        pasted: Vec<(String, PathBuf)>,
+        ctx: &egui::Context,
+    ) {
         // Human: the panel shows the attached files by name under the message; a message of files alone asks
         // the assistant to look at them.
         let names: Vec<String> = paths.iter().map(|path| files::name(path)).collect();
@@ -323,7 +331,7 @@ impl App {
             Some(picked) => format!("{picked}\n\n{told}"),
             None => told,
         };
-        self.hand_over(Waiting { shown, told, files: paths.to_vec(), pointed }, ctx);
+        self.hand_over(Waiting { shown, told, files: paths.to_vec(), pasted, pointed }, ctx);
     }
 
     /// Does what the user did in a question of the assistant's: an answer is ticked or written, or what is
@@ -353,8 +361,7 @@ impl App {
     /// Hands `message` to the assistant at work in the chat `id`; if it can't take it any more, the message
     /// waits its turn.
     fn steer_chat(&mut self, id: u64, message: Waiting) {
-        let attached: Result<Vec<files::Attachment>, String> = message.files.iter().map(|path| files::read(path)).collect();
-        match attached {
+        match message.read() {
             Ok(attached) => {
                 let context = self.chat_context(self.talk(id).and_then(|talk| talk.doc));
                 if let Some(talk) = self.talks.iter_mut().find(|talk| talk.id == id)
@@ -378,8 +385,8 @@ impl App {
 
     /// Starts the run that answers `message` in the chat `id` with the chosen assistant.
     fn start_chat(&mut self, id: u64, message: Waiting, ctx: &egui::Context) {
-        let Waiting { shown, told: text, files: paths, pointed } = message;
-        let attached: Result<Vec<files::Attachment>, String> = paths.iter().map(|path| files::read(path)).collect();
+        let attached = message.read();
+        let Waiting { shown, told: text, pointed, .. } = message;
         self.find_assistants();
         let refusal = match &attached {
             Err(why) => Some(why.clone()),

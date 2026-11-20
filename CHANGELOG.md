@@ -9,6 +9,14 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Added
+
+- Paste a picture into a chat message. A screenshot or a copied picture
+  becomes a small chip with a tiny preview, right where you pasted it, and the
+  assistant gets the picture at that place in your sentence. Hold the pointer
+  over the chip to see it larger. The picture is still there when you open the
+  design another day.
+
 ## [0.3.26] - 2026-11-20
 
 Search for models and assistants instead of scrolling for them, let the
