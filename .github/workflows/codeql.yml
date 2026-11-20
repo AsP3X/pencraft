@@ -1,0 +1,55 @@
+name: CodeQL
+
+# GitHub's code scanning, set up by hand rather than by the repository's
+# "default setup" switch, because only a workflow can leave a rule out. The
+# two can't run side by side: default setup must stay off in the repository's
+# settings (Security -> Code scanning) or the results of this one are refused.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  schedule:
+    # Mondays, so that new queries reach code that has not changed.
+    - cron: '23 4 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # Not swift: the one Swift file draws the icon and is not built here.
+        language: [actions, python, rust]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          config: |
+            query-filters:
+              # egui tells widgets apart by an "id salt", and every label or
+              # id string given to one is reported as a hard-coded
+              # cryptographic salt. Pencraft has no salts or keys of its own
+              # to hard-code: API keys are kept in the system's keychain and
+              # a download's checksum is worked out by the system's own tool.
+              - exclude:
+                  id: rust/hard-coded-cryptographic-value
+
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
