@@ -136,19 +136,31 @@ pub struct Entry {
     pub step: Option<Step>,
     /// For the note of an `ask_user` call: what it asks the user, and how far the user has got with it.
     pub asked: Option<asks::Asked>,
+    /// For a problem: what is known about the run it ended or troubled, each with its name ("Assistant").
+    pub about: Vec<(&'static str, String)>,
 }
 
 impl Entry {
     /// A line from `role` saying `text`.
     pub fn new(role: Role, text: impl Into<String>) -> Self {
-        Entry { role, text: text.into(), pointed: Vec::new(), step: None, asked: None }
+        Entry { role, text: text.into(), pointed: Vec::new(), step: None, asked: None, about: Vec::new() }
+    }
+
+    /// A problem written out to be copied into a report: what went wrong, what is known about the run, and
+    /// which Pencraft on which system it happened in.
+    // Human: nothing of the conversation is in it, and no key: it can be pasted anywhere.
+    #[must_use]
+    pub fn report(&self) -> String {
+        let app = format!("Pencraft {} on {} ({})", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH);
+        let facts = self.about.iter().map(|(name, fact)| (*name, fact.as_str())).chain([("App", app.as_str())]);
+        std::iter::once(("Problem", self.text.as_str())).chain(facts).map(|(name, fact)| format!("{name}: {fact}")).collect::<Vec<_>>().join("\n")
     }
 
     /// A note on a call of `tool` that is in `state`, saying the tool's usual words and `detail`.
     fn note(tool: &str, state: State, detail: &str) -> Self {
         let text = if state == State::Failed { steps::failed(tool) } else { steps::did(tool) };
         let step = Step { tool: tool.to_owned(), id: String::new(), detail: detail.to_owned(), state, times: 1, named: false };
-        Entry { role: Role::Step, text, pointed: Vec::new(), step: Some(step), asked: None }
+        Entry { step: Some(step), ..Entry::new(Role::Step, text) }
     }
 }
 
@@ -256,6 +268,41 @@ pub fn span(time: Duration) -> String {
     match time.as_secs() {
         seconds @ 0..60 => format!("{seconds} s"),
         seconds => format!("{} min {} s", seconds / 60, seconds % 60),
+    }
+}
+
+/// The second `seconds` after the start of 1970 as a date and a time of day, in UTC: "2026-11-20 13:32:10 UTC".
+// Human: a report is read by someone in another place; one clock for all saves asking which.
+#[must_use]
+pub fn stamp(seconds: u64) -> String {
+    // The civil date of a day number, by Howard Hinnant's method: years are counted from March, in eras of 400.
+    let (days, of_day) = (seconds / 86_400 + 719_468, seconds % 86_400);
+    let (era, day_of_era) = (days / 146_097, days % 146_097);
+    let year_of_era = (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_from_march = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_from_march + 2) / 5 + 1;
+    let month = if month_from_march < 10 { month_from_march + 3 } else { month_from_march - 9 };
+    let year = year_of_era + era * 400 + u64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02} UTC", of_day / 3_600, of_day % 3_600 / 60, of_day % 60)
+}
+
+/// What answers through `engine`, for a report of a problem: the kind of API and the provider's host, or the
+/// program. Never the key, and of an address only the host.
+fn via(engine: &Engine) -> String {
+    let file = |program: &Path| program.file_name().map_or_else(|| program.display().to_string(), |name| name.to_string_lossy().into_owned());
+    match engine {
+        Engine::Code { flavor, .. } => flavor.name().to_owned(),
+        Engine::Plain { program, .. } => format!("the program {}", file(program)),
+        Engine::Api { wire, endpoint, .. } => {
+            let api = match wire {
+                Wire::Messages => MESSAGES_API,
+                Wire::Completions => COMPLETIONS_API,
+                Wire::Ollama => OLLAMA_API,
+            };
+            let host = endpoint.split_once("://").map_or(endpoint.as_str(), |(_, rest)| rest).split(['/', '?', '#']).next().unwrap_or_default();
+            format!("{api} at {host}")
+        }
     }
 }
 
@@ -540,7 +587,15 @@ pub fn sample() -> Vec<Entry> {
         ),
         Entry::new(Role::User, "Export it as a PNG to my desktop."),
         Entry::note("export_layers", State::Failed, "card.png"),
-        Entry::new(Role::Problem, "The provider couldn't be reached: connection refused"),
+        Entry {
+            about: vec![
+                ("Assistant", "Opus 5.5 through Anthropic Messages at api.anthropic.com".to_owned()),
+                ("While", "Exporting layers (card.png)".to_owned()),
+                ("After", "12 s and 1 tool call".to_owned()),
+                ("When", stamp(1_795_181_530)),
+            ],
+            ..Entry::new(Role::Problem, "The provider answered with an error (500): Internal Server Error (request req_011CZ4kPq)")
+        },
     ]
 }
 
@@ -684,6 +739,10 @@ struct Run {
     child: Arc<Mutex<Option<Child>>>,
     /// The answering model's name.
     model: String,
+    /// What it answers through ([`via`]).
+    via: String,
+    /// When the run began.
+    started: Instant,
     /// Where a message for the run goes while it works; `None` for an engine that takes none (Claude Code
     /// reads its one message when it starts).
     steering: Option<Arc<api::Inbox>>,
@@ -776,7 +835,15 @@ impl Chat {
             .clone_into(&mut self.thought);
         let since = Instant::now().checked_sub(Duration::from_secs(14));
         (self.thinking, self.quiet, self.reached) = (since, since, true);
-        self.run = Some(Run { events, stop, child: Arc::new(Mutex::new(None)), model: "Opus 5.5".to_owned(), steering: None });
+        self.run = Some(Run {
+            events,
+            stop,
+            child: Arc::new(Mutex::new(None)),
+            model: "Opus 5.5".to_owned(),
+            via: KIND_CLAUDE.to_owned(),
+            started: Instant::now(),
+            steering: None,
+        });
     }
 
     /// Whether the assistant at work takes a further message while it works.
@@ -966,7 +1033,7 @@ impl Chat {
         // Human: the ids of the run's `ask_user` calls, and whether one of them asked a question: the run then
         // waits for the user's answer, and nothing is reviewed or sent back to the assistant meanwhile.
         let asking: Mutex<(Vec<String>, bool)> = Mutex::new((Vec::new(), false));
-        let model = ask.model.clone();
+        let (model, via) = (ask.model.clone(), via(&ask.engine));
         // Human: an API run asks the model again after every tool it used, and can hand it a new message of
         // the user's then; a program is given its one message when it starts.
         let steering = matches!(ask.engine, Engine::Api { .. }).then(|| Arc::new(api::Inbox::default()));
@@ -1022,7 +1089,7 @@ impl Chat {
             tell(Event::Done);
         });
         match started {
-            Ok(_) => self.run = Some(Run { events, stop, child, model, steering }),
+            Ok(_) => self.run = Some(Run { events, stop, child, model, via, started: Instant::now(), steering }),
             Err(error) => self.entries.push(Entry::new(Role::Problem, format!("The assistant couldn't be started: {error}"))),
         }
     }
@@ -1062,6 +1129,8 @@ impl Chat {
 
     /// Takes in one thing the run said, at `now`.
     fn hear(&mut self, event: Event, now: Instant) {
+        // Human: what a problem interrupted is noted before the problem itself changes it.
+        let about = if matches!(event, Event::Problem(_)) { self.about(now) } else { Vec::new() };
         // Human: the model thinks until it writes, uses a tool or is done; what its engine tells for its own
         // books (the session, the record of the conversation) says nothing about that.
         match &event {
@@ -1104,10 +1173,30 @@ impl Chat {
             }
             Event::Problem(text) => {
                 self.fresh = true;
-                self.entries.push(Entry::new(Role::Problem, text));
+                self.entries.push(Entry { about, ..Entry::new(Role::Problem, text) });
             }
             Event::Done => {}
         }
+    }
+
+    /// What is known at `now` about the run a problem comes from: who answers and through what, when, how far
+    /// into the answer, and what the assistant was doing.
+    fn about(&self, now: Instant) -> Vec<(&'static str, String)> {
+        let Some(run) = &self.run else { return Vec::new() };
+        let at_work = self.entries.iter().rev().filter_map(|entry| entry.step.as_ref()).find(|step| step.state == State::Running);
+        let doing = match at_work {
+            Some(step) if step.detail.is_empty() => steps::doing(&step.tool),
+            Some(step) => format!("{} ({})", steps::doing(&step.tool), step.detail),
+            None => Pause::of(&self.entries, self.reached, self.thinking.is_some()).words(&run.model),
+        };
+        let clock = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_secs());
+        let steps = self.entries.iter().rev().take_while(|entry| entry.role != Role::User).filter(|entry| entry.step.is_some()).count();
+        vec![
+            ("Assistant", format!("{} through {}", run.model, run.via)),
+            ("While", doing),
+            ("After", format!("{} and {steps} tool {}", span(now.saturating_duration_since(run.started)), if steps == 1 { "call" } else { "calls" })),
+            ("When", stamp(clock)),
+        ]
     }
 
     /// The model has stopped thinking at `now`: a thought that took a while leaves a note saying how long.
@@ -1210,6 +1299,8 @@ mod tests {
             stop: Arc::new(AtomicBool::new(false)),
             child: Arc::new(Mutex::new(None)),
             model: "Opus 5.5".to_owned(),
+            via: "Anthropic Messages at api.anthropic.com".to_owned(),
+            started: Instant::now(),
             steering: Some(Arc::new(api::Inbox::default())),
         };
         Chat { entries: vec![Entry::new(Role::User, "Make a card")], run: Some(run), fresh: true, ..Chat::default() }
@@ -1300,6 +1391,47 @@ mod tests {
         assert_eq!((span(Duration::from_secs(59)), span(Duration::from_secs(65))), ("59 s".to_owned(), "1 min 5 s".to_owned()));
         chat.stop();
         assert_eq!(chat.pause(), None);
+    }
+
+    #[test]
+    fn a_problem_says_what_it_interrupted_and_can_be_reported() {
+        let mut chat = with_events(Vec::new());
+        let start = chat.run.as_ref().map_or_else(Instant::now, |run| run.started);
+        let after = |seconds: u64| start + Duration::from_secs(seconds);
+        chat.hear(Event::Tool { id: "t1".to_owned(), name: "get_state".to_owned() }, after(1));
+        chat.hear(Event::ToolEnd { id: "t1".to_owned(), failed: false }, after(1));
+        chat.hear(Event::Tool { id: "t2".to_owned(), name: "search_web".to_owned() }, after(2));
+        chat.hear(Event::ToolInput { id: "t2".to_owned(), input: serde_json::json!({ "query": "pixel fonts" }) }, after(2));
+        chat.hear(Event::Problem("Internal Server Error".to_owned()), after(65));
+        let problem = chat.entries.last().unwrap();
+        let fact = |name: &str| problem.about.iter().find(|(known, _)| *known == name).map(|(_, fact)| fact.as_str());
+        assert_eq!(fact("Assistant"), Some("Opus 5.5 through Anthropic Messages at api.anthropic.com"));
+        assert_eq!(fact("While"), Some("Searching the web (“pixel fonts”)"));
+        assert_eq!(fact("After"), Some("1 min 5 s and 2 tool calls"));
+        assert!(fact("When").is_some_and(|when| when.ends_with(" UTC")));
+        let report = problem.report();
+        assert!(report.starts_with("Problem: Internal Server Error\nAssistant: Opus 5.5 through"), "{report}");
+        assert!(report.lines().last().is_some_and(|app| app.starts_with(concat!("App: Pencraft ", env!("CARGO_PKG_VERSION"), " on "))));
+        // A problem outside a run is reported too, with what there is.
+        let mut idle = Chat::default();
+        idle.refuse("Hello".to_owned(), "No assistant is set up.");
+        assert!(idle.entries[1].about.is_empty() && idle.entries[1].report().starts_with("Problem: No assistant is set up.\nApp: "));
+        // Dates, across a leap day and at the start of the count.
+        assert_eq!((stamp(0), stamp(1_795_181_530)), ("1970-01-01 00:00:00 UTC".to_owned(), "2026-11-20 13:32:10 UTC".to_owned()));
+        assert_eq!(stamp(1_709_251_199), "2024-02-29 23:59:59 UTC");
+        // Of a provider only the kind of API and the host are told.
+        let api = Engine::Api {
+            wire: Wire::Completions,
+            endpoint: "https://openrouter.ai/api/v1/chat/completions?x=1".to_owned(),
+            official: false,
+            model: "m".to_owned(),
+            key: KeySource::None,
+        };
+        assert_eq!(via(&api), "OpenAI Completions at openrouter.ai");
+        assert_eq!(
+            via(&Engine::Plain { program: PathBuf::from("/usr/local/bin/aider"), arguments: String::new(), model: String::new() }),
+            "the program aider"
+        );
     }
 
     #[test]

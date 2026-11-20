@@ -219,9 +219,37 @@ impl Turn {
                 }
                 Ok(None)
             }
-            Some("error") => Err(text("/error/message").unwrap_or("the provider reported an error").to_owned()),
+            Some("error") => Err(stream_error(&event["error"])),
             _ => Ok(None),
         }
+    }
+}
+
+/// What a provider's `error` in the middle of a streamed answer says, as a sentence for the user: its words,
+/// and the kind or code it gives.
+// Human: the provider's words alone ("Internal Server Error") don't say who said them or when; a report of
+// the problem needs both.
+pub(super) fn stream_error(error: &Value) -> String {
+    let said = error.as_str().or_else(|| error["message"].as_str()).map(str::trim).filter(|said| !said.is_empty()).unwrap_or("no reason given");
+    let kind = [&error["type"], &error["code"]].into_iter().find_map(|kind| match kind {
+        Value::String(kind) if !kind.is_empty() => Some(kind.clone()),
+        Value::Number(code) => Some(code.to_string()),
+        _ => None,
+    });
+    let kind = kind.map(|kind| format!(" ({kind})")).unwrap_or_default();
+    format!("The provider reported an error while the model was answering{kind}: {said}")
+}
+
+/// The name the provider gave this request, which its support can find it by; `None` when it gave none.
+pub(super) fn request_id(response: &ureq::http::Response<ureq::Body>) -> Option<String> {
+    ["request-id", "x-request-id"].into_iter().find_map(|name| response.headers().get(name)?.to_str().ok().map(str::to_owned))
+}
+
+/// `problem` with the request's name after it, when the provider gave one. A stopped run's empty problem stays empty.
+pub(super) fn named(problem: String, request: Option<&str>) -> String {
+    match request {
+        Some(request) if !problem.is_empty() => format!("{problem} (request {request})"),
+        _ => problem,
     }
 }
 
@@ -278,8 +306,9 @@ pub(super) fn post(
             std::thread::sleep(Duration::from_secs(u64::from(attempt) * 3));
             continue;
         }
+        let request = request_id(&response);
         let said = response.body_mut().read_to_string().unwrap_or_default();
-        return Err((status, refusal_of(status, &said)));
+        return Err((status, named(refusal_of(status, &said), request.as_deref())));
     }
 }
 
@@ -298,15 +327,16 @@ fn ask(
         headers.push(("anthropic-beta", FALLBACK_BETA));
     }
     let mut response = post(agent, job.endpoint, &headers, &body.to_string(), stop).map_err(|(_, said)| said)?;
+    let request = request_id(&response);
     let mut turn = Turn::default();
     for line in BufReader::new(response.body_mut().as_reader()).lines() {
         if stop.load(Ordering::Relaxed) {
             return Err(String::new());
         }
-        let line = line.map_err(|error| format!("The connection broke while the model was answering: {error}"))?;
+        let line = line.map_err(|error| named(format!("The connection broke while the model was answering: {error}"), request.as_deref()))?;
         let Some(data) = line.strip_prefix("data:") else { continue };
         let Ok(event) = serde_json::from_str::<Value>(data.trim()) else { continue };
-        if let Some(event) = turn.take(&event)?
+        if let Some(event) = turn.take(&event).map_err(|error| named(error, request.as_deref()))?
             && !tell(event)
         {
             return Err(String::new());
@@ -504,7 +534,7 @@ mod tests {
         assert_eq!((turn.broken.as_slice(), turn.stop_reason.as_deref()), (&["t3".to_owned()][..], Some("tool_use")));
         assert_eq!(
             turn.take(&json!({ "type": "error", "error": { "type": "overloaded_error", "message": "Overloaded" } })).unwrap_err(),
-            "Overloaded"
+            "The provider reported an error while the model was answering (overloaded_error): Overloaded"
         );
     }
 

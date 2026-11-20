@@ -97,7 +97,7 @@ impl Turn {
     // place out starts a new call with every piece that has an id.
     fn take(&mut self, event: &Value) -> Result<Vec<Event>, String> {
         if let Some(error) = event.get("error").filter(|error| !error.is_null()) {
-            return Err(error.get("message").and_then(Value::as_str).unwrap_or("the provider reported an error").to_owned());
+            return Err(api::stream_error(error));
         }
         let mut told = Vec::new();
         let text = |value: &Value, key: &str| value.get(key).and_then(Value::as_str).filter(|text| !text.is_empty()).map(str::to_owned);
@@ -177,18 +177,20 @@ fn ask(
 ) -> Result<Turn, (u16, String)> {
     let headers: Vec<(&str, &str)> = bearer.iter().map(|bearer| ("authorization", *bearer)).collect();
     let mut response = api::post(agent, job.endpoint, &headers, &body.to_string(), stop)?;
+    let request = api::request_id(&response);
+    let named = |problem: String| (0, api::named(problem, request.as_deref()));
     let mut turn = Turn::default();
     for line in BufReader::new(response.body_mut().as_reader()).lines() {
         if stop.load(Ordering::Relaxed) {
             return Err((0, String::new()));
         }
-        let line = line.map_err(|error| (0, format!("The connection broke while the model was answering: {error}")))?;
+        let line = line.map_err(|error| named(format!("The connection broke while the model was answering: {error}")))?;
         let Some(data) = line.strip_prefix("data:").map(str::trim) else { continue };
         if data == "[DONE]" {
             break;
         }
         let Ok(event) = serde_json::from_str::<Value>(data) else { continue };
-        for event in turn.take(&event).map_err(|error| (0, error))? {
+        for event in turn.take(&event).map_err(named)? {
             if !tell(event) {
                 return Err((0, String::new()));
             }
@@ -379,7 +381,10 @@ mod tests {
         assert_eq!(calls[0], json!({ "id": "c1", "type": "function", "function": { "name": "edit_layers", "arguments": "{\"operations\":[]}" } }));
         // A call without input goes back as an empty object, the way the API wants it.
         assert_eq!((&calls[1]["function"]["arguments"], &calls[2]["id"]), (&json!("{}"), &json!("c3")));
-        assert_eq!(Turn::default().take(&json!({ "error": { "message": "Rate limited" } })).unwrap_err(), "Rate limited");
+        assert_eq!(
+            Turn::default().take(&json!({ "error": { "message": "Rate limited", "code": 429 } })).unwrap_err(),
+            "The provider reported an error while the model was answering (429): Rate limited"
+        );
         // Words alone go back without a list of calls.
         let plain = Turn { text: "Done.".to_owned(), ..Turn::default() };
         assert!(plain.message().get("tool_calls").is_none());

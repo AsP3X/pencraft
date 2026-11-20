@@ -113,6 +113,8 @@ pub const ANSWERED_ICON: &str = "check";
 pub const SUGGESTED_ICON: &str = "lightbulb";
 /// The icon of an answer the user gave to a question.
 pub const PICKED_ICON: &str = "corner-down-right";
+/// The icon of the button that copies a problem's details.
+pub const COPY_ICON: &str = "copy";
 /// The icon that closes a question.
 pub const CLOSE_ICON: &str = "x";
 /// The icon of a note that isn't about a tool ("Stopped").
@@ -265,9 +267,16 @@ mod tests {
             let name = tool["name"].as_str().unwrap();
             assert!(words(name).is_some(), "{name}");
         }
-        for icon in
-            TOOLS.iter().map(|words| words.icon).chain([OTHER_ICON, FAILED_ICON, PLAIN_ICON, ANSWERED_ICON, SUGGESTED_ICON, PICKED_ICON, CLOSE_ICON])
-        {
+        for icon in TOOLS.iter().map(|words| words.icon).chain([
+            OTHER_ICON,
+            FAILED_ICON,
+            PLAIN_ICON,
+            ANSWERED_ICON,
+            SUGGESTED_ICON,
+            PICKED_ICON,
+            CLOSE_ICON,
+            COPY_ICON,
+        ]) {
             assert!(crate::icons::outline("lucide", icon).is_some(), "{icon}");
         }
     }

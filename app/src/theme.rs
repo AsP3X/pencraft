@@ -222,6 +222,8 @@ pub const CHAT_WAIT_COUNTED: u64 = 3;
 pub const CHAT_THOUGHT_ROWS: usize = 2;
 /// The fewest letters of a sentence the model has begun to think for it to take the place of the one before.
 pub const CHAT_THOUGHT_LEAST: usize = 12;
+/// How long the button that copies a problem's details says that it did, in seconds.
+pub const CHAT_COPIED_STAYS: f64 = 1.6;
 /// How much larger the chat's text is at the settings' Medium and Large sizes.
 pub const CHAT_TEXT_MEDIUM: f32 = 1.15;
 /// See [`CHAT_TEXT_MEDIUM`].

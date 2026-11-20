@@ -9,6 +9,18 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Added
+
+- **A problem in the chat says more, and can be copied.** Under a problem
+  the chat now shows which assistant was answering and through which
+  provider, what it was doing, how far into the answer it was and when it
+  happened. "Copy details" puts all of that, with your Pencraft version,
+  on the clipboard to paste into a report; nothing of your conversation
+  and no key is in it. An error a provider sends in the middle of an
+  answer no longer stands alone as "Internal Server Error": it says that
+  it came from the provider, with the provider's error code and, where
+  the provider gives one, the ID of the request.
+
 ## [0.3.23] - 2026-11-20
 
 The chat says what the assistant is doing while you wait and shows a glimpse

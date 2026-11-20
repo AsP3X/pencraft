@@ -765,6 +765,12 @@
    "source": "Pencraft's own rule (src/chat.rs)"
   },
   {
+   "name": "chat: seconds the copy button of a problem says Copied",
+   "group": "chat",
+   "value": 1.6,
+   "source": "Pencraft's own rule (src/theme.rs)"
+  },
+  {
    "name": "chat: assistant menu width",
    "group": "chat",
    "value": 240,

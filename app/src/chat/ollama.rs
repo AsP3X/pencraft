@@ -93,7 +93,7 @@ fn request(job: &Job<'_>, history: &[Value], context: u64) -> Value {
 // id; the chat follows a call by its id, so one is made here.
 fn take(turn: &mut Turn, event: &Value) -> Result<Vec<Event>, String> {
     if let Some(error) = event.get("error").filter(|error| !error.is_null()) {
-        return Err(error.as_str().or_else(|| error["message"].as_str()).unwrap_or("Ollama reported an error").to_owned());
+        return Err(api::stream_error(error));
     }
     let mut told = Vec::new();
     if let Some(more) = event.pointer("/message/thinking").and_then(Value::as_str).filter(|more| !more.is_empty()) {
@@ -275,7 +275,10 @@ mod tests {
         assert_eq!((turn.finish.as_deref(), turn.text.as_str()), (Some("stop"), "On it."));
         // The answer goes back into the conversation the way every other one does.
         assert_eq!(turn.message()["tool_calls"][1]["function"]["arguments"], json!("{\"operations\":[]}"));
-        assert_eq!(take(&mut Turn::default(), &json!({ "error": "model 'x' not found" })).unwrap_err(), "model 'x' not found");
+        assert_eq!(
+            take(&mut Turn::default(), &json!({ "error": "model 'x' not found" })).unwrap_err(),
+            "The provider reported an error while the model was answering: model 'x' not found"
+        );
         // A model reads what it can, and no more than the app asks for.
         assert_eq!(most(r#"{"model_info":{"general.architecture":"qwen3","qwen3.context_length":40960}}"#), Some(40960));
         assert_eq!((most(r#"{"model_info":{}}"#), most("no")), (None, None));

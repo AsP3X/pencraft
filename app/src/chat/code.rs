@@ -35,7 +35,7 @@ pub enum Flavor {
 
 impl Flavor {
     /// What the program is called in a sentence.
-    fn name(self) -> &'static str {
+    pub(super) fn name(self) -> &'static str {
         match self {
             Flavor::Claude => "Claude Code",
             Flavor::Grok => "Grok",

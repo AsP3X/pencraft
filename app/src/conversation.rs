@@ -15,11 +15,11 @@ use crate::chat::steps::{self, State};
 use crate::chat::{Chat, Entry, Pause, Role};
 use crate::icons;
 use crate::theme::{
-    self, CHAT_APPEAR, CHAT_BUBBLE_SHARE, CHAT_DOT, CHAT_DOT_GAP, CHAT_DOT_LIFT, CHAT_DOT_PACE, CHAT_GAP, CHAT_ICON_AT_WORK, CHAT_ICON_BREATH,
-    CHAT_ICON_BURST, CHAT_ICON_FROM_OWN, CHAT_ICON_LEAST, CHAT_ICON_RING, CHAT_ICON_SETTLE, CHAT_ICON_SHAKE, CHAT_ICON_TAIL, CHAT_ICON_TURN,
-    CHAT_NOTE_GAP, CHAT_NOTE_ICON, CHAT_RISE, CHAT_STATUS_HEIGHT, CHAT_STATUS_HOLD, CHAT_STATUS_MORPH, CHAT_STATUS_PAD, CHAT_THOUGHT_LEAST,
-    CHAT_THOUGHT_ROWS, CHAT_WAIT_COUNTED, CHAT_WRITE_CATCH_UP, CHAT_WRITE_PACE, CHIP_CORNER, CHIP_ICON, CHIP_ICON_AT, ISLAND_RADIUS,
-    MESSAGE_TEXT_SIZE, PROBLEM, Palette, SIDEBAR_TEXT_SIZE,
+    self, CHAT_APPEAR, CHAT_BUBBLE_SHARE, CHAT_COPIED_STAYS, CHAT_DOT, CHAT_DOT_GAP, CHAT_DOT_LIFT, CHAT_DOT_PACE, CHAT_GAP, CHAT_ICON_AT_WORK,
+    CHAT_ICON_BREATH, CHAT_ICON_BURST, CHAT_ICON_FROM_OWN, CHAT_ICON_LEAST, CHAT_ICON_RING, CHAT_ICON_SETTLE, CHAT_ICON_SHAKE, CHAT_ICON_TAIL,
+    CHAT_ICON_TURN, CHAT_NOTE_GAP, CHAT_NOTE_ICON, CHAT_RISE, CHAT_STATUS_HEIGHT, CHAT_STATUS_HOLD, CHAT_STATUS_MORPH, CHAT_STATUS_PAD,
+    CHAT_THOUGHT_LEAST, CHAT_THOUGHT_ROWS, CHAT_WAIT_COUNTED, CHAT_WRITE_CATCH_UP, CHAT_WRITE_PACE, CHIP_CORNER, CHIP_ICON, CHIP_ICON_AT,
+    ISLAND_RADIUS, MESSAGE_TEXT_SIZE, PROBLEM, Palette, SIDEBAR_TEXT_SIZE,
 };
 
 /// What the panel remembers between frames to move things: it lives in egui's memory, not in the chat.
@@ -216,9 +216,51 @@ fn line(ui: &mut Ui, entry: &Entry, shown: &str, looks: Looks) -> Option<Pick> {
         },
         Role::Problem => {
             ui.add(words(shown, PROBLEM));
+            trouble(ui, entry, scale, palette);
         }
     }
     None
+}
+
+/// What is known about the problem `entry` under its words, and a button that copies all of it.
+// Human: "Internal Server Error" alone can't be acted on or reported. Under it stand who was answering and
+// through what, what the assistant was doing, how far into the answer and when; the button puts these, the
+// problem's words and the app's version on the clipboard as text to paste into a report.
+fn trouble(ui: &mut Ui, entry: &Entry, scale: f32, palette: Palette) {
+    let font = FontId::proportional((SIDEBAR_TEXT_SIZE - 1.0) * scale);
+    let quiet = palette.muted.gamma_multiply(0.7);
+    ui.add_space(5.0);
+    for (name, fact) in &entry.about {
+        let mut row = LayoutJob::default();
+        row.append(&format!("{name}  "), 0.0, TextFormat { font_id: font.clone(), color: quiet, ..TextFormat::default() });
+        row.append(fact, 0.0, TextFormat { font_id: font.clone(), color: palette.muted, ..TextFormat::default() });
+        ui.add(egui::Label::new(row).wrap());
+        ui.add_space(2.0);
+    }
+    ui.add_space(4.0);
+    let now = ui.input(|input| input.time);
+    let id = egui::Id::unique(("chat-problem-copied", &entry.text, &entry.about));
+    let since: Option<f64> = ui.data(|data| data.get_temp(id));
+    let copied = since.is_some_and(|since| now - since < CHAT_COPIED_STAYS);
+    let (icon, says) = if copied { (steps::ANSWERED_ICON, "Copied") } else { (steps::COPY_ICON, "Copy details") };
+    let words = ui.painter().layout_no_wrap(says.to_owned(), font.clone(), palette.muted);
+    let size = vec2(CHIP_ICON_AT + CHIP_ICON / 2.0 + 5.0 + words.size().x + 8.0, words.size().y + 8.0);
+    let (chip, response) = ui.allocate_exact_size(size, Sense::click());
+    let ink = if response.hovered() || copied { palette.foreground } else { palette.muted };
+    ui.painter().rect_stroke(chip, CHIP_CORNER, egui::Stroke::new(1.0, palette.outline), egui::StrokeKind::Inside);
+    icons::paint(ui.painter(), egui::Rect::from_center_size(pos2(chip.left() + CHIP_ICON_AT, chip.center().y), Vec2::splat(CHIP_ICON)), icon, ink);
+    ui.painter().galley(pos2(chip.left() + CHIP_ICON_AT + CHIP_ICON / 2.0 + 5.0, chip.center().y - words.size().y / 2.0), words, ink);
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    if response.clicked() {
+        ui.ctx().copy_text(entry.report());
+        ui.data_mut(|data| data.insert_temp(id, now));
+    }
+    if copied {
+        // The button turns back by itself.
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
+    }
 }
 
 /// The bubble of a message of the user's: it stands at the right of the panel, as wide as what is `inside` it
