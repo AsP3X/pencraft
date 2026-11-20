@@ -862,6 +862,10 @@ impl DisplayList {
             }
         };
         let (bucket, cover) = (running.bucket, running.cover);
+        // Human: a whole list is the build's last word. The build ends a moment after sending it, and a look in
+        // that moment would show the new list while still counting a build as under way; so the list itself
+        // says the build is over, not only the build's end.
+        let ended = ended || newest.as_ref().is_some_and(|built| built.whole);
         if let Some(built) = newest {
             self.items = built.items;
             // From a list with pictures still missing nothing is taken over.
