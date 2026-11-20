@@ -21,6 +21,12 @@ Everything in "Designing well" about pages (a ground, a display face, a first vi
 conversation, two looks as the ceiling) is for pages. For a logo this skill replaces it. The user's own words
 come first: a named kind, style, colour, letter or picture is the brief.
 
+Part of this skill is firm and part is a starting point. Firm, for every logo: the order of work below,
+one idea, exact construction, the small version and the proofs. Only the user's own words overrule
+these. A starting point: what the logo looks like. The worked marks in the reference files show
+construction, not a look to reproduce, and the styles are a vocabulary to choose from: a mark that
+fits the brief and no listed style is as welcome as one that fits a style.
+
 The order of work: the brief, the style, many ideas, three rough marks, one chosen, built exactly in the
 style's own order, type, colour, the small version, the proofs.
 

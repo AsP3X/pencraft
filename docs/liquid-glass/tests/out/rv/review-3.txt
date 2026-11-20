@@ -1,0 +1,15 @@
+
+================ formats
+advice on insert: [
+ "Text under 11 px is hard to read: \"Role\" (format-card-role), \"Lantern Repair Café\" (format-card-line-1), \"Markveien 58, 0554 Oslo\" (format-card-line-2), \"ingrid@lantern-repair.example\" (format-card-line-3) and 1 more."
+]
+
+-- references/print.md · format-card
+   * Text under 11 px is hard to read: "Role" (format-card-role), "Lantern Repair Café" (format-card-line-1), "Markveien 58, 0554 Oslo" (format-card-line-2), "ingrid@lantern-repair.example" (format-card-line-3) and 1 more.
+
+8 of 9 examples: nothing counted
+
+================ material
+advice on insert: none
+
+19 of 19 examples: nothing counted

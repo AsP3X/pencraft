@@ -1,6 +1,6 @@
 ---
 name: ui-components
-description: Design standard interface components in Pencraft the way the common component libraries build them - buttons, inputs, selects, checkboxes, switches, tabs, cards, tables, dialogs, menus, popovers, tooltips, toasts, drawers and command palettes, with their sizes, tokens, states and placement. Use when the user asks for a component, a component set, a design system or UI kit, a form, a settings screen or dialog, names shadcn/ui, Radix, Base UI, Sonner, Vaul or cmdk, or asks for standard, default or plain controls, or for the states of a control. Do not use for glass or translucent surfaces (the liquid-glass skill), nor for posters, landing pages and other designs with a look of their own.
+description: Design standard interface components in Pencraft the way the common component libraries build them - buttons, inputs, selects, checkboxes, switches, tabs, cards, tables, dialogs, menus, popovers, tooltips, toasts, drawers and command palettes, a sidebar and top bar, calendars and date fields, data tables, the parts of an AI chat, and whole screens such as a dashboard, a sign-in page or an inbox, with their sizes, tokens, states and placement. Use when the user asks for a component, a component set, a design system or UI kit, a form, a settings screen or dialog, a dashboard, an admin or app screen, a chat with an assistant, names shadcn/ui, Radix, Base UI, Sonner, Vaul or cmdk, or asks for standard, default or plain controls, or for the states of a control. Do not use for glass or translucent surfaces (the liquid-glass skill), nor for posters, landing pages and other designs with a look of their own.
 license: Apache-2.0 with Commons Clause (see LICENSE in the Pencraft repository)
 metadata:
   product: pencraft
@@ -11,13 +11,33 @@ metadata:
 
 A standard component is not designed, it is built to a specification people already know by hand: where the
 label sits, how tall the control is, what a menu does at its edge. The libraries that most interfaces are
-built from agree on nearly all of it. This skill is that agreement, as Pencraft layers. Follow it as written;
-the place for a decision is the preset (section 2), not the single button.
+built from agree on nearly all of it. This skill is that agreement, as Pencraft layers. Where the user
+asks for standard or names a library, follow it closely: that is what the request means. Where the design
+has a look of its own, keep the anatomy (heights, spacing, states, where things sit) and change the skin
+through the tokens.
 
 Work with Pencraft's tools (`get_state`, `read_layers`, `edit_layers`, `screenshot`). The reference files
 named below are read with `read_skill` (name `ui-components`, `file` as given).
 
-Hard rules, in the order they are broken most:
+Part of this skill is firm and part is a starting point. It says which, and the difference matters:
+
+- Firm: the list "Every time" below, and the numbers of a library whenever the user named that library. Do
+  these without being asked, on every design this skill is used for. Only the user's own words overrule
+  them; then do what was asked and say in one line what it costs.
+- A starting point: the presets when no library was named. In a design with a look of its own the numbers in
+  rules 3, 4 and 6 may change as a set (another ladder of heights, other radii, colours and faces), as long
+  as they are chosen once and then kept; the rules themselves stay. Also the sample copy, widths and
+  arrangement of the examples. The whole screens in `references/screens.md` are worked examples, not layouts
+  to reproduce. Begin there, and change it when the design has a reason. They are still the expected way:
+  leave one only with a reason, which can be short and needs nobody's leave.
+- A design that already has a look, a brand or a system keeps it. Take from this skill what the design
+  lacks, and nothing that would replace what it has.
+- The examples in the reference files show how a thing is built in Pencraft and at what size. Their colours,
+  faces, words and arrangement are one answer among many, not the look to reproduce.
+- The checklist and "When it looks wrong" at the end are there to be gone through every time, as a check
+  of your own work. A line in them that speaks of a starting point is a starting point still.
+
+Every time:
 
 1. Build what was named, all of it, and nothing else. No backdrop, heading or extra variants around the
    work. (The board that keeps the reusable components is not the work and stays out of its pictures:
@@ -51,7 +71,8 @@ them and add only what is missing.
 
 Run the `set_variables` call in `references/tokens.md` before the first layer. It gives the paired colour
 roles (a surface and what is written on it), the lines, the radius scale and the face, with a `Mode` axis for
-light and dark. Change `font` in that call to an installed family before you send it (`get_guide` lists them
+light and dark. (`font-mono` is for code alone: set it to an installed fixed-width family when a code block is
+asked for.) Change `font` in that call to an installed family before you send it (`get_guide` lists them
 with their weights): Inter where it is installed; on Windows Segoe UI Variable (plain Segoe UI has no weight
 500, which every label is set in); otherwise SF Pro Text or Noto Sans. The family needs 400 and 500.
 
@@ -105,14 +126,17 @@ in a component, no capitals with spacing (except a shortcut hint).
 
 ## 5. States
 
-Every control that can be used has these, built as overrides on an instance of the resting component:
+Every control that can be used has these. A state that many instances share is named once in the
+component's `states` and picked on an instance with `"state"` (the buttons and inputs of
+`references/controls.md` come with hover, focus, disabled and invalid); a state one instance shows alone is
+an override on it:
 
 | State | Recipe |
 |---|---|
 | Rest | the component |
 | Hover | primary `$primary-hover`; secondary `$secondary-hover`; destructive `$destructive-tint-hover`; outline and ghost `$muted`; a menu row `$accent`; a table or list row `$muted-half` |
 | Pressed | as hover, drawn 1 lower |
-| Focus | border `$ring`, and a 3 wide halo of `$ring-soft` around it (the ring wrapper in `references/controls.md`) |
+| Focus | border `$ring`, and a 3 wide halo of `$ring-soft` around it: a shadow with `"spread":3`, no offset and no blur (`references/controls.md`) |
 | Disabled | `"opacity":0.5` on the control (what is in it fades with it; do not set it twice) |
 | Invalid | border `$destructive`, halo `$destructive-tint`, and the message under the control in `$destructive` |
 | Loading | `loader-circle` (16, in the label's colour) in place of the leading icon, the label kept, `"opacity":0.5`. A button without an icon gets the spinner before its label; give its rest and loading instances the same `width` so nothing jumps |
@@ -165,7 +189,12 @@ state (the hover fill).
 3. Insert only the components the request needs, as reusable components, on a board named "UI components"
    (`"fill":"#e5e5e5"`, the one hex allowed; vertical, gap 32, padding 32) placed well to the left of the
    work (at `x` -1600 when the work starts at 0; it only has to be clear of it): controls from `references/controls.md`, floating
-   things from `references/overlays.md`, cards, tables and the rest from `references/data.md`. The board is
+   things from `references/overlays.md`, cards, tables and the rest from `references/data.md`; a sidebar, top
+   bar, pagination, accordion or stepper from `references/navigation.md`; a calendar, date field, combobox,
+   chips, one-time code or file drop from `references/inputs.md`; a table with a toolbar, selection and paging,
+   and the stat tile, from `references/tables.md`; the parts of a chat with an assistant from
+   `references/chat.md`. A whole screen (a dashboard, sign-in, an inbox, settings, pricing, checkout) starts
+   from `references/screens.md`, which names the components it needs. The board is
    where the components live, not part of what the user asked for: it carries the references' sample copy,
    and it is left out of every picture and export of the work. Ids start with `ui-`; if one is there
    already, instance it. Only when the user asked for the kit itself is the board the work: then give it
@@ -192,9 +221,9 @@ state (the hover fill).
 | Missing | Instead |
 |---|---|
 | Figures of one width (tabular numerals) | Right-align figure columns at a fixed width; avoid faces with old-style figures |
-| A shadow that spreads | The layered shadows of `references/tokens.md`, which need none |
-| Two strokes on one layer | The ring wrapper for focus; an inner shadow (y 1, blur 0, white at 14%) for a top highlight |
-| Variants and states on a component | Instances with overrides, on a state board |
+| Two strokes on one layer | A shadow that only spreads for a ring outside (the focus ring); an inner shadow (y 1, blur 0, white at 14%) for a top highlight |
+| Variants of a component (primary, outline, ghost) | Overrides on an instance; only states are named on the component |
+| Showing a state when the pointer or the keyboard is there | A state is picked by hand: one instance per state, on a state board |
 | Text cut off with an ellipsis | Write the shortened text with a real "..." at a fixed width; never shorten a number or a date |
 | Dashed lines | A solid 1 line in `$border` |
 | Motion | Two frames: before and after |

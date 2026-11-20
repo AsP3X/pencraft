@@ -30,7 +30,10 @@ pub mod ollama;
 pub mod openai;
 pub mod pasted;
 pub mod plain;
+pub mod prices;
 pub mod steps;
+pub mod tasks;
+pub mod usage;
 
 use steps::{State, Step};
 
@@ -78,7 +81,8 @@ For real facts or wording use search_web and read_web_page; for a real photo use
 Each message from the user starts with a note from the app in <pencraft_context> tags saying which document this chat works on (your tools work on it unless a call names another) and what is selected; \"this\" or \"the selection\" means those layers. \
 Keep replies short and plain: a few sentences on what you made and what to look at, without lists of ids. The chat panel shows your words exactly as you write them, so use no Markdown of any kind: no asterisks for bold, no bullet or numbered lists, no headings, no backticks, no tables. \
 If a request is unclear in a way that changes the design, ask instead of guessing: with the ask_user tool when you have it (one to three short questions, each with two to four answers to pick from), then end your turn, since the answer comes as the user's next message; without that tool, ask one short question in your reply. \
-When you have finished something and there are clear next steps, you may offer two or three with ask_user's `suggestions`, each worded as the user would ask for it; offer none that only repeat what you did.";
+When you have finished something and there are clear next steps, you may offer two or three with ask_user's `suggestions`, each worded as the user would ask for it; offer none that only repeat what you did. \
+A job of many steps (a whole screen or page, several screens, a redesign, a set of components, anything you would not finish in two or three changes) is worked through as a task list, and this is not optional: after get_state and before the first layer, call plan_tasks with the tasks in the order you will do them, each a few plain words the user can follow (\"Set up colours and type\", \"Build the navigation\", \"Check the result\"). Then work on the task at work only, and call finish_task with its number the moment it is done; the next task is at work then. Tasks can't be skipped or finished out of their turn, and you never work ahead of the task at work. When a task turns up more work (checking the result shows something to fix or change), add it with add_tasks before you finish that task: the new tasks come right after it. If the whole plan changes, call plan_tasks again with the tasks still to do. The user follows the list above the chat, so finish every task before you answer. A small request (one layer, one change, a question) needs no list.";
 
 /// The last thing an engine is told, after everything long: how its replies have to look.
 // Human: said once at the start, the rule is forgotten by the time a long design is done; the end of the
@@ -141,12 +145,16 @@ pub struct Entry {
     pub asked: Option<asks::Asked>,
     /// For a problem: what is known about the run it ended or troubled, each with its name ("Assistant").
     pub about: Vec<(&'static str, String)>,
+    /// For the note of a task list that was worked through: its tasks, which the note opens to show.
+    pub finished: Vec<String>,
+    /// For the last line of a run: what the run took and cost.
+    pub spent: Option<usage::Spent>,
 }
 
 impl Entry {
     /// A line from `role` saying `text`.
     pub fn new(role: Role, text: impl Into<String>) -> Self {
-        Entry { role, text: text.into(), pointed: Vec::new(), step: None, asked: None, about: Vec::new() }
+        Entry { role, text: text.into(), pointed: Vec::new(), step: None, asked: None, about: Vec::new(), finished: Vec::new(), spent: None }
     }
 
     /// A problem written out to be copied into a report: what went wrong, what is known about the run, and
@@ -207,6 +215,8 @@ pub enum Event {
     History(Vec<Value>),
     /// The model was given this message of the user's, written while it worked.
     Heard(Waiting),
+    /// What a request took (a program: what its whole run took).
+    Used(usage::Report),
     /// Something went wrong; the run goes on or ends as it says next.
     Problem(String),
     /// The run is over.
@@ -514,14 +524,17 @@ fn local_choices(agent: &LocalAgent, program: &Path) -> Vec<Choice> {
         .collect()
 }
 
+/// Where a key in the environment belongs: `ANTHROPIC_BASE_URL`, as for Anthropic's own tools, or Anthropic's API.
+fn environment_base() -> String {
+    std::env::var("ANTHROPIC_BASE_URL").ok().filter(|base| !base.trim().is_empty()).unwrap_or_else(|| ANTHROPIC.to_owned())
+}
+
 /// The assistants the user can pick from: every command-line agent of the settings whose program is installed
 /// (`find` says where a command is), Anthropic's API when a key is in the environment (`key_in_environment`),
 /// and every provider set up in the settings that speaks an API the chat knows.
 #[must_use]
 pub fn choices(agents: &Agents, find: &dyn Fn(&str) -> Option<PathBuf>, key_in_environment: bool) -> Vec<Choice> {
-    // Human: with a key in the environment, `ANTHROPIC_BASE_URL` says where it belongs, as it does for
-    // Anthropic's own tools; without it that is Anthropic's API.
-    let base = std::env::var("ANTHROPIC_BASE_URL").ok().filter(|base| !base.trim().is_empty()).unwrap_or_else(|| ANTHROPIC.to_owned());
+    let base = environment_base();
     let mut out = Vec::new();
     for agent in agents.local.iter().filter(|agent| !agent.off && !agent.name.trim().is_empty()) {
         if let Some(program) = command_of(agent).and_then(find) {
@@ -572,6 +585,41 @@ pub fn key_in_environment() -> bool {
 #[must_use]
 pub fn chosen<'a>(all: &'a [Choice], id: &str) -> Option<&'a Choice> {
     all.iter().find(|choice| choice.id == id).or_else(|| all.first())
+}
+
+/// How what `choice` uses is priced: the user's own prices for its model, the price list's for its provider,
+/// and how the provider is paid.
+// Human: a program (Claude Code, Grok) says itself what a run cost, and doesn't say whether the user pays by
+// the token or by plan; its cost is shown as a worth. A model on this computer costs nothing.
+#[must_use]
+pub fn pricing(choice: &Choice, agents: &Agents, list: &prices::Catalogue) -> usage::Pricing {
+    match &choice.engine {
+        Engine::Code { model, .. } => usage::Pricing { model: model.clone(), terms: usage::Terms::Plan, ..usage::Pricing::default() },
+        Engine::Plain { model, .. } => usage::Pricing { model: model.clone(), ..usage::Pricing::default() },
+        Engine::Api { model, .. } => {
+            let provider = agents.providers.iter().find(|provider| choice.id == format!("api/{}/{model}", provider.name));
+            let base = provider.map_or_else(environment_base, |provider| provider.base_url.clone());
+            let typed = provider.and_then(|provider| provider.models.iter().find(|known| known.id == *model));
+            let local = catalog::is_local_ollama(&base);
+            usage::Pricing {
+                model: model.clone(),
+                own: typed.and_then(|typed| usage::Rates::typed(&typed.input_price, &typed.output_price)),
+                listed: if agents.prices && !local { list.models(&base) } else { std::collections::BTreeMap::new() },
+                terms: if local { usage::Terms::Local } else { prices::terms(&base) },
+            }
+        }
+    }
+}
+
+/// The reports of requests among what a run has told and nobody has taken in; everything else is dropped.
+fn reports_left(events: &Receiver<Event>) -> Vec<usage::Report> {
+    let mut reports = Vec::new();
+    while let Ok(event) = events.try_recv() {
+        if let Event::Used(report) = event {
+            reports.push(report);
+        }
+    }
+    reports
 }
 
 /// A short exchange, for a picture of the chat panel (`--sidebar conversation`).
@@ -682,6 +730,8 @@ pub struct Ask {
     pub server: Option<(u16, String)>,
     /// Whether a finished design is shown to a reviewer and sent back with what it wants changed.
     pub review: bool,
+    /// How what the run uses is priced.
+    pub pricing: usage::Pricing,
 }
 
 /// One message for an engine, with where the conversation is.
@@ -770,6 +820,10 @@ struct Run {
     /// Where a message for the run goes while it works; `None` for an engine that takes none (Claude Code
     /// reads its one message when it starts).
     steering: Option<Arc<api::Inbox>>,
+    /// How what the run uses is priced.
+    pricing: usage::Pricing,
+    /// How many lines the conversation had when the run began: its own lines come after.
+    from: usize,
 }
 
 /// The conversation and its run.
@@ -798,6 +852,12 @@ pub struct Chat {
     quiet: Option<Instant>,
     /// The run has told something of the model's: the model was reached.
     reached: bool,
+    /// The task list of a long job, which the assistant makes and works through ([`tasks`]).
+    pub tasks: tasks::Tasks,
+    /// What the run under way has taken so far.
+    spent: usage::Spent,
+    /// What the whole conversation has taken.
+    pub total: usage::Spent,
 }
 
 impl Chat {
@@ -867,6 +927,8 @@ impl Chat {
             via: KIND_CLAUDE.to_owned(),
             started: Instant::now(),
             steering: None,
+            pricing: usage::Pricing::default(),
+            from: self.entries.len(),
         });
     }
 
@@ -966,6 +1028,14 @@ impl Chat {
             let _ = child.wait();
         }
         self.settle();
+        // Human: what the run had told of its requests and the chat hadn't taken in yet still counts; whatever
+        // else it had told is left unsaid, as the run was stopped.
+        for report in reports_left(&run.events) {
+            self.count(&run.pricing, &report);
+        }
+        self.close(run.from);
+        // Human: the task that was at work is marked as broken off until work on the list goes on.
+        self.tasks.halt();
         self.thought.clear();
         (self.thinking, self.quiet) = (None, None);
         let unsent = self.waiting.len() + run.steering.map_or(0, |inbox| lock(&inbox).len());
@@ -1045,7 +1115,13 @@ impl Chat {
         // Human: so is any message that asks for a logo: left alone the model draws the subject's most
         // obvious picture out of rectangles and hangs a ribbon under it.
         let logo = if logo { format!("{}\n", crate::craft::LOGO_NOTE) } else { String::new() };
-        files::written(&format!("{}\n{dealt}{device}{logo}\n{}", self.retold(&ask.context, known), ask.text), &ask.files)
+        // Human: a list that is not worked through is said again with every message, so the assistant goes
+        // on with the task at work instead of starting over.
+        let list = match self.tasks.reminder() {
+            reminder if reminder.is_empty() => String::new(),
+            reminder => format!("<task_list>{reminder}</task_list>\n"),
+        };
+        files::written(&format!("{}\n{dealt}{device}{logo}{list}\n{}", self.retold(&ask.context, known), ask.text), &ask.files)
     }
 
     /// Sends the user's message and starts the run that answers it.
@@ -1060,7 +1136,9 @@ impl Chat {
         let pictures = files::pictures(&ask.files);
         // Human: a message of the user's is their answer; a question still open then is closed by it.
         self.dismiss();
+        self.tasks.resume();
         self.entries.push(Entry { pointed: ask.pointed.clone(), ..Entry::new(Role::User, ask.shown.clone()) });
+        let from = self.entries.len();
         self.fresh = true;
         self.thought.clear();
         (self.thinking, self.quiet, self.reached) = (None, Some(Instant::now()), false);
@@ -1073,6 +1151,7 @@ impl Chat {
         // waits for the user's answer, and nothing is reviewed or sent back to the assistant meanwhile.
         let asking: Mutex<(Vec<String>, bool)> = Mutex::new((Vec::new(), false));
         let (model, via) = (ask.model.clone(), via(&ask.engine));
+        let pricing = ask.pricing.clone();
         // Human: an API run asks the model again after every tool it used, and can hand it a new message of
         // the user's then; a program is given its one message when it starts.
         let steering = matches!(ask.engine, Engine::Api { .. }).then(|| Arc::new(api::Inbox::default()));
@@ -1113,7 +1192,9 @@ impl Chat {
                 let id = format!("review-{round}");
                 tell(Event::Break);
                 tell(Event::Tool { id: id.clone(), name: critic::TOOL.to_owned() });
-                let verdict = critic::judge(&ask.engine, &files::flat(&ask.text), picture, round == critic::ROUNDS, &held);
+                let verdict = critic::judge(&ask.engine, &files::flat(&ask.text), picture, round == critic::ROUNDS, &held, &|report| {
+                    tell(Event::Used(report));
+                });
                 if let Err(error) = &verdict {
                     log::warn!("the design couldn't be reviewed: {error}");
                 }
@@ -1128,14 +1209,48 @@ impl Chat {
             tell(Event::Done);
         });
         match started {
-            Ok(_) => self.run = Some(Run { events, stop, child, model, via, started: Instant::now(), steering }),
+            Ok(_) => self.run = Some(Run { events, stop, child, model, via, started: Instant::now(), steering, pricing, from }),
             Err(error) => self.entries.push(Entry::new(Role::Problem, format!("The assistant couldn't be started: {error}"))),
         }
     }
 
+    /// Does a call of one of the task list's tools ([`tasks`]), and gives what the model is told.
+    ///
+    /// # Errors
+    /// What the list refuses, said so that the model can put it right.
+    // Human: a finished list that still stands at the top gives way at once to a new one.
+    pub fn task_call(&mut self, tool: &str, input: &Value) -> Result<String, String> {
+        match tool {
+            tasks::PLAN => {
+                self.file_tasks();
+                self.tasks.plan(input)
+            }
+            tasks::ADD => self.tasks.add(input),
+            _ => self.tasks.finish(input),
+        }
+    }
+
+    /// Files a task list that was worked through into the conversation, at its end: a note that opens to show
+    /// the tasks. The top of the panel is free for the next list then.
+    fn file_tasks(&mut self) {
+        let finished = self.tasks.hand_over();
+        if finished.is_empty() {
+            return;
+        }
+        let count = finished.len();
+        self.fresh = true;
+        self.entries.push(Entry { finished, ..Entry::new(Role::Step, format!("Tasks completed: {count} of {count}")) });
+    }
+
     /// Takes in what the run has said since the last time. Returns whether anything changed.
     pub fn poll(&mut self) -> bool {
-        let Some(run) = &self.run else { return false };
+        // Human: a list whose last task is finished stays at the top for a moment, then moves into the
+        // conversation.
+        let filed = self.tasks.due(Instant::now());
+        if filed {
+            self.file_tasks();
+        }
+        let Some(run) = &self.run else { return filed };
         let mut events = Vec::new();
         let mut over = false;
         loop {
@@ -1148,22 +1263,45 @@ impl Chat {
                 Err(std::sync::mpsc::TryRecvError::Empty) => break,
             }
         }
-        let changed = over || !events.is_empty();
+        let changed = filed || over || !events.is_empty();
         let now = Instant::now();
         for event in events {
             self.hear(event, now);
         }
         if over {
+            let run = self.run.take();
+            let from = run.as_ref().map_or(self.entries.len(), |run| run.from);
             // Human: a message handed to the run that it ended without taking goes first among the waiting ones.
-            if let Some(inbox) = self.run.take().and_then(|run| run.steering) {
+            if let Some(inbox) = run.and_then(|run| run.steering) {
                 let unheard: Vec<Waiting> = std::mem::take(&mut *lock(&inbox)).into_iter().map(|steer| steer.message).collect();
                 self.waiting.splice(0..0, unheard);
             }
             self.thought_over(now);
             self.quiet = None;
             self.settle();
+            self.close(from);
         }
         changed
+    }
+
+    /// Adds what one request took, priced by `pricing`, to the run's sum.
+    fn count(&mut self, pricing: &usage::Pricing, report: &usage::Report) {
+        self.spent.add(&pricing.price(report));
+    }
+
+    /// The run whose lines begin at `from` is over: its sum goes on its last line and into the conversation's.
+    // Human: the last line is the assistant's last words, or the problem the run ended with. A run that left
+    // neither (it was stopped before it wrote) still counts in the conversation's sum.
+    fn close(&mut self, from: usize) {
+        let spent = std::mem::take(&mut self.spent);
+        if spent.is_empty() {
+            return;
+        }
+        self.total.add(&spent);
+        let last = self.entries.iter().rposition(|entry| matches!(entry.role, Role::Assistant | Role::Problem)).filter(|at| *at >= from);
+        if let Some(entry) = last.and_then(|at| self.entries.get_mut(at)) {
+            entry.spent = Some(spent);
+        }
     }
 
     /// Takes in one thing the run said, at `now`.
@@ -1173,7 +1311,7 @@ impl Chat {
         // Human: the model thinks until it writes, uses a tool or is done; what its engine tells for its own
         // books (the session, the record of the conversation) says nothing about that.
         match &event {
-            Event::Session(_) | Event::History(_) => {}
+            Event::Session(_) | Event::History(_) | Event::Used(_) => {}
             Event::Thought(_) => self.reached = true,
             _ => {
                 self.thought_over(now);
@@ -1217,8 +1355,14 @@ impl Chat {
                 self.entries.push(Entry { pointed: message.pointed, ..Entry::new(Role::User, message.shown) });
             }
             Event::Problem(text) => {
+                self.tasks.halt();
                 self.fresh = true;
                 self.entries.push(Entry { about, ..Entry::new(Role::Problem, text) });
+            }
+            Event::Used(report) => {
+                if let Some(pricing) = self.run.as_ref().map(|run| run.pricing.clone()) {
+                    self.count(&pricing, &report);
+                }
             }
             Event::Done => {}
         }
@@ -1347,8 +1491,142 @@ mod tests {
             via: "Anthropic Messages at api.anthropic.com".to_owned(),
             started: Instant::now(),
             steering: Some(Arc::new(api::Inbox::default())),
+            pricing: usage::Pricing { model: "m".to_owned(), own: usage::Rates::typed("1", "2"), ..usage::Pricing::default() },
+            from: 1,
         };
         Chat { entries: vec![Entry::new(Role::User, "Make a card")], run: Some(run), fresh: true, ..Chat::default() }
+    }
+
+    #[test]
+    fn a_runs_requests_are_summed_onto_its_last_line() {
+        use usage::{Basis, Pricing, Rates, Report, Used};
+        let pricing = Pricing { model: "m".to_owned(), own: Rates::typed("1", "2"), ..Pricing::default() };
+        let report = |input, output| Report { used: Used { input, output, ..Used::default() }, model: None, billed: None };
+        let mut chat = Chat::default();
+        chat.entries.push(Entry::new(Role::User, "Make a card"));
+        let from = chat.entries.len();
+        chat.entries.push(Entry::new(Role::Assistant, "On it."));
+        chat.entries.push(Entry::new(Role::Step, "Changed 2 layers"));
+        chat.entries.push(Entry::new(Role::Assistant, "Done."));
+        chat.count(&pricing, &report(1000, 100));
+        chat.count(&pricing, &report(2000, 50));
+        chat.close(from);
+        let spent = chat.entries[3].spent.clone().unwrap();
+        assert_eq!((spent.used.input, spent.used.output, spent.cost, spent.basis), (3000, 150, Some(3000 * 1_000_000 + 150 * 2_000_000), Basis::Own));
+        assert!(chat.entries[1].spent.is_none());
+        assert_eq!(chat.total, spent);
+        // The next run ends in a problem; its line is under the problem, and the total grows.
+        chat.entries.push(Entry::new(Role::User, "Again"));
+        let from = chat.entries.len();
+        chat.entries.push(Entry::new(Role::Problem, "The provider didn't answer."));
+        chat.count(&pricing, &report(500, 0));
+        chat.close(from);
+        assert_eq!(chat.entries[5].spent.as_ref().map(|spent| spent.used.input), Some(500));
+        assert_eq!(chat.total.used.input, 3500);
+        // A run that used nothing, and one that left no line of its own, mark nothing.
+        chat.close(chat.entries.len());
+        chat.count(&pricing, &report(7, 0));
+        chat.close(chat.entries.len());
+        assert_eq!((chat.total.used.input, chat.entries.iter().filter(|entry| entry.spent.is_some()).count()), (3507, 2));
+        // A new conversation starts at nothing.
+        chat.clear();
+        assert!(chat.total.is_empty());
+    }
+
+    #[test]
+    fn what_a_run_tells_of_its_requests_reaches_its_last_line_also_when_it_is_stopped() {
+        use usage::{Report, Used};
+        let report = |input, output| Event::Used(Report { used: Used { input, output, ..Used::default() }, model: None, billed: None });
+        // A run that ends by itself: both requests are on the line under its last words, priced as the run was.
+        let mut chat = with_events(vec![
+            Event::Text("On it.".to_owned()),
+            report(1000, 100),
+            Event::Break,
+            Event::Text("Done.".to_owned()),
+            report(2000, 50),
+            Event::Done,
+        ]);
+        assert!(chat.poll() && !chat.running());
+        let spent = chat.entries[2].spent.clone().unwrap();
+        assert_eq!((spent.used.input, spent.used.output, spent.cost), (3000, 150, Some(3000 * 1_000_000 + 150 * 2_000_000)));
+        assert!(chat.entries[1].spent.is_none() && chat.total == spent);
+        // A report outside a run counts for nothing.
+        chat.hear(report(9, 9), Instant::now());
+        chat.close(0);
+        assert_eq!(chat.total, spent);
+        // A run stopped with a report still on its way: the report counts, the words that came with it don't.
+        // Human: the test holds the run's sending end, so the run goes on until it is stopped.
+        let (send, receive) = channel();
+        let mut chat = with_events(Vec::new());
+        if let Some(run) = &mut chat.run {
+            run.events = receive;
+        }
+        send.send(Event::Text("On it.".to_owned())).unwrap();
+        send.send(report(1000, 100)).unwrap();
+        assert!(chat.poll() && chat.running());
+        send.send(Event::Text(" More".to_owned())).unwrap();
+        send.send(report(2000, 50)).unwrap();
+        send.send(Event::Problem("Too late".to_owned())).unwrap();
+        chat.stop();
+        let said: Vec<(Role, &str)> = chat.entries.iter().map(|entry| (entry.role, entry.text.as_str())).collect();
+        assert_eq!(said, vec![(Role::User, "Make a card"), (Role::Assistant, "On it."), (Role::Step, "Stopped")]);
+        assert_eq!(chat.entries[1].spent.as_ref().map(|spent| (spent.used.input, spent.used.output)), Some((3000, 150)));
+        assert_eq!((chat.total.used.input, chat.spent.is_empty()), (3000, true));
+        // Stopped before it wrote a line: nothing is marked, and the conversation's sum still has it.
+        let mut chat = with_events(vec![report(40, 2)]);
+        chat.stop();
+        assert_eq!((chat.total.used.input, chat.entries.iter().filter(|entry| entry.spent.is_some()).count()), (40, 0));
+    }
+
+    #[test]
+    fn a_choice_knows_how_its_provider_is_priced() {
+        use usage::Terms;
+        let list = prices::Catalogue::parse(
+            r#"{ "xai": { "models": { "grok-4.5": { "cost": { "input": 2, "output": 6 } } } },
+                 "ollama-cloud": { "models": { "kimi-k3": { "cost": { "input": 1, "output": 4 } } } } }"#,
+        )
+        .unwrap();
+        let model = |id: &str, input: &str, output: &str| ProviderModel {
+            id: id.to_owned(),
+            input_price: input.to_owned(),
+            output_price: output.to_owned(),
+            ..ProviderModel::default()
+        };
+        let provider = |name: &str, api: &str, base: &str, models: Vec<ProviderModel>| CustomProvider {
+            name: name.to_owned(),
+            api: api.to_owned(),
+            base_url: base.to_owned(),
+            models,
+            key_ref: Some("k".to_owned()),
+        };
+        let agents = Agents {
+            local: Vec::new(),
+            providers: vec![
+                provider("Grok", COMPLETIONS_API, "https://api.x.ai/v1", vec![model("grok-4.5", "", ""), model("grok-mini", "0.5", "1")]),
+                provider("Cloud", COMPLETIONS_API, "https://ollama.com/v1", vec![model("kimi-k3", "", "")]),
+                provider("Here", OLLAMA_API, "http://localhost:11434", vec![model("qwen3", "", "")]),
+            ],
+            ..Agents::default()
+        };
+        let all = choices(&agents, &|_| None, false);
+        let of = |id: &str| pricing(chosen(&all, id).unwrap(), &agents, &list);
+        let grok = of("api/Grok/grok-4.5");
+        assert_eq!((grok.model.as_str(), grok.own.is_none(), grok.listed.len(), grok.terms), ("grok-4.5", true, 1, Terms::PerToken));
+        assert!(of("api/Grok/grok-mini").own.is_some());
+        assert_eq!(of("api/Cloud/kimi-k3").terms, Terms::Plan);
+        assert_eq!((of("api/Here/qwen3").terms, of("api/Here/qwen3").listed.len()), (Terms::Local, 0));
+        // With the look-up turned off the list is not used; the user's own prices still are.
+        let off = Agents { prices: false, ..agents.clone() };
+        let quiet = |id: &str| pricing(chosen(&all, id).unwrap(), &off, &list);
+        assert!(quiet("api/Grok/grok-4.5").listed.is_empty() && quiet("api/Grok/grok-mini").own.is_some());
+        // A program's cost is a worth, whatever it is; one that only prints its answer has nothing to price.
+        let code = Choice {
+            id: "code/m".to_owned(),
+            label: String::new(),
+            plain: String::new(),
+            engine: Engine::Code { flavor: code::Flavor::Claude, program: PathBuf::from("claude"), model: "m".to_owned() },
+        };
+        assert_eq!((pricing(&code, &agents, &list).terms, pricing(&code, &agents, &list).listed.len()), (Terms::Plan, 0));
     }
 
     #[test]

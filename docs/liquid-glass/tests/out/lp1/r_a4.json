@@ -1,0 +1,174 @@
+{
+  "results": [
+    {
+      "id": "pair"
+    },
+    {
+      "id": "prices"
+    }
+  ],
+  "layoutBoxes": {
+    "pair": {
+      "x": 0.0,
+      "y": 1838.0,
+      "width": 1440.0,
+      "height": 512.0
+    },
+    "prices": {
+      "x": 0.0,
+      "y": 2350.0,
+      "width": 1440.0,
+      "height": 652.0
+    }
+  },
+  "inkBoxes": {
+    "snWSd": {
+      "x": 120.9,
+      "y": 1884.0,
+      "width": 466.0,
+      "height": 58.8
+    },
+    "33Z9W": {
+      "x": 120.3,
+      "y": 1958.3,
+      "width": 589.8,
+      "height": 45.3
+    },
+    "6I7DS": {
+      "x": 146.2,
+      "y": 2099.8,
+      "width": 22.3,
+      "height": 10.2
+    },
+    "F2YKc": {
+      "x": 146.3,
+      "y": 2123.3,
+      "width": 21.7,
+      "height": 14.8
+    },
+    "QOyVb": {
+      "x": 145.7,
+      "y": 2147.3,
+      "width": 23.3,
+      "height": 10.7
+    },
+    "YWAOZ": {
+      "x": 231.7,
+      "y": 2099.8,
+      "width": 17.0,
+      "height": 10.2
+    },
+    "bOz6I": {
+      "x": 229.3,
+      "y": 2123.3,
+      "width": 21.5,
+      "height": 15.3
+    },
+    "c7BSh": {
+      "x": 228.7,
+      "y": 2147.3,
+      "width": 23.3,
+      "height": 10.7
+    },
+    "dTa2d": {
+      "x": 312.2,
+      "y": 2099.8,
+      "width": 22.3,
+      "height": 10.2
+    },
+    "VObIu": {
+      "x": 319.2,
+      "y": 2123.7,
+      "width": 5.8,
+      "height": 14.5
+    },
+    "ZeAWk": {
+      "x": 311.7,
+      "y": 2147.3,
+      "width": 23.3,
+      "height": 10.7
+    },
+    "pVNyn": {
+      "x": 397.7,
+      "y": 2099.8,
+      "width": 17.0,
+      "height": 10.2
+    },
+    "xhA1c": {
+      "x": 400.8,
+      "y": 2123.3,
+      "width": 10.3,
+      "height": 14.8
+    },
+    "na700": {
+      "x": 394.7,
+      "y": 2147.3,
+      "width": 23.3,
+      "height": 10.7
+    },
+    "5oEU3": {
+      "x": 478.2,
+      "y": 2099.8,
+      "width": 22.3,
+      "height": 10.2
+    },
+    "pZ1W3": {
+      "x": 483.3,
+      "y": 2123.3,
+      "width": 11.5,
+      "height": 15.3
+    },
+    "6HqOT": {
+      "x": 465.0,
+      "y": 2147.3,
+      "width": 49.0,
+      "height": 14.2
+    },
+    "vNw34": {
+      "x": 563.7,
+      "y": 2099.8,
+      "width": 17.0,
+      "height": 10.2
+    },
+    "6L2Sd": {
+      "x": 560.8,
+      "y": 2123.7,
+      "width": 22.7,
+      "height": 14.5
+    },
+    "TaRSG": {
+      "x": 548.0,
+      "y": 2147.3,
+      "width": 49.0,
+      "height": 14.2
+    },
+    "CmiyP": {
+      "x": 644.2,
+      "y": 2099.8,
+      "width": 22.3,
+      "height": 10.2
+    },
+    "YvlrV": {
+      "x": 645.7,
+      "y": 2123.7,
+      "width": 19.8,
+      "height": 15.0
+    },
+    "cm2IH": {
+      "x": 643.7,
+      "y": 2147.3,
+      "width": 23.3,
+      "height": 10.7
+    },
+    "oyJfs": {
+      "x": 729.7,
+      "y": 2099.8,
+      "width": 17.0,
+      "height": 10.2
+    }
+  },
+  "advice": [
+    "2 layer(s) have the same fill (#f0f3f8) as \"Morgenbrød · Landing page, desktop\" (page) behind them, so they don't stand out from it: \"Features, two of unequal weight\" (pair), \"Prices\" (prices). Give \"Morgenbrød · Landing page, desktop\" a different background (for a board that only presents parts, a grey or a tint the parts don't use), or give those layers a fill that differs.",
+    "Squeezed controls: \"Badge\" (TX3pB) leaves its label 3 above and below. The label of a button or chip needs 4 or more above and below it (8 to 12 in a button; on a phone whatever is tapped is about 44 high), and a button or chip stands 8 or more clear of the text above and below it."
+  ]
+}

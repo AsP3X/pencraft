@@ -140,6 +140,9 @@ fn take(turn: &mut Turn, event: &Value) -> Result<Vec<Event>, String> {
     if let Some(reason) = event.get("done_reason").and_then(Value::as_str).filter(|reason| !reason.is_empty()) {
         turn.finish = Some(reason.to_owned());
     }
+    if event["done"] == true {
+        turn.used = super::usage::ollama(event);
+    }
     Ok(told)
 }
 
@@ -191,6 +194,9 @@ fn ask(
         if event["done"] == true {
             break;
         }
+    }
+    if let Some(report) = turn.used.take() {
+        tell(Event::Used(report));
     }
     Ok(turn)
 }
@@ -294,7 +300,7 @@ mod tests {
                 { "function": { "name": "get_state", "arguments": {} } },
                 { "id": "c9", "function": { "name": "edit_layers", "arguments": { "operations": [] } } },
             ] }, "done": false }),
-            json!({ "message": { "role": "assistant", "content": "" }, "done": true, "done_reason": "stop" }),
+            json!({ "message": { "role": "assistant", "content": "" }, "done": true, "done_reason": "stop", "prompt_eval_count": 17000, "eval_count": 90 }),
         ] {
             told.extend(take(&mut turn, &event).unwrap().iter().map(|e| format!("{e:?}")));
         }
@@ -309,6 +315,8 @@ mod tests {
             ]
         );
         assert_eq!((turn.finish.as_deref(), turn.text.as_str()), (Some("stop"), "On it."));
+        // The last line says what the answer took.
+        assert_eq!(turn.used.as_ref().map(|report| (report.used.input, report.used.output)), Some((17_000, 90)));
         // The answer goes back into the conversation the way every other one does.
         assert_eq!(turn.message()["tool_calls"][1]["function"]["arguments"], json!("{\"operations\":[]}"));
         assert_eq!(

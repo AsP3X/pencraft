@@ -16,6 +16,10 @@ in the app before they download the update. Write it for them.
   assistant gets the picture at that place in your sentence. Hold the pointer
   over the chip to see it larger. The picture is still there when you open the
   design another day.
+- The chat says under each answer how many tokens it took and what it cost.
+  The price comes from the provider's own bill, from prices you typed in for
+  a model, or from the public list at models.dev, which is fetched once a day;
+  a switch in the settings turns the look-up off.
 
 ## [0.3.26] - 2026-11-20
 

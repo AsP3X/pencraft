@@ -276,6 +276,8 @@ mod tests {
         assert_eq!(PRESETS.iter().filter(|(_, p)| !p.base_url.starts_with("https://")).map(|(name, _)| *name).collect::<Vec<_>>(), [OLLAMA]);
         assert_eq!(preset(OLLAMA).map(|p| (p.api, p.base_url)), Some((OLLAMA_API, "http://localhost:11434")));
         assert_eq!(preset(OLLAMA_CLOUD), Some(completions("https://ollama.com/v1")));
+        // Every provider that takes a key is one the price list is asked about.
+        assert!(PRESETS.iter().filter(|(name, _)| *name != OLLAMA).all(|(_, p)| super::super::prices::known(p.base_url).is_some()));
         // Ollama on this computer is the only known provider that answers without a key.
         assert!(wants_key("https://ollama.com/v1/") && wants_key(" https://api.x.ai/v1") && !wants_key(OLLAMA_LOCAL));
         assert!(

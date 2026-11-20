@@ -78,6 +78,8 @@ const DASHBOARD_HINT: &str = "What you send there starts a new design.";
 const IDEAS_HINT: &str = "Shown in an empty document while the sidebar is folded and nothing is typed.";
 /// What the "Let AI work on my documents" row says under its name.
 const TOOLS_HINT: &str = "The chat and AI apps on this computer can read and change open documents through `pencraft mcp`, also in the background. Off: every tool call is refused.";
+/// What the "Look up model prices" row says under its name.
+const PRICES_HINT: &str = "To say what an answer cost, the public price list at models.dev is fetched once a day. Nothing about you or your chats is sent. Turned off, a price shows only where the provider bills each answer or you typed prices in for a model.";
 /// What the "Have finished designs reviewed" row says under its name.
 const REVIEW_HINT: &str = "A second model that didn't make the design judges a picture of it like a strict art director, and the assistant works in what it wants changed. Up to two rounds; a design takes longer and costs more.";
 /// What the "Generate and edit pictures" row says under its name.
@@ -160,6 +162,7 @@ const INDEX: &[(Page, &str, &str)] = &[
     (Page::Chat, "Conversation", "Text size"),
     (Page::Chat, "Conversation", "Send while the assistant is working"),
     (Page::Chat, "Conversation", "Have finished designs reviewed"),
+    (Page::Chat, "Conversation", "Look up model prices"),
     (Page::Chat, "Starting a design", "Message box on the home screen"),
     (Page::Chat, "Starting a design", "Ideas under the message bar"),
     (Page::Images, "Image generation", "Add image service"),
@@ -209,19 +212,41 @@ struct ModelRow {
     id: String,
     context_window: String,
     max_tokens: String,
+    /// Dollars for a million tokens of input; empty to go by the price list.
+    input_price: String,
+    /// The same for output.
+    output_price: String,
 }
 
 impl ModelRow {
     fn empty() -> ModelRow {
-        ModelRow { id: String::new(), context_window: DEFAULT_TOKENS.to_owned(), max_tokens: DEFAULT_TOKENS.to_owned() }
+        ModelRow {
+            id: String::new(),
+            context_window: DEFAULT_TOKENS.to_owned(),
+            max_tokens: DEFAULT_TOKENS.to_owned(),
+            input_price: String::new(),
+            output_price: String::new(),
+        }
     }
 
-    /// The model this row describes, if its name and both counts are usable.
+    /// The model this row describes, if its name and both counts are usable, and its prices are both there
+    /// as numbers or both left empty.
+    // Human: one price alone, or a word ("lots", or "0,075" with a comma) is no price; the row isn't saved
+    // rather than saved with a price that silently counts for nothing.
     fn model(&self) -> Option<ProviderModel> {
         let count = |text: &str| text.trim().parse::<u32>().ok().filter(|n| *n > 0);
         let id = self.id.trim();
         (!id.is_empty()).then_some(())?;
-        Some(ProviderModel { id: id.to_owned(), context_window: count(&self.context_window)?, max_tokens: count(&self.max_tokens)? })
+        let (input, output) = (self.input_price.trim(), self.output_price.trim());
+        let priced = crate::chat::usage::Rates::typed(input, output).is_some();
+        (priced || (input.is_empty() && output.is_empty())).then_some(())?;
+        Some(ProviderModel {
+            id: id.to_owned(),
+            context_window: count(&self.context_window)?,
+            max_tokens: count(&self.max_tokens)?,
+            input_price: input.to_owned(),
+            output_price: output.to_owned(),
+        })
     }
 }
 
@@ -341,7 +366,13 @@ impl Form {
         let models = provider
             .models
             .iter()
-            .map(|m| ModelRow { id: m.id.clone(), context_window: m.context_window.to_string(), max_tokens: m.max_tokens.to_string() })
+            .map(|m| ModelRow {
+                id: m.id.clone(),
+                context_window: m.context_window.to_string(),
+                max_tokens: m.max_tokens.to_string(),
+                input_price: m.input_price.clone(),
+                output_price: m.output_price.clone(),
+            })
             .collect();
         Form {
             index: Some(index),
@@ -1575,6 +1606,7 @@ fn chat_page(ui: &mut Ui, agents: &mut Agents, facts: &Facts<'_>, palette: Palet
         rows.row("Text size", None, Lead::Nothing, |ui| segmented(ui, "chat-text", &mut agents.chat_text_size, &sizes, palette));
         rows.row("Send while the assistant is working", Some(STEER_HINT), Lead::Nothing, |ui| switch(ui, &mut agents.always_steer, palette));
         rows.row("Have finished designs reviewed", Some(REVIEW_HINT), Lead::Nothing, |ui| switch(ui, &mut agents.review, palette));
+        rows.row("Look up model prices", Some(PRICES_HINT), Lead::Nothing, |ui| switch(ui, &mut agents.prices, palette));
     });
     heading(ui, "Starting a design", palette);
     card(ui, palette, |rows| {
@@ -2165,11 +2197,12 @@ fn unprotected(address: &str) -> bool {
 
 /// The model rows of the custom provider form.
 fn model_rows(ui: &mut Ui, form: &mut Form, palette: Palette) {
-    // Human: three fields side by side and a bin; only the first row carries the fields' names.
+    // Human: five fields side by side and a bin; only the first row carries the fields' names. The prices are
+    // dollars for a million tokens and may stay empty: the price list is asked then.
     let gap = 8.0;
     let bin = 30.0;
-    let fields = ui.available_width() - bin - 3.0 * gap;
-    let widths = [fields * 0.5, fields * 0.25, fields * 0.25];
+    let fields = ui.available_width() - bin - 5.0 * gap;
+    let widths = [fields * 0.34, fields * 0.18, fields * 0.18, fields * 0.15, fields * 0.15];
     let mut remove = None;
     let rows = form.models.len();
     for (index, model) in form.models.iter_mut().enumerate() {
@@ -2180,6 +2213,8 @@ fn model_rows(ui: &mut Ui, form: &mut Form, palette: Palette) {
             (&mut model.id, "Model ID", "my-model-id", widths[0]),
             (&mut model.context_window, "Context window", DEFAULT_TOKENS, widths[1]),
             (&mut model.max_tokens, "Max tokens", DEFAULT_TOKENS, widths[2]),
+            (&mut model.input_price, "Input $/M", "from list", widths[3]),
+            (&mut model.output_price, "Output $/M", "from list", widths[4]),
         ] {
             let cell = Rect::from_min_size(pos2(left, line.top()), vec2(width, line.height()));
             left = cell.right() + gap;
@@ -2624,7 +2659,8 @@ mod tests {
     fn a_filled_form_gives_a_provider_without_its_key() {
         let provider = filled().provider().unwrap();
         assert_eq!(provider.name, "Mine");
-        assert_eq!(provider.models, vec![ProviderModel { id: "model-a".to_owned(), context_window: 512_000, max_tokens: 512_000 }]);
+        let model = ProviderModel { id: "model-a".to_owned(), context_window: 512_000, max_tokens: 512_000, ..ProviderModel::default() };
+        assert_eq!(provider.models, vec![model]);
         assert!(!serde_json::to_string(&provider).unwrap().contains("secret"));
         assert_eq!(Form::of(0, &provider).provider(), Some(provider));
     }
@@ -2643,6 +2679,25 @@ mod tests {
         assert!(change(|f| f.models[0].context_window = "many".to_owned()).is_none());
         assert!(change(|f| f.models.push(f.models[0].clone())).is_none());
         assert!(change(|f| f.models.clear()).is_none());
+        // Prices are optional, but one alone, a word or a decimal comma is no price.
+        assert!(change(|f| f.models[0].input_price = "3".to_owned()).is_none());
+        assert!(change(|f| (f.models[0].input_price, f.models[0].output_price) = ("3".to_owned(), "lots".to_owned())).is_none());
+        assert!(change(|f| (f.models[0].input_price, f.models[0].output_price) = ("0,075".to_owned(), "15".to_owned())).is_none());
+        assert!(change(|f| (f.models[0].input_price, f.models[0].output_price) = ("3".to_owned(), "1,5".to_owned())).is_none());
+        let priced = change(|f| (f.models[0].input_price, f.models[0].output_price) = (" 3 ".to_owned(), "15.5".to_owned())).unwrap();
+        assert_eq!((priced.models[0].input_price.as_str(), priced.models[0].output_price.as_str()), ("3", "15.5"));
+    }
+
+    #[test]
+    fn typed_prices_survive_opening_a_provider_and_saving_it_again() {
+        let mut form = filled();
+        (form.models[0].input_price, form.models[0].output_price) = ("3".to_owned(), "15.5".to_owned());
+        let (mut prefs, vault) = (Prefs::default(), Memory::default());
+        save(&mut form, &mut prefs, &vault).unwrap();
+        let saved = prefs.agents.providers[0].clone();
+        assert_eq!((saved.models[0].input_price.as_str(), saved.models[0].output_price.as_str()), ("3", "15.5"));
+        save(&mut Form::of(0, &saved), &mut prefs, &vault).unwrap();
+        assert_eq!(prefs.agents.providers[0].models, saved.models);
     }
 
     #[test]
@@ -2824,7 +2879,7 @@ mod tests {
         let mut form = Form::new();
         form.models = vec![
             ModelRow { id: "big".to_owned(), ..ModelRow::empty() },
-            ModelRow { id: "mine".to_owned(), context_window: "8000".to_owned(), max_tokens: "2000".to_owned() },
+            ModelRow { id: "mine".to_owned(), context_window: "8000".to_owned(), max_tokens: "2000".to_owned(), ..ModelRow::empty() },
             ModelRow { id: "reads-only".to_owned(), ..ModelRow::empty() },
             ModelRow { id: "unknown".to_owned(), ..ModelRow::empty() },
         ];

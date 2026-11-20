@@ -101,7 +101,7 @@ Sizes are numbered. Size 2 is the desktop default.
   In this skill's tokens: solid is primary, soft is the destructive-tint manner with any colour, surface and
   outline are the outline button, ghost is ghost.
 - Focus is a 2 wide outline in the accent colour, 2 outside solid buttons, checkboxes, radios and switches,
-  and on the border of fields. Use the ring wrapper with padding 2 and the accent at full strength.
+  and on the border of fields. Use the focus ring with `"spread":2` and the accent at full strength.
 - Popups: 4 from the trigger (popover and hover card 8), start edges aligned, 10 from the screen's edge.
 - Default theme: indigo accent, translucent panels, medium radius (unverified). Dialog width 600
   (unverified).

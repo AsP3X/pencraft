@@ -14,6 +14,7 @@ use std::time::Duration;
 use craft_ai_core::SecretString;
 use serde_json::{Value, json};
 
+use super::usage::{self, Report, Used};
 use super::{Event, KeySource, MODELS, Waiting};
 use crate::app::lock;
 use crate::link::Call;
@@ -151,9 +152,18 @@ struct Turn {
     /// The tool calls whose input didn't come out as JSON.
     broken: Vec<String>,
     stop_reason: Option<String>,
+    /// The tokens the answer took, as far as the stream has said.
+    used: Used,
+    /// The model the stream says is answering.
+    model: Option<String>,
 }
 
 impl Turn {
+    /// What the answer took; `None` when the provider said nothing about it.
+    fn report(&self) -> Option<Report> {
+        (!self.used.is_empty()).then(|| Report { used: self.used, model: self.model.clone(), billed: None })
+    }
+
     /// Takes one event of the stream. Returns what the chat is told, or what went wrong.
     // Human: a thinking block comes with a signature and must go back to the API exactly as it came, so every
     // kind of block is kept as the stream builds it, not only the ones shown.
@@ -213,7 +223,13 @@ impl Turn {
                 }
                 Ok(None)
             }
+            Some("message_start") => {
+                usage::messages(&event["message"]["usage"], &mut self.used);
+                self.model = text("/message/model").map(str::to_owned);
+                Ok(None)
+            }
             Some("message_delta") => {
+                usage::messages(&event["usage"], &mut self.used);
                 if let Some(reason) = text("/delta/stop_reason") {
                     self.stop_reason = Some(reason.to_owned());
                 }
@@ -371,6 +387,11 @@ fn ask(
             return Err((0, String::new()));
         }
     }
+    // Human: an answer that broke off has returned above; its tokens are not counted, though the provider
+    // may charge for them.
+    if let Some(report) = turn.report() {
+        tell(Event::Used(report));
+    }
     Ok(turn)
 }
 
@@ -379,7 +400,7 @@ fn ask(
 /// # Errors
 /// When the provider couldn't be reached or refused.
 // Agent: BLOCKS for one model answer.
-pub fn once(endpoint: &str, source: &KeySource, model: &str, system: &str, content: &[Value]) -> Result<String, String> {
+pub fn once(endpoint: &str, source: &KeySource, model: &str, system: &str, content: &[Value], used: &dyn Fn(Report)) -> Result<String, String> {
     let key = key(source)?;
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .http_status_as_error(false)
@@ -401,6 +422,11 @@ pub fn once(endpoint: &str, source: &KeySource, model: &str, system: &str, conte
         return Err(refusal_of(status, &said));
     }
     let answer: Value = serde_json::from_str(&said).map_err(|error| format!("The provider's answer couldn't be read: {error}"))?;
+    let mut taken = Used::default();
+    usage::messages(&answer["usage"], &mut taken);
+    if !taken.is_empty() {
+        used(Report { used: taken, model: answer["model"].as_str().map(str::to_owned), billed: None });
+    }
     Ok(answer["content"].as_array().into_iter().flatten().filter_map(|block| block["text"].as_str()).collect::<Vec<_>>().join(""))
 }
 
@@ -569,6 +595,25 @@ mod tests {
             turn.take(&json!({ "type": "error", "error": { "type": "overloaded_error", "message": "Overloaded" } })).unwrap_err(),
             "The provider reported an error while the model was answering (overloaded_error): Overloaded"
         );
+    }
+
+    #[test]
+    fn a_streamed_answer_says_what_it_took_and_which_model_answered() {
+        let mut turn = Turn::default();
+        for event in [
+            json!({ "type": "message_start", "message": { "model": "claude-fable-5-2", "usage": { "input_tokens": 12, "cache_creation_input_tokens": 300, "cache_read_input_tokens": 9000, "output_tokens": 1 } } }),
+            json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
+            json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "Hi" } }),
+            json!({ "type": "content_block_stop", "index": 0 }),
+            json!({ "type": "message_delta", "delta": { "stop_reason": "end_turn" }, "usage": { "output_tokens": 420 } }),
+        ] {
+            turn.take(&event).unwrap();
+        }
+        let report = turn.report().unwrap();
+        assert_eq!(report.used, crate::chat::usage::Used { input: 12, cached: 9000, written: 300, output: 420 });
+        assert_eq!((report.model.as_deref(), report.billed), (Some("claude-fable-5-2"), None));
+        // An answer that says nothing about usage reports nothing.
+        assert!(Turn::default().report().is_none());
     }
 
     #[test]

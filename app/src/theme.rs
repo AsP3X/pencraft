@@ -143,6 +143,10 @@ pub const CHAT_BUBBLE_SHARE: f32 = 0.86;
 pub const CHAT_GAP: f32 = 10.0;
 /// The room between two notes on what the assistant did, which read as one list.
 pub const CHAT_NOTE_GAP: f32 = 6.0;
+/// The room between an answer and the line saying what it took.
+pub const CHAT_SPENT_GAP: f32 = 3.0;
+/// How faint that line is, as a share of the muted text's strength.
+pub const CHAT_SPENT_INK: f32 = 0.7;
 /// The size of a note's icon, with the circle that goes around it while its tool works.
 pub const CHAT_NOTE_ICON: f32 = 16.0;
 /// The share of that size the icon itself has while its tool works, inside the circle.
@@ -235,6 +239,88 @@ pub const CHAT_COPIED_STAYS: f64 = 1.6;
 pub const CHAT_TEXT_MEDIUM: f32 = 1.15;
 /// See [`CHAT_TEXT_MEDIUM`].
 pub const CHAT_TEXT_LARGE: f32 = 1.3;
+/// The liquid a task list pours in with ([`crate::liquid`]): its body.
+pub const LIQUID: Color32 = Color32::from_rgb(0xff, 0x7a, 0x14);
+/// The liquid's deeper colour, away from its edge.
+pub const LIQUID_CORE: Color32 = Color32::from_rgb(0xee, 0x5c, 0x00);
+/// The liquid's rim where the travelling light is not.
+pub const LIQUID_RIM: Color32 = Color32::from_rgb(0xff, 0xa6, 0x4d);
+/// The soft glow around the liquid.
+pub const LIQUID_GLOW: Color32 = Color32::from_rgb(0xff, 0x6a, 0x00);
+/// How close two shapes of liquid come before they grow together, points.
+pub const LIQUID_MELT: f32 = 10.0;
+/// How wide the liquid's lit rim is, points.
+pub const LIQUID_RIM_WIDTH: f32 = 1.8;
+/// How far inside its edge the liquid has its deeper colour, points.
+pub const LIQUID_CORE_DEPTH: f32 = 9.0;
+/// How fast the white bloom beside the lit rim fades with distance, points.
+pub const LIQUID_BLOOM: f32 = 3.2;
+/// How fast the soft glow around the liquid fades with distance, points.
+pub const LIQUID_HALO: f32 = 7.0;
+/// How far from the liquid anything of it is drawn, points.
+pub const LIQUID_REACH: f32 = 22.0;
+/// How long the light takes to travel along the liquid's rim once, seconds.
+pub const LIQUID_LIGHT_PACE: f32 = 1.0;
+/// How far to each side the travelling light reaches, as a share of the liquid's width.
+pub const LIQUID_LIGHT_SHARE: f32 = 0.22;
+/// The task list at the top of the chat panel ([`crate::tasklist`]): room above its header and under its rows.
+pub const TASKS_PAD: f32 = 10.0;
+/// How high the task list's header line is.
+pub const TASKS_HEAD: f32 = 18.0;
+/// The room between the header and the bar that shows how far the list is.
+pub const TASKS_BAR_GAP: f32 = 9.0;
+/// How thick that bar is.
+pub const TASKS_BAR: f32 = 3.0;
+/// The room between the bar and the first task.
+pub const TASKS_ROWS_GAP: f32 = 8.0;
+/// How high one task's row is.
+pub const TASKS_ROW: f32 = 28.0;
+/// How far a task's frame reaches past its row to each side.
+pub const TASKS_ROW_REACH: f32 = 7.0;
+/// The mark before a task: a ring, a tick, or the blob of the task at work.
+pub const TASKS_MARK: f32 = 16.0;
+/// The room between a task's mark and its words.
+pub const TASKS_MARK_GAP: f32 = 9.0;
+/// How fast the list's height follows what it shows (per second; larger is quicker).
+pub const TASKS_GLIDE: f32 = 14.0;
+/// How long the bar takes to reach a new length, seconds.
+pub const TASKS_BAR_TIME: f32 = 0.45;
+/// How long the pool of liquid gathers before the first drop falls, seconds.
+pub const TASKS_POOL: f32 = 0.76;
+/// How far the pool hangs under the list's top edge, points.
+pub const TASKS_POUR_BAND: f32 = 18.0;
+/// The shortest wait between two drops, and how much longer it may be, seconds.
+pub const TASKS_POUR_GAP: f32 = 0.11;
+/// See [`TASKS_POUR_GAP`].
+pub const TASKS_POUR_GAP_MORE: f32 = 0.13;
+/// The share of a drop's fall after which it has landed; the rest it lies flat.
+pub const TASKS_POUR_LAND: f32 = 0.86;
+/// How long a row's liquid takes to pour out and soak away, seconds.
+pub const TASKS_POUR_SOAK: f32 = 0.58;
+/// How long the small drop from a finished task to the next one runs, seconds.
+pub const TASKS_STEP_TIME: f32 = 0.45;
+/// How long a finished list's line takes to melt into one drop when the list moves into the conversation, seconds.
+pub const TASKS_HAND_MELT: f32 = 0.25;
+/// How long that drop falls to where the list is filed.
+pub const TASKS_HAND_FALL: f32 = 0.3;
+/// How long it takes to pour out there and soak away.
+pub const TASKS_HAND_SOAK: f32 = 0.5;
+/// How long after a task is finished the next one is shown at work, seconds.
+pub const TASKS_STEP_NEXT: f32 = 0.3;
+/// How long a finished task's mark bursts, seconds.
+pub const TASKS_BURST: f32 = 0.7;
+/// How long the frame of a task flares when the task comes to be at work, seconds.
+pub const TASKS_FLARE: f32 = 0.8;
+/// How long the light takes around the frame of the task at work, and around its blob, seconds.
+pub const TASKS_FRAME_TURN: f32 = 2.8;
+/// See [`TASKS_FRAME_TURN`].
+pub const TASKS_BLOB_TURN: f32 = 1.5;
+/// How long the blob of the task at work takes to swell and shrink once, and to go through its shapes, seconds.
+pub const TASKS_BLOB_PULSE: f32 = 1.6;
+/// See [`TASKS_BLOB_PULSE`].
+pub const TASKS_BLOB_WARP: f32 = 3.6;
+/// The most texels to a point the liquid is painted with, however fine the screen is.
+pub const LIQUID_FINE: f32 = 1.5;
 /// Size of the window a provider's models are chosen in, where the app's window has that much room.
 pub const MODEL_PICKER_SIZE: [f32; 2] = [520.0, 580.0];
 /// Height of one model's row in that window.

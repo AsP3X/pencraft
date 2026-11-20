@@ -26,7 +26,7 @@ Rules that hold for all of them:
 ## Button
 
 ```json
-{"type":"frame","id":"ui-button","name":"Button","reusable":true,"height":36,"padding":[0,10],"gap":6,"justifyContent":"center","alignItems":"center","cornerRadius":"$radius-md","fill":"$primary","children":[
+{"type":"frame","id":"ui-button","name":"Button","reusable":true,"height":36,"padding":[0,10],"gap":6,"justifyContent":"center","alignItems":"center","cornerRadius":"$radius-md","fill":"$primary","states":{"hover":{"fill":"$primary-hover"},"focus":{"stroke":"$ring","strokeWidth":1,"strokeAlignment":"inner","effect":{"type":"shadow","offset":{"x":0,"y":0},"blur":0,"spread":3,"color":"$ring-soft"}},"disabled":{"opacity":0.5}},"children":[
   {"type":"text","id":"ui-button-label","name":"Label","content":"Save changes","fontFamily":"$font","fontSize":14,"fontWeight":"500","fill":"$primary-foreground"}]}
 ```
 
@@ -43,9 +43,10 @@ The six variants are overrides on an instance:
 
 One primary button per view. In a footer the main action is last (on the right), 8 from the one before it.
 
-States: hover `"fill":"$primary-hover"` (secondary `$secondary-hover`, destructive
-`$destructive-tint-hover`, outline and ghost `$muted`); pressed as hover and 1 lower; disabled
-`"opacity":0.5` on the instance, once; focus in the ring wrapper below.
+States are on the component; an instance picks one with `"state"`: `"hover"` (the primary's fill; another
+variant sets its own on the instance, which wins: secondary `"fill":"$secondary-hover"`, destructive
+`$destructive-tint-hover`, outline and ghost `$muted`), `"focus"` (the ring, see "Focus and invalid" below)
+and `"disabled"`. Pressed is hover, drawn 1 lower. Never write a state's changes out on each instance.
 
 With a leading icon the padding on the icon's side is 8, and the icon is 16:
 
@@ -69,14 +70,14 @@ An icon button is square, as tall as the controls beside it:
 ## Input
 
 ```json
-{"type":"frame","id":"ui-input","name":"Input","reusable":true,"width":280,"height":36,"padding":[0,10],"alignItems":"center","cornerRadius":"$radius-md","fill":"$control","stroke":"$input","strokeWidth":1,"strokeAlignment":"inner","children":[
+{"type":"frame","id":"ui-input","name":"Input","reusable":true,"width":280,"height":36,"padding":[0,10],"alignItems":"center","cornerRadius":"$radius-md","fill":"$control","stroke":"$input","strokeWidth":1,"strokeAlignment":"inner","states":{"focus":{"fill":["$background","$control"],"stroke":"$ring","strokeWidth":1,"strokeAlignment":"inner","effect":{"type":"shadow","offset":{"x":0,"y":0},"blur":0,"spread":3,"color":"$ring-soft"}},"invalid":{"fill":["$background","$control"],"stroke":"$destructive","effect":{"type":"shadow","offset":{"x":0,"y":0},"blur":0,"spread":3,"color":"$destructive-tint"}},"disabled":{"opacity":0.5}},"children":[
   {"type":"text","id":"ui-input-value","name":"Value","content":"name@company.com","fontFamily":"$font","fontSize":14,"fill":"$muted-foreground"}]}
 ```
 
 As inserted it shows a placeholder (`$muted-foreground`). Filled: override the value's `content` and
-`"fill":"$foreground"`. Being typed in: filled, in the focus ring, with a caret after the text (a rectangle 1
+`"fill":"$foreground"`. Being typed in: filled, `"state":"focus"`, with a caret after the text (a rectangle 1
 wide and 16 high in `$foreground`, as a second child, 1 from the text). Read-only: filled, with `"fill":"$muted-half"` on the input. Disabled:
-`"opacity":0.5`. A placeholder is an example of what to type, never the label.
+`"state":"disabled"`. A placeholder is an example of what to type, never the label.
 
 With a leading icon (search), the icon is 16 in `$muted-foreground`, 8 from the text:
 
@@ -202,31 +203,31 @@ with "(optional)" in `$muted-foreground` after the label instead of starring the
 switch field has its description under its label, starting at the label's left edge (24 in for a checkbox,
 40 for a switch). A checkbox or switch row among fields is 24 from the field before it, like any field.
 
-## Focus and invalid: the ring wrapper
+## Focus and invalid: the ring
 
-Pencraft draws one stroke per layer, so the 3 wide halo is a frame around the control: padding 3, `$radius-lg`
-(one step above the control's 8), filled with `$ring-soft`. The control inside gets the `$ring` border and a covering
-fill. The wrapper is 6 wider and taller than the control: where it stands in a row, give it
-`"layoutPosition":"absolute"` over the place of the control so nothing moves.
+The 3 wide halo is a shadow that only spreads: no offset, no blur, `"spread":3`, in `$ring-soft`. With it the
+control's border turns `$ring`. Buttons and inputs carry both as their `focus` state; on any other control
+write the two on the layer:
+`"stroke":"$ring","effect":{"type":"shadow","offset":{"x":0,"y":0},"blur":0,"spread":3,"color":"$ring-soft"}`.
+A shadow takes no room, so nothing beside the control moves, and under a see-through fill (a tint) it is cut
+out, so the tint stays clean. But a shadow is cast by the fill: a control with no fill at all (a ghost button,
+and an outline button or an input in the light theme, where `$control` is clear) would cast it from its
+border and its text instead, a ring inside as well as outside and a halo round every letter. In focus such a
+control gets the page under its own fill: `"fill":["$background","$control"]` (the input's `focus` and
+`invalid` states have it; on an outline or ghost button put it on the instance). Leave 3 clear around a
+control that may show the ring.
 
 ```json
-{"type":"frame","id":"ui-focus-example","name":"Input / focus","padding":3,"cornerRadius":"$radius-lg","fill":"$ring-soft","children":[
-  {"type":"ref","id":"ui-focus-example-control","ref":"ui-input","fill":"$background","stroke":"$ring","descendants":{"ui-input-value":{"content":"maren.solheim@","fill":"$foreground"}}}]}
+{"type":"ref","id":"ui-focus-example","name":"Input / focus","ref":"ui-input","state":"focus","descendants":{"ui-input-value":{"content":"maren.solheim@","fill":"$foreground"}}}
 ```
 
-The covering fill by button variant: primary, secondary and their hover keep their own fill; outline and
-ghost take `$background`; destructive takes both, the tint over the cover:
-`"fill":["$background","$destructive-tint"]`. The wrapper's 3 is added around the control, so parts beside
-it are drawn 3 closer (the gap of 4 in the invalid example below is the usual 8 less the ring and a bit).
-
-Invalid is the same wrapper with `"fill":"$destructive-tint"` and `"stroke":"$destructive"` (with the same covering fill) on the control,
-and the error under the field:
+Invalid is the same ring in `$destructive-tint` with the border in `$destructive` (an input's `invalid`
+state), and the error under the field:
 
 ```json
-{"type":"frame","id":"ui-invalid-example","name":"Field / invalid","layout":"vertical","gap":4,"children":[
+{"type":"frame","id":"ui-invalid-example","name":"Field / invalid","layout":"vertical","gap":8,"children":[
   {"type":"text","id":"ui-invalid-example-label","name":"Label","content":"Work email","fontFamily":"$font","fontSize":14,"fontWeight":"500","fill":"$foreground"},
-  {"type":"frame","id":"ui-invalid-example-ring","name":"Ring","padding":3,"cornerRadius":"$radius-lg","fill":"$destructive-tint","children":[
-    {"type":"ref","id":"ui-invalid-example-control","ref":"ui-input","fill":"$background","stroke":"$destructive","descendants":{"ui-input-value":{"content":"maren.solheim","fill":"$foreground"}}}]},
+  {"type":"ref","id":"ui-invalid-example-control","ref":"ui-input","state":"invalid","descendants":{"ui-input-value":{"content":"maren.solheim","fill":"$foreground"}}},
   {"type":"text","id":"ui-invalid-example-error","name":"Error","content":"Enter an address with an @, like name@company.com.","fontFamily":"$font","fontSize":14,"fill":"$destructive"}]}
 ```
 
@@ -236,8 +237,8 @@ A focus ring is drawn on one control per screen: the one the keyboard is on.
 ## State board
 
 When states are asked for. Every cell is a frame of one `width` per column that holds a frame with 3 of
-padding, so the focus cell can carry the halo without anything moving: in the focus cell that inner frame is
-the ring wrapper. The headings stand 3 in, over the buttons' edge. Rows start with the variant's name. Every
+padding, which is the room the focus ring spreads into. Each instance picks its state with `"state"`; a
+variant other than primary keeps its own fill on the instance. The headings stand 3 in, over the buttons' edge. Rows start with the variant's name. Every
 instance in the board has one `width` (the widest loading button's), so no button grows from one state to
 the next. Loading is an instance of `ui-button-icon-leading` with the variant's fill on it and the variant's
 colour on its icon and label. Copy the rows for every variant that was named and drop the columns that were
@@ -256,15 +257,15 @@ not, then copy the whole board into a frame with `"theme":{"Mode":"Dark"}` for d
   {"type":"frame","id":"ui-states-row-primary","name":"Primary","gap":24,"alignItems":"center","children":[
     {"type":"text","id":"ui-states-row-primary-name","content":"Primary","textGrowth":"fixed-width","width":88,"fontFamily":"$font","fontSize":12,"fontWeight":"500","fill":"$muted-foreground"},
     {"type":"frame","id":"ui-states-primary-rest-cell","name":"Cell","width":160,"children":[{"type":"frame","id":"ui-states-primary-rest-pad","padding":3,"children":[{"type":"ref","id":"ui-states-primary-rest","name":"Button / primary / rest","ref":"ui-button","width":144,"descendants":{"ui-button-label":{"content":"Save changes"}}}]}]},
-    {"type":"frame","id":"ui-states-primary-hover-cell","name":"Cell","width":160,"children":[{"type":"frame","id":"ui-states-primary-hover-pad","padding":3,"children":[{"type":"ref","id":"ui-states-primary-hover","name":"Button / primary / hover","ref":"ui-button","width":144,"descendants":{"ui-button-label":{"content":"Save changes"}},"fill":"$primary-hover"}]}]},
-    {"type":"frame","id":"ui-states-primary-focus-cell","name":"Cell","width":160,"children":[{"type":"frame","id":"ui-states-primary-focus-pad","padding":3,"children":[{"type":"ref","id":"ui-states-primary-focus","name":"Button / primary / focus","ref":"ui-button","width":144,"descendants":{"ui-button-label":{"content":"Save changes"}},"stroke":"$ring","strokeWidth":1,"strokeAlignment":"inner"}],"name":"Ring","cornerRadius":"$radius-lg","fill":"$ring-soft"}]},
-    {"type":"frame","id":"ui-states-primary-disabled-cell","name":"Cell","width":160,"children":[{"type":"frame","id":"ui-states-primary-disabled-pad","padding":3,"children":[{"type":"ref","id":"ui-states-primary-disabled","name":"Button / primary / disabled","ref":"ui-button","width":144,"descendants":{"ui-button-label":{"content":"Save changes"}},"opacity":0.5}]}]},
+    {"type":"frame","id":"ui-states-primary-hover-cell","name":"Cell","width":160,"children":[{"type":"frame","id":"ui-states-primary-hover-pad","padding":3,"children":[{"type":"ref","id":"ui-states-primary-hover","name":"Button / primary / hover","ref":"ui-button","state":"hover","width":144,"descendants":{"ui-button-label":{"content":"Save changes"}}}]}]},
+    {"type":"frame","id":"ui-states-primary-focus-cell","name":"Cell","width":160,"children":[{"type":"frame","id":"ui-states-primary-focus-pad","padding":3,"children":[{"type":"ref","id":"ui-states-primary-focus","name":"Button / primary / focus","ref":"ui-button","state":"focus","width":144,"descendants":{"ui-button-label":{"content":"Save changes"}}}]}]},
+    {"type":"frame","id":"ui-states-primary-disabled-cell","name":"Cell","width":160,"children":[{"type":"frame","id":"ui-states-primary-disabled-pad","padding":3,"children":[{"type":"ref","id":"ui-states-primary-disabled","name":"Button / primary / disabled","ref":"ui-button","state":"disabled","width":144,"descendants":{"ui-button-label":{"content":"Save changes"}}}]}]},
     {"type":"frame","id":"ui-states-primary-loading-cell","name":"Cell","width":160,"children":[{"type":"frame","id":"ui-states-primary-loading-pad","padding":3,"children":[{"type":"ref","id":"ui-states-primary-loading","name":"Button / primary / loading","ref":"ui-button-icon-leading","width":144,"descendants":{"ui-button-icon-leading-icon":{"icon":"loader-circle"},"ui-button-icon-leading-label":{"content":"Save changes"}},"opacity":0.5}]}]}]},
   {"type":"frame","id":"ui-states-row-destructive","name":"Destructive","gap":24,"alignItems":"center","children":[
     {"type":"text","id":"ui-states-row-destructive-name","content":"Destructive","textGrowth":"fixed-width","width":88,"fontFamily":"$font","fontSize":12,"fontWeight":"500","fill":"$muted-foreground"},
     {"type":"frame","id":"ui-states-destructive-rest-cell","name":"Cell","width":160,"children":[{"type":"frame","id":"ui-states-destructive-rest-pad","padding":3,"children":[{"type":"ref","id":"ui-states-destructive-rest","name":"Button / destructive / rest","ref":"ui-button","width":144,"fill":"$destructive-tint","descendants":{"ui-button-label":{"content":"Delete project","fill":"$destructive"}}}]}]},
     {"type":"frame","id":"ui-states-destructive-hover-cell","name":"Cell","width":160,"children":[{"type":"frame","id":"ui-states-destructive-hover-pad","padding":3,"children":[{"type":"ref","id":"ui-states-destructive-hover","name":"Button / destructive / hover","ref":"ui-button","width":144,"fill":"$destructive-tint-hover","descendants":{"ui-button-label":{"content":"Delete project","fill":"$destructive"}}}]}]},
-    {"type":"frame","id":"ui-states-destructive-focus-cell","name":"Cell","width":160,"children":[{"type":"frame","id":"ui-states-destructive-focus-pad","padding":3,"children":[{"type":"ref","id":"ui-states-destructive-focus","name":"Button / destructive / focus","ref":"ui-button","width":144,"fill":["$background","$destructive-tint"],"descendants":{"ui-button-label":{"content":"Delete project","fill":"$destructive"}},"stroke":"$ring","strokeWidth":1,"strokeAlignment":"inner"}],"name":"Ring","cornerRadius":"$radius-lg","fill":"$ring-soft"}]},
-    {"type":"frame","id":"ui-states-destructive-disabled-cell","name":"Cell","width":160,"children":[{"type":"frame","id":"ui-states-destructive-disabled-pad","padding":3,"children":[{"type":"ref","id":"ui-states-destructive-disabled","name":"Button / destructive / disabled","ref":"ui-button","width":144,"fill":"$destructive-tint","descendants":{"ui-button-label":{"content":"Delete project","fill":"$destructive"}},"opacity":0.5}]}]},
+    {"type":"frame","id":"ui-states-destructive-focus-cell","name":"Cell","width":160,"children":[{"type":"frame","id":"ui-states-destructive-focus-pad","padding":3,"children":[{"type":"ref","id":"ui-states-destructive-focus","name":"Button / destructive / focus","ref":"ui-button","state":"focus","width":144,"fill":"$destructive-tint","descendants":{"ui-button-label":{"content":"Delete project","fill":"$destructive"}}}]}]},
+    {"type":"frame","id":"ui-states-destructive-disabled-cell","name":"Cell","width":160,"children":[{"type":"frame","id":"ui-states-destructive-disabled-pad","padding":3,"children":[{"type":"ref","id":"ui-states-destructive-disabled","name":"Button / destructive / disabled","ref":"ui-button","state":"disabled","width":144,"fill":"$destructive-tint","descendants":{"ui-button-label":{"content":"Delete project","fill":"$destructive"}}}]}]},
     {"type":"frame","id":"ui-states-destructive-loading-cell","name":"Cell","width":160,"children":[{"type":"frame","id":"ui-states-destructive-loading-pad","padding":3,"children":[{"type":"ref","id":"ui-states-destructive-loading","name":"Button / destructive / loading","ref":"ui-button-icon-leading","width":144,"fill":"$destructive-tint","descendants":{"ui-button-icon-leading-icon":{"icon":"loader-circle","fill":"$destructive"},"ui-button-icon-leading-label":{"content":"Delete project","fill":"$destructive"}},"opacity":0.5}]}]}]}]}
 ```

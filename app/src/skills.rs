@@ -46,8 +46,51 @@ pub const ALL: &[Skill] = &[
             ("references/controls.md", include_str!("../skills/ui-components/references/controls.md")),
             ("references/overlays.md", include_str!("../skills/ui-components/references/overlays.md")),
             ("references/data.md", include_str!("../skills/ui-components/references/data.md")),
+            ("references/navigation.md", include_str!("../skills/ui-components/references/navigation.md")),
+            ("references/inputs.md", include_str!("../skills/ui-components/references/inputs.md")),
+            ("references/tables.md", include_str!("../skills/ui-components/references/tables.md")),
+            ("references/chat.md", include_str!("../skills/ui-components/references/chat.md")),
+            ("references/screens.md", include_str!("../skills/ui-components/references/screens.md")),
             ("references/styles.md", include_str!("../skills/ui-components/references/styles.md")),
         ],
+    },
+    Skill {
+        name: "charts",
+        files: &[
+            (MAIN, include_str!("../skills/charts/SKILL.md")),
+            ("references/colours.md", include_str!("../skills/charts/references/colours.md")),
+            ("references/charts.md", include_str!("../skills/charts/references/charts.md")),
+            ("references/figures.md", include_str!("../skills/charts/references/figures.md")),
+        ],
+    },
+    Skill {
+        name: "formats",
+        files: &[
+            (MAIN, include_str!("../skills/formats/SKILL.md")),
+            ("references/social.md", include_str!("../skills/formats/references/social.md")),
+            ("references/stores.md", include_str!("../skills/formats/references/stores.md")),
+            ("references/print.md", include_str!("../skills/formats/references/print.md")),
+            ("references/email.md", include_str!("../skills/formats/references/email.md")),
+        ],
+    },
+    Skill {
+        name: "material",
+        files: &[
+            (MAIN, include_str!("../skills/material/SKILL.md")),
+            ("references/tokens.md", include_str!("../skills/material/references/tokens.md")),
+            ("references/components.md", include_str!("../skills/material/references/components.md")),
+        ],
+    },
+    Skill {
+        name: "landing-pages",
+        files: &[
+            (MAIN, include_str!("../skills/landing-pages/SKILL.md")),
+            ("references/sections.md", include_str!("../skills/landing-pages/references/sections.md")),
+        ],
+    },
+    Skill {
+        name: "slides",
+        files: &[(MAIN, include_str!("../skills/slides/SKILL.md")), ("references/slides.md", include_str!("../skills/slides/references/slides.md"))],
     },
     Skill { name: "devices", files: &[(MAIN, include_str!("../skills/devices/SKILL.md"))] },
     Skill {
@@ -99,7 +142,7 @@ pub fn find(name: &str) -> Option<&'static Skill> {
 #[must_use]
 pub fn index() -> String {
     let mut out = String::from(
-        "## Skills\nFor some kinds of design Pencraft has a skill: what to decide, how to build it here, and how to check it. When a request fits one, read it with `read_skill` before you design, and follow it.\n",
+        "## Skills\nFor some kinds of design Pencraft has a skill: what to decide, how to build it here, and how to check it. When a request fits one, read it with `read_skill` before you design. A skill is part firm and part a starting point, and says which: what it lists to do every time, do without being asked (only the user's own words overrule it); what it gives as a default, begin from and change when the design has a reason. Its examples show how a thing is built, not how yours must look, and a look a design already has stays.\n",
     );
     for skill in ALL {
         out.push_str("- `");
@@ -497,7 +540,11 @@ mod tests {
 
         let root = std::env::temp_dir().join(format!("pencraft-skills-test-{}", std::process::id()));
         let written = install(&root).unwrap();
-        assert_eq!(written, ["liquid-glass", "ui-components", "devices", "logos"].map(|name| root.join(name).join(MAIN)));
+        assert_eq!(
+            written,
+            ["liquid-glass", "ui-components", "charts", "formats", "material", "landing-pages", "slides", "devices", "logos"]
+                .map(|name| root.join(name).join(MAIN))
+        );
         for (path, text) in ALL[0].files {
             assert_eq!(std::fs::read_to_string(root.join("liquid-glass").join(path)).unwrap(), *text);
         }

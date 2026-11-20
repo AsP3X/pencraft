@@ -94,12 +94,19 @@ fn changes(answer: &str) -> Option<String> {
 /// # Errors
 /// When the reviewer couldn't be asked.
 // Agent: BLOCKS for one model answer; `child` holds the Claude Code program meanwhile so the chat can end it.
-pub fn judge(engine: &Engine, asked: &str, mut picture: Vec<Value>, proof: bool, child: &Mutex<Option<Child>>) -> Result<Option<String>, String> {
+pub fn judge(
+    engine: &Engine,
+    asked: &str,
+    mut picture: Vec<Value>,
+    proof: bool,
+    child: &Mutex<Option<Child>>,
+    used: &dyn Fn(super::usage::Report),
+) -> Result<Option<String>, String> {
     let brief = if proof { PROOF } else { BRIEF };
     picture.push(json!({ "type": "text", "text": format!("The user asked for:\n{asked}") }));
     let answer = match engine {
-        Engine::Code { flavor: Flavor::Claude, program, model } => super::code::once(program, model, brief, &picture, child)?,
-        Engine::Api { wire: Wire::Messages, endpoint, model, key, .. } => super::api::once(endpoint, key, model, brief, &picture)?,
+        Engine::Code { flavor: Flavor::Claude, program, model } => super::code::once(program, model, brief, &picture, child, used)?,
+        Engine::Api { wire: Wire::Messages, endpoint, model, key, .. } => super::api::once(endpoint, key, model, brief, &picture, used)?,
         // No reviewer speaks through the other engines; the design goes to the user as it is.
         _ => return Ok(None),
     };

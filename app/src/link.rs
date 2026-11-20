@@ -332,8 +332,11 @@ fn answer(message: &Value, chat: Option<u64>, shared: &Shared) -> Option<Value> 
             // Human: only the app's own chat has a place to put a question to the user; a client outside the app
             // asks in its own window, and is not offered the tool.
             let mut off = lock(&shared.off).clone();
+            // Human: the task list stands in the app's chat panel too.
             if chat.is_none() {
-                off.push(crate::chat::asks::TOOL.to_owned());
+                off.extend(
+                    [crate::chat::asks::TOOL, crate::chat::tasks::PLAN, crate::chat::tasks::ADD, crate::chat::tasks::FINISH].map(str::to_owned),
+                );
             }
             json!({ "tools": crate::agent::tools_without(&off) })
         }

@@ -49,7 +49,7 @@ struct Words {
 }
 
 /// The tools the app gives a model, as the chat names them.
-const TOOLS: [Words; 20] = [
+const TOOLS: [Words; 23] = [
     Words {
         tool: "get_state",
         icon: "eye",
@@ -93,6 +93,9 @@ const TOOLS: [Words; 20] = [
     Words { tool: "search_images", icon: "image", doing: "Looking for pictures", did: "Looked for pictures", failed: "Couldn't look for pictures" },
     Words { tool: "download_image", icon: "download", doing: "Fetching a picture", did: "Fetched a picture", failed: "Couldn't fetch the picture" },
     Words { tool: "ask_user", icon: "message-circle-question-mark", doing: "Asking you", did: "Asked you", failed: "Couldn't ask you" },
+    Words { tool: "plan_tasks", icon: "list-checks", doing: "Planning the work", did: "Planned the work", failed: "Couldn't plan the work" },
+    Words { tool: "add_tasks", icon: "list-plus", doing: "Adding tasks", did: "Added tasks", failed: "Couldn't add the tasks" },
+    Words { tool: "finish_task", icon: "circle-check", doing: "Finishing a task", did: "Finished a task", failed: "Couldn't finish the task" },
     // Human: not a tool the model calls: the app has a reviewer look at a finished design ([`super::critic`]).
     Words {
         tool: "review_design",
@@ -207,6 +210,11 @@ pub fn detail(tool: &str, input: &Value) -> String {
             url.split_once("://").map_or(url, |(_, rest)| rest).split(['/', '?', '#']).next().unwrap_or_default().to_owned()
         }
         "edit_image" => quoted(input.get("instruction")),
+        "plan_tasks" | "add_tasks" => match input.get("tasks").and_then(Value::as_array).map_or(0, Vec::len) {
+            0 => String::new(),
+            tasks => counted(tasks, "task", "tasks"),
+        },
+        "finish_task" => input.get("task").and_then(Value::as_u64).map(|task| format!("task {task}")).unwrap_or_default(),
         _ => String::new(),
     }
 }

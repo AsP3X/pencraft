@@ -188,6 +188,9 @@ A client that speaks MCP over HTTP can skip `pencraft mcp`: the address and the 
 | `download_image` | Fetches a picture into the `images` folder beside the document, for an image fill |
 | `edit_image` | Has an image model change a picture by an instruction (a layer's picture, layers as they look, or a picture file), or make one that goes by up to four reference pictures; puts the result in place of the layer's picture or beside the layers drawn. Needs a Google Gemini service (see Pictures) |
 | `ask_user` | Asks you one to three questions, each with answers to tick, or offers next steps. Only the chat inside Pencraft has it |
+| `plan_tasks` | Splits a job of many steps into a task list (2 to 12 tasks) that stands above the chat; the first task is at work at once. Called again while the list is at work, it replaces the tasks that have not started. Only the chat inside Pencraft has it |
+| `add_tasks` | Adds tasks right after the task at work, when a task turns up more to do (a check finds something to fix). Only the chat inside Pencraft has it |
+| `finish_task` | Finishes the task at work, and the next one is at work. When the last task is finished the list moves from the top of the panel into the conversation, as a note that opens to show its tasks. Tasks are finished in their order, one at a time: the app refuses a task whose turn has not come. Only the chat inside Pencraft has it |
 
 ## The web
 
@@ -300,13 +303,20 @@ same 100 second limit.
 ## Skills
 
 A skill teaches a model one kind of design in Pencraft: what to decide, how to build it with Pencraft's
-layers, and how to check the result. Skills are folders in the open Agent Skills format, in
+layers, and how to check the result. A skill is part firm and part a starting point, and says which: what it
+lists to do every time is done without being asked, its defaults are where a design begins, and its
+examples show how a thing is built, not how a design must look. Skills are folders in the open Agent Skills format, in
 [`skills/`](skills/), and are built into the program.
 
 | Skill | For |
 |---|---|
 | [`liquid-glass`](skills/liquid-glass/SKILL.md) | Liquid Glass interfaces (the translucent, light-bending material of iOS 26 and macOS 26) and frosted panels: which surfaces get glass, the `material` property, glass groups, legibility, tokens, ready-made components |
-| [`ui-components`](skills/ui-components/SKILL.md) | Standard components the way the common libraries build them (shadcn/ui, Radix, Base UI, Sonner, Vaul, cmdk): buttons, fields, menus, dialogs, drawers, toasts, a command palette, cards and tables, with sizes, tokens for light and dark, states and placement, and the numbers of named looks |
+| [`ui-components`](skills/ui-components/SKILL.md) | Standard components the way the common libraries build them (shadcn/ui, Radix, Base UI, Sonner, Vaul, cmdk): buttons, fields, menus, dialogs, drawers, toasts, a command palette, cards and tables, a sidebar and top bar, calendars and date fields, data tables with selection and paging, the parts of a chat with an assistant, and whole screens (a dashboard, sign-in, an inbox), with sizes, tokens for light and dark, states and placement, and the numbers of named looks |
+| [`charts`](skills/charts/SKILL.md) | Charts that are true to their numbers: bars, grouped and stacked bars, lines, areas, sparklines, donuts, gauges, progress rings, ranked bar lists, uptime strips and candlestick price charts, worked out from the values (heights, points and angles) with axes, gridlines, legend, tooltip and the card around them; series colours for light and dark; the checks that keep totals, changes and dates in agreement; and how figures are written |
+| [`formats`](skills/formats/SKILL.md) | Designs at the exact size their destination needs, with what matters inside the area that stays visible: social posts, stories and carousels, link previews, display ads, video thumbnails, app store screenshots and listing graphics, favicons, print in points with bleed and safe margins (paper sizes, business cards, posters), and a picture of an email; type sizes for how small a piece is shown; export for each; and which sizes were read at the platform's own page and which were not |
+| [`material`](skills/material/SKILL.md) | Android and Material Design to the Material 3 Expressive specification: colour roles for light and dark, the fifteen type roles, shape, elevation and state layers, and components at their real sizes (buttons and button groups, FAB, chips, cards, text fields, switches, sliders, lists, top app bar, navigation bar, search bar, tabs, dialogs, snackbars), with a whole Android phone screen; which values are Google's and which are this kit's |
+| [`landing-pages`](skills/landing-pages/SKILL.md) | Landing pages and marketing sites as an argument for one product to one buyer: the five lines to know before drawing, which sections a page needs and in which order, measures at web widths and for a phone, six forms of hero, and ready sections (navigation, hero with a product picture, customers, features of unequal weight, a customer quote, prices, questions, a closing and a footer) |
+| [`slides`](skills/slides/SKILL.md) | Presentation decks as an argument: presented or read and what that does to type sizes, titles written first and as conclusions, the order of a pitch deck, the frame and its margins, eleven kinds of slide, rhythm, export, and nine ready slides (title, statement, big number, evidence, comparison, quote, plan, the ask, and a reading slide) |
 | [`devices`](skills/devices/SKILL.md) | Screens shown inside the phone or tablet they are for: a ready iPhone template measured from the real one (status bar with the time and the signal, Wi-Fi and battery glyphs, Dynamic Island, home indicator, side buttons), and the numbers of an Android phone and an iPad |
 
 | [`logos`](skills/logos/SKILL.md) | Logos of every kind and rendering style: flat marks, monoline, vintage badges and roundels with text round the rim, heraldic crests, seals, engravings, mascots, luxury monograms, dimensional marks and app icons. Choosing the style from the brief, finding one idea, three rough marks, exact construction (arcs, cut-outs, rotation), building detail in passes (line weights, tones, one light), the wordmark and its lockup, the small version, and the proofs |

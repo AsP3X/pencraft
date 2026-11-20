@@ -16,6 +16,12 @@ a coloured header or a scrolling feed it reads as glass. So every decision here 
 This is Pencraft's own glass material in the style Apple introduced in 2025. It is not Apple's system
 material and does not match it pixel for pixel; never say it does, and never use Apple's icons or wallpapers.
 
+Part of this skill is firm and part is a starting point. Firm, on every design: which surfaces get glass
+(section 1), something behind it to bend (section 2), text that stays readable on it (section 9), and
+`check_glass` before you answer. Only the user's own words overrule these. A starting point: the sizes,
+components and tokens in the reference files, which are one well-tried way to build with the material
+and not the look every glass design must have. A design that already has a look keeps it.
+
 Work with Pencraft's tools (`get_state`, `get_guide`, `read_layers`, `edit_layers`, `screenshot`,
 `check_glass`). The reference files named below are read with `read_skill` (name `liquid-glass`, `file` as
 given), or from this folder when you have it on disk.

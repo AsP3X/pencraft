@@ -355,6 +355,27 @@ pub fn tools() -> Value {
                 } } },
                 "suggestions": { "type": "array", "minItems": 1, "maxItems": 4, "items": { "type": "string" }, "description": "Next steps to offer, each a short request in the user's voice." }
             } }
+        },
+        {
+            "name": "plan_tasks",
+            "description": "Split a job of many steps into a task list the user follows above the chat. Call it after get_state and before the first layer of any job you would not finish in two or three changes: a whole screen or page, several screens, a redesign, a set of components. Give 2 to 12 tasks in the order you will do them, each a few plain words (\"Set up colours and type\", \"Build the navigation\", \"Check the result\"). The first task is at work at once; work on the task at work only and call finish_task when it is done. While a list is at work, calling this again replaces the tasks that have not started (what is finished and the task at work stay). A small request needs no list.",
+            "inputSchema": { "type": "object", "required": ["tasks"], "properties": {
+                "tasks": { "type": "array", "minItems": 1, "maxItems": 12, "items": { "type": "string" }, "description": "The tasks in the order they are done, a few words each." }
+            } }
+        },
+        {
+            "name": "add_tasks",
+            "description": "Add tasks to your task list while you work on one: when checking the result turns up something to fix or change, or a task proves to be more than one. The new tasks come right after the task at work, in the order given, and the tasks that were waiting follow them; the user sees them join the list. A list holds at most 12 tasks, so put small fixes into one task.",
+            "inputSchema": { "type": "object", "required": ["tasks"], "properties": {
+                "tasks": { "type": "array", "minItems": 1, "maxItems": 10, "items": { "type": "string" }, "description": "The new tasks in the order they are done, a few words each." }
+            } }
+        },
+        {
+            "name": "finish_task",
+            "description": "Finish the task at work of your task list, the moment it is done and before you start on the next one; the next task is then at work. Tasks are finished in their order, one at a time: a task whose turn has not come can't be finished, and none can be skipped. The answer says which task is at work now. Finish the last task before you write your answer to the user.",
+            "inputSchema": { "type": "object", "properties": {
+                "task": { "type": "integer", "minimum": 1, "description": "The number of the task you finished, counting from 1. It has to be the task at work." }
+            } }
         }
     ]);
     if let Some(list) = all.as_array_mut() {
@@ -974,6 +995,9 @@ mod tests {
                 "generate_image",
                 "edit_image",
                 "ask_user",
+                "plan_tasks",
+                "add_tasks",
+                "finish_task",
                 "search_web",
                 "read_web_page",
                 "search_images",
@@ -988,7 +1012,7 @@ mod tests {
         off.extend(crate::web::TOOLS.map(str::to_owned));
         let left = tools_without(&off);
         let left: Vec<&str> = left.as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-        assert_eq!(left.len(), 13);
+        assert_eq!(left.len(), 16);
         assert!(!left.contains(&"export_layers") && !left.contains(&"search_web") && left.contains(&"edit_layers") && left.contains(&"edit_image"));
         assert_eq!(tools_without(&[]), tools);
     }

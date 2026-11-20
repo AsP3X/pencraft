@@ -27,8 +27,8 @@ pub(super) struct Talk {
     logged: usize,
     /// What was being written in it when another chat came to the front.
     kept: Writing,
-    /// The design file its conversation was last kept for, and how many lines it had then.
-    saved: Option<(PathBuf, usize)>,
+    /// The design file its conversation was last kept for, how many lines it had then, and what it had taken.
+    saved: Option<(PathBuf, usize, chat::usage::Spent)>,
 }
 
 /// The document a tool call works on when it names none.
@@ -101,6 +101,11 @@ impl App {
         self.talks.iter().find(|talk| talk.id == id)
     }
 
+    /// The chat with the id `id`, to change it.
+    pub(super) fn talk_mut(&mut self, id: u64) -> Option<&mut Talk> {
+        self.talks.iter_mut().find(|talk| talk.id == id)
+    }
+
     /// The chat of the document in front (on the home screen, the home screen's), started now if it has none.
     pub(super) fn front_talk(&mut self) -> &mut Talk {
         let doc = self.front_doc();
@@ -110,9 +115,9 @@ impl App {
             // Human: a design's chat starts with what was said about it before.
             let file = self.active.and_then(|tab| self.tabs.get(tab)).and_then(|editor| editor.path.clone()).filter(|_| !self.private);
             if let Some(file) = file {
-                talk.chat.entries = chat::history::read(&file);
+                (talk.chat.entries, talk.chat.total) = chat::history::read(&file);
                 talk.logged = talk.chat.entries.len();
-                talk.saved = Some((file, talk.chat.entries.len()));
+                talk.saved = Some((file, talk.chat.entries.len(), talk.chat.total.clone()));
             }
             self.talks.push(talk);
             self.talks.len() - 1
@@ -208,13 +213,14 @@ impl App {
         for talk in &mut self.talks {
             let file = talk.doc.and_then(|doc| self.tabs.iter().find(|tab| tab.id == doc)).and_then(|editor| editor.path.clone());
             let Some(file) = file.filter(|_| !talk.chat.running()) else { continue };
-            let now = (file, talk.chat.entries.len());
+            // Human: the sums count too: a stopped answer can add tokens to the total without adding a line.
+            let now = (file, talk.chat.entries.len(), talk.chat.total.clone());
             // A design never talked about is not written for.
             let nothing = talk.saved.is_none() && now.1 == 0;
             if nothing || talk.saved.as_ref() == Some(&now) {
                 continue;
             }
-            if let Err(problem) = chat::history::keep(&now.0, &talk.chat.entries) {
+            if let Err(problem) = chat::history::keep(&now.0, &talk.chat.entries, &talk.chat.total) {
                 log::warn!("chat history: {problem}");
             }
             talk.saved = Some(now);
@@ -394,8 +400,11 @@ impl App {
             Ok(_) if self.assistant().is_none() => Some(NO_ASSISTANT.to_owned()),
             Ok(_) => None,
         };
-        let picked = self.assistant().map(|choice| (choice.engine.clone(), choice.model_name().to_owned()));
-        let (Ok(attached), None, Some((engine, model))) = (attached, &refusal, picked) else {
+        let picked = self.assistant().map(|choice| {
+            let pricing = chat::pricing(choice, &self.prefs.get().agents, &crate::app::lock(&self.prices));
+            (choice.engine.clone(), choice.model_name().to_owned(), pricing)
+        });
+        let (Ok(attached), None, Some((engine, model, pricing))) = (attached, &refusal, picked) else {
             if let (Some(why), Some(talk)) = (refusal, self.talks.iter_mut().find(|talk| talk.id == id)) {
                 talk.chat.refuse(shown, &why);
             }
@@ -419,6 +428,7 @@ impl App {
             wake: Arc::new(move || wake.request_repaint()),
             server: self.link.as_ref().map(|server| (server.port, server.token.clone())),
             review: agents.review,
+            pricing,
         };
         if let Some(talk) = self.talks.iter_mut().find(|talk| talk.id == id) {
             talk.chat.send(ask);

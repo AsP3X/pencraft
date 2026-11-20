@@ -180,7 +180,7 @@ A breadcrumb is one row of 14 text, 6 apart: the places before in `$muted-foregr
   {"type":"text","id":"ui-breadcrumb-3","content":"Week 45","fontFamily":"$font","fontSize":14,"fill":"$foreground"}]}
 ```
 
-Pagination is a centred row of ghost icon buttons 36 square, 4 apart, the current page as an outline button,
+Both of these are built in `references/navigation.md`. Pagination is a centred row of ghost icon buttons 36 square, 4 apart, the current page as an outline button,
 "Previous" and "Next" with a chevron at the ends. An accordion is a list of rows with a `$border` line under
 each but the last: a trigger of 14 at weight 500 with 16 above and below and a `chevron-down` at the trailing
 edge (`chevron-up` when open), the open one with its content of 14 under it.

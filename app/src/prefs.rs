@@ -155,6 +155,8 @@ pub struct Agents {
     pub ideas: bool,
     /// Have a reviewer look at each design the chat's assistant finishes, and send it back with what to change.
     pub review: bool,
+    /// Fetch the public price list of the providers' models once a day, to say what an answer cost.
+    pub prices: bool,
     /// Providers the user added. Their API keys are in the keychain, not here.
     pub providers: Vec<CustomProvider>,
     /// What an assistant's cursor says when its label is "Agent".
@@ -199,6 +201,7 @@ impl Default for Agents {
             input_on_dashboard: true,
             ideas: true,
             review: true,
+            prices: true,
             providers: Vec::new(),
             agent_label: "Agent".to_owned(),
             names: Vec::new(),
@@ -291,6 +294,10 @@ pub struct ProviderModel {
     pub context_window: u32,
     /// How many tokens it writes at most.
     pub max_tokens: u32,
+    /// What a million tokens of input cost in dollars, as the user typed it; empty to go by the price list.
+    pub input_price: String,
+    /// The same for output.
+    pub output_price: String,
 }
 
 /// Recent and open files.

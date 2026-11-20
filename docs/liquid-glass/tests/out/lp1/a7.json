@@ -1,0 +1,4 @@
+{"description":"Last corrections: door panel, plan height, a shorter contact line","operations":[
+{"op":"update","id":"OQ9B8","properties":{"strokeWidth":{"top":2,"left":2,"right":2,"bottom":0}}},
+{"op":"update","id":"46R4q","properties":{"height":392}},
+{"op":"update","id":"dqsKC","properties":{"content":"Something else? Write to hei@morgenbrod.example and Sigrid answers when the ovens are off."}}]}

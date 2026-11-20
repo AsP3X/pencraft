@@ -138,6 +138,8 @@ pub struct Sidebar {
     /// A picture asked for the selection as a pasted chip in a sentence (`--sidebar chip`); made once the
     /// document is laid out.
     posed_chip: bool,
+    /// The task list's motion is held at this many seconds into it, for a picture of it (`--sidebar pouring`).
+    posed_tasks: Option<f32>,
     /// The assistant menu of the message box, while it is open.
     assistants: crate::assistants::Menu,
     /// Whether the assistant was at work the last time the sidebar was drawn, and when it last finished (in
@@ -217,6 +219,7 @@ impl Default for Sidebar {
             attached: Vec::new(),
             chips: Vec::new(),
             posed_chip: false,
+            posed_tasks: None,
             assistants: crate::assistants::Menu::default(),
             chat_ended: (false, None),
         }
@@ -321,10 +324,20 @@ impl Sidebar {
             _ => None,
         };
         self.posed_chip = name == "chip";
+        // Human: the task list in the middle of what it does: pooling, dropping its rows, stepping on.
+        self.posed_tasks = match name {
+            "pooling" => Some(0.62),
+            "pouring" | "adding" => Some(1.12),
+            "handing" => Some(0.42),
+            "landing" => Some(0.78),
+            "stepping" => Some(0.2),
+            _ => None,
+        };
         if name == "assistants" {
             self.assistants.hold_open();
         }
-        self.view = if name == "assistants" { View::Chat } else { View::named(name).unwrap_or(self.view) };
+        let chat = matches!(name, "assistants" | "tasks" | "pooling" | "pouring" | "stepping" | "finished" | "adding" | "handing" | "landing");
+        self.view = if chat { View::Chat } else { View::named(name).unwrap_or(self.view) };
     }
 
     /// How far open the sidebar is right now: 0 folded away, 1 open. It glides between the two when `animate`.
@@ -521,9 +534,11 @@ impl Sidebar {
         let line = title.bottom() + 11.0;
         ui.painter().hline(panel.x_range(), line, Stroke::new(1.0, palette.outline.gamma_multiply(0.7)));
         let body = Rect::from_min_max(pos2(panel.left() + ISLAND_PADDING, line + 1.0), pos2(panel.right() - ISLAND_PADDING, panel.bottom() - 1.0));
-        // Human: a view that isn't the chat still shows a question of the assistant's, under itself.
+        // Human: a view that isn't the chat still shows a question of the assistant's, under itself. The chat
+        // has the task list of a long job above its conversation.
+        let list = crate::tasklist::Look { area: body, reach: ISLAND_PADDING, palette, animate: look.animate, held: self.posed_tasks };
         let body = if self.view == View::Chat {
-            body
+            crate::tasklist::show(ui, look.chat, look.chat_id, list)
         } else {
             let (left, pick) = crate::conversation::pinned(ui, look.chat, body, look.chat_text, palette);
             self.chat_asks.extend(pick.map(ChatAsk::Answer));
@@ -553,6 +568,10 @@ impl Sidebar {
                 }
             }
         });
+        // Human: a task list that was worked through moves from the top into the conversation, over both.
+        if self.view == View::Chat {
+            crate::tasklist::hand_over(ui, look.chat_id, list);
+        }
     }
 
     /// The new chat view: ideas to start from, and two short explanations.

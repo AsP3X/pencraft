@@ -5,11 +5,13 @@
 //! of the requests and of the streamed answers differs.
 
 use std::io::{BufRead, BufReader};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde_json::{Value, json};
 
 use super::api::{self, Job, MOST_ROUNDS};
+use super::usage::{self, Report};
 use super::{Event, KeySource};
 use crate::app::lock;
 
@@ -64,11 +66,57 @@ fn user(text: &str, pictures: &[Value]) -> Value {
     json!({ "role": "user", "content": parts })
 }
 
-/// The request for the conversation `history`.
-fn request(job: &Job<'_>, history: &[Value]) -> Value {
+/// The request for the conversation `history`; `counted` asks for the usage to come with the stream.
+fn request(job: &Job<'_>, history: &[Value], counted: bool) -> Value {
     let mut messages = vec![json!({ "role": "system", "content": super::brief(true, job.instructions) })];
     messages.extend(history.iter().cloned());
-    json!({ "model": job.model, "stream": true, "tools": tools(job.off), "messages": messages })
+    let mut body = json!({ "model": job.model, "stream": true, "tools": tools(job.off), "messages": messages });
+    if counted {
+        body["stream_options"] = json!({ "include_usage": true });
+    }
+    body
+}
+
+/// The addresses that refused a request asking for its usage, until the app closes.
+// Human: a few providers that otherwise speak this API refuse a field they don't know. Such a provider is
+// asked once per run of the app; after that its requests go without the question, and its answers get no line.
+static UNCOUNTED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// Whether requests to `endpoint` ask for their usage.
+fn counts(endpoint: &str) -> bool {
+    !lock(&UNCOUNTED).iter().any(|refused| refused == endpoint)
+}
+
+/// Remembers that `endpoint` refuses requests that ask for their usage, and says so once in the log.
+// Human: the log names the provider's host only; the rest of an address may be the user's own.
+fn uncounted(endpoint: &str) {
+    let mut refused = lock(&UNCOUNTED);
+    if refused.iter().any(|known| known == endpoint) {
+        return;
+    }
+    refused.push(endpoint.to_owned());
+    let host = endpoint.split_once("://").map_or(endpoint, |(_, rest)| rest).split(['/', '?', '#']).next().unwrap_or_default();
+    let host = host.rsplit_once('@').map_or(host, |(_, host)| host);
+    log::warn!("{host} refuses requests that ask for their usage; its answers are not counted until the app closes");
+}
+
+/// Sends one request to `endpoint` through `send`, which is told whether the request asks for its usage.
+// Human: a request refused with "bad request" may be refused for asking about its usage. It is sent once
+// more without the question. If that goes through, the address is remembered; if not, the refusal has
+// another reason (pictures, say) and later requests ask again.
+fn asked(endpoint: &str, send: &dyn Fn(bool) -> Result<Turn, (u16, String)>) -> Result<Turn, (u16, String)> {
+    if !counts(endpoint) {
+        return send(false);
+    }
+    let first = send(true);
+    if !matches!(first, Err((400 | 422, _))) {
+        return first;
+    }
+    let plain = send(false);
+    if plain.is_ok() {
+        uncounted(endpoint);
+    }
+    plain
 }
 
 /// Takes every picture out of `history`, leaving a note in its place. Returns whether there was one.
@@ -101,6 +149,8 @@ pub(super) struct Turn {
     pub(super) text: String,
     pub(super) calls: Vec<ToolCall>,
     pub(super) finish: Option<String>,
+    /// What the answer took, when the provider said.
+    pub(super) used: Option<Report>,
 }
 
 impl Turn {
@@ -110,6 +160,11 @@ impl Turn {
     fn take(&mut self, event: &Value) -> Result<Vec<Event>, String> {
         if let Some(error) = event.get("error").filter(|error| !error.is_null()) {
             return Err(api::stream_error(error));
+        }
+        // Human: the usage comes in a chunk of its own with no choices, after the answer; some providers send
+        // it with every chunk, growing. The last one said counts.
+        if let Some(report) = event.get("usage").and_then(usage::completions) {
+            self.used = Some(report);
         }
         let mut told = Vec::new();
         let text = |value: &Value, key: &str| value.get(key).and_then(Value::as_str).filter(|text| !text.is_empty()).map(str::to_owned);
@@ -208,6 +263,9 @@ fn ask(
             }
         }
     }
+    if let Some(report) = turn.used.take() {
+        tell(Event::Used(report));
+    }
     Ok(turn)
 }
 
@@ -286,7 +344,9 @@ pub fn run(job: &Job<'_>, stop: &AtomicBool, tell: &dyn Fn(Event) -> bool) {
         }
     };
     let agent = api::agent();
-    converse(job, stop, tell, &|history| ask(&agent, job, bearer.as_deref(), &request(job, history), stop, tell));
+    converse(job, stop, tell, &|history| {
+        asked(job.endpoint, &|counted| ask(&agent, job, bearer.as_deref(), &request(job, history, counted), stop, tell))
+    });
 }
 
 /// Sends the conversation as it stands and gives the model's answer, or the provider's status (0 when there is
@@ -408,6 +468,70 @@ mod tests {
     }
 
     #[test]
+    fn the_streams_last_chunk_says_what_the_answer_took() {
+        let mut turn = Turn::default();
+        for event in [
+            json!({ "choices": [{ "index": 0, "delta": { "content": "Hi" } }] }),
+            json!({ "choices": [{ "index": 0, "delta": {}, "finish_reason": "stop" }] }),
+            json!({ "choices": [], "usage": { "prompt_tokens": 1000, "completion_tokens": 50, "prompt_tokens_details": { "cached_tokens": 800 } } }),
+        ] {
+            turn.take(&event).unwrap();
+        }
+        let report = turn.used.unwrap();
+        assert_eq!(report.used, crate::chat::usage::Used { input: 200, cached: 800, written: 0, output: 50 });
+        // A provider that says nothing, or an empty usage, reports nothing.
+        let mut silent = Turn::default();
+        silent.take(&json!({ "choices": [], "usage": {} })).unwrap();
+        silent.take(&json!({ "choices": [], "usage": null })).unwrap();
+        assert!(silent.used.is_none());
+        // An address that refused the question once isn't asked it again.
+        assert!(counts("https://a.example/v1/chat/completions"));
+        uncounted("https://a.example/v1/chat/completions");
+        assert!(!counts("https://a.example/v1/chat/completions") && counts("https://b.example/v1/chat/completions"));
+    }
+
+    #[test]
+    fn a_request_refused_for_asking_its_usage_is_sent_once_more_without() {
+        use std::cell::RefCell;
+        // What the provider answers to each request in turn, and whether each request asked for its usage.
+        let answers = |all: Vec<Result<(), u16>>| RefCell::new(all.into_iter().rev().collect::<Vec<_>>());
+        let counted_ones = RefCell::new(Vec::new());
+        let send = |from: &RefCell<Vec<Result<(), u16>>>, counted: bool| {
+            counted_ones.borrow_mut().push(counted);
+            match from.borrow_mut().pop() {
+                Some(Ok(())) => Ok(Turn::default()),
+                Some(Err(status)) => Err((status, format!("refused with {status}"))),
+                None => Err((0, "nothing more to answer".to_owned())),
+            }
+        };
+        let taken = || std::mem::take(&mut *counted_ones.borrow_mut());
+        // Refused with the question, taken without: the address is remembered and no longer asked.
+        let shy = "https://shy.asked.test/v1/chat/completions";
+        let from = answers(vec![Err(400), Ok(()), Ok(())]);
+        assert!(asked(shy, &|counted| send(&from, counted)).is_ok());
+        assert_eq!((taken(), counts(shy)), (vec![true, false], false));
+        assert!(asked(shy, &|counted| send(&from, counted)).is_ok());
+        assert_eq!(taken(), vec![false]);
+        // Refused both ways: the reason was another one. The second refusal is told and the next request asks again.
+        let blind = "https://blind.asked.test/v1/chat/completions";
+        let from = answers(vec![Err(422), Err(400), Ok(())]);
+        assert_eq!(asked(blind, &|counted| send(&from, counted)).err(), Some((400, "refused with 400".to_owned())));
+        assert_eq!((taken(), counts(blind)), (vec![true, false], true));
+        assert!(asked(blind, &|counted| send(&from, counted)).is_ok());
+        assert_eq!(taken(), vec![true]);
+        // Any other refusal, and an answer, are taken as they are: nothing is sent again.
+        let plain = "https://plain.asked.test/v1/chat/completions";
+        let from = answers(vec![Err(500), Err(404), Ok(())]);
+        assert_eq!(asked(plain, &|counted| send(&from, counted)).err().map(|(status, _)| status), Some(500));
+        assert_eq!(asked(plain, &|counted| send(&from, counted)).err().map(|(status, _)| status), Some(404));
+        assert!(asked(plain, &|counted| send(&from, counted)).is_ok());
+        assert_eq!((taken(), counts(plain)), (vec![true, true, true], true));
+        // Remembering an address twice keeps it once.
+        uncounted(shy);
+        assert_eq!(lock(&UNCOUNTED).iter().filter(|known| *known == shy).count(), 1);
+    }
+
+    #[test]
     fn requests_carry_the_brief_the_tools_and_pictures_the_apis_way() {
         let (tools, _calls) = channel();
         let inbox = api::Inbox::default();
@@ -428,7 +552,10 @@ mod tests {
         };
         let seen = json!({ "type": "image", "source": { "type": "base64", "media_type": "image/jpeg", "data": "Zm9v" } });
         let mut history = vec![user("Like this", std::slice::from_ref(&seen)), user("and plain", &[])];
-        let body = request(&job, &history);
+        let body = request(&job, &history, true);
+        // The request asks for the usage to come with the stream, unless the provider won't have that.
+        assert_eq!(body["stream_options"], json!({ "include_usage": true }));
+        assert!(request(&job, &history, false).get("stream_options").is_none());
         assert_eq!((&body["model"], &body["stream"], &body["messages"][0]["role"]), (&json!("some-model"), &json!(true), &json!("system")));
         assert!(body["messages"][0]["content"].as_str().is_some_and(|system| system.starts_with(BRIEF)));
         assert_eq!(body["messages"][1]["content"][1], json!({ "type": "image_url", "image_url": { "url": "data:image/jpeg;base64,Zm9v" } }));

@@ -1,0 +1,7 @@
+{"description":"Sections take the page's ground; badge gets room","operations":[
+{"op":"update","id":"night","properties":{"fill":null}},
+{"op":"update","id":"loaves","properties":{"fill":null}},
+{"op":"update","id":"pair","properties":{"fill":null}},
+{"op":"update","id":"prices","properties":{"fill":null}},
+{"op":"update","id":"faq","properties":{"fill":null}},
+{"op":"update","id":"TX3pB","properties":{"height":28,"padding":[0,12],"cornerRadius":14}}]}

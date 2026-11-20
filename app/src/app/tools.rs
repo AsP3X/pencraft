@@ -404,6 +404,7 @@ impl App {
             crate::chat::critic::TOOL => self.review_tool(call, ctx),
             "select_layers" => self.select_tool(call, ctx),
             crate::chat::asks::TOOL => self.ask_tool(call),
+            crate::chat::tasks::PLAN | crate::chat::tasks::ADD | crate::chat::tasks::FINISH => self.task_tool(call),
             "export_layers" => self.export_tool(call, ctx),
             other => Err(format!("There is no tool called \"{other}\".")),
         }
@@ -420,6 +421,14 @@ impl App {
         }
         let said = if asked.suggests { crate::chat::asks::SUGGESTED } else { crate::chat::asks::ASKED };
         Ok(vec![json!({ "type": "text", "text": said })])
+    }
+
+    /// `plan_tasks`, `add_tasks` and `finish_task`: the task list of the chat the call comes from.
+    // Human: the list is the chat's, so the panel shows it; the order of the tasks is kept here, where the call
+    // is answered, and not left to the model.
+    fn task_tool(&mut self, call: &Call) -> Result<Vec<Value>, String> {
+        let chat = &mut call.chat.and_then(|id| self.talk_mut(id)).ok_or(crate::chat::tasks::NO_CHAT)?.chat;
+        Ok(vec![json!({ "type": "text", "text": chat.task_call(&call.tool, &call.arguments)? })])
     }
 
     /// The document a call is about, laid out, with its tab and the name for the model's cursor.
@@ -443,9 +452,14 @@ impl App {
     }
 
     /// `edit_layers`: the change a call asks for, in the document it is about.
+    // Human: a run that keeps changing the design without a task list is told, once, to make one.
     fn edit_tool(&mut self, call: &Call, ctx: &egui::Context) -> Result<Vec<Value>, String> {
         let tab = self.document(call)?;
-        self.edit_in(tab, call, ctx)
+        let mut answer = self.edit_in(tab, call, ctx)?;
+        if let Some(advice) = call.chat.and_then(|id| self.talk_mut(id)).and_then(|talk| talk.chat.tasks.changed()) {
+            answer.push(json!({ "type": "text", "text": advice }));
+        }
+        Ok(answer)
     }
 
     /// The change an `edit_layers` call asks for, in the document at `tab`.

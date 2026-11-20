@@ -154,7 +154,14 @@ fn grok(job: &Job<'_>, prompt: &Path) -> Command {
 /// # Errors
 /// When the program couldn't be started or ended with an error.
 // Agent: BLOCKS until the program ends; `child` holds it meanwhile so the chat can end it.
-pub fn once(program: &Path, model: &str, system: &str, content: &[Value], child: &Mutex<Option<Child>>) -> Result<String, String> {
+pub fn once(
+    program: &Path,
+    model: &str,
+    system: &str,
+    content: &[Value],
+    child: &Mutex<Option<Child>>,
+    used: &dyn Fn(super::usage::Report),
+) -> Result<String, String> {
     let mut command = Command::new(program);
     command
         .args(["-p", "--output-format", "stream-json", "--verbose", "--input-format", "stream-json"])
@@ -189,6 +196,9 @@ pub fn once(program: &Path, model: &str, system: &str, content: &[Value], child:
         if value["type"] == "result" {
             let said = value["result"].as_str().unwrap_or_default().to_owned();
             answer = if value["is_error"] == true { Err(said) } else { Ok(said) };
+            if let Some(report) = super::usage::program(&value) {
+                used(report);
+            }
         }
     }
     if let Some(mut running) = lock(child).take() {
@@ -239,8 +249,13 @@ fn read_line(line: &str, wrote: &mut bool) -> Vec<Event> {
         (Some("user"), _) => parts(&value, "tool_result")
             .map(|part| Event::ToolEnd { id: part["tool_use_id"].as_str().unwrap_or_default().to_owned(), failed: part["is_error"] == true })
             .collect(),
-        (Some("result"), _) if value.get("is_error").and_then(Value::as_bool) == Some(true) => {
-            vec![Event::Problem(text("/result").filter(|said| !said.is_empty()).unwrap_or("Claude Code ended with an error.").to_owned())]
+        // Human: the last line says how the run went, and what it took and cost.
+        (Some("result"), _) => {
+            let mut told: Vec<Event> = super::usage::program(&value).map(Event::Used).into_iter().collect();
+            if value.get("is_error").and_then(Value::as_bool) == Some(true) {
+                told.push(Event::Problem(text("/result").filter(|said| !said.is_empty()).unwrap_or("Claude Code ended with an error.").to_owned()));
+            }
+            told
         }
         _ => Vec::new(),
     }
@@ -344,7 +359,7 @@ mod tests {
             r#"{"type":"stream_event","event":{"type":"message_start","message":{}}}"#,
             r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"hm"}}}"#,
             "not json",
-            r#"{"type":"result","subtype":"success","is_error":false,"result":"Hello"}"#,
+            r#"{"type":"result","subtype":"success","is_error":false,"result":"yo","total_cost_usd":0.16488039999999998,"usage":{"input_tokens":2,"cache_creation_input_tokens":4724,"cache_read_input_tokens":53281,"output_tokens":4},"modelUsage":{"claude-fable-5-2":{"inputTokens":4,"outputTokens":8,"cacheReadInputTokens":106562,"cacheCreationInputTokens":8951,"costUSD":0.16488039999999998}},"model_usage_since_last_result":{"claude-fable-5-2":{"inputTokens":2,"outputTokens":4,"cacheReadInputTokens":53281,"cacheCreationInputTokens":4724,"costUSD":0.0864162,"costBasis":"list"}}}"#,
             r#"{"type":"result","is_error":true,"result":"Not logged in"}"#,
         ] {
             events.extend(read_line(line, &mut wrote));
@@ -360,6 +375,7 @@ mod tests {
                 r#"ToolEnd { id: "t1", failed: true }"#,
                 "Break",
                 r#"Thought("hm")"#,
+                r#"Used(Report { used: Used { input: 2, cached: 53281, written: 4724, output: 4 }, model: Some("claude-fable-5-2"), billed: Some(86416200000) })"#,
                 r#"Problem("Not logged in")"#
             ]
         );

@@ -2,7 +2,9 @@
 
 Set these up once per document with one `edit_layers` call, then use them everywhere. If the document already
 has variables for the same roles, use those and add only the missing ones. Before you send the call, change
-the value of `font` to a family that is installed (section 2 of the skill says which).
+the value of `font` to a family that is installed (section 2 of the skill says which), and `font-mono`, the
+face of code, to an installed fixed-width one (Cascadia Mono or Consolas on Windows, SF Mono or Menlo on a
+Mac, otherwise DejaVu Sans Mono).
 
 ## The variables
 
@@ -14,6 +16,8 @@ the value of `font` to a family that is installed (section 2 of the skill says w
   "foreground":{"type":"color","value":[{"value":"#0a0a0a"},{"value":"#fafafa","theme":{"Mode":"Dark"}}]},
   "card":{"type":"color","value":[{"value":"#ffffff"},{"value":"#171717","theme":{"Mode":"Dark"}}]},
   "popover":{"type":"color","value":[{"value":"#ffffff"},{"value":"#171717","theme":{"Mode":"Dark"}}]},
+  "ground":{"type":"color","value":[{"value":"#f5f5f5"},{"value":"#0a0a0a","theme":{"Mode":"Dark"}}]},
+  "sidebar":{"type":"color","value":[{"value":"#fafafa"},{"value":"#171717","theme":{"Mode":"Dark"}}]},
   "primary":{"type":"color","value":[{"value":"#171717"},{"value":"#e5e5e5","theme":{"Mode":"Dark"}}]},
   "primary-foreground":{"type":"color","value":[{"value":"#fafafa"},{"value":"#171717","theme":{"Mode":"Dark"}}]},
   "primary-hover":{"type":"color","value":[{"value":"#171717cc"},{"value":"#e5e5e5cc","theme":{"Mode":"Dark"}}]},
@@ -38,7 +42,8 @@ the value of `font` to a family that is installed (section 2 of the skill says w
   "radius-md":{"type":"number","value":8},
   "radius-lg":{"type":"number","value":10},
   "radius-xl":{"type":"number","value":14},
-  "font":{"type":"string","value":"Inter"}}}
+  "font":{"type":"string","value":"Inter"},
+  "font-mono":{"type":"string","value":"Consolas"}}}
 ```
 
 If the document already has a `Mode` axis, keep its values and leave `themes` out.
@@ -51,7 +56,9 @@ A surface and the colour written on it come as a pair. Use the pair; never put `
 | Variable | On it goes | Use |
 |---|---|---|
 | `background` | `foreground` | The page; an outline button; the knob of a switch |
+| `ground` | `foreground` | The page of a screen whose content stands in cards (a dashboard, a sign-in page): a shade under the cards in light, where a card would otherwise have the page's own white; the page itself in dark |
 | `card` | `foreground` | A card or panel on the page |
+| `sidebar` | `foreground` | A sidebar and the list pane beside it: a shade off the page |
 | `popover` | `foreground` | Everything that floats: menu, select list, popover, dialog, sheet, toast |
 | `primary` | `primary-foreground` | The one main action; a checked checkbox, radio, switch; the filled part of a slider or progress bar |
 | `primary-hover` | `primary-foreground` | `primary` under the pointer (80%) |
@@ -94,8 +101,8 @@ squarer, change the five numbers together: base 7 gives 3, 4, 6, 7, 10; base 14 
 
 ## Elevation
 
-Effects cannot be variables, so these are written out. They have no spread, which Pencraft does not have,
-and get their softness from two layers.
+An effect cannot be a variable (its colour can), so these are written out. They get their softness from two
+layers and need no `spread`; the one shadow here that spreads is the focus ring (`references/controls.md`).
 
 Faintest, for a card on the page and the selected tab:
 

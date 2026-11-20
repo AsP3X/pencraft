@@ -1,0 +1,60 @@
+
+================ charts
+advice on insert: none
+
+-- references/charts.md · chart-bar
+   * The type has no hierarchy: every text is between 12 and 12 px, in one weight and one colour. Decide what is read first, second and third, and show it with size (jumps of two or three times, not 1.2), weight and a quieter colour for what matters less.
+
+-- references/charts.md · chart-area
+   * The type has no hierarchy: every text is between 12 and 12 px, in one weight and one colour. Decide what is read first, second and third, and show it with size (jumps of two or three times, not 1.2), weight and a quieter colour for what matters less.
+
+-- references/charts.md · chart-donut
+   * 4 accent hues (#1868db, #6a9a23, #af59e1, #e06c00). A design holds together with one dominant colour and one sharp accent; keep red, amber and green for states, never for decoration.
+
+-- references/charts.md · chart-list
+   * The type has no hierarchy: every text is between 14 and 14 px, in one weight and one colour. Decide what is read first, second and third, and show it with size (jumps of two or three times, not 1.2), weight and a quieter colour for what matters less.
+
+11 of 15 examples: nothing counted
+
+================ formats
+advice on insert: [
+ "Layers that don't fit where their frame's layout puts them: \"List\" (format-shot-list) sticks out of \"Screen\" (format-shot-screen) by 3. Give them \"fill_container\" or a smaller size, let the text wrap (textGrowth \"fixed-width\"), or give the frame a gap that isn't negative.",
+ "Text under 11 px is hard to read: \"Role\" (format-card-role), \"Lantern Repair Café\" (format-card-line-1), \"Markveien 58, 0554 Oslo\" (format-card-line-2), \"ingrid@lantern-repair.example\" (format-card-line-3) and 1 more."
+]
+
+-- references/stores.md · format-shot
+   * Layers that don't fit where their frame's layout puts them: "List" (format-shot-list) sticks out of "Screen" (format-shot-screen) by 3. Give them "fill_container" or a smaller size, let the text wrap (textGrowth "fixed-width"), or give the frame a gap that isn't negative.
+
+-- references/print.md · format-card
+   * Text under 11 px is hard to read: "Role" (format-card-role), "Lantern Repair Café" (format-card-line-1), "Markveien 58, 0554 Oslo" (format-card-line-2), "ingrid@lantern-repair.example" (format-card-line-3) and 1 more.
+
+7 of 9 examples: nothing counted
+
+================ material
+advice on insert: [
+ "Loose ends: \"Navigation bar\" (m3-screen-nav) runs up to 6 above \"Gesture area\" (m3-screen-gesture): show whole rows only and leave 16 or more below the last one (fewer rows, or a \"See all\" line)."
+]
+
+-- references/components.md · m3-screen
+   * Loose ends: "Navigation bar" (m3-screen-nav) runs up to 6 above "Gesture area" (m3-screen-gesture): show whole rows only and leave 16 or more below the last one (fewer rows, or a "See all" line).
+
+18 of 19 examples: nothing counted
+
+================ slides
+advice on insert: none
+
+9 of 9 examples: nothing counted
+
+================ ui-components
+advice on insert: none
+
+-- references/navigation.md · ui-pagination
+   * The type has no hierarchy: every text is between 14 and 14 px, in one weight and one colour. Decide what is read first, second and third, and show it with size (jumps of two or three times, not 1.2), weight and a quieter colour for what matters less.
+
+-- references/inputs.md · ui-calendar
+   * Nearly aligned, which reads as a mistake: "13" (ui-calendar-day-11-13-label) starts 2 beside the edge 3 others start on, "16" (ui-calendar-day-11-16-label) starts 2 beside the edge 3 others start on. Put each on the shared edge (figures in a column of one width with textAlign "right"), or move it clearly away.
+
+-- references/screens.md · ui-screen-dashboard
+   * "Stat tiles" (ui-dashboard-stats) holds a row of equal cards, each an icon, a title and a line of text: the stock feature grid. Say the same with a layout that has an order of importance (one large and two small, a list with a picture, a table), or drop the boxes and icons.
+
+28 of 31 examples: nothing counted

@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
+use super::usage::Spent;
 use super::{Entry, Pointed, Role};
 
 /// The most lines kept of one conversation: the newest.
@@ -46,7 +47,13 @@ fn kept(entries: &[Entry]) -> Vec<Value> {
                 }
                 Some(line)
             }
-            Role::Assistant => Some(json!({ "role": "assistant", "text": entry.text })),
+            Role::Assistant => {
+                let mut line = json!({ "role": "assistant", "text": entry.text });
+                if let Some(spent) = &entry.spent {
+                    line["spent"] = spent.kept();
+                }
+                Some(line)
+            }
             Role::Step | Role::Problem => None,
         })
         .collect();
@@ -85,15 +92,16 @@ fn pictures_in(line: &Value, text: &str) -> Vec<Pointed> {
         .collect()
 }
 
-/// Keeps the conversation `entries` for the design at `design`; one in which nothing was said keeps no file.
+/// Keeps the conversation `entries` for the design at `design`, and with it what the conversation took in all
+/// (`total`); one in which nothing was said keeps no file.
 ///
 /// # Errors
 /// A sentence when the file can't be written.
-pub fn keep(design: &Path, entries: &[Entry]) -> Result<(), String> {
-    keep_in(&root(), design, entries)
+pub fn keep(design: &Path, entries: &[Entry], total: &Spent) -> Result<(), String> {
+    keep_in(&root(), design, entries, total)
 }
 
-fn keep_in(root: &Path, design: &Path, entries: &[Entry]) -> Result<(), String> {
+fn keep_in(root: &Path, design: &Path, entries: &[Entry], total: &Spent) -> Result<(), String> {
     let (file, said) = (file_in(root, design), kept(entries));
     if said.is_empty() {
         return match std::fs::remove_file(&file) {
@@ -102,22 +110,27 @@ fn keep_in(root: &Path, design: &Path, entries: &[Entry]) -> Result<(), String> 
         };
     }
     std::fs::create_dir_all(root).map_err(|error| format!("{}: {error}", root.display()))?;
-    let text = json!({ "design": design.display().to_string(), "said": said }).to_string();
+    let mut whole = json!({ "design": design.display().to_string(), "said": said });
+    if !total.is_empty() {
+        whole["total"] = total.kept();
+    }
+    let text = whole.to_string();
     craft_atomic::atomic_write(&file, text.as_bytes()).map_err(|error| format!("{}: {error}", file.display()))
 }
 
-/// The conversation kept for the design at `design`, oldest line first; empty when there is none, or its file
-/// can't be read.
+/// The conversation kept for the design at `design`, oldest line first, and what it took in all; nothing when
+/// there is none, or its file can't be read.
 #[must_use]
-pub fn read(design: &Path) -> Vec<Entry> {
+pub fn read(design: &Path) -> (Vec<Entry>, Spent) {
     read_in(&root(), design)
 }
 
-fn read_in(root: &Path, design: &Path) -> Vec<Entry> {
+fn read_in(root: &Path, design: &Path) -> (Vec<Entry>, Spent) {
     let Some(kept) = std::fs::read(file_in(root, design)).ok().and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok()) else {
-        return Vec::new();
+        return (Vec::new(), Spent::default());
     };
-    kept.get("said")
+    let said = kept
+        .get("said")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
@@ -128,9 +141,10 @@ fn read_in(root: &Path, design: &Path) -> Vec<Entry> {
                 _ => return None,
             };
             let text = line.get("text").and_then(Value::as_str)?;
-            Some(Entry { pointed: pictures_in(line, text), ..Entry::new(role, text) })
+            Some(Entry { pointed: pictures_in(line, text), spent: line.get("spent").and_then(Spent::from_kept), ..Entry::new(role, text) })
         })
-        .collect()
+        .collect();
+    (said, kept.get("total").and_then(Spent::from_kept).unwrap_or_default())
 }
 
 #[cfg(test)]
@@ -148,16 +162,16 @@ mod tests {
             Entry::new(Role::Assistant, "The header is 96 high now."),
             Entry::new(Role::Problem, "The provider didn't answer."),
         ];
-        keep_in(&root, shop, &said).unwrap();
+        keep_in(&root, shop, &said, &Spent::default()).unwrap();
         // The words come back in order; notes on tools and problems are not kept.
-        let back = read_in(&root, shop);
+        let back = read_in(&root, shop).0;
         assert_eq!(back, vec![said[0].clone(), said[2].clone()]);
-        assert_eq!(read_in(&root, blog), Vec::new());
+        assert_eq!(read_in(&root, blog).0, Vec::new());
         // A conversation started over leaves no file.
-        keep_in(&root, shop, &[]).unwrap();
-        assert_eq!(read_in(&root, shop), Vec::new());
+        keep_in(&root, shop, &[], &Spent::default()).unwrap();
+        assert_eq!(read_in(&root, shop).0, Vec::new());
         assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0);
-        keep_in(&root, blog, &[]).unwrap();
+        keep_in(&root, blog, &[], &Spent::default()).unwrap();
     }
 
     #[test]
@@ -169,13 +183,13 @@ mod tests {
         // A layer that was pointed at is words again another day; the picture is still a picture.
         let layer = Pointed { at: Some(17..21), icon: "frame", name: "Card".to_owned(), picture: None };
         let said = [Entry { pointed: vec![picture.clone(), layer], ..Entry::new(Role::User, "Like Image 1 for Card") }];
-        keep_in(&root, design, &said).unwrap();
-        let back = read_in(&root, design);
+        keep_in(&root, design, &said, &Spent::default()).unwrap();
+        let back = read_in(&root, design).0;
         assert_eq!((back[0].text.as_str(), &back[0].pointed), ("Like Image 1 for Card", &vec![picture]));
         // A place that doesn't hold the picture's name (a file changed by hand) is no chip.
         let line = json!({ "pictures": [{ "from": 0, "to": 4, "name": "Image 1", "file": "/p/shot.png" }] });
         assert_eq!(pictures_in(&line, "Like Image 1"), Vec::new());
-        keep_in(&root, design, &[]).unwrap();
+        keep_in(&root, design, &[], &Spent::default()).unwrap();
     }
 
     #[test]
@@ -184,9 +198,44 @@ mod tests {
         drop(std::fs::remove_dir_all(&root));
         let design = Path::new("/designs/long.pen");
         let said: Vec<Entry> = (0..MOST + 30).map(|line| Entry::new(Role::User, format!("line {line}"))).collect();
-        keep_in(&root, design, &said).unwrap();
-        let back = read_in(&root, design);
+        keep_in(&root, design, &said, &Spent::default()).unwrap();
+        let back = read_in(&root, design).0;
         assert_eq!((back.len(), back[0].text.as_str(), back[MOST - 1].text.clone()), (MOST, "line 30", format!("line {}", MOST + 29)));
-        keep_in(&root, design, &[]).unwrap();
+        keep_in(&root, design, &[], &Spent::default()).unwrap();
+    }
+
+    #[test]
+    fn what_an_answer_took_and_the_conversations_sum_come_back() {
+        use crate::chat::usage::{Basis, Used};
+        let root = root().join("spent");
+        drop(std::fs::remove_dir_all(&root));
+        let design = Path::new("/designs/shop.pen");
+        let spent = Spent {
+            used: Used { input: 10_200, cached: 2_200, written: 0, output: 1_800 },
+            cost: Some(80_000_000_000),
+            partial: false,
+            basis: Basis::Listed,
+            model: "m".to_owned(),
+        };
+        let total = Spent {
+            used: Used { input: 90_000, output: 9_000, ..Used::default() },
+            cost: Some(610_000_000_000),
+            partial: true,
+            basis: Basis::Mixed,
+            model: "m".to_owned(),
+        };
+        let said = [Entry::new(Role::User, "Make a card"), Entry { spent: Some(spent.clone()), ..Entry::new(Role::Assistant, "Done.") }];
+        keep_in(&root, design, &said, &total).unwrap();
+        let (back, sum) = read_in(&root, design);
+        assert_eq!((back[1].spent.as_ref(), back[0].spent.as_ref(), &sum), (Some(&spent), None, &total));
+        // A file from before sums were kept reads as it did, with nothing spent.
+        let file = file_in(&root, design);
+        std::fs::write(&file, r#"{"design":"/designs/shop.pen","said":[{"role":"assistant","text":"Done."}]}"#).unwrap();
+        let (back, sum) = read_in(&root, design);
+        assert_eq!((back.len(), back[0].spent.as_ref(), sum.is_empty()), (1, None, true));
+        // A conversation that took nothing keeps no sum.
+        keep_in(&root, design, &said[..1], &Spent::default()).unwrap();
+        assert!(!std::fs::read_to_string(&file).unwrap().contains("total"));
+        keep_in(&root, design, &[], &Spent::default()).unwrap();
     }
 }

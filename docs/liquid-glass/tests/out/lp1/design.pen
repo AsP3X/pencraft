@@ -1,0 +1,3262 @@
+{
+  "version": "2.22",
+  "pencraft": {
+    "format": 1
+  },
+  "children": [
+    {
+      "type": "frame",
+      "id": "page",
+      "x": 0,
+      "y": 0,
+      "name": "Morgenbrød · Landing page, desktop",
+      "width": 1440,
+      "layout": "vertical",
+      "fill": "$paper",
+      "children": [
+        {
+          "type": "frame",
+          "id": "nav",
+          "name": "Navigation",
+          "width": 1440,
+          "height": 72,
+          "padding": [
+            0,
+            80
+          ],
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "fill": "$enamel",
+          "children": [
+            {
+              "type": "frame",
+              "id": "izBak",
+              "name": "Brand",
+              "gap": 12,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "JNzg5",
+                  "name": "Mark",
+                  "width": 28,
+                  "height": 14,
+                  "clip": true,
+                  "layout": "none",
+                  "children": [
+                    {
+                      "type": "ellipse",
+                      "id": "mSWRT",
+                      "x": 0,
+                      "y": 0,
+                      "width": 28,
+                      "height": 28,
+                      "fill": "$crust"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "NsWQJ",
+                  "fill": "$paper",
+                  "content": "Morgenbrød",
+                  "fontFamily": "$font-display",
+                  "fontSize": 20,
+                  "fontWeight": "700",
+                  "letterSpacing": -0.4
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "NbmR9",
+              "name": "Links",
+              "gap": 32,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "KcPki",
+                  "fill": "$paper",
+                  "content": "How it works",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "400"
+                },
+                {
+                  "type": "text",
+                  "id": "xFXCc",
+                  "fill": "$paper",
+                  "content": "This week's loaves",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "400"
+                },
+                {
+                  "type": "text",
+                  "id": "8Ym6q",
+                  "fill": "$paper",
+                  "content": "Prices",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "400"
+                },
+                {
+                  "type": "text",
+                  "id": "grz5x",
+                  "fill": "$paper",
+                  "content": "Questions",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "400"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "KBrya",
+              "name": "Actions",
+              "gap": 24,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "bO0UY",
+                  "fill": "$paper",
+                  "content": "Log in",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "400"
+                },
+                {
+                  "type": "frame",
+                  "id": "CnXmI",
+                  "name": "Button",
+                  "height": 40,
+                  "padding": [
+                    0,
+                    16
+                  ],
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "fill": "$crust",
+                  "cornerRadius": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "K0psP",
+                      "fill": "$ink",
+                      "content": "Order your first loaf",
+                      "fontFamily": "$font-display",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "hero",
+          "name": "Hero",
+          "width": 1440,
+          "height": 704,
+          "gap": 80,
+          "padding": [
+            32,
+            80,
+            0,
+            80
+          ],
+          "fill": "$enamel",
+          "children": [
+            {
+              "type": "frame",
+              "id": "kanS3",
+              "name": "Words",
+              "width": 600,
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 32,
+              "padding": [
+                0,
+                0,
+                32,
+                0
+              ],
+              "justifyContent": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "u4DWz",
+                  "name": "Headline",
+                  "width": "fill_container",
+                  "fill": "$paper",
+                  "content": "Sourdough on your door handle before seven.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "$font-display",
+                  "fontSize": 60,
+                  "fontWeight": "700",
+                  "letterSpacing": -1.5,
+                  "lineHeight": 1.06
+                },
+                {
+                  "type": "text",
+                  "id": "XUnib",
+                  "name": "What it is, and for whom",
+                  "width": 552,
+                  "fill": "$on-blue-soft",
+                  "content": "Morgenbrød is a bread subscription from a small bakery in Grünerløkka. We bake through the night and cycle a loaf to your door every Tuesday and Friday, anywhere inside Ring 3.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "$font",
+                  "fontSize": 20,
+                  "fontWeight": "400",
+                  "lineHeight": 1.5
+                },
+                {
+                  "type": "frame",
+                  "id": "OckQH",
+                  "name": "Actions",
+                  "gap": 32,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "MQrau",
+                      "name": "Button",
+                      "height": 48,
+                      "padding": [
+                        0,
+                        24
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "fill": "$crust",
+                      "cornerRadius": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "FQqpr",
+                          "fill": "$ink",
+                          "content": "Order your first loaf",
+                          "fontFamily": "$font-display",
+                          "fontSize": 16,
+                          "fontWeight": "700"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Lnwz2",
+                      "name": "Second action",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "ZceIw",
+                          "fill": "$paper",
+                          "content": "See this week's loaves",
+                          "fontFamily": "$font-display",
+                          "fontSize": 16,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "icon",
+                          "id": "yC7A6",
+                          "width": 18,
+                          "height": 18,
+                          "fill": "$paper",
+                          "library": "lucide",
+                          "icon": "arrow-down"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "sLtkb",
+                  "name": "Reassurance",
+                  "fill": "$on-blue-soft",
+                  "content": "Your first loaf is free. After that NOK 79 a loaf; skip or stop by text.",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "400"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "door",
+              "name": "Picture: the loaf on the door handle",
+              "width": 600,
+              "height": "fill_container",
+              "clip": true,
+              "layout": "none",
+              "fill": "$enamel-deep",
+              "cornerRadius": [
+                20,
+                20,
+                0,
+                0
+              ],
+              "children": [
+                {
+                  "type": "rectangle",
+                  "id": "ZIzk1",
+                  "x": 120,
+                  "y": 64,
+                  "name": "Door",
+                  "width": 400,
+                  "height": 608,
+                  "fill": "$enamel-light",
+                  "cornerRadius": [
+                    8,
+                    8,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "f14NQ",
+                  "x": 168,
+                  "y": 112,
+                  "name": "Upper panel",
+                  "width": 304,
+                  "height": 232,
+                  "stroke": "$blue-line",
+                  "strokeWidth": 2,
+                  "strokeAlignment": "inner",
+                  "cornerRadius": 4
+                },
+                {
+                  "type": "rectangle",
+                  "id": "OQ9B8",
+                  "x": 168,
+                  "y": 400,
+                  "name": "Lower panel",
+                  "width": 304,
+                  "height": 272,
+                  "stroke": "$blue-line",
+                  "strokeWidth": {
+                    "top": 2,
+                    "left": 2,
+                    "right": 2,
+                    "bottom": 0
+                  },
+                  "strokeAlignment": "inner",
+                  "cornerRadius": [
+                    4,
+                    4,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "OxYVf",
+                  "x": 32,
+                  "y": 96,
+                  "name": "House number",
+                  "width": 64,
+                  "height": 64,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "fill": "$paper",
+                  "cornerRadius": 6,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "yGZ4k",
+                      "fill": "$enamel",
+                      "content": "14",
+                      "fontFamily": "$font-display",
+                      "fontSize": 28,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "6Aw5E",
+                  "x": 140,
+                  "y": 348,
+                  "name": "Handle plate",
+                  "width": 24,
+                  "height": 88,
+                  "fill": "$crust-dark",
+                  "cornerRadius": 12
+                },
+                {
+                  "type": "rectangle",
+                  "id": "z0SWh",
+                  "x": 144,
+                  "y": 384,
+                  "name": "Handle",
+                  "width": 112,
+                  "height": 16,
+                  "fill": "$crust",
+                  "cornerRadius": 8
+                },
+                {
+                  "type": "ellipse",
+                  "id": "Sye5k",
+                  "x": 150,
+                  "y": 426,
+                  "name": "Loaf",
+                  "width": 164,
+                  "height": 96,
+                  "fill": "$crust-dark"
+                },
+                {
+                  "type": "path",
+                  "id": "de8QU",
+                  "x": 196,
+                  "y": 434,
+                  "name": "Score",
+                  "width": 72,
+                  "height": 22,
+                  "stroke": "$crumb",
+                  "strokeWidth": 3,
+                  "geometry": "M2 20 C20 2 52 2 70 20",
+                  "viewBox": [
+                    0.0,
+                    0.0,
+                    72.0,
+                    22.0
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "TPssm",
+                  "x": 132,
+                  "y": 464,
+                  "name": "Bag",
+                  "width": 200,
+                  "height": 192,
+                  "layout": "vertical",
+                  "gap": 4,
+                  "padding": [
+                    0,
+                    0,
+                    24,
+                    24
+                  ],
+                  "justifyContent": "end",
+                  "fill": "$crumb",
+                  "cornerRadius": [
+                    2,
+                    2,
+                    10,
+                    10
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "adyKb",
+                      "fill": "$enamel",
+                      "content": "Morgenbrød",
+                      "fontFamily": "$font-display",
+                      "fontSize": 18,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "path",
+                  "id": "wyBep",
+                  "x": 160,
+                  "y": 380,
+                  "name": "Strap",
+                  "width": 144,
+                  "height": 88,
+                  "stroke": "$crumb",
+                  "strokeWidth": 8,
+                  "geometry": "M6 86 L56 6 L88 6 L138 86",
+                  "viewBox": [
+                    0.0,
+                    0.0,
+                    144.0,
+                    88.0
+                  ],
+                  "strokeLinejoin": "round"
+                },
+                {
+                  "type": "frame",
+                  "id": "XYJp8",
+                  "x": 300,
+                  "y": 488,
+                  "name": "Delivery tag",
+                  "width": 252,
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": 16,
+                  "fill": "$surface",
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#07132e59",
+                    "offset": {
+                      "x": 0,
+                      "y": 12
+                    },
+                    "blur": 28
+                  },
+                  "cornerRadius": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Xkgh1",
+                      "fill": "$ink-soft",
+                      "content": "Tue 24 Nov, 06:41",
+                      "fontFamily": "$font-display",
+                      "fontSize": 14,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "eU5Yl",
+                      "fill": "$ink",
+                      "content": "Landbrød, 800 g",
+                      "fontFamily": "$font-display",
+                      "fontSize": 18,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "0zo3p",
+                      "width": "fill_container",
+                      "fill": "$ink-soft",
+                      "content": "Out of the oven at 03:10. Hung here by Jonas, bike 2.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "fontWeight": "400",
+                      "lineHeight": 1.4
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "night",
+          "name": "How it is made: one loaf's night",
+          "width": 1440,
+          "layout": "vertical",
+          "gap": 64,
+          "padding": [
+            80,
+            80,
+            96,
+            80
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "Y8Klr",
+              "name": "Head",
+              "width": "fill_container",
+              "justifyContent": "space_between",
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "ARSAW",
+                  "name": "Heading",
+                  "width": 520,
+                  "fill": "$ink",
+                  "content": "Tuesday's loaf starts on Monday morning.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "$font-display",
+                  "fontSize": 40,
+                  "fontWeight": "700",
+                  "letterSpacing": -1,
+                  "lineHeight": 1.1
+                },
+                {
+                  "type": "text",
+                  "id": "1dwZd",
+                  "width": 560,
+                  "fill": "$ink-soft",
+                  "content": "Nothing is hurried along with baker's yeast. Eighteen hours pass between the first fold and the oven, which is why the crumb is sour and open, and still good on day four.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "$font",
+                  "fontSize": 18,
+                  "fontWeight": "400",
+                  "lineHeight": 1.5
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "zMExD",
+              "name": "Timetable",
+              "width": "fill_container",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "YhlcH",
+                  "name": "Stop",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 16,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "956eR",
+                      "fill": "$ink",
+                      "content": "Mon 09:00",
+                      "fontFamily": "$font-display",
+                      "fontSize": 28,
+                      "fontWeight": "700",
+                      "letterSpacing": -0.5
+                    },
+                    {
+                      "type": "frame",
+                      "id": "FEYhe",
+                      "name": "Rail",
+                      "width": "fill_container",
+                      "height": 16,
+                      "gap": 0,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "ellipse",
+                          "id": "R3EZy",
+                          "width": 16,
+                          "height": 16,
+                          "fill": "$ink"
+                        },
+                        {
+                          "type": "rectangle",
+                          "id": "KAz3v",
+                          "width": "fill_container",
+                          "height": 2,
+                          "fill": "$ink"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "fWZyo",
+                      "name": "Words",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "padding": [
+                        0,
+                        32,
+                        0,
+                        0
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "Ke1gL",
+                          "fill": "$ink",
+                          "content": "Mixed and folded by hand",
+                          "fontFamily": "$font",
+                          "fontSize": 18,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "MmDaw",
+                          "width": "fill_container",
+                          "fill": "$ink-soft",
+                          "content": "Wheat and wholegrain rye from Østfold, water, salt, and a starter we have fed every day since 2019.",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "400",
+                          "lineHeight": 1.5
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "fbfCd",
+                  "name": "Stop",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 16,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Au3QE",
+                      "fill": "$ink",
+                      "content": "Mon 13:00",
+                      "fontFamily": "$font-display",
+                      "fontSize": 28,
+                      "fontWeight": "700",
+                      "letterSpacing": -0.5
+                    },
+                    {
+                      "type": "frame",
+                      "id": "nrbG4",
+                      "name": "Rail",
+                      "width": "fill_container",
+                      "height": 16,
+                      "gap": 0,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "ellipse",
+                          "id": "rn85C",
+                          "width": 16,
+                          "height": 16,
+                          "fill": "$ink"
+                        },
+                        {
+                          "type": "rectangle",
+                          "id": "L0fS6",
+                          "width": "fill_container",
+                          "height": 2,
+                          "fill": "$ink"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "C3oGP",
+                      "name": "Words",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "padding": [
+                        0,
+                        32,
+                        0,
+                        0
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "9HFqy",
+                          "fill": "$ink",
+                          "content": "Shaped, then left alone",
+                          "fontFamily": "$font",
+                          "fontSize": 18,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "x24WR",
+                          "width": "fill_container",
+                          "fill": "$ink-soft",
+                          "content": "Fourteen hours in the cold room. This is where the sour comes from, and nobody can speed it up.",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "400",
+                          "lineHeight": 1.5
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "Df8dH",
+                  "name": "Stop",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 16,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "C3nRt",
+                      "fill": "$ink",
+                      "content": "Tue 03:00",
+                      "fontFamily": "$font-display",
+                      "fontSize": 28,
+                      "fontWeight": "700",
+                      "letterSpacing": -0.5
+                    },
+                    {
+                      "type": "frame",
+                      "id": "DQoDK",
+                      "name": "Rail",
+                      "width": "fill_container",
+                      "height": 16,
+                      "gap": 0,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "ellipse",
+                          "id": "AGTX9",
+                          "width": 16,
+                          "height": 16,
+                          "fill": "$ink"
+                        },
+                        {
+                          "type": "rectangle",
+                          "id": "hnuUZ",
+                          "width": "fill_container",
+                          "height": 2,
+                          "fill": "$ink"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ZBrdV",
+                      "name": "Words",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "padding": [
+                        0,
+                        32,
+                        0,
+                        0
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "VpHm1",
+                          "fill": "$ink",
+                          "content": "Into the stone oven",
+                          "fontFamily": "$font",
+                          "fontSize": 18,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "Cp975",
+                          "width": "fill_container",
+                          "fill": "$ink-soft",
+                          "content": "Sigrid bakes 212 loaves a night, 48 at a time, and has them cooling on racks by half past four.",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "400",
+                          "lineHeight": 1.5
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "GGRQR",
+                  "name": "Stop",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 16,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "yDwOg",
+                      "fill": "$ink",
+                      "content": "Tue 06:45",
+                      "fontFamily": "$font-display",
+                      "fontSize": 28,
+                      "fontWeight": "700",
+                      "letterSpacing": -0.5
+                    },
+                    {
+                      "type": "frame",
+                      "id": "LNcJY",
+                      "name": "Rail",
+                      "width": "fill_container",
+                      "height": 16,
+                      "gap": 0,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "ellipse",
+                          "id": "nSiF0",
+                          "width": 16,
+                          "height": 16,
+                          "fill": "$crust",
+                          "stroke": "$ink",
+                          "strokeWidth": 2,
+                          "strokeAlignment": "inner"
+                        },
+                        {
+                          "type": "rectangle",
+                          "id": "qyuQM",
+                          "width": "fill_container",
+                          "height": 2,
+                          "fill": "$ink"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "cjY47",
+                      "name": "Words",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "padding": [
+                        0,
+                        32,
+                        0,
+                        0
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "zpIn8",
+                          "fill": "$ink",
+                          "content": "On your door handle",
+                          "fontFamily": "$font",
+                          "fontSize": 18,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "OMIHU",
+                          "width": "fill_container",
+                          "fill": "$ink-soft",
+                          "content": "Three cargo bikes leave Markveien at 05:15. The last loaf of the round hangs by 07:00.",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "400",
+                          "lineHeight": 1.5
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "loaves",
+          "name": "Feature, large: this week's loaves",
+          "width": 1440,
+          "padding": [
+            0,
+            80,
+            96,
+            80
+          ],
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "slip",
+              "name": "Picture: the bakery's slip for two weeks",
+              "width": 600,
+              "layout": "vertical",
+              "padding": [
+                32,
+                32,
+                16,
+                32
+              ],
+              "fill": "$crust",
+              "cornerRadius": 4,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "P9NF5",
+                  "name": "Week",
+                  "width": "fill_container",
+                  "padding": [
+                    0,
+                    0,
+                    8,
+                    0
+                  ],
+                  "justifyContent": "space_between",
+                  "alignItems": "center",
+                  "stroke": "$ink",
+                  "strokeWidth": {
+                    "bottom": 2
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "zj5ut",
+                      "fill": "$ink",
+                      "content": "Week 48",
+                      "fontFamily": "$font-display",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "F03r1",
+                      "fill": {
+                        "type": "color",
+                        "color": "$ink",
+                        "opacity": 0.78
+                      },
+                      "content": "posted Sunday 22 November",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "fontWeight": "400"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "nBY1A",
+                  "name": "Loaf",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    16,
+                    0
+                  ],
+                  "stroke": {
+                    "type": "color",
+                    "color": "$ink",
+                    "opacity": 0.3
+                  },
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "5Wlh4",
+                      "width": 104,
+                      "fill": "$ink",
+                      "content": "Tue 24 Nov",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font-display",
+                      "fontSize": 14,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "45mc8",
+                      "name": "What",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 4,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "eDenH",
+                          "fill": "$ink",
+                          "content": "Landbrød",
+                          "fontFamily": "$font-display",
+                          "fontSize": 20,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "Hm4TE",
+                          "width": "fill_container",
+                          "fill": {
+                            "type": "color",
+                            "color": "$ink",
+                            "opacity": 0.78
+                          },
+                          "content": "Wheat and wholegrain rye, baked dark",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "400",
+                          "lineHeight": 1.4
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "6ZBMu",
+                      "width": 56,
+                      "fill": "$ink",
+                      "content": "800 g",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font-display",
+                      "fontSize": 14,
+                      "fontWeight": "700",
+                      "textAlign": "right"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "J9fZn",
+                  "name": "Loaf",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    16,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "2mBhQ",
+                      "width": 104,
+                      "fill": "$ink",
+                      "content": "Fri 27 Nov",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font-display",
+                      "fontSize": 14,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ig9sb",
+                      "name": "What",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 4,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "SkV46",
+                          "fill": "$ink",
+                          "content": "Frøbrød",
+                          "fontFamily": "$font-display",
+                          "fontSize": 20,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "4b4PB",
+                          "width": "fill_container",
+                          "fill": {
+                            "type": "color",
+                            "color": "$ink",
+                            "opacity": 0.78
+                          },
+                          "content": "Sunflower, linseed and toasted sesame",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "400",
+                          "lineHeight": 1.4
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "lPay6",
+                      "width": 56,
+                      "fill": "$ink",
+                      "content": "750 g",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font-display",
+                      "fontSize": 14,
+                      "fontWeight": "700",
+                      "textAlign": "right"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "wyJXp",
+                  "name": "Gap",
+                  "width": "fill_container",
+                  "height": 16,
+                  "children": []
+                },
+                {
+                  "type": "frame",
+                  "id": "XueYJ",
+                  "name": "Week",
+                  "width": "fill_container",
+                  "padding": [
+                    0,
+                    0,
+                    8,
+                    0
+                  ],
+                  "justifyContent": "space_between",
+                  "alignItems": "center",
+                  "stroke": "$ink",
+                  "strokeWidth": {
+                    "bottom": 2
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "0jSoV",
+                      "fill": "$ink",
+                      "content": "Week 49",
+                      "fontFamily": "$font-display",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "fKuPA",
+                      "fill": {
+                        "type": "color",
+                        "color": "$ink",
+                        "opacity": 0.78
+                      },
+                      "content": "posted Sunday 29 November",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "fontWeight": "400"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "fr42T",
+                  "name": "Loaf",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    16,
+                    0
+                  ],
+                  "stroke": {
+                    "type": "color",
+                    "color": "$ink",
+                    "opacity": 0.3
+                  },
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "cEPSH",
+                      "width": 104,
+                      "fill": "$ink",
+                      "content": "Tue 1 Dec",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font-display",
+                      "fontSize": 14,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "8GsZL",
+                      "name": "What",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 4,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "HKalF",
+                          "fill": "$ink",
+                          "content": "Havrebrød",
+                          "fontFamily": "$font-display",
+                          "fontSize": 20,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "hpYr7",
+                          "width": "fill_container",
+                          "fill": {
+                            "type": "color",
+                            "color": "$ink",
+                            "opacity": 0.78
+                          },
+                          "content": "Oat porridge folded into the dough",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "400",
+                          "lineHeight": 1.4
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "h0CrF",
+                      "width": 56,
+                      "fill": "$ink",
+                      "content": "800 g",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font-display",
+                      "fontSize": 14,
+                      "fontWeight": "700",
+                      "textAlign": "right"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "DYqZP",
+                  "name": "Loaf",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    16,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Vs9Ci",
+                      "width": 104,
+                      "fill": "$ink",
+                      "content": "Fri 4 Dec",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font-display",
+                      "fontSize": 14,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "TCGYZ",
+                      "name": "What",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 4,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "H2PGc",
+                          "fill": "$ink",
+                          "content": "Fjellrug",
+                          "fontFamily": "$font-display",
+                          "fontSize": 20,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "Ci2Fq",
+                          "width": "fill_container",
+                          "fill": {
+                            "type": "color",
+                            "color": "$ink",
+                            "opacity": 0.78
+                          },
+                          "content": "Seven parts rye, caraway, keeps a week",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "400",
+                          "lineHeight": 1.4
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "sNwW3",
+                      "width": 56,
+                      "fill": "$ink",
+                      "content": "900 g",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font-display",
+                      "fontSize": 14,
+                      "fontWeight": "700",
+                      "textAlign": "right"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "HRKyj",
+              "name": "Words",
+              "width": 560,
+              "layout": "vertical",
+              "gap": 24,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "XOGPc",
+                  "name": "Heading",
+                  "width": "fill_container",
+                  "fill": "$ink",
+                  "content": "Friday's loaf is never Tuesday's loaf.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "$font-display",
+                  "fontSize": 40,
+                  "fontWeight": "700",
+                  "letterSpacing": -1,
+                  "lineHeight": 1.1
+                },
+                {
+                  "type": "text",
+                  "id": "4EiqF",
+                  "width": "fill_container",
+                  "fill": "$ink-soft",
+                  "content": "Sigrid sets the two loaves for each week and posts them on Sunday. Friday's is the seeded or the darker one, because it has to last you a weekend.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "$font",
+                  "fontSize": 18,
+                  "fontWeight": "400",
+                  "lineHeight": 1.5
+                },
+                {
+                  "type": "frame",
+                  "id": "lUMn9",
+                  "name": "Figure",
+                  "gap": 24,
+                  "padding": [
+                    8,
+                    0,
+                    0,
+                    0
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "YnXxk",
+                      "fill": "$ink",
+                      "content": "4 days",
+                      "fontFamily": "$font-display",
+                      "fontSize": 28,
+                      "fontWeight": "700",
+                      "letterSpacing": -0.5
+                    },
+                    {
+                      "type": "text",
+                      "id": "fM7Di",
+                      "width": 360,
+                      "fill": "$ink-soft",
+                      "content": "is how long a loaf keeps in its linen bag, cut side down on the board. No plastic, no fridge.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "400",
+                      "lineHeight": 1.4
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "pair",
+          "name": "Features, two of unequal weight",
+          "width": 1440,
+          "height": 480,
+          "gap": 24,
+          "padding": [
+            0,
+            80,
+            96,
+            80
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "2jPia",
+              "name": "Feature: skip a week",
+              "width": 736,
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 32,
+              "padding": 32,
+              "justifyContent": "space_between",
+              "fill": "$surface",
+              "cornerRadius": 12,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "R20Pt",
+                  "name": "Words",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 12,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "TNcZi",
+                      "width": "fill_container",
+                      "fill": "$ink",
+                      "content": "Away for a week? Skip it by Sunday night.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font-display",
+                      "fontSize": 28,
+                      "fontWeight": "700",
+                      "letterSpacing": -0.5,
+                      "lineHeight": 1.15
+                    },
+                    {
+                      "type": "text",
+                      "id": "U8ZuX",
+                      "width": 600,
+                      "fill": "$ink-soft",
+                      "content": "Skip one loaf or a whole month from the link in any delivery text. You pay for the loaves that were baked for you and never for the gap.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 18,
+                      "fontWeight": "400",
+                      "lineHeight": 1.5
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "TSf2Y",
+                  "name": "Four weeks of deliveries",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 16,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "YdTrz",
+                      "name": "Days",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "Pq3aN",
+                          "name": "Delivery",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "padding": [
+                            12,
+                            0
+                          ],
+                          "alignItems": "center",
+                          "fill": "$paper",
+                          "cornerRadius": 8,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "co4sN",
+                              "fill": "$ink-soft",
+                              "content": "Tue",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "400"
+                            },
+                            {
+                              "type": "text",
+                              "id": "OEYYS",
+                              "fill": "$ink",
+                              "content": "24",
+                              "fontFamily": "$font-display",
+                              "fontSize": 20,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "text",
+                              "id": "bpdBd",
+                              "fill": "$ink-soft",
+                              "content": "loaf",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "400"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "C8BhG",
+                          "name": "Delivery",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "padding": [
+                            12,
+                            0
+                          ],
+                          "alignItems": "center",
+                          "fill": "$paper",
+                          "cornerRadius": 8,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "MqtCZ",
+                              "fill": "$ink-soft",
+                              "content": "Fri",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "400"
+                            },
+                            {
+                              "type": "text",
+                              "id": "vUIlX",
+                              "fill": "$ink",
+                              "content": "27",
+                              "fontFamily": "$font-display",
+                              "fontSize": 20,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "text",
+                              "id": "1F9hm",
+                              "fill": "$ink-soft",
+                              "content": "loaf",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "400"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "2z7jn",
+                          "name": "Delivery",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "padding": [
+                            12,
+                            0
+                          ],
+                          "alignItems": "center",
+                          "fill": "$paper",
+                          "cornerRadius": 8,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "C44Ls",
+                              "fill": "$ink-soft",
+                              "content": "Tue",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "400"
+                            },
+                            {
+                              "type": "text",
+                              "id": "HIigJ",
+                              "fill": "$ink",
+                              "content": "1",
+                              "fontFamily": "$font-display",
+                              "fontSize": 20,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "text",
+                              "id": "gYwYS",
+                              "fill": "$ink-soft",
+                              "content": "loaf",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "400"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "svWG1",
+                          "name": "Delivery",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "padding": [
+                            12,
+                            0
+                          ],
+                          "alignItems": "center",
+                          "fill": "$paper",
+                          "cornerRadius": 8,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "p63ge",
+                              "fill": "$ink-soft",
+                              "content": "Fri",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "400"
+                            },
+                            {
+                              "type": "text",
+                              "id": "kk591",
+                              "fill": "$ink",
+                              "content": "4",
+                              "fontFamily": "$font-display",
+                              "fontSize": 20,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "text",
+                              "id": "wdjy2",
+                              "fill": "$ink-soft",
+                              "content": "loaf",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "400"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "544MZ",
+                          "name": "Delivery, skipped",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "padding": [
+                            12,
+                            0
+                          ],
+                          "alignItems": "center",
+                          "stroke": "$line",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "cornerRadius": 8,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "UAjBt",
+                              "fill": "$ink-soft",
+                              "content": "Tue",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "400"
+                            },
+                            {
+                              "type": "text",
+                              "id": "Xh8Qe",
+                              "fill": "$ink-soft",
+                              "content": "8",
+                              "fontFamily": "$font-display",
+                              "fontSize": 20,
+                              "fontWeight": "700",
+                              "strikethrough": true
+                            },
+                            {
+                              "type": "text",
+                              "id": "mpJNE",
+                              "fill": "$ink-soft",
+                              "content": "skipped",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "400"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "4GHmU",
+                          "name": "Delivery, skipped",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "padding": [
+                            12,
+                            0
+                          ],
+                          "alignItems": "center",
+                          "stroke": "$line",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "cornerRadius": 8,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "HI4YN",
+                              "fill": "$ink-soft",
+                              "content": "Fri",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "400"
+                            },
+                            {
+                              "type": "text",
+                              "id": "dezpn",
+                              "fill": "$ink-soft",
+                              "content": "11",
+                              "fontFamily": "$font-display",
+                              "fontSize": 20,
+                              "fontWeight": "700",
+                              "strikethrough": true
+                            },
+                            {
+                              "type": "text",
+                              "id": "1IHpR",
+                              "fill": "$ink-soft",
+                              "content": "skipped",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "400"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "3Zt1L",
+                          "name": "Delivery",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "padding": [
+                            12,
+                            0
+                          ],
+                          "alignItems": "center",
+                          "fill": "$paper",
+                          "cornerRadius": 8,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "p3CYM",
+                              "fill": "$ink-soft",
+                              "content": "Tue",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "400"
+                            },
+                            {
+                              "type": "text",
+                              "id": "0EAwY",
+                              "fill": "$ink",
+                              "content": "15",
+                              "fontFamily": "$font-display",
+                              "fontSize": 20,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "text",
+                              "id": "pARvQ",
+                              "fill": "$ink-soft",
+                              "content": "loaf",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "400"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "v5oRb",
+                          "name": "Delivery",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "padding": [
+                            12,
+                            0
+                          ],
+                          "alignItems": "center",
+                          "fill": "$paper",
+                          "cornerRadius": 8,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "GfqcC",
+                              "fill": "$ink-soft",
+                              "content": "Fri",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "400"
+                            },
+                            {
+                              "type": "text",
+                              "id": "ketXU",
+                              "fill": "$ink",
+                              "content": "18",
+                              "fontFamily": "$font-display",
+                              "fontSize": 20,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "text",
+                              "id": "ka3x7",
+                              "fill": "$ink-soft",
+                              "content": "loaf",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "400"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "EhROC",
+                      "fill": "$ink",
+                      "content": "Eight deliveries, two skipped: six loaves, NOK 474.",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "s5iui",
+              "name": "Feature: nobody has to be home",
+              "width": 520,
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 24,
+              "padding": 32,
+              "justifyContent": "space_between",
+              "fill": "$enamel",
+              "cornerRadius": 12,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "xA1dV",
+                  "name": "Words",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 12,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "InzID",
+                      "width": "fill_container",
+                      "fill": "$paper",
+                      "content": "Not up at seven? You do not have to be.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font-display",
+                      "fontSize": 28,
+                      "fontWeight": "700",
+                      "letterSpacing": -0.5,
+                      "lineHeight": 1.15
+                    },
+                    {
+                      "type": "text",
+                      "id": "DUiFh",
+                      "width": "fill_container",
+                      "fill": "$on-blue-soft",
+                      "content": "The loaf hangs on your handle in a linen bag. We take last time's bag back and text you when it is there.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 18,
+                      "fontWeight": "400",
+                      "lineHeight": 1.5
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "1SyiH",
+                  "name": "Delivery text",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": 24,
+                  "fill": "$paper",
+                  "cornerRadius": [
+                    12,
+                    12,
+                    12,
+                    4
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "5I179",
+                      "fill": "$ink-soft",
+                      "content": "Tue 24 Nov, 06:41",
+                      "fontFamily": "$font-display",
+                      "fontSize": 14,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "alJBK",
+                      "width": "fill_container",
+                      "fill": "$ink",
+                      "content": "Your Landbrød is on the door handle at Toftes gate 14. It will be warm for another hour. Jonas, bike 2",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "400",
+                      "lineHeight": 1.45
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "prices",
+          "name": "Prices",
+          "width": 1440,
+          "layout": "vertical",
+          "gap": 48,
+          "padding": [
+            0,
+            80,
+            96,
+            80
+          ],
+          "children": [
+            {
+              "type": "text",
+              "id": "tz8d0",
+              "name": "Heading",
+              "width": 880,
+              "fill": "$ink",
+              "content": "NOK 79 a loaf, cycling included.",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font-display",
+              "fontSize": 40,
+              "fontWeight": "700",
+              "letterSpacing": -1,
+              "lineHeight": 1.1
+            },
+            {
+              "type": "frame",
+              "id": "46R4q",
+              "name": "Plans",
+              "width": "fill_container",
+              "height": 404,
+              "gap": 24,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "r9S2K",
+                  "name": "Plan, recommended",
+                  "width": 416,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 24,
+                  "padding": 32,
+                  "fill": "$surface",
+                  "stroke": "$ink",
+                  "strokeWidth": 2,
+                  "strokeAlignment": "inner",
+                  "cornerRadius": 12,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "gbXj2",
+                      "name": "Head",
+                      "width": "fill_container",
+                      "height": 28,
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "d6Cbl",
+                          "fill": "$ink",
+                          "content": "Ett brød",
+                          "fontFamily": "$font-display",
+                          "fontSize": 20,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "EinkA",
+                          "name": "Badge",
+                          "height": 28,
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "fill": "$crust",
+                          "cornerRadius": 14,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Ucnkc",
+                              "fill": "$ink",
+                              "content": "Most doors take this",
+                              "fontFamily": "$font-display",
+                              "fontSize": 14,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "oyLYH",
+                      "name": "Price",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "DE2Sv",
+                          "name": "Row",
+                          "gap": 8,
+                          "alignItems": "end",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "uRryJ",
+                              "fill": "$ink",
+                              "content": "NOK 158",
+                              "fontFamily": "$font-display",
+                              "fontSize": 40,
+                              "fontWeight": "700",
+                              "letterSpacing": -1
+                            },
+                            {
+                              "type": "text",
+                              "id": "fBbp7",
+                              "fill": "$ink-soft",
+                              "content": "a week",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "400"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "PYLWi",
+                          "width": "fill_container",
+                          "fill": "$ink-soft",
+                          "content": "One loaf on Tuesday, one on Friday, at NOK 79 each. Right for one to three at the table.",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "400",
+                          "lineHeight": 1.4
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "XfDN4",
+                      "name": "Button",
+                      "width": "fill_container",
+                      "height": 48,
+                      "padding": [
+                        0,
+                        24
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "fill": "$crust",
+                      "cornerRadius": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "WY1zf",
+                          "fill": "$ink",
+                          "content": "Order your first loaf",
+                          "fontFamily": "$font-display",
+                          "fontSize": 16,
+                          "fontWeight": "700"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "i78td",
+                      "name": "What is in it",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 12,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "wwUgv",
+                          "name": "Point",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "W0esJ",
+                              "width": 18,
+                              "height": 18,
+                              "fill": "$ink",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "f97tk",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "At your door before 07:00",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "400",
+                              "lineHeight": 1.4
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "N4pkD",
+                          "name": "Point",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "npk1R",
+                              "width": 18,
+                              "height": 18,
+                              "fill": "$ink",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "ta9sG",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "A clean linen bag each time",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "400",
+                              "lineHeight": 1.4
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ku3Gc",
+                          "name": "Point",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "SlyBj",
+                              "width": 18,
+                              "height": 18,
+                              "fill": "$ink",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "fvivZ",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "Skip or stop by text, any week",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "400",
+                              "lineHeight": 1.4
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "T0HUT",
+                  "name": "Plan",
+                  "width": 416,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 24,
+                  "padding": 32,
+                  "fill": "$surface",
+                  "cornerRadius": 12,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "4kcWx",
+                      "name": "Head",
+                      "width": "fill_container",
+                      "height": 28,
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "O9swM",
+                          "fill": "$ink",
+                          "content": "To brød",
+                          "fontFamily": "$font-display",
+                          "fontSize": 20,
+                          "fontWeight": "700"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "C1h9I",
+                      "name": "Price",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "3FPOL",
+                          "name": "Row",
+                          "gap": 8,
+                          "alignItems": "end",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "phqRe",
+                              "fill": "$ink",
+                              "content": "NOK 292",
+                              "fontFamily": "$font-display",
+                              "fontSize": 40,
+                              "fontWeight": "700",
+                              "letterSpacing": -1
+                            },
+                            {
+                              "type": "text",
+                              "id": "0WqAU",
+                              "fill": "$ink-soft",
+                              "content": "a week",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "400"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "XziNX",
+                          "width": "fill_container",
+                          "fill": "$ink-soft",
+                          "content": "Two loaves each time, at NOK 73 each. For a family, or one for the freezer.",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "400",
+                          "lineHeight": 1.4
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "LxiGv",
+                      "name": "Button, quiet",
+                      "width": "fill_container",
+                      "height": 48,
+                      "padding": [
+                        0,
+                        24
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "stroke": "$ink",
+                      "strokeWidth": 1.5,
+                      "strokeAlignment": "inner",
+                      "cornerRadius": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "53V1i",
+                          "fill": "$ink",
+                          "content": "Order your first two loaves",
+                          "fontFamily": "$font-display",
+                          "fontSize": 16,
+                          "fontWeight": "700"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "1Iuul",
+                      "name": "What is in it",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 12,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "oQGlW",
+                          "name": "Point",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "L5vD8",
+                              "width": 18,
+                              "height": 18,
+                              "fill": "$ink",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "JrncU",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "Everything in Ett brød",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "400",
+                              "lineHeight": 1.4
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "BjrDB",
+                          "name": "Point",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "5Xi3c",
+                              "width": 18,
+                              "height": 18,
+                              "fill": "$ink",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "wGg4k",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "The second loaf sliced, if you like",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "400",
+                              "lineHeight": 1.4
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "3Q1vg",
+                          "name": "Point",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "vznSH",
+                              "width": 18,
+                              "height": 18,
+                              "fill": "$ink",
+                              "library": "lucide",
+                              "icon": "check"
+                            },
+                            {
+                              "type": "text",
+                              "id": "i7lrV",
+                              "width": "fill_container",
+                              "fill": "$ink",
+                              "content": "NOK 6 less for every loaf",
+                              "textGrowth": "fixed-width",
+                              "fontFamily": "$font",
+                              "fontSize": 16,
+                              "fontWeight": "400",
+                              "lineHeight": 1.4
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "gP1GM",
+                  "name": "Where we cycle",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 16,
+                  "padding": [
+                    32,
+                    0,
+                    0,
+                    24
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "SHuFZ",
+                      "fill": "$ink",
+                      "content": "Where we cycle",
+                      "fontFamily": "$font-display",
+                      "fontSize": 20,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "RrILk",
+                      "width": "fill_container",
+                      "fill": "$ink-soft",
+                      "content": "Every address inside Ring 3: Grünerløkka, Sagene, St. Hanshaugen, Tøyen, Gamle Oslo, Frogner and Majorstuen.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "400",
+                      "lineHeight": 1.5
+                    },
+                    {
+                      "type": "text",
+                      "id": "Kndz8",
+                      "width": "fill_container",
+                      "fill": "$ink-soft",
+                      "content": "Outside the ring? Your loaf waits at the bakery in Markveien from 07:00, at the same price.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "400",
+                      "lineHeight": 1.5
+                    },
+                    {
+                      "type": "text",
+                      "id": "7TAMz",
+                      "width": "fill_container",
+                      "fill": "$ink-soft",
+                      "content": "You are charged on the last day of the month, for the loaves you were brought.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "400",
+                      "lineHeight": 1.5
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "faq",
+          "name": "Questions",
+          "width": 1440,
+          "padding": [
+            0,
+            80,
+            96,
+            80
+          ],
+          "justifyContent": "space_between",
+          "children": [
+            {
+              "type": "frame",
+              "id": "Bz4pJ",
+              "name": "Lead",
+              "width": 416,
+              "layout": "vertical",
+              "gap": 24,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "XL93h",
+                  "name": "Heading",
+                  "width": "fill_container",
+                  "fill": "$ink",
+                  "content": "What people ask at the bakery door",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "$font-display",
+                  "fontSize": 40,
+                  "fontWeight": "700",
+                  "letterSpacing": -1,
+                  "lineHeight": 1.1
+                },
+                {
+                  "type": "text",
+                  "id": "dqsKC",
+                  "width": "fill_container",
+                  "fill": "$ink-soft",
+                  "content": "Something else? Write to hei@morgenbrod.example and Sigrid answers when the ovens are off.",
+                  "textGrowth": "fixed-width",
+                  "fontFamily": "$font",
+                  "fontSize": 18,
+                  "fontWeight": "400",
+                  "lineHeight": 1.5
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "lO4xB",
+              "name": "List",
+              "width": 736,
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "DeUwT",
+                  "name": "Question, open",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 12,
+                  "padding": [
+                    24,
+                    0
+                  ],
+                  "stroke": "$line",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "Q0AgS",
+                      "name": "Trigger",
+                      "width": "fill_container",
+                      "gap": 24,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "QIjjT",
+                          "width": "fill_container",
+                          "fill": "$ink",
+                          "content": "What if someone takes the bread from my door?",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "$font",
+                          "fontSize": 18,
+                          "fontWeight": "700",
+                          "lineHeight": 1.3
+                        },
+                        {
+                          "type": "icon",
+                          "id": "8DHEQ",
+                          "width": 20,
+                          "height": 20,
+                          "fill": "$ink",
+                          "library": "lucide",
+                          "icon": "minus"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "dWEA9",
+                      "width": 656,
+                      "fill": "$ink-soft",
+                      "content": "It has happened four times in 3,112 deliveries. Tell us the same morning and your next loaf is free. If your stairwell is locked, give us the code and we hang it on your own door, not the street door.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 18,
+                      "fontWeight": "400",
+                      "lineHeight": 1.5
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "IDgjv",
+                  "name": "Question",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 12,
+                  "padding": [
+                    24,
+                    0
+                  ],
+                  "stroke": "$line",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "r9vxC",
+                      "name": "Trigger",
+                      "width": "fill_container",
+                      "gap": 24,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "mLbTj",
+                          "width": "fill_container",
+                          "fill": "$ink",
+                          "content": "Can I have it sliced?",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "$font",
+                          "fontSize": 18,
+                          "fontWeight": "700",
+                          "lineHeight": 1.3
+                        },
+                        {
+                          "type": "icon",
+                          "id": "sbcCW",
+                          "width": 20,
+                          "height": 20,
+                          "fill": "$ink",
+                          "library": "lucide",
+                          "icon": "plus"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "YMkq3",
+                  "name": "Question",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 12,
+                  "padding": [
+                    24,
+                    0
+                  ],
+                  "stroke": "$line",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "NnjBh",
+                      "name": "Trigger",
+                      "width": "fill_container",
+                      "gap": 24,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "m8r4u",
+                          "width": "fill_container",
+                          "fill": "$ink",
+                          "content": "What is in the bread, and what is not?",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "$font",
+                          "fontSize": 18,
+                          "fontWeight": "700",
+                          "lineHeight": 1.3
+                        },
+                        {
+                          "type": "icon",
+                          "id": "sGttK",
+                          "width": 20,
+                          "height": 20,
+                          "fill": "$ink",
+                          "library": "lucide",
+                          "icon": "plus"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "vFuAm",
+                  "name": "Question",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 12,
+                  "padding": [
+                    24,
+                    0
+                  ],
+                  "stroke": "$line",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "rdYma",
+                      "name": "Trigger",
+                      "width": "fill_container",
+                      "gap": 24,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "xjbdz",
+                          "width": "fill_container",
+                          "fill": "$ink",
+                          "content": "Do you bake in July and at Christmas?",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "$font",
+                          "fontSize": 18,
+                          "fontWeight": "700",
+                          "lineHeight": 1.3
+                        },
+                        {
+                          "type": "icon",
+                          "id": "ogTLq",
+                          "width": 20,
+                          "height": 20,
+                          "fill": "$ink",
+                          "library": "lucide",
+                          "icon": "plus"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "lGmlM",
+                  "name": "Question",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 12,
+                  "padding": [
+                    24,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "ZGYB2",
+                      "name": "Trigger",
+                      "width": "fill_container",
+                      "gap": 24,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "SDl51",
+                          "width": "fill_container",
+                          "fill": "$ink",
+                          "content": "How do I stop?",
+                          "textGrowth": "fixed-width",
+                          "fontFamily": "$font",
+                          "fontSize": 18,
+                          "fontWeight": "700",
+                          "lineHeight": 1.3
+                        },
+                        {
+                          "type": "icon",
+                          "id": "xNUih",
+                          "width": 20,
+                          "height": 20,
+                          "fill": "$ink",
+                          "library": "lucide",
+                          "icon": "plus"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "closing",
+          "name": "Closing",
+          "width": 1440,
+          "padding": [
+            96,
+            80
+          ],
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "fill": "$enamel",
+          "children": [
+            {
+              "type": "text",
+              "id": "BWDQx",
+              "name": "Headline",
+              "width": 760,
+              "fill": "$paper",
+              "content": "Friday's loaf is the seeded one. Order by Thursday at 18:00.",
+              "textGrowth": "fixed-width",
+              "fontFamily": "$font-display",
+              "fontSize": 40,
+              "fontWeight": "700",
+              "letterSpacing": -1,
+              "lineHeight": 1.1
+            },
+            {
+              "type": "frame",
+              "id": "sh1lq",
+              "name": "Actions",
+              "layout": "vertical",
+              "gap": 16,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "zEimg",
+                  "name": "Button",
+                  "height": 48,
+                  "padding": [
+                    0,
+                    24
+                  ],
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "fill": "$crust",
+                  "cornerRadius": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "KlViz",
+                      "fill": "$ink",
+                      "content": "Order your first loaf",
+                      "fontFamily": "$font-display",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "DV3C7",
+                  "fill": "$on-blue-soft",
+                  "content": "The first one is free. No card until the second.",
+                  "fontFamily": "$font",
+                  "fontSize": 16,
+                  "fontWeight": "400"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "footer",
+          "name": "Footer",
+          "width": 1440,
+          "layout": "vertical",
+          "gap": 48,
+          "padding": [
+            64,
+            80,
+            32,
+            80
+          ],
+          "fill": "$enamel-deep",
+          "children": [
+            {
+              "type": "frame",
+              "id": "gPcpN",
+              "name": "Top",
+              "width": "fill_container",
+              "justifyContent": "space_between",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Su8NN",
+                  "name": "Lead",
+                  "width": 360,
+                  "layout": "vertical",
+                  "gap": 16,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "8hMy1",
+                      "name": "Brand",
+                      "gap": 12,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "f2H9I",
+                          "name": "Mark",
+                          "width": 28,
+                          "height": 14,
+                          "clip": true,
+                          "layout": "none",
+                          "children": [
+                            {
+                              "type": "ellipse",
+                              "id": "ezloD",
+                              "x": 0,
+                              "y": 0,
+                              "width": 28,
+                              "height": 28,
+                              "fill": "$crust"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "lHYzz",
+                          "fill": "$paper",
+                          "content": "Morgenbrød",
+                          "fontFamily": "$font-display",
+                          "fontSize": 20,
+                          "fontWeight": "700",
+                          "letterSpacing": -0.4
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "BFtSm",
+                      "width": "fill_container",
+                      "fill": "$on-blue-soft",
+                      "content": "Sourdough from a small bakery in Grünerløkka, cycled to doors inside Ring 3 on Tuesdays and Fridays.",
+                      "textGrowth": "fixed-width",
+                      "fontFamily": "$font",
+                      "fontSize": 16,
+                      "fontWeight": "400",
+                      "lineHeight": 1.5
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "3BMb0",
+                  "name": "Columns",
+                  "gap": 96,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "gjSp5",
+                      "name": "Links",
+                      "layout": "vertical",
+                      "gap": 12,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "9sfNN",
+                          "fill": "$paper",
+                          "content": "Subscription",
+                          "fontFamily": "$font-display",
+                          "fontSize": 14,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "eLfNI",
+                          "fill": "$on-blue-soft",
+                          "content": "How it works",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "400"
+                        },
+                        {
+                          "type": "text",
+                          "id": "o55Ag",
+                          "fill": "$on-blue-soft",
+                          "content": "This week's loaves",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "400"
+                        },
+                        {
+                          "type": "text",
+                          "id": "3j6OD",
+                          "fill": "$on-blue-soft",
+                          "content": "Prices",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "400"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "dblkZ",
+                      "name": "Links",
+                      "layout": "vertical",
+                      "gap": 12,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "oFLOb",
+                          "fill": "$paper",
+                          "content": "Help",
+                          "fontFamily": "$font-display",
+                          "fontSize": 14,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "6ivz2",
+                          "fill": "$on-blue-soft",
+                          "content": "Questions",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "400"
+                        },
+                        {
+                          "type": "text",
+                          "id": "AAoJX",
+                          "fill": "$on-blue-soft",
+                          "content": "Skip a delivery",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "400"
+                        },
+                        {
+                          "type": "text",
+                          "id": "hL7Z8",
+                          "fill": "$on-blue-soft",
+                          "content": "Contact",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "400"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "SNpN2",
+                      "name": "Links",
+                      "layout": "vertical",
+                      "gap": 12,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "w5IqO",
+                          "fill": "$paper",
+                          "content": "Bakery",
+                          "fontFamily": "$font-display",
+                          "fontSize": 14,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "A11Lf",
+                          "fill": "$on-blue-soft",
+                          "content": "About Sigrid",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "400"
+                        },
+                        {
+                          "type": "text",
+                          "id": "YVSrD",
+                          "fill": "$on-blue-soft",
+                          "content": "Open Tue to Sat, 07 to 15",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "400"
+                        },
+                        {
+                          "type": "text",
+                          "id": "DyURF",
+                          "fill": "$on-blue-soft",
+                          "content": "Work with us",
+                          "fontFamily": "$font",
+                          "fontSize": 16,
+                          "fontWeight": "400"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "Lmrts",
+              "name": "Bottom",
+              "width": "fill_container",
+              "padding": [
+                24,
+                0,
+                0,
+                0
+              ],
+              "justifyContent": "space_between",
+              "stroke": "$blue-line",
+              "strokeWidth": {
+                "top": 1
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "id": "CEog6",
+                  "fill": "$on-blue-soft",
+                  "content": "© 2026 Morgenbrød AS, Markveien 58B, 0550 Oslo. Org.nr. 931 204 877",
+                  "fontFamily": "$font",
+                  "fontSize": 14,
+                  "fontWeight": "400"
+                },
+                {
+                  "type": "frame",
+                  "id": "3kGgF",
+                  "name": "Policies",
+                  "gap": 24,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "oE5Fq",
+                      "fill": "$on-blue-soft",
+                      "content": "Privacy",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "fontWeight": "400"
+                    },
+                    {
+                      "type": "text",
+                      "id": "oZQda",
+                      "fill": "$on-blue-soft",
+                      "content": "Terms",
+                      "fontFamily": "$font",
+                      "fontSize": 14,
+                      "fontWeight": "400"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "enamel": {
+      "type": "color",
+      "value": "#173f86"
+    },
+    "enamel-deep": {
+      "type": "color",
+      "value": "#0f2a5c"
+    },
+    "enamel-light": {
+      "type": "color",
+      "value": "#2a56a8"
+    },
+    "paper": {
+      "type": "color",
+      "value": "#f0f3f8"
+    },
+    "surface": {
+      "type": "color",
+      "value": "#ffffff"
+    },
+    "ink": {
+      "type": "color",
+      "value": "#0d1f45"
+    },
+    "ink-soft": {
+      "type": "color",
+      "value": "#48566f"
+    },
+    "line": {
+      "type": "color",
+      "value": "#0d1f4524"
+    },
+    "crust": {
+      "type": "color",
+      "value": "#eaa93a"
+    },
+    "crust-dark": {
+      "type": "color",
+      "value": "#b8741f"
+    },
+    "crumb": {
+      "type": "color",
+      "value": "#f6ead0"
+    },
+    "on-blue-soft": {
+      "type": "color",
+      "value": "#c3d0ea"
+    },
+    "blue-line": {
+      "type": "color",
+      "value": "#ffffff38"
+    },
+    "font-display": {
+      "type": "string",
+      "value": "Century Gothic"
+    },
+    "font": {
+      "type": "string",
+      "value": "Palatino Linotype"
+    }
+  }
+}

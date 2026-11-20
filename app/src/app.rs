@@ -215,6 +215,19 @@ pub struct App {
     install: Option<crate::update::Prepared>,
     /// What the home screen keeps: the words being written there, and the recent files' small pictures.
     home: home::Home,
+    /// The price list of the providers' models, which a fetch on another thread may replace.
+    prices: Arc<std::sync::Mutex<crate::chat::prices::Catalogue>>,
+}
+
+/// Whether this run fetches the price list of the providers' models when the kept one is a day old.
+// Human: the list is looked up for someone who pays a provider by the token: a provider with a key, or a
+// key in the environment. A picture of the app fetches nothing, and nor does a private run: it reads a kept list
+// but reaches out to nobody.
+fn looks_up_prices(agents: &crate::prefs::Agents, launch: &Launch) -> bool {
+    agents.prices
+        && launch.screenshot.is_none()
+        && !launch.private
+        && (agents.providers.iter().any(|provider| provider.key_ref.is_some()) || crate::chat::key_in_environment())
 }
 
 /// The clipboard text format: a JSON object with this key holding the copied nodes.
@@ -239,6 +252,8 @@ impl App {
         let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(7, |d| u64::from(d.subsec_nanos()) ^ d.as_secs());
         let (tool_send, tool_calls) = std::sync::mpsc::channel();
         let mut app = App {
+            // Human: the price list goes by the settings, so it is started before the app takes them over.
+            prices: crate::chat::prices::start(looks_up_prices(&prefs.get().agents, &launch)),
             prefs,
             tabs: Vec::new(),
             recovery: Recovery::start(launch.private || launch.screenshot.is_some()),
@@ -389,6 +404,29 @@ impl App {
         } else {
             view
         };
+        // Human: `tasks` shows the task list of a long job with two tasks finished; `pooling` and `pouring` a new
+        // list as it comes in, `stepping` the step from one task to the next, `adding` two tasks joining it,
+        // `finished` the list filed into the conversation, `handing` and `landing` its way there.
+        let done = match name {
+            "pooling" | "pouring" => Some(0),
+            "tasks" | "adding" => Some(2),
+            "stepping" => Some(3),
+            "finished" | "handing" | "landing" => Some(usize::MAX),
+            _ => None,
+        };
+        if let Some(done) = done {
+            let chat = &mut self.front_talk().chat;
+            if done == usize::MAX {
+                chat.entries = crate::chat::sample();
+            } else {
+                chat.pose_thinking();
+            }
+            chat.tasks = crate::chat::tasks::Tasks::sample(done);
+            if name == "adding" {
+                // The list is the sample's, so the two tasks are new to it and there is room for them.
+                let _ = chat.tasks.add(&serde_json::json!({ "tasks": ["Fix the cut-off Save button", "Check the result again"] }));
+            }
+        }
         self.sidebar.pose(view);
     }
 

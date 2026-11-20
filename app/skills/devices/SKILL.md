@@ -14,6 +14,11 @@ looks half done, and a status bar drawn from memory (line icons, the time pushed
 mock away at a glance. So the device is not drawn, it is inserted: the template below is measured from the
 iPhone's own status bar and checked in Pencraft. Insert it as it is and change only what this file says.
 
+That exactness is firm, and it is for the device alone, because a phone has one true shape: insert the
+template every time a phone screen is asked for, unchanged. The app on its screen is the design and is
+free: this skill says nothing about how it should look. Only the user's own words overrule the device:
+if they want the screen without one, a different one, or a drawn frame of their own, do that.
+
 ## 1. Insert the device first
 Insert the template with `edit_layers` as one top-level layer, before you design the app. Change its `x` and
 `y` to place it on the canvas; never resize or move the body, the screen, the status bar or what is in it.

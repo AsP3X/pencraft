@@ -12,14 +12,15 @@ use egui::{Align, Color32, FontId, Layout, RichText, Sense, Ui, Vec2, pos2, vec2
 pub use crate::asking::Pick;
 use crate::chat::asks::Asked;
 use crate::chat::steps::{self, State};
+use crate::chat::usage::Spent;
 use crate::chat::{Chat, Entry, Pause, Role};
 use crate::icons;
 use crate::theme::{
     self, CHAT_APPEAR, CHAT_BUBBLE_SHARE, CHAT_COPIED_STAYS, CHAT_DOT, CHAT_DOT_GAP, CHAT_DOT_LIFT, CHAT_DOT_PACE, CHAT_GAP, CHAT_ICON_AT_WORK,
     CHAT_ICON_BREATH, CHAT_ICON_BURST, CHAT_ICON_FROM_OWN, CHAT_ICON_LEAST, CHAT_ICON_RING, CHAT_ICON_SETTLE, CHAT_ICON_SHAKE, CHAT_ICON_TAIL,
-    CHAT_ICON_TURN, CHAT_NOTE_GAP, CHAT_NOTE_ICON, CHAT_RISE, CHAT_STATUS_HEIGHT, CHAT_STATUS_HOLD, CHAT_STATUS_MORPH, CHAT_STATUS_PAD,
-    CHAT_THOUGHT_GLIDE, CHAT_THOUGHT_ROWS, CHAT_WAIT_COUNTED, CHAT_WRITE_CATCH_UP, CHAT_WRITE_PACE, CHIP_CORNER, CHIP_ICON, CHIP_ICON_AT, CHIP_THUMB,
-    ISLAND_RADIUS, MESSAGE_TEXT_SIZE, PROBLEM, Palette, SIDEBAR_TEXT_SIZE,
+    CHAT_ICON_TURN, CHAT_NOTE_GAP, CHAT_NOTE_ICON, CHAT_RISE, CHAT_SPENT_GAP, CHAT_SPENT_INK, CHAT_STATUS_HEIGHT, CHAT_STATUS_HOLD,
+    CHAT_STATUS_MORPH, CHAT_STATUS_PAD, CHAT_THOUGHT_GLIDE, CHAT_THOUGHT_ROWS, CHAT_WAIT_COUNTED, CHAT_WRITE_CATCH_UP, CHAT_WRITE_PACE, CHIP_CORNER,
+    CHIP_ICON, CHIP_ICON_AT, CHIP_THUMB, ISLAND_RADIUS, MESSAGE_TEXT_SIZE, PROBLEM, Palette, SIDEBAR_TEXT_SIZE,
 };
 
 /// What the panel remembers between frames to move things: it lives in egui's memory, not in the chat.
@@ -58,7 +59,11 @@ pub fn show(ui: &mut Ui, chat: &Chat, key: u64, scale: f32, palette: Palette, an
     let known = motion.born.is_empty() && chat.entries.len() > 1;
     motion.born.truncate(chat.entries.len());
     while motion.born.len() < chat.entries.len() {
-        motion.born.push(if known || !animate { f64::NEG_INFINITY } else { now });
+        // Human: the note of a task list that was just worked through shows when the drop that carries the
+        // list down from the top of the panel has landed on it.
+        let carried = !chat.entries[motion.born.len()].finished.is_empty();
+        let shows = if carried { now + f64::from(crate::liquid::HAND_SHOWS) } else { now };
+        motion.born.push(if known || !animate { f64::NEG_INFINITY } else { shows });
     }
     // Human: a note's icon plays a short piece when its tool call changes state (starts, is done, fails).
     motion.states.truncate(chat.entries.len());
@@ -103,7 +108,12 @@ pub fn show(ui: &mut Ui, chat: &Chat, key: u64, scale: f32, palette: Palette, an
             ui.add_space((1.0 - arrived) * CHAT_RISE);
             let picked = ui.scope(|ui| {
                 ui.set_opacity(arrived);
-                line(ui, still_at_work.as_ref().unwrap_or(entry), shown, Looks { scale, palette, clock, live: open == Some(index) })
+                line(
+                    ui,
+                    still_at_work.as_ref().unwrap_or(entry),
+                    shown,
+                    Looks { scale, palette, clock, live: open == Some(index), at: index, total: &chat.total },
+                )
             });
             if picked.inner.is_some() {
                 pick = picked.inner;
@@ -183,7 +193,7 @@ fn at_work(entry: &Entry) -> bool {
 
 /// How a line of the conversation is drawn.
 #[derive(Clone, Copy)]
-struct Looks {
+struct Looks<'a> {
     /// How much larger than small the text is (the settings' chat text size).
     scale: f32,
     palette: Palette,
@@ -191,12 +201,25 @@ struct Looks {
     clock: Option<Clock>,
     /// The line is the question that waits for the user: its answers can be picked.
     live: bool,
+    /// The line's place in the conversation.
+    at: usize,
+    /// What the whole conversation took, for the hover of an answer's own sum.
+    total: &'a Spent,
+}
+
+/// What the run that ended with this line took and cost, one faint line; the hover says the parts.
+// Human: the number is there for whoever wants it and out of the way of the conversation: smaller and fainter
+// than a note, and nothing that can be clicked.
+fn spent_line(ui: &mut Ui, spent: &Spent, total: &Spent, scale: f32, palette: Palette) {
+    ui.add_space(CHAT_SPENT_GAP);
+    let words = RichText::new(spent.line()).size((SIDEBAR_TEXT_SIZE - 1.0) * scale).color(palette.muted.gamma_multiply(CHAT_SPENT_INK));
+    ui.add(egui::Label::new(words).selectable(false)).on_hover_text(spent.details(total).join("\n"));
 }
 
 /// One line of the conversation; `shown` is as much of its text as shows. Returns what the user did with it,
 /// when it is a question of the assistant's.
 fn line(ui: &mut Ui, entry: &Entry, shown: &str, looks: Looks) -> Option<Pick> {
-    let Looks { scale, palette, clock, live } = looks;
+    let Looks { scale, palette, clock, live, at, total } = looks;
     let words = |text: &str, color: Color32| egui::Label::new(RichText::new(text).size(MESSAGE_TEXT_SIZE * scale).color(color)).wrap();
     match entry.role {
         Role::User => bubble(ui, palette, |ui| {
@@ -208,8 +231,14 @@ fn line(ui: &mut Ui, entry: &Entry, shown: &str, looks: Looks) -> Option<Pick> {
         }),
         Role::Assistant => {
             ui.add(words(shown, palette.foreground));
+            // Human: the sum waits until the answer's words are all out.
+            if let Some(spent) = entry.spent.as_ref().filter(|_| shown.len() == entry.text.len()) {
+                spent_line(ui, spent, total, scale, palette);
+            }
         }
         // Human: a question is a card with its answers; suggestions nobody can pick any more are one quiet note.
+        // Human: a task list that was worked through is a note that opens to show its tasks.
+        Role::Step if !entry.finished.is_empty() => crate::tasklist::filed(ui, entry, at, scale, palette),
         Role::Step => match &entry.asked {
             Some(asked) if !(asked.suggests && asked.closed) => return question(ui, asked, scale, palette, live),
             _ => note(ui, entry, scale, palette, clock),
@@ -217,6 +246,9 @@ fn line(ui: &mut Ui, entry: &Entry, shown: &str, looks: Looks) -> Option<Pick> {
         Role::Problem => {
             ui.add(words(shown, PROBLEM));
             trouble(ui, entry, scale, palette);
+            if let Some(spent) = &entry.spent {
+                spent_line(ui, spent, total, scale, palette);
+            }
         }
     }
     None
@@ -585,8 +617,8 @@ pub struct Line {
 /// What the status line shows, kept between frames so it can still be drawn while it gives way to the next.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Face {
-    /// A tool at work: its note.
-    Tool(Entry),
+    /// A tool at work: its note (boxed: a line of the conversation is far larger than the other faces).
+    Tool(Box<Entry>),
     /// The dots and a few words beside them.
     Waiting(String),
     /// The answer is there to read.
@@ -600,7 +632,7 @@ enum Face {
 impl From<Status<'_>> for Face {
     fn from(status: Status<'_>) -> Self {
         match status {
-            Status::Tool(entry) => Face::Tool(entry.clone()),
+            Status::Tool(entry) => Face::Tool(Box::new(entry.clone())),
             Status::Waiting(label) => Face::Waiting(label.to_owned()),
             Status::Answered => Face::Answered,
             Status::Problem(text) => Face::Problem(text.to_owned()),
@@ -956,6 +988,30 @@ mod tests {
         assert_eq!(written(&mut Motion::default(), 0, &entry, false, 0.016), (entry.text.as_str(), true));
     }
 
+    /// How tall `line` draws `entry` with `shown` of its words.
+    fn height_of(entry: &Entry, shown: &str) -> f32 {
+        let ctx = egui::Context::default();
+        let total = Spent::default();
+        let mut height = 0.0;
+        let mut drawn = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let looks = Looks { scale: 1.0, palette: theme::palette(false), clock: None, live: false, at: 0, total: &total };
+            height = ui.scope(|ui| line(ui, entry, shown, looks)).response.rect.height();
+        });
+        drawn.textures_delta.clear();
+        height
+    }
+
+    #[test]
+    fn what_an_answer_took_is_a_line_under_it_once_its_words_are_out() {
+        let bare = Entry::new(Role::Assistant, "A dog.");
+        let mut priced = bare.clone();
+        priced.spent = Some(Spent { used: crate::chat::usage::Used { input: 10, output: 5, ..Default::default() }, ..Spent::default() });
+        let without = height_of(&bare, &bare.text);
+        assert!(height_of(&priced, &priced.text) > without);
+        // While the words are still coming the line waits, and an answer without a sum has no line.
+        assert!((height_of(&priced, "A do") - height_of(&bare, "A do")).abs() < f32::EPSILON);
+    }
+
     #[test]
     fn an_icon_pops_into_place_and_a_failed_one_shakes_itself_still() {
         // Done: from the small size at work, a little past full size, to full size.
@@ -1019,7 +1075,7 @@ mod tests {
         if let Some(step) = note.step.as_mut() {
             step.state = State::Running;
         }
-        let (thinking, tool) = (Face::Waiting("Thinking…".to_owned()), Face::Tool(note));
+        let (thinking, tool) = (Face::Waiting("Thinking…".to_owned()), Face::Tool(Box::new(note)));
         // A line that wasn't there comes from nothing; one that says the same stays as it is.
         let first = Morph::next(None, thinking.clone(), 10.0);
         assert_eq!((first.from.as_ref(), first.since), (None, 10.0));
