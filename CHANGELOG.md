@@ -9,6 +9,11 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.24] - 2026-11-20
+
+A problem in the chat now says enough to act on it or report it, and its
+details can be copied.
+
 ### Added
 
 - **A problem in the chat says more, and can be copied.** Under a problem
@@ -707,7 +712,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.23...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.24...HEAD
+[0.3.24]: https://github.com/AsP3X/pencraft/compare/v0.3.23...v0.3.24
 [0.3.23]: https://github.com/AsP3X/pencraft/compare/v0.3.22...v0.3.23
 [0.3.22]: https://github.com/AsP3X/pencraft/compare/v0.3.21...v0.3.22
 [0.3.21]: https://github.com/AsP3X/pencraft/compare/v0.3.20...v0.3.21
