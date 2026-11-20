@@ -24,11 +24,11 @@ its chat belongs to (the one in front when you send); what you have selected is 
   Agents and enter your key (kept in the keychain).
 - **Another known provider** (OpenAI, xAI, Google Gemini, OpenRouter, DeepSeek, Moonshot, Kimi For Coding,
   Together, Fireworks, Z.AI, Meta, OpenCode Zen and Go): click its card in Settings → Agents. Its address and
-  API type are filled in; enter your key, press "Load models from provider", click the models you want, and
+  API type are filled in; enter your key, press "Choose models…", tick the models you want in the window that opens, and
   save. The card then says "Ready in the chat" and its models are in the assistant menu.
 - **Ollama** (models that run on your own computer): click the Ollama card in Settings → Agents. Its address
   (`http://localhost:11434`) and the API type "Ollama" are filled in and no key is needed; with Ollama
-  running, press "Load from provider", click the models you have pulled, and save. Change the address if
+  running, press "Choose models…", tick the models you have pulled, and save. Change the address if
   Ollama runs on another machine. Pick a model that can call tools. Pencraft asks Ollama to read up to
   32 768 tokens of the conversation (its brief and tools alone are about 17 000), which takes more memory
   than Ollama's own default; a model that can read less than that will lose the start of the conversation.
@@ -36,6 +36,12 @@ its chat belongs to (the one in front when you send); what you have selected is 
 - **Ollama Cloud** (Ollama's hosted models, without Ollama on your computer): click the Ollama Cloud card,
   enter an API key from ollama.com (Settings → Keys there), load the models and save. Both cards can be
   set up side by side.
+  "Choose models…" opens a window with the provider's own list. Type a few letters of a model's name to find
+  it, in order but not necessarily side by side ("ds4p" finds deepseek-v4-pro); the arrow keys move through
+  the list and Return ticks a model. A model the provider doesn't list is added with "Add by ID".
+  Where the provider says how much a model reads and writes, its context window and max tokens are filled in
+  for the models you choose (Ollama is asked about each one and says how much it reads); numbers you typed
+  yourself are left alone.
 - **Any other provider**: "Add custom provider", with the API type "OpenAI Completions" (what most providers
   and other local model servers speak; a key is optional there), "Anthropic Messages", or "Ollama" for an
   Ollama on another machine.
@@ -97,9 +103,9 @@ text round the rim follows as you type.
 
 When a request could go two ways, the assistant asks instead of guessing: a question with a few answers to
 pick from. In the chat it is a card; with the sidebar folded away, the status line over the message bar grows
-into the question; with another view open (the layers, say), it sits under that view. Click an answer, or type your own into the message box and send it. Several questions come
+into the question; with another view open (the layers, say), it sits under that view. Tick the answers that apply (as many as you like), write your own in the field under them if none fits or to add to them, and press Next or Send; Return in the field sends too. Several questions come
 one after the other, and your answers go to the assistant together. The cross closes a question unanswered.
-When it has finished something, the assistant may offer next steps the same way; a click sends one as your
+When it has finished something, the assistant may offer next steps the same way: tick one or several, or write something else, and send them as your
 message. A finished design is not reviewed while a question waits for you.
 
 The send button turns into a stop button while the assistant works. "New" starts a new chat.
@@ -181,7 +187,7 @@ A client that speaks MCP over HTTP can skip `pencraft mcp`: the address and the 
 | `search_images` | Photos and illustrations that may be reused, each with its maker, licence and credit line |
 | `download_image` | Fetches a picture into the `images` folder beside the document, for an image fill |
 | `edit_image` | Has an image model change a picture by an instruction (a layer's picture, layers as they look, or a picture file), or make one that goes by up to four reference pictures; puts the result in place of the layer's picture or beside the layers drawn. Needs a Google Gemini service (see Pictures) |
-| `ask_user` | Asks you one to three questions, each with answers to click, or offers next steps. Only the chat inside Pencraft has it |
+| `ask_user` | Asks you one to three questions, each with answers to tick, or offers next steps. Only the chat inside Pencraft has it |
 
 ## The web
 

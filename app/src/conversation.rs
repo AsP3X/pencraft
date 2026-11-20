@@ -628,6 +628,9 @@ impl Morph {
     fn next(kept: Option<Morph>, wanted: Face, now: f64) -> Self {
         match kept {
             Some(kept) if kept.face == wanted => kept,
+            // Human: ticking an answer or writing one's own changes what the dialog shows, not what it is: it
+            // stays as it stands, without turning into itself with every letter.
+            Some(kept) if same_question(&kept.face, &wanted) => Morph { face: wanted, ..kept },
             Some(kept) if matches!((&kept.face, &wanted), (Face::Tool(_), Face::Waiting(_))) && now - kept.since < f64::from(CHAT_STATUS_HOLD) => {
                 kept
             }
@@ -640,6 +643,17 @@ impl Morph {
     #[expect(clippy::cast_possible_truncation, reason = "a share between 0 and 1")]
     fn share(&self, now: f64) -> f32 {
         ((now - self.since) / f64::from(CHAT_STATUS_MORPH)).clamp(0.0, 1.0) as f32
+    }
+}
+
+/// Whether `one` and `other` show the same question of the assistant's at the same point: only what is ticked
+/// or written for it differs.
+fn same_question(one: &Face, other: &Face) -> bool {
+    match (one, other) {
+        (Face::Asking(one), Face::Asking(other)) => {
+            one.questions == other.questions && one.answers == other.answers && one.closed == other.closed && one.suggests == other.suggests
+        }
+        _ => false,
     }
 }
 

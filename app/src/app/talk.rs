@@ -228,13 +228,14 @@ impl App {
                 ChatAsk::Stop => self.shown_talk().chat.stop(),
                 ChatAsk::New => self.shown_talk().chat.clear(),
                 ChatAsk::Looked => self.find_assistants(),
+                ChatAsk::Assistants => self.settings.open_named("agents"),
                 ChatAsk::Pick(id) => {
                     self.assistant_asked = None;
                     self.prefs.update(|prefs| prefs.agents.chat_model = id);
                 }
                 ChatAsk::Send { shown, pointed, told, files } => self.send_chat(shown, pointed, told, &files, ctx),
                 ChatAsk::Attach => self.ask_attach(),
-                ChatAsk::Answer(pick) => self.answer_chat(pick, ctx),
+                ChatAsk::Answer(pick) => self.answer_chat(&pick, ctx),
             }
         }
     }
@@ -325,17 +326,12 @@ impl App {
         self.hand_over(Waiting { shown, told, files: paths.to_vec(), pointed }, ctx);
     }
 
-    /// Does what the user picked in a question of the assistant's: an answer is taken, and with the last one
-    /// the answers go to the assistant as the user's message; or the question is closed.
-    fn answer_chat(&mut self, pick: crate::conversation::Pick, ctx: &egui::Context) {
-        let chat = &mut self.shown_talk().chat;
-        match pick {
-            crate::conversation::Pick::Dismiss => chat.dismiss(),
-            crate::conversation::Pick::Answer { question, answer } => {
-                if let Some(message) = chat.answer(question, &answer) {
-                    self.hand_over(message, ctx);
-                }
-            }
+    /// Does what the user did in a question of the assistant's: an answer is ticked or written, or what is
+    /// chosen is sent, and with the last question's the answers go to the assistant as the user's message; or
+    /// the question is closed.
+    fn answer_chat(&mut self, pick: &crate::conversation::Pick, ctx: &egui::Context) {
+        if let Some(message) = self.shown_talk().chat.choose(pick) {
+            self.hand_over(message, ctx);
         }
     }
 

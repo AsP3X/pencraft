@@ -200,6 +200,10 @@ pub const CHAT_ASK_OPTION_RADIUS: f32 = 8.0;
 pub const CHAT_ASK_GAP: f32 = 10.0;
 /// The side of the button that closes a question.
 pub const CHAT_ASK_CLOSE: f32 = 22.0;
+/// The size of the box before an answer that shows whether it is ticked.
+pub const CHAT_ASK_TICK: f32 = 15.0;
+/// The height of the button that sends what is chosen in a question.
+pub const CHAT_ASK_SEND: f32 = 28.0;
 /// Seconds a new line of the conversation takes to fade in.
 pub const CHAT_APPEAR: f32 = 0.24;
 /// How far below its place a new line starts.
@@ -229,14 +233,22 @@ pub const CHAT_COPIED_STAYS: f64 = 1.6;
 pub const CHAT_TEXT_MEDIUM: f32 = 1.15;
 /// See [`CHAT_TEXT_MEDIUM`].
 pub const CHAT_TEXT_LARGE: f32 = 1.3;
-/// The most height the list of a provider's models takes in the provider form before it scrolls.
-pub const OFFERED_MODELS_HEIGHT: f32 = 150.0;
+/// Size of the window a provider's models are chosen in, where the app's window has that much room.
+pub const MODEL_PICKER_SIZE: [f32; 2] = [520.0, 580.0];
+/// Height of one model's row in that window.
+pub const MODEL_PICKER_ROW: f32 = 34.0;
+/// How dark the backdrop behind that window is, out of 255; it lies over the settings' own backdrop.
+pub const MODEL_PICKER_BACKDROP: u8 = 96;
 /// Room kept free at the right of a settings row for its control, where the row's second line ends.
 pub const SETTINGS_ROW_CONTROL_ROOM: f32 = 64.0;
 /// Width of a name's text field at the right of a settings row.
 pub const SETTINGS_NAME_FIELD: f32 = 200.0;
 /// Width of the assistant menu.
-pub const ASSISTANT_MENU_WIDTH: f32 = 240.0;
+pub const ASSISTANT_MENU_WIDTH: f32 = 300.0;
+/// Height of one line of the assistant menu.
+pub const ASSISTANT_MENU_ROW: f32 = 28.0;
+/// The most lines the assistant menu shows before its list scrolls.
+pub const ASSISTANT_MENU_ROWS: usize = 10;
 /// Size of a resize handle on screen, points.
 pub const HANDLE_SIZE: f32 = 8.0;
 /// How near an edge of the selection box a press must be to resize by that edge.

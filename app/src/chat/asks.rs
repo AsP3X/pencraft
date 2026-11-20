@@ -2,7 +2,8 @@
 //!
 //! The model calls the tool with one to three questions, each with a few answers to pick from, or with a few
 //! suggestions for what to do next. The call answers at once; the chat shows the question (in the conversation,
-//! and as a dialog over the message bar while the sidebar is folded away), and what the user picks goes to the
+//! and as a dialog over the message bar while the sidebar is folded away). The user ticks as many of the
+//! answers as apply, writes one of their own beside or instead of them, and sends; what they chose goes to the
 //! assistant as their next message.
 
 use serde_json::Value;
@@ -19,10 +20,9 @@ const MOST_QUESTION: usize = 240;
 const MOST_OPTION: usize = 90;
 
 /// What the model is told when its questions are on the screen.
-pub const ASKED: &str = "The user now sees your questions with the answers to pick from. End your turn with one short sentence and change nothing meanwhile: their answer arrives as their next message.";
+pub const ASKED: &str = "The user now sees your questions with the answers to pick from; they may pick several and add words of their own. End your turn with one short sentence and change nothing meanwhile: their answer arrives as their next message.";
 /// What the model is told when its suggestions are on the screen.
-pub const SUGGESTED: &str =
-    "The user now sees your suggestions as buttons. Finish your reply as usual; if they pick one, it arrives as their next message.";
+pub const SUGGESTED: &str = "The user now sees your suggestions to tick. Finish your reply as usual; if they pick some, or write something else, it arrives as their next message.";
 /// What a caller outside the app's own chat is told.
 pub const NO_CHAT: &str = "Only the assistant in Pencraft's own chat can ask the user this way. Ask in your reply instead.";
 
@@ -45,6 +45,10 @@ pub struct Asked {
     pub suggests: bool,
     /// The user's answers so far, one for each question from the first.
     pub answers: Vec<String>,
+    /// The answers ticked for the question the user is at, not sent yet.
+    pub picked: Vec<String>,
+    /// What the user has written as an answer of their own to that question, not sent yet.
+    pub own: String,
     /// Nothing more is taken: every question is answered, or the user closed it or wrote something else.
     pub closed: bool,
 }
@@ -87,7 +91,7 @@ pub fn parse(input: &Value) -> Result<Asked, String> {
         .take(MOST_QUESTIONS)
         .collect();
     let suggestions = options(input.get("suggestions"));
-    let asked = |questions, suggests| Asked { questions, suggests, answers: Vec::new(), closed: false };
+    let asked = |questions, suggests| Asked { questions, suggests, answers: Vec::new(), picked: Vec::new(), own: String::new(), closed: false };
     match (questions.is_empty(), suggestions.is_empty()) {
         (false, true) => Ok(asked(questions, false)),
         (true, false) => Ok(asked(vec![Question { text: String::new(), options: suggestions }], true)),
@@ -117,12 +121,54 @@ impl Asked {
             return None;
         }
         self.answers.push(answer.to_owned());
+        self.picked.clear();
+        self.own.clear();
         if self.answers.len() < self.questions.len() {
             return None;
         }
         self.closed = true;
         let shown = self.answers.join("\n");
         Some(if self.suggests { (shown.clone(), shown) } else { (shown, self.told()) })
+    }
+
+    /// Ticks the answer `option` of the question at `at`, or takes its tick away again.
+    pub fn toggle(&mut self, at: usize, option: &str) {
+        let Some((_, question)) = self.current().filter(|(current, _)| *current == at) else { return };
+        if !question.options.iter().any(|offered| offered == option) {
+            return;
+        }
+        match self.picked.iter().position(|picked| picked == option) {
+            Some(place) => {
+                self.picked.remove(place);
+            }
+            None => self.picked.push(option.to_owned()),
+        }
+    }
+
+    /// Takes `text` as what the user has written so far as their own answer to the question at `at`.
+    pub fn write(&mut self, at: usize, text: &str) {
+        if self.current().is_some_and(|(current, _)| current == at) {
+            text.clone_into(&mut self.own);
+        }
+    }
+
+    /// The answer to the question the user is at as it stands: what is ticked, in the order it is offered,
+    /// and then what the user wrote. `None` while there is neither.
+    // Human: several answers to a question read as one line ("Warm, Dark, with a bit of green"); several next
+    // steps are each a request of their own, so each has its line.
+    #[must_use]
+    pub fn chosen(&self) -> Option<String> {
+        let (_, question) = self.current()?;
+        let ticked = question.options.iter().filter(|option| self.picked.contains(option)).map(String::as_str);
+        let parts: Vec<&str> = ticked.chain(Some(self.own.trim()).filter(|own| !own.is_empty())).collect();
+        (!parts.is_empty()).then(|| parts.join(if self.suggests { "\n" } else { ", " }))
+    }
+
+    /// Sends what is chosen for the question at `at` as its answer ([`Asked::answer`]). Nothing happens while
+    /// nothing is chosen.
+    pub fn confirm(&mut self, at: usize) -> Option<(String, String)> {
+        let answer = self.chosen()?;
+        self.answer(at, &answer)
     }
 
     /// The questions answered so far with their answers, as the assistant reads them.
@@ -180,6 +226,31 @@ mod tests {
         assert_eq!(asked.current().map(|(at, _)| at), Some(1));
         assert_eq!(asked.answer(1, "Phone"), Some(("Dark\nPhone".to_owned(), "Mood?\nAnswer: Dark\nScreen?\nAnswer: Phone".to_owned())));
         assert!(asked.closed && asked.current().is_none() && asked.answer(1, "Tablet").is_none());
+        // Several answers and words of the user's own are one answer, in the order the answers are offered.
+        let mut several = parse(&json!({ "questions": [{ "question": "Mood?", "options": ["Warm", "Dark", "Bright"] }, "Screen?"] })).unwrap();
+        assert_eq!((several.chosen(), several.confirm(0)), (None, None));
+        several.toggle(0, "Bright");
+        several.toggle(0, "Warm");
+        several.toggle(0, "Dark");
+        several.toggle(0, "Dark");
+        several.toggle(0, "Not offered");
+        several.toggle(1, "Warm");
+        several.write(1, "ignored: not the question the user is at");
+        several.write(0, "  with a bit of green ");
+        assert_eq!(several.chosen().as_deref(), Some("Warm, Bright, with a bit of green"));
+        assert_eq!(several.confirm(0), None);
+        // The next question starts with nothing ticked and nothing written; words alone answer it.
+        assert!(several.picked.is_empty() && several.own.is_empty() && several.current().is_some_and(|(at, _)| at == 1));
+        several.write(1, "Phone");
+        let (shown, told) = several.confirm(1).unwrap();
+        assert_eq!(shown, "Warm, Bright, with a bit of green\nPhone");
+        assert!(told.ends_with("Screen?\nAnswer: Phone") && several.closed);
+        // Several next steps are each a line of the message.
+        let mut steps = parse(&json!({ "suggestions": ["Add a dark version", "Export it"] })).unwrap();
+        steps.toggle(0, "Export it");
+        steps.toggle(0, "Add a dark version");
+        steps.write(0, "and make the logo larger");
+        assert_eq!(steps.confirm(0).map(|(shown, _)| shown).as_deref(), Some("Add a dark version\nExport it\nand make the logo larger"));
         // A suggestion the user picks is their message as it stands.
         let mut offered = parse(&json!({ "suggestions": ["Add a dark version", "Export it"] })).unwrap();
         assert_eq!(offered.answer(0, "Export it"), Some(("Export it".to_owned(), "Export it".to_owned())));

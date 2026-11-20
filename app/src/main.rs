@@ -14,6 +14,7 @@ mod advice;
 mod agent;
 mod app;
 mod asking;
+mod assistants;
 mod bundle;
 mod canvas;
 mod chat;
@@ -26,6 +27,7 @@ mod export;
 mod faces;
 mod find;
 mod fonts;
+mod fuzzy;
 mod glass_check;
 mod gpu;
 mod icons;
@@ -207,7 +209,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<app::Launch, String>
             "--settings" => {
                 launch.settings = Some(
                     args.next()
-                        .ok_or("--settings needs a page: general, canvas, agents, provider, cli, chat, images, image-service, permissions or mcp")?,
+                        .ok_or("--settings needs a page: general, canvas, agents, provider, models, models-search, cli, chat, images, image-service, permissions or mcp")?,
                 );
             }
             "--actions" => launch.actions = true,

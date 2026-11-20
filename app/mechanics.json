@@ -771,9 +771,33 @@
    "source": "Pencraft's own rule (src/theme.rs)"
   },
   {
+   "name": "chat: assistant menu row height",
+   "group": "chat",
+   "value": 28,
+   "source": "Pencraft's own rule (src/theme.rs)"
+  },
+  {
+   "name": "chat: most rows of the assistant menu before it scrolls",
+   "group": "chat",
+   "value": 10,
+   "source": "Pencraft's own rule (src/theme.rs)"
+  },
+  {
+   "name": "chat question: tick box size",
+   "group": "chat",
+   "value": 15,
+   "source": "Pencraft's own rule (src/theme.rs)"
+  },
+  {
+   "name": "chat question: send button height",
+   "group": "chat",
+   "value": 28,
+   "source": "Pencraft's own rule (src/theme.rs)"
+  },
+  {
    "name": "chat: assistant menu width",
    "group": "chat",
-   "value": 240,
+   "value": 300,
    "source": "Pencraft's own rule (src/theme.rs)"
   },
   {

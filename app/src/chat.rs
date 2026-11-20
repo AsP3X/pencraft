@@ -616,6 +616,11 @@ pub fn sample_asking(suggests: bool) -> Vec<Entry> {
     };
     let mut note = Entry::note(asks::TOOL, State::Done, "");
     note.asked = asks::parse(&input).ok();
+    // The picture shows a question in the middle of being answered: two answers ticked.
+    if let Some(asked) = note.asked.as_mut().filter(|asked| !asked.suggests) {
+        asked.toggle(0, "Warm and editorial");
+        asked.toggle(0, "Bright and playful");
+    }
     let (user, said) = if suggests {
         ("Design a landing page for a small coffee roaster.", "Done. The page has a hero, three coffees and a footer.")
     } else {
@@ -878,11 +883,26 @@ impl Chat {
         steered.into_iter().map(|text| (text, true)).chain(self.waiting.iter().map(|waiting| (waiting.shown.clone(), false))).collect()
     }
 
-    /// Takes the user's `answer` to the question at `at` of what the assistant asks. With the last answer it
-    /// gives the message to send to the assistant.
-    pub fn answer(&mut self, at: usize, answer: &str) -> Option<Waiting> {
+    /// Does what the user did in the question the assistant asks: ticks an answer, takes what they wrote, or
+    /// sends what they chose. Sending the last answer gives the message to send to the assistant.
+    pub fn choose(&mut self, pick: &crate::asking::Pick) -> Option<Waiting> {
+        use crate::asking::Pick;
         let asked = self.entries.iter_mut().rev().find_map(|entry| entry.asked.as_mut())?;
-        let (shown, told) = asked.answer(at, answer)?;
+        let (shown, told) = match pick {
+            Pick::Toggle { question, answer } => {
+                asked.toggle(*question, answer);
+                return None;
+            }
+            Pick::Write { question, text } => {
+                asked.write(*question, text);
+                return None;
+            }
+            Pick::Send { question } => asked.confirm(*question)?,
+            Pick::Dismiss => {
+                self.dismiss();
+                return None;
+            }
+        };
         Some(Waiting { shown, told, files: Vec::new(), pointed: Vec::new() })
     }
 
@@ -1482,6 +1502,7 @@ mod tests {
 
     #[test]
     fn a_question_of_the_assistants_waits_for_the_users_answer() {
+        use crate::asking::Pick;
         let open = |chat: &Chat| asking(&chat.entries).map(|(_, asked)| asked.clone());
         let ask = |id: &str, input: Value| {
             vec![
@@ -1502,16 +1523,22 @@ mod tests {
         assert_eq!(open(&chat).as_ref().and_then(asks::Asked::current).map(|(at, question)| (at, question.text.as_str())), Some((0, "Mood?")));
         assert!(chat.retold("note", false).contains("Assistant asked: Mood? Screen?\nAssistant: Two things first."));
         // The answers are taken one by one; the last makes the message for the assistant.
-        assert_eq!(chat.answer(0, "Dark"), None);
-        let message = chat.answer(1, "Phone").unwrap();
+        let tick = |question: usize, answer: &str| Pick::Toggle { question, answer: answer.to_owned() };
+        let write = |question: usize, text: &str| Pick::Write { question, text: text.to_owned() };
+        // Nothing chosen sends nothing; what is ticked and written is sent together.
+        assert_eq!(chat.choose(&Pick::Send { question: 0 }), None);
+        assert_eq!((chat.choose(&tick(0, "Dark")), chat.choose(&Pick::Send { question: 0 })), (None, None));
+        assert_eq!(chat.choose(&write(1, "Phone")), None);
+        let message = chat.choose(&Pick::Send { question: 1 }).unwrap();
         assert_eq!((message.shown.as_str(), message.told.as_str()), ("Dark\nPhone", "Mood?\nAnswer: Dark\nScreen?\nAnswer: Phone"));
-        assert!(open(&chat).is_none() && chat.answer(1, "Phone").is_none());
+        assert!(open(&chat).is_none() && chat.choose(&Pick::Send { question: 1 }).is_none());
         // A message of the user's own closes the question and takes along what was picked before it.
         let mut events = ask("a3", questions);
         events.push(Event::Done);
         let mut chat = with_events(events);
         chat.poll();
-        chat.answer(0, "Warm");
+        chat.choose(&tick(0, "Warm"));
+        chat.choose(&Pick::Send { question: 0 });
         assert_eq!(chat.leave_question().as_deref(), Some("Mood?\nAnswer: Warm"));
         assert!(open(&chat).is_none() && chat.leave_question().is_none());
         // Closing it asks nothing more; a question the app refused was never put.

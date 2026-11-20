@@ -9,6 +9,34 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Changed
+
+- **The assistant menu in the message box has a search and groups.** The
+  menu lists the models under their provider instead of repeating the
+  provider on every line, marks the one in use with a tick, and has a
+  search field that finds an assistant by a few of its letters. The arrow
+  keys move and Return chooses; "Manage…" opens the assistants in the
+  settings.
+- **Questions take several answers and one of your own.** When the
+  assistant asks something, you tick as many of its answers as apply, add
+  your own in the field under them if you like, and send them together.
+  The next steps it offers work the same way, so several can be started at
+  once. Before, the first click on an answer was the answer.
+- **Choosing a provider's models has a window of its own.** "Choose
+  models…" in a provider's form opens the provider's list over the
+  settings, with a tick before each model. A search field finds a model by
+  a few of its letters, typed in order but not necessarily side by side
+  ("ds4p" finds deepseek-v4-pro), and shows which letters it matched. The
+  arrow keys move through the list and Return ticks a model; "Select all"
+  and "Clear" work on what is shown. Before, the list was a short strip
+  under the form with no search.
+- **A model's context window and max tokens come from the provider.**
+  Where a provider says how much a model reads and writes, the form fills
+  those numbers in for the models you choose, instead of the same
+  placeholder for all. Ollama and Ollama Cloud are asked about each chosen
+  model; they say how much it reads, and the max tokens then come down to
+  that. Numbers you typed yourself stay as they are.
+
 ## [0.3.25] - 2026-11-20
 
 An answer that a provider breaks off is asked for again by itself, and the

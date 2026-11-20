@@ -23,11 +23,12 @@ use crate::prefs::{AgentName, Agents, Appearance, CustomProvider, ImageService, 
 use crate::secrets::{self, Keychain, Vault};
 use crate::sidebar::icon_button;
 use crate::theme::{
-    self, CHIP_RADIUS, DIALOG_BACKDROP, FIELD_HEIGHT, ICON_SIZE, OFFERED_MODELS_HEIGHT, Palette, SETTINGS_FOOTER, SETTINGS_MARGIN, SETTINGS_MAX,
-    SETTINGS_NAME_FIELD, SETTINGS_NAV_ROW, SETTINGS_NAV_WIDTH, SETTINGS_PAGE_INSET, SETTINGS_PAGE_WIDTH, SETTINGS_PROVIDERS_SHOWN, SETTINGS_RADIUS,
-    SETTINGS_TOOLS_SHOWN, SIDEBAR_TEXT_SIZE,
+    self, CHIP_RADIUS, DIALOG_BACKDROP, FIELD_HEIGHT, ICON_SIZE, Palette, SETTINGS_FOOTER, SETTINGS_MARGIN, SETTINGS_MAX, SETTINGS_NAME_FIELD,
+    SETTINGS_NAV_ROW, SETTINGS_NAV_WIDTH, SETTINGS_PAGE_INSET, SETTINGS_PAGE_WIDTH, SETTINGS_PROVIDERS_SHOWN, SETTINGS_RADIUS, SETTINGS_TOOLS_SHOWN,
+    SIDEBAR_TEXT_SIZE,
 };
 
+mod models;
 mod parts;
 
 use parts::{
@@ -241,6 +242,8 @@ struct Form {
     models: Vec<ModelRow>,
     /// The models the provider said it has, once asked.
     offered: Vec<String>,
+    /// What the provider said each of them can take, as far as it said.
+    limits: std::collections::BTreeMap<String, catalog::Limits>,
 }
 
 impl Form {
@@ -255,6 +258,7 @@ impl Form {
             forget_key: false,
             models: vec![ModelRow::empty()],
             offered: Vec::new(),
+            limits: std::collections::BTreeMap::new(),
         }
     }
 
@@ -269,6 +273,60 @@ impl Form {
             models: if models.is_empty() { vec![ModelRow::empty()] } else { models },
             ..Form::new()
         }
+    }
+
+    /// Takes what was ticked in the window for choosing models: of the models the provider `offered`, the
+    /// `chosen` ones that aren't in the form are added, and the ones in the form that are no longer chosen go.
+    /// Models the provider didn't offer (typed by hand) stay, and so do the numbers of a model that stays.
+    fn take_choice(&mut self, offered: &[String], chosen: &std::collections::BTreeSet<String>) {
+        self.models.retain(|row| !offered.iter().any(|id| id == row.id.trim()) || chosen.contains(row.id.trim()));
+        for id in offered.iter().filter(|id| chosen.contains(*id)) {
+            if self.models.iter().all(|row| row.id.trim() != id) {
+                self.add_model(id);
+            }
+        }
+        if self.models.is_empty() {
+            self.models.push(ModelRow::empty());
+        }
+        self.fill();
+    }
+
+    /// Takes in what the provider said its models can take, and writes it into their rows.
+    fn learn(&mut self, told: impl IntoIterator<Item = (String, catalog::Limits)>) {
+        for (id, limits) in told {
+            let known = self.limits.entry(id).or_default();
+            *known = catalog::Limits { context: limits.context.or(known.context), output: limits.output.or(known.output) };
+        }
+        self.fill();
+    }
+
+    /// Writes what the provider said a model can take into the model's row, where the row still has the
+    /// numbers the form put there.
+    // Human: numbers the user typed are the user's; only the form's own placeholder numbers give way. A
+    // provider that says how much a model reads but not how much it writes: the model can't write more than
+    // it reads, so the placeholder comes down to that.
+    fn fill(&mut self) {
+        let placeholder: u64 = DEFAULT_TOKENS.parse().unwrap_or(u64::MAX);
+        for row in &mut self.models {
+            let Some(limits) = self.limits.get(row.id.trim()) else { continue };
+            if let Some(context) = limits.context.filter(|_| row.context_window == DEFAULT_TOKENS) {
+                row.context_window = context.to_string();
+            }
+            let output = limits.output.or(limits.context.filter(|context| *context < placeholder));
+            if let Some(output) = output.filter(|_| row.max_tokens == DEFAULT_TOKENS) {
+                row.max_tokens = output.to_string();
+            }
+        }
+    }
+
+    /// The chosen models an Ollama is still to be asked about one by one: it is one, and it hasn't said yet
+    /// how much they read.
+    fn unasked(&self) -> Vec<String> {
+        if !catalog::tells_per_model(&self.api, &self.base_url) {
+            return Vec::new();
+        }
+        let ids = self.models.iter().map(|row| row.id.trim().to_owned()).filter(|id| !id.is_empty());
+        ids.filter(|id| self.limits.get(id).is_none_or(|limits| limits.context.is_none())).collect()
     }
 
     /// Adds the model called `id`: into the first row without a name, or a new row.
@@ -547,7 +605,9 @@ fn update_line(seen: &crate::update::Seen) -> String {
 }
 
 /// What a provider says about its models, once it has answered.
-type Models = Result<Vec<String>, String>;
+type Models = Result<Vec<catalog::Offered>, String>;
+/// What an Ollama said its models can take, asked one by one.
+type Told = Vec<(String, catalog::Limits)>;
 
 /// The settings window's state.
 #[expect(clippy::struct_excessive_bools, reason = "each says one independent thing about what the window shows")]
@@ -585,8 +645,12 @@ pub struct Settings {
     picture_drafts: [String; 2],
     /// The question to a provider which models it has, while it is out.
     loading: Option<mpsc::Receiver<Models>>,
+    /// The questions to an Ollama what the chosen models can take, while they are out.
+    telling: Option<mpsc::Receiver<Told>>,
     /// That question was asked to test the connection, so its answer is said.
     testing: bool,
+    /// The window the form's provider's models are chosen in, while it is open over the form.
+    picker: Option<models::Picker>,
     /// Where API keys are kept.
     vault: Box<dyn Vault>,
 }
@@ -611,7 +675,9 @@ impl Default for Settings {
             hooking: None,
             picture_drafts: [String::new(), String::new()],
             loading: None,
+            telling: None,
             testing: false,
+            picker: None,
             vault: Box::new(Keychain),
         }
     }
@@ -628,7 +694,8 @@ enum Open {
 impl Settings {
     /// Opens the window on the page called `name` on the command line (`--settings`): `general`, `canvas`,
     /// `agents`, `provider` for the custom provider form, `cli` for the command-line agent form, `chat`,
-    /// `images`, `image-service` for the image service form, `permissions` or `mcp`.
+    /// `images`, `image-service` for the image service form, `permissions` or `mcp`; `models` for the window a
+    /// provider's models are chosen in, over the provider form, and `models-search` for a search in it.
     pub fn open_named(&mut self, name: &str) {
         self.open = true;
         self.page = match name {
@@ -641,7 +708,12 @@ impl Settings {
             _ => Page::Agents,
         };
         self.query.clear();
-        self.form = (name == "provider").then(Form::new);
+        self.form = matches!(name, "provider" | "models" | "models-search").then(Form::new);
+        self.picker = match name {
+            "models" => Some(models::Picker::sample("")),
+            "models-search" => Some(models::Picker::sample("kpro")),
+            _ => None,
+        };
         self.cli = (name == "cli").then(CliForm::new);
         self.image_form = (name == "image-service").then(ImageForm::new);
         self.installed = None;
@@ -726,6 +798,8 @@ impl Settings {
         self.image_form = None;
         self.cli = None;
         self.loading = None;
+        self.telling = None;
+        self.picker = None;
         self.picture_editing = None;
     }
 
@@ -806,7 +880,40 @@ impl Settings {
         if modal.should_close() {
             self.open = false;
         }
+        self.choose_models(ctx, palette);
         notice
+    }
+
+    /// Draws the window the form's provider's models are chosen in, when it is open, and does what was decided
+    /// in it.
+    // Agent: drawn after the settings window, so it lies over it and takes Escape first.
+    fn choose_models(&mut self, ctx: &egui::Context, palette: Palette) {
+        // Human: what an Ollama says about the chosen models comes in a moment after they are chosen.
+        if let (Some(form), Some(Ok(told))) = (&mut self.form, self.telling.as_ref().map(mpsc::Receiver::try_recv)) {
+            form.learn(told);
+            self.telling = None;
+        }
+        let (Some(picker), Some(form), true) = (&mut self.picker, &mut self.form, self.open) else {
+            self.picker = None;
+            return;
+        };
+        match picker.show(ctx, palette) {
+            Some(models::Answer::Apply) => {
+                form.take_choice(picker.offered(), picker.chosen());
+                self.telling = ask_limits(form, self.vault.as_ref(), ctx);
+                self.picker = None;
+            }
+            Some(models::Answer::Cancel) => self.picker = None,
+            Some(models::Answer::Reload) => match ask_models(form, self.vault.as_ref(), ctx) {
+                Ok(answer) => {
+                    self.loading = Some(answer);
+                    self.testing = false;
+                    picker.loading();
+                }
+                Err(why) => picker.failed(why),
+            },
+            None => {}
+        }
     }
 
     /// The left of the window: its name, the search field, the list of pages in their groups, and the version.
@@ -983,7 +1090,8 @@ impl Settings {
     /// The Assistants page: the assistants that are set up and the ones to add, or the form for one.
     fn agents(&mut self, ui: &mut Ui, prefs: &mut Prefs, facts: &Facts<'_>, palette: Palette, notice: &mut Option<String>) {
         if let Some(form) = &mut self.form {
-            if provider_form(ui, form, prefs, facts, self.vault.as_ref(), &mut self.loading, &mut self.testing, palette, notice) {
+            let asking = Asking { loading: &mut self.loading, testing: &mut self.testing, picker: &mut self.picker };
+            if provider_form(ui, form, prefs, facts, self.vault.as_ref(), asking, palette, notice) {
                 self.form = None;
                 self.loading = None;
             }
@@ -1639,12 +1747,12 @@ fn provider_form(
     prefs: &mut Prefs,
     facts: &Facts<'_>,
     vault: &dyn Vault,
-    loading: &mut Option<mpsc::Receiver<Models>>,
-    testing: &mut bool,
+    asking: Asking<'_>,
     palette: Palette,
     notice: &mut Option<String>,
 ) -> bool {
-    take_models(form, loading, testing, notice);
+    let Asking { loading, testing, picker } = asking;
+    take_models(form, loading, testing, picker, notice);
     let left = back(ui, "Assistants", palette);
     let saved = form.index.and_then(|index| prefs.agents.providers.get(index));
     let owner = saved.map(|provider| provider.name.clone());
@@ -1693,31 +1801,26 @@ fn provider_form(
     });
 
     heading(ui, "2 · Models", palette);
-    hint(ui, "Each model appears under this provider in the chat's model picker.", palette);
+    hint(
+        ui,
+        "Each model appears under this provider in the chat's model picker. Choose them from the provider's own list, or add one by its ID.",
+        palette,
+    );
     card(ui, palette, |rows| {
         rows.block(|ui| {
             model_rows(ui, form, palette);
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
-                if button(ui, "Add model", Some("plus"), Kind::Outline, true, palette).clicked() {
+                // Human: model names change often and differ by provider, so the form asks the provider instead
+                // of guessing them, and shows its answer in a window of its own to search and tick in.
+                if button(ui, "Choose models…", Some("list-checks"), Kind::Primary, !form.base_url.trim().is_empty(), palette).clicked() {
+                    *picker = Some(open_picker(form, vault, loading, testing, ui.ctx()));
+                }
+                if button(ui, "Add by ID", Some("plus"), Kind::Outline, true, palette).clicked() {
                     form.models.push(ModelRow::empty());
                 }
-                // Human: model names change often and differ by provider, so the form asks instead of guessing them.
-                let busy = loading.is_some();
-                let load = if busy && !*testing { "Loading…" } else { "Load from provider" };
-                if button(ui, load, Some("download"), Kind::Outline, !busy && !form.base_url.trim().is_empty(), palette).clicked() {
-                    match ask_models(form, vault, ui.ctx()) {
-                        Ok(answer) => {
-                            form.offered.clear();
-                            *loading = Some(answer);
-                            *testing = false;
-                        }
-                        Err(why) => *notice = Some(why),
-                    }
-                }
             });
-            offered_models(ui, form, palette);
         });
     });
     names_card(ui, owner.as_deref(), &mut prefs.agents, facts, palette);
@@ -2104,12 +2207,7 @@ fn model_rows(ui: &mut Ui, form: &mut Form, palette: Palette) {
 // Agent: SPAWNS one short-lived thread per question; it WAKES the UI when the answer is there. READS the saved
 // key from the keychain when no new one is typed.
 fn ask_models(form: &Form, vault: &dyn Vault, ctx: &egui::Context) -> Result<mpsc::Receiver<Models>, String> {
-    let typed = form.key.trim();
-    let key = match (&form.key_ref, typed.is_empty(), form.forget_key) {
-        (_, false, _) => Some(SecretString::new(typed)),
-        (Some(name), true, false) => Some(vault.get(name).map_err(|e| format!("The saved key couldn't be read from the keychain: {e}"))?),
-        _ => None,
-    };
+    let key = key_of(form, vault)?;
     let (send, receive) = mpsc::channel();
     let (api, base, wake) = (form.api.clone(), form.base_url.clone(), ctx.clone());
     let started = std::thread::Builder::new().name("load-models".to_owned()).spawn(move || {
@@ -2120,42 +2218,112 @@ fn ask_models(form: &Form, vault: &dyn Vault, ctx: &egui::Context) -> Result<mps
     started.map(|_| receive).map_err(|e| format!("The provider couldn't be asked: {e}"))
 }
 
+/// The key the form's provider is asked with: the one just typed, or the saved one; none when it has none.
+// Agent: READS the saved key from the keychain when no new one is typed.
+fn key_of(form: &Form, vault: &dyn Vault) -> Result<Option<SecretString>, String> {
+    let typed = form.key.trim();
+    match (&form.key_ref, typed.is_empty(), form.forget_key) {
+        (_, false, _) => Ok(Some(SecretString::new(typed))),
+        (Some(name), true, false) => vault.get(name).map(Some).map_err(|e| format!("The saved key couldn't be read from the keychain: {e}")),
+        _ => Ok(None),
+    }
+}
+
+/// Asks the form's provider, when it is an Ollama, what each chosen model can take that it hasn't said yet;
+/// the answers come through what is returned. `None` when there is nothing to ask or it can't be asked: the
+/// rows then keep their numbers.
+// Human: Ollama's list of models has names only; how much a model reads is said about one model at a time. So
+// only the models that were chosen are asked about, not the whole list.
+// Agent: SPAWNS one short-lived thread, which asks about the models one after the other and WAKES the UI.
+fn ask_limits(form: &Form, vault: &dyn Vault, ctx: &egui::Context) -> Option<mpsc::Receiver<Told>> {
+    let ids = form.unasked();
+    if ids.is_empty() {
+        return None;
+    }
+    let key = key_of(form, vault).ok()?;
+    let (send, receive) = mpsc::channel();
+    let (base, wake) = (form.base_url.clone(), ctx.clone());
+    let started = std::thread::Builder::new().name("model-limits".to_owned()).spawn(move || {
+        let told: Told = ids.into_iter().map(|id| (catalog::limits(&base, key.as_ref(), &id), id)).map(|(limits, id)| (id, limits)).collect();
+        // The form may have closed meanwhile; then nobody listens, which is fine.
+        let _unheard = send.send(told);
+        wake.request_repaint();
+    });
+    started.ok().map(|_| receive)
+}
+
 /// Takes in the provider's answer to [`ask_models`], when it is there. Asked as a test of the connection
 /// (`testing`), the answer is also said.
-fn take_models(form: &mut Form, loading: &mut Option<mpsc::Receiver<Models>>, testing: &mut bool, notice: &mut Option<String>) {
+// Human: with the window for choosing models open and waiting, the answer goes there, a refusal too; a refusal
+// is said as a notice only when nothing on the screen waits for it.
+fn take_models(
+    form: &mut Form,
+    loading: &mut Option<mpsc::Receiver<Models>>,
+    testing: &mut bool,
+    picker: &mut Option<models::Picker>,
+    notice: &mut Option<String>,
+) {
     let Some(waiting) = loading else { return };
-    match waiting.try_recv() {
-        Ok(Ok(found)) => {
+    let answer = match waiting.try_recv() {
+        Ok(answer) => answer,
+        Err(mpsc::TryRecvError::Empty) => return,
+        Err(mpsc::TryRecvError::Disconnected) => Err("The provider didn't answer.".to_owned()),
+    };
+    match (answer, picker.as_mut().filter(|picker| picker.is_loading())) {
+        (Ok(found), waiting) => {
             if *testing {
                 *notice = Some(format!("Connected: the provider answered with {}.", counted(found.len(), "model")));
             }
-            form.offered = found;
+            form.offered = found.iter().map(|model| model.id.clone()).collect();
+            form.learn(found.into_iter().map(|model| (model.id, model.limits)));
+            if let Some(picker) = waiting {
+                picker.listed(form.offered.clone());
+            }
         }
-        Ok(Err(why)) => *notice = Some(why),
-        Err(mpsc::TryRecvError::Empty) => return,
-        Err(mpsc::TryRecvError::Disconnected) => *notice = Some("The provider didn't answer.".to_owned()),
+        (Err(why), Some(picker)) => picker.failed(why),
+        (Err(why), None) => *notice = Some(why),
     }
     *loading = None;
     *testing = false;
 }
 
-/// The models the provider answered with; a click on one adds it to the form.
-fn offered_models(ui: &mut Ui, form: &mut Form, palette: Palette) {
-    if form.offered.is_empty() {
-        return;
+/// The question to a provider which models it has, and the window its answer is shown in.
+struct Asking<'a> {
+    /// The question, while it is out.
+    loading: &'a mut Option<mpsc::Receiver<Models>>,
+    /// It was asked to test the connection.
+    testing: &'a mut bool,
+    /// The window the models are chosen in, when it is open.
+    picker: &'a mut Option<models::Picker>,
+}
+
+/// Opens the window the form's models are chosen in. The provider is asked for its models unless the form has
+/// them from before, or a question is out already.
+fn open_picker(
+    form: &Form,
+    vault: &dyn Vault,
+    loading: &mut Option<mpsc::Receiver<Models>>,
+    testing: &mut bool,
+    ctx: &egui::Context,
+) -> models::Picker {
+    let named = form.models.iter().map(|row| row.id.trim().to_owned()).filter(|id| !id.is_empty());
+    let mut picker = models::Picker::new(&form.name, &form.offered, named);
+    if !form.offered.is_empty() {
+        return picker;
     }
-    let free: Vec<String> = form.offered.iter().filter(|id| form.models.iter().all(|row| row.id.trim() != id.as_str())).cloned().collect();
-    ui.add_space(10.0);
-    let said = if free.is_empty() { "Every model the provider has is in the list above." } else { "The provider's models; click one to add it:" };
-    ui.label(RichText::new(said).size(12.0).color(palette.muted));
-    ui.add_space(4.0);
-    egui::ScrollArea::vertical().id_salt("offered-models").max_height(OFFERED_MODELS_HEIGHT).show(ui, |ui| {
-        for id in free {
-            if ui.selectable_label(false, RichText::new(&id).monospace()).clicked() {
-                form.add_model(&id);
-            }
+    if loading.is_some() {
+        picker.loading();
+        return picker;
+    }
+    match ask_models(form, vault, ctx) {
+        Ok(answer) => {
+            *loading = Some(answer);
+            *testing = false;
+            picker.loading();
         }
-    });
+        Err(why) => picker.failed(why),
+    }
+    picker
 }
 
 /// The folders a command-line program may be installed in: those of `PATH`, and the usual ones a program
@@ -2648,6 +2816,36 @@ mod tests {
         assert!(finds("mcp").iter().any(|(page, ..)| *page == Page::Mcp));
         // Every page of the index is in the list of pages.
         assert!(INDEX.iter().all(|(page, ..)| entry(*page).0 == *page));
+    }
+
+    #[test]
+    fn a_models_row_takes_the_providers_numbers_unless_the_user_typed_their_own() {
+        use catalog::Limits;
+        let mut form = Form::new();
+        form.models = vec![
+            ModelRow { id: "big".to_owned(), ..ModelRow::empty() },
+            ModelRow { id: "mine".to_owned(), context_window: "8000".to_owned(), max_tokens: "2000".to_owned() },
+            ModelRow { id: "reads-only".to_owned(), ..ModelRow::empty() },
+            ModelRow { id: "unknown".to_owned(), ..ModelRow::empty() },
+        ];
+        form.learn([
+            ("big".to_owned(), Limits { context: Some(1_048_576), output: Some(65_536) }),
+            ("mine".to_owned(), Limits { context: Some(200_000), output: Some(64_000) }),
+            ("reads-only".to_owned(), Limits { context: Some(131_072), output: None }),
+        ]);
+        let rows: Vec<(&str, &str)> = form.models.iter().map(|row| (row.context_window.as_str(), row.max_tokens.as_str())).collect();
+        // A model that can't write more than it reads has its placeholder brought down to what it reads.
+        assert_eq!(rows, [("1048576", "65536"), ("8000", "2000"), ("131072", "131072"), (DEFAULT_TOKENS, DEFAULT_TOKENS)]);
+        // A later answer that says less doesn't take away what is known, and a chosen model gets its numbers.
+        form.learn([("big".to_owned(), Limits::default()), ("new".to_owned(), Limits { context: Some(32_768), output: Some(4_096) })]);
+        let offered = ["big", "new"].map(str::to_owned);
+        form.take_choice(&offered, &offered.iter().cloned().collect());
+        let new = form.models.iter().find(|row| row.id == "new").map(|row| (row.context_window.as_str(), row.max_tokens.as_str()));
+        assert_eq!((new, form.models[0].context_window.as_str()), (Some(("32768", "4096")), "1048576"));
+        // Only an Ollama is asked about its models one by one, and only about those it hasn't told of.
+        assert_eq!(form.unasked(), [] as [String; 0]);
+        form.base_url = "https://ollama.com/v1".to_owned();
+        assert_eq!(form.unasked(), ["unknown"]);
     }
 
     #[test]

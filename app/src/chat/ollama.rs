@@ -134,7 +134,7 @@ fn context(agent: &ureq::Agent, job: &Job<'_>, headers: &[(&str, &str)], stop: &
 }
 
 /// The longest conversation a model can read, from what Ollama says about it.
-fn most(shown: &str) -> Option<u64> {
+pub(super) fn most(shown: &str) -> Option<u64> {
     let shown = serde_json::from_str::<Value>(shown).ok()?;
     let facts = shown.get("model_info")?.as_object()?;
     facts.iter().find(|(name, _)| name.ends_with(".context_length")).and_then(|(_, length)| length.as_u64()).filter(|length| *length > 0)
@@ -301,7 +301,7 @@ mod tests {
         let job = Job {
             endpoint: &endpoint(base),
             official: false,
-            model: &models[0],
+            model: &models[0].id,
             key: &KeySource::None,
             instructions: "",
             off: &[],

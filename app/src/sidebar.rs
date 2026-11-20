@@ -14,8 +14,8 @@ use crate::chips::Chip;
 use crate::editor::{Editor, Tool};
 use crate::icons;
 use crate::theme::{
-    self, ASSISTANT_MENU_WIDTH, CHAT_ASK_WIDTH, CHAT_STATUS_GAP, CHAT_STATUS_STAY, CHIP_CORNER, CHIP_HEIGHT, CHIP_ICON, CHIP_ICON_AT, CHIP_RADIUS,
-    COMPOSER_HEIGHT, ICON_SIZE, IDEA_ROW, IDEA_ROW_GAP, ISLAND_GAP, ISLAND_PADDING, ISLAND_RADIUS, MESSAGE_BAR_HEIGHT, MESSAGE_BAR_SELECTED_WIDTH,
+    self, CHAT_ASK_WIDTH, CHAT_STATUS_GAP, CHAT_STATUS_STAY, CHIP_CORNER, CHIP_HEIGHT, CHIP_ICON, CHIP_ICON_AT, CHIP_RADIUS, COMPOSER_HEIGHT,
+    ICON_SIZE, IDEA_ROW, IDEA_ROW_GAP, ISLAND_GAP, ISLAND_PADDING, ISLAND_RADIUS, MESSAGE_BAR_HEIGHT, MESSAGE_BAR_SELECTED_WIDTH,
     MESSAGE_BAR_TYPING_ROOM, MESSAGE_BAR_WIDTH, MESSAGE_TEXT_SIZE, Palette, RAIL_ACTIVE, RAIL_ARROW_STEP, RAIL_MENU_ROW, RAIL_MENU_WIDTH, RAIL_STEP,
     RAIL_WIDTH, SELECTION_CHIP_HEIGHT, SEND_BUTTON, SIDEBAR_ANIMATION, SIDEBAR_GROW_START, SIDEBAR_HEADER_PADDING, SIDEBAR_ROW, SIDEBAR_SLIDE_END,
     SIDEBAR_TEXT_SIZE, SIDEBAR_TITLE_SIZE, SIDEBAR_WIDE_WIDTH, SIDEBAR_WIDTH, ZOOM_ISLAND,
@@ -134,6 +134,8 @@ pub struct Sidebar {
     /// A picture asked for the selection as a pasted chip in a sentence (`--sidebar chip`); made once the
     /// document is laid out.
     posed_chip: bool,
+    /// The assistant menu of the message box, while it is open.
+    assistants: crate::assistants::Menu,
     /// Whether the assistant was at work the last time the sidebar was drawn, and when it last finished (in
     /// egui's time), for the status line over the message bar.
     chat_ended: (bool, Option<f64>),
@@ -181,6 +183,8 @@ pub enum ChatAsk {
     Looked,
     /// Talk to the assistant with this id from now on.
     Pick(String),
+    /// Open the settings where assistants are set up.
+    Assistants,
     /// Take what the user did with a question of the assistant's: an answer picked, or the question closed.
     Answer(crate::conversation::Pick),
 }
@@ -199,6 +203,7 @@ impl Default for Sidebar {
             attached: Vec::new(),
             chips: Vec::new(),
             posed_chip: false,
+            assistants: crate::assistants::Menu::default(),
             chat_ended: (false, None),
         }
     }
@@ -302,7 +307,10 @@ impl Sidebar {
             _ => None,
         };
         self.posed_chip = name == "chip";
-        self.view = View::named(name).unwrap_or(self.view);
+        if name == "assistants" {
+            self.assistants.hold_open();
+        }
+        self.view = if name == "assistants" { View::Chat } else { View::named(name).unwrap_or(self.view) };
     }
 
     /// How far open the sidebar is right now: 0 folded away, 1 open. It glides between the two when `animate`.
@@ -864,21 +872,24 @@ impl Sidebar {
         let model = model_button(ui, look.assistant, palette).on_hover_text("Assistant");
         if model.clicked() {
             self.chat_asks.push(ChatAsk::Looked);
+            self.assistants.opened(look.assistants, look.assistant);
         }
         // Human: the menu lists what can answer on this computer: Claude Code when it is installed, and every
-        // provider that has a key.
-        egui::Popup::menu(&model).show(|ui| {
-            ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
-            if look.assistants.is_empty() {
-                ui.set_width(ASSISTANT_MENU_WIDTH);
-                note(ui, "No assistant is set up. Install Claude Code, or add a provider with a key in Settings → Agents.", palette);
+        // provider that has a key. It has a search field, so a click inside it doesn't close it; choosing does.
+        let mut menu = egui::Popup::menu(&model).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
+        if self.assistants.held_open() {
+            menu = menu.open(true);
+        }
+        menu.show(|ui| match self.assistants.show(ui, look.assistants, look.assistant, palette) {
+            Some(crate::assistants::Act::Pick(id)) => {
+                self.chat_asks.push(ChatAsk::Pick(id));
+                ui.close();
             }
-            for choice in look.assistants {
-                if assistant_line(ui, choice.label == look.assistant, &choice.label, palette).clicked() {
-                    self.chat_asks.push(ChatAsk::Pick(choice.id.clone()));
-                    ui.close();
-                }
+            Some(crate::assistants::Act::Manage) => {
+                self.chat_asks.push(ChatAsk::Assistants);
+                ui.close();
             }
+            None => {}
         });
         if icon_button(ui, "rocket", Vec2::splat(22.0), false, palette).on_hover_text("Mode").clicked() {
             *notice = Some(NO_MODES);
@@ -1176,25 +1187,6 @@ fn set_cursor(ctx: &egui::Context, id: egui::Id, at: usize) {
 // Human: people send with Ctrl+Return on Windows and ⌘Return on a Mac as often as with Return alone.
 fn send_pressed(ui: &Ui) -> bool {
     ui.input(|input| input.key_pressed(egui::Key::Enter) && !input.modifiers.shift && !input.modifiers.alt)
-}
-
-/// One line of the assistant menu: a tick before the one in use, and its name.
-fn assistant_line(ui: &mut Ui, ticked: bool, label: &str, palette: Palette) -> Response {
-    let (row, response) = ui.allocate_exact_size(vec2(ASSISTANT_MENU_WIDTH, RAIL_MENU_ROW), Sense::click());
-    if response.hovered() {
-        ui.painter().rect_filled(row, 6.0, palette.hover);
-    }
-    if ticked {
-        icons::paint(ui.painter(), Rect::from_center_size(pos2(row.left() + 14.0, row.center().y), Vec2::splat(11.0)), "check", palette.muted);
-    }
-    ui.painter().text(
-        pos2(row.left() + 28.0, row.center().y),
-        Align2::LEFT_CENTER,
-        label,
-        FontId::proportional(SIDEBAR_TEXT_SIZE - 1.0),
-        palette.foreground,
-    );
-    response
 }
 
 /// A title inside a view.
