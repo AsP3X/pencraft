@@ -2,6 +2,12 @@
 # dependencies are pinned exactly and upgraded by hand (app/AGENTS.md):
 # several must move together, like wgpu with eframe and the craft-libs
 # crates from one commit.
+#
+# The one exception is switched on in the repository's settings, not here:
+# Dependabot security updates. When a crate in app/Cargo.lock has a known
+# vulnerability, a pull request with the fixed version is opened. It may not
+# build if the crate is one of those that move together; then it is finished
+# by hand.
 version: 2
 updates:
   - package-ecosystem: github-actions
