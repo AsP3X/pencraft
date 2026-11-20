@@ -26,8 +26,19 @@ its chat belongs to (the one in front when you send); what you have selected is 
   Together, Fireworks, Z.AI, Meta, OpenCode Zen and Go): click its card in Settings → Agents. Its address and
   API type are filled in; enter your key, press "Load models from provider", click the models you want, and
   save. The card then says "Ready in the chat" and its models are in the assistant menu.
+- **Ollama** (models that run on your own computer): click the Ollama card in Settings → Agents. Its address
+  (`http://localhost:11434`) and the API type "Ollama" are filled in and no key is needed; with Ollama
+  running, press "Load from provider", click the models you have pulled, and save. Change the address if
+  Ollama runs on another machine. Pick a model that can call tools. Pencraft asks Ollama to read up to
+  32 768 tokens of the conversation (its brief and tools alone are about 17 000), which takes more memory
+  than Ollama's own default; a model that can read less than that will lose the start of the conversation.
+  Ollama's cloud models work here too once you are signed in (`ollama signin`) and have pulled one.
+- **Ollama Cloud** (Ollama's hosted models, without Ollama on your computer): click the Ollama Cloud card,
+  enter an API key from ollama.com (Settings → Keys there), load the models and save. Both cards can be
+  set up side by side.
 - **Any other provider**: "Add custom provider", with the API type "OpenAI Completions" (what most providers
-  and local model servers such as Ollama speak; a key is optional there) or "Anthropic Messages".
+  and other local model servers speak; a key is optional there), "Anthropic Messages", or "Ollama" for an
+  Ollama on another machine.
 
 Settings → Agents lists the agent programs under "Agents on this computer": whether each is installed, where
 it is (a path of your own if it isn't found by itself), which models it is offered with, and a switch to take

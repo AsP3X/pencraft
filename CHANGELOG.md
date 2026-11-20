@@ -9,6 +9,20 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Added
+
+- **Ollama in the chat.** Ollama has its own card in Settings → Agents: its
+  address on this computer is filled in and it needs no key. With Ollama
+  running, load its models, pick the ones you want, and they are in the
+  assistant menu. If Ollama isn't running or has no models yet, the form
+  says so and what to do. Pencraft talks to Ollama through Ollama's own
+  API and asks it to read the whole conversation; through the
+  OpenAI-compatible address Ollama read only the first part of it, and
+  the model answered without knowing its job.
+- **Ollama Cloud.** A second card connects Ollama's hosted models with an
+  API key from ollama.com, for when the models shouldn't run on your own
+  computer. Both can be set up side by side.
+
 ## [0.3.21] - 2026-11-19
 
 Paste pictures and SVG, lock layers, pick colours, and move a selected group

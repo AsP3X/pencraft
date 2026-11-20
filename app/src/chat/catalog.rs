@@ -7,7 +7,18 @@
 use craft_ai_core::SecretString;
 use serde_json::Value;
 
-use super::{COMPLETIONS_API, MESSAGES_API, MODELS, Wire, api};
+use super::{COMPLETIONS_API, MESSAGES_API, MODELS, OLLAMA_API, Wire, api, ollama};
+
+/// The name of the model server that runs on the user's own computer and takes no key.
+pub const OLLAMA: &str = "Ollama";
+/// The name of Ollama's hosted service, which runs the models on its own machines and takes a key.
+pub const OLLAMA_CLOUD: &str = "Ollama Cloud";
+/// Where Ollama answers on the computer it runs on.
+const OLLAMA_LOCAL: &str = "http://localhost:11434";
+
+/// Said when Ollama runs on this computer but has no model to offer.
+const NO_LOCAL_MODELS: &str =
+    "Ollama is running but has no models yet. Download one first, for example with `ollama pull` and a model's name, then load again.";
 
 /// What is known about a provider beforehand.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -24,9 +35,13 @@ const fn completions(base_url: &'static str) -> Preset {
     Preset { api: COMPLETIONS_API, base_url, models_url: None }
 }
 
-/// The known providers that take an API key, by the name the settings window shows.
+/// The known providers the chat can reach, by the name the settings window shows.
 // Human: Cursor and GitHub Copilot are not here: neither has an API that another app can use with a key.
-const PRESETS: [(&str, Preset); 14] = [
+// Ollama is the one that runs on the user's own computer: it takes no key and is reached unencrypted there,
+// by its own API, which alone lets the chat say how much of a conversation the model reads.
+// Its hosted service speaks the same API at ollama.com and takes a key like the others (looked at in
+// November 2026: it lists its models to anyone and answers a chat without a key with 401).
+const PRESETS: [(&str, Preset); 16] = [
     ("OpenAI ChatGPT", completions("https://api.openai.com/v1")),
     ("Anthropic Claude Code", Preset { api: MESSAGES_API, base_url: "https://api.anthropic.com", models_url: None }),
     ("xAI", completions("https://api.x.ai/v1")),
@@ -40,6 +55,8 @@ const PRESETS: [(&str, Preset); 14] = [
         },
     ),
     ("Open Router", completions("https://openrouter.ai/api/v1")),
+    (OLLAMA, Preset { api: OLLAMA_API, base_url: OLLAMA_LOCAL, models_url: None }),
+    (OLLAMA_CLOUD, completions("https://ollama.com/v1")),
     ("Meta", completions("https://api.llama.com/compat/v1")),
     ("Moonshot AI", completions("https://api.moonshot.ai/v1")),
     ("Kimi For Coding", completions("https://api.kimi.com/coding/v1")),
@@ -71,13 +88,30 @@ pub fn starting_models(name: &str) -> Vec<&'static str> {
     if name == "Anthropic Claude Code" { MODELS.iter().map(|(id, _)| *id).collect() } else { Vec::new() }
 }
 
+/// Whether the provider reached at `base` is a known one that answers only with an API key.
+#[must_use]
+pub fn wants_key(base: &str) -> bool {
+    let base = base.trim().trim_end_matches('/');
+    PRESETS.iter().any(|(_, preset)| preset.base_url == base && preset.base_url != OLLAMA_LOCAL)
+}
+
+/// Whether `base` is where Ollama answers on this computer.
+#[must_use]
+pub fn is_local_ollama(base: &str) -> bool {
+    ollama::root(base) == OLLAMA_LOCAL
+}
+
 /// Where a provider with the API type `api`, reached at `base`, lists its models.
 fn models_url(api: &str, base: &str) -> String {
     let base = base.trim().trim_end_matches('/');
     if let Some(url) = PRESETS.iter().find(|(_, preset)| preset.base_url == base).and_then(|(_, preset)| preset.models_url) {
         return url.to_owned();
     }
-    if Wire::of(api) == Some(Wire::Messages) && !base.ends_with("/v1") { format!("{base}/v1/models") } else { format!("{base}/models") }
+    match Wire::of(api) {
+        Some(Wire::Ollama) => format!("{}/api/tags", ollama::root(base)),
+        Some(Wire::Messages) if !base.ends_with("/v1") => format!("{base}/v1/models"),
+        _ => format!("{base}/models"),
+    }
 }
 
 /// The model names in a provider's answer: the `data` list every OpenAI-compatible API gives, or a bare list.
@@ -109,14 +143,22 @@ pub fn list_models(api: &str, base: &str, key: Option<&SecretString>) -> Result<
         (_, Some(key)) => request = request.header("authorization", format!("Bearer {}", key.expose())),
         (_, None) => {}
     }
-    let mut response = request.call().map_err(|error| format!("The provider couldn't be reached: {error}"))?;
+    // Human: the usual reason Ollama on this computer doesn't answer is that it isn't running; say what to do.
+    let unreached = |error: ureq::Error| {
+        if is_local_ollama(base) { format!("{} ({error})", ollama::NOT_RUNNING) } else { format!("The provider couldn't be reached: {error}") }
+    };
+    let mut response = request.call().map_err(unreached)?;
     let status = response.status().as_u16();
     let body = response.body_mut().read_to_string().unwrap_or_default();
     if status != 200 {
         return Err(api::refusal_of(status, &body));
     }
     let found = ids(&body);
-    if found.is_empty() { Err("The provider listed no models; type their names in by hand.".to_owned()) } else { Ok(found) }
+    match (found.is_empty(), is_local_ollama(base)) {
+        (false, _) => Ok(found),
+        (true, true) => Err(NO_LOCAL_MODELS.to_owned()),
+        (true, false) => Err("The provider listed no models; type their names in by hand.".to_owned()),
+    }
 }
 
 #[cfg(test)]
@@ -128,10 +170,38 @@ mod tests {
         assert_eq!(preset("xAI"), Some(completions("https://api.x.ai/v1")));
         assert_eq!(preset("Anthropic Claude Code").map(|p| p.api), Some(MESSAGES_API));
         assert!(preset("Cursor").is_none() && preset("GitHub Copilot").is_none() && preset("Mine").is_none());
-        // Every address is encrypted and written without a slash at its end, as the form and the chat expect.
-        assert!(PRESETS.iter().all(|(_, p)| p.base_url.starts_with("https://") && !p.base_url.ends_with('/') && Wire::of(p.api).is_some()));
+        // Every address is encrypted, or on this computer, and written without a slash at its end, as the form
+        // and the chat expect.
+        let safe = |url: &str| url.starts_with("https://") || url.starts_with("http://localhost:");
+        assert!(PRESETS.iter().all(|(_, p)| safe(p.base_url) && !p.base_url.ends_with('/') && Wire::of(p.api).is_some()));
+        assert_eq!(PRESETS.iter().filter(|(_, p)| !p.base_url.starts_with("https://")).map(|(name, _)| *name).collect::<Vec<_>>(), [OLLAMA]);
+        assert_eq!(preset(OLLAMA).map(|p| (p.api, p.base_url)), Some((OLLAMA_API, "http://localhost:11434")));
+        assert_eq!(preset(OLLAMA_CLOUD), Some(completions("https://ollama.com/v1")));
+        // Ollama on this computer is the only known provider that answers without a key.
+        assert!(wants_key("https://ollama.com/v1/") && wants_key(" https://api.x.ai/v1") && !wants_key(OLLAMA_LOCAL));
+        assert!(
+            !wants_key("https://llm.example.com/v1") && is_local_ollama("http://localhost:11434/v1/") && !is_local_ollama("https://ollama.com/v1")
+        );
+        // An Ollama without models answers with no list at all.
+        assert_eq!(ids(r#"{"object":"list","data":null}"#), [] as [&str; 0]);
+        assert_eq!(models_url(OLLAMA_API, "http://localhost:11434"), "http://localhost:11434/api/tags");
+        assert_eq!(models_url(OLLAMA_API, "http://box:11434/v1/"), "http://box:11434/api/tags");
+        assert_eq!(ids(r#"{"models":[{"name":"qwen3:0.6b","model":"qwen3:0.6b"}]}"#), ["qwen3:0.6b"]);
         assert_eq!(starting_models("Anthropic Claude Code").len(), MODELS.len());
         assert_eq!(starting_models("xAI"), [] as [&str; 0]);
+    }
+
+    #[test]
+    #[ignore = "reaches out to ollama.com and to an Ollama on this computer"]
+    fn ollama_lists_its_models_here_and_in_its_cloud() {
+        // The cloud lists its models to anyone; a chat there takes a key.
+        let cloud = list_models(COMPLETIONS_API, "https://ollama.com/v1", None).unwrap();
+        assert!(cloud.len() > 3, "{cloud:?}");
+        // On this computer Ollama lists what is pulled, or the form says what is missing.
+        match list_models(OLLAMA_API, OLLAMA_LOCAL, None) {
+            Ok(models) => assert_ne!(models, [] as [&str; 0]),
+            Err(why) => assert!(why == NO_LOCAL_MODELS || why.starts_with(ollama::NOT_RUNNING), "{why}"),
+        }
     }
 
     #[test]

@@ -39,7 +39,7 @@ pub(crate) use parts::{caption, choice_at, row, switch};
 /// Said when a provider is chosen that has no API another app can use with a key.
 const NO_KEY_API: &str = " has no API that other apps can use with a key, so it can't be connected.";
 /// The kinds of API a custom provider can speak.
-const API_TYPES: [&str; 3] = ["OpenAI Completions", "OpenAI Responses", "Anthropic Messages"];
+const API_TYPES: [&str; 4] = ["OpenAI Completions", "OpenAI Responses", "Anthropic Messages", "Ollama"];
 /// What the Images page's default service choice shows when no service is named: the first that works.
 const ANY_SERVICE: &str = "First that works";
 /// Token counts a new model row starts with (the design's example values).
@@ -47,12 +47,14 @@ const DEFAULT_TOKENS: &str = "512000";
 
 /// The known providers: name, their models as the design lists them, and whether that list is only a sample
 /// of a larger catalogue (shown with a link sign).
-const PROVIDERS: [(&str, &str, bool); 16] = [
+const PROVIDERS: [(&str, &str, bool); 18] = [
     ("OpenAI ChatGPT", "GPT 6.1 Sol · GPT 6.1 Terra · GPT 6 Astra · GPT 6 Luna", false),
     ("Anthropic Claude Code", "Fable 5.2 · Opus 5.5 · Sonnet 5.5 · Haiku 5.5", false),
     ("Cursor", "Gemini 3.8 Flash · Grok 4.6 · Composer 2.5 and other models", false),
     ("xAI", "Grok 4.6 · Grok 4.5", false),
     ("Google Gemini", "Gemini 3.7 Flash · Gemini 3.6 Flash · Gemini 3.1 Pro", false),
+    (catalog::OLLAMA, "Models that run on this computer, no key needed", true),
+    (catalog::OLLAMA_CLOUD, "Multiple models*, e.g. GPT-OSS 120B · DeepSeek V4 Pro · Kimi K3 · GLM-5.3", true),
     ("OpenCode Go", "Multiple models*, e.g. DeepSeek V4 Pro · Kimi K2.7 Code", true),
     ("Open Router", "Multiple models*, e.g. Claude Opus 5 · Claude Haiku 4.5 · GPT-5.5", true),
     ("GitHub Copilot", "Multiple models*, e.g. Claude Opus 5", true),
@@ -1016,7 +1018,9 @@ impl Settings {
             .providers
             .iter()
             .map(|provider| {
-                (provider.name.clone(), format!("API key · {}", counted(provider.models.len(), "model")), provider_link(&provider.name, prefs))
+                // Human: a model server on one's own computer has no key; its card doesn't claim one.
+                let key = if provider.key_ref.is_some() { "API key" } else { "No key" };
+                (provider.name.clone(), format!("{key} · {}", counted(provider.models.len(), "model")), provider_link(&provider.name, prefs))
             })
             .collect();
         let mut open = None;
@@ -1056,7 +1060,11 @@ impl Settings {
     /// the two kinds the user describes themselves.
     fn offered_assistants(&mut self, ui: &mut Ui, prefs: &Prefs, palette: Palette, notice: &mut Option<String>) {
         heading(ui, "Add an assistant", palette);
-        hint(ui, "Agent programs use their own sign-in. Every other provider connects with your API key, kept in the system keychain.", palette);
+        hint(
+            ui,
+            "Agent programs use their own sign-in. Ollama runs on this computer and needs no key. Every other provider connects with your API key, kept in the system keychain.",
+            palette,
+        );
         search_field(ui, &mut self.provider_query, &format!("Search {} providers", PROVIDERS.len()), palette);
         ui.add_space(8.0);
         let query = self.provider_query.trim().to_lowercase();
@@ -1658,6 +1666,11 @@ fn provider_form(
                 caption(&mut columns[1], "API type", palette);
                 wide_choice(&mut columns[1], &mut form.api, &API_TYPES, palette);
             });
+            // Human: asked the Chat Completions way, Ollama reads only the first few thousand tokens of a
+            // conversation, less than the app's brief; the model then answers without knowing its job.
+            if form.api == crate::chat::COMPLETIONS_API && catalog::is_local_ollama(&form.base_url) {
+                warning(ui, "Choose the API type \"Ollama\" for this address: asked this way, Ollama cuts long conversations short.");
+            }
             if crate::chat::Wire::of(&form.api).is_none() {
                 warning(ui, "The chat can't talk to this API type yet; the provider is kept but not offered there.");
             }
@@ -1673,6 +1686,9 @@ fn provider_form(
             field(ui, &mut form.key, if saved { "Saved - type a new key to replace it" } else { "Optional" }, true, true, palette);
             let help = "Leave blank if the endpoint needs no key. Kept in your system's keychain, never in the settings file.";
             key_help(ui, help, saved && form.key.is_empty(), &mut form.forget_key, palette);
+            if !saved && form.key.trim().is_empty() && catalog::wants_key(&form.base_url) {
+                warning(ui, "This provider answers only with an API key; without one the chat is refused.");
+            }
         });
     });
 
@@ -2537,6 +2553,20 @@ mod tests {
         settings.open_known("Anthropic Claude Code", &prefs);
         assert_eq!(settings.form.take().map(|form| (form.api, form.models.len())), Some(("Anthropic Messages".to_owned(), 4)));
         assert!(settings.open_known("Cursor", &prefs).is_some_and(|why| why.starts_with("Cursor has no API")) && settings.form.is_none());
+        // Ollama's card opens on this computer's address and is ready without a key.
+        assert_eq!(settings.open_known(catalog::OLLAMA, &prefs), None);
+        let mut form = settings.form.take().unwrap();
+        assert_eq!((form.api.as_str(), form.base_url.as_str()), ("Ollama", "http://localhost:11434"));
+        assert!(!unprotected(&form.base_url));
+        form.add_model("llama3.3");
+        save(&mut form, &mut prefs, &Memory::default()).unwrap();
+        assert_eq!(provider_link(catalog::OLLAMA, &prefs), Link::Ready);
+        assert!(prefs.agents.providers.iter().any(|provider| provider.name == catalog::OLLAMA && provider.key_ref.is_none()));
+        // Ollama's cloud opens on its own address, encrypted, and wants a key.
+        assert_eq!(settings.open_known(catalog::OLLAMA_CLOUD, &prefs), None);
+        let form = settings.form.take().unwrap();
+        assert_eq!((form.api.as_str(), form.base_url.as_str()), ("OpenAI Completions", "https://ollama.com/v1"));
+        assert!(!unprotected(&form.base_url) && catalog::wants_key(&form.base_url));
         // Every card either opens a form or says why not.
         let closed: Vec<&str> = PROVIDERS.iter().map(|(name, ..)| *name).filter(|name| catalog::preset(name).is_none()).collect();
         assert_eq!(closed, ["Cursor", "GitHub Copilot"]);

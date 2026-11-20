@@ -221,7 +221,10 @@ impl Turn {
 
 /// What the provider said went wrong, from an answer that isn't a stream.
 pub(super) fn refusal_of(status: u16, body: &str) -> String {
-    let said = serde_json::from_str::<Value>(body).ok().and_then(|value| value.pointer("/error/message").and_then(Value::as_str).map(str::to_owned));
+    // Human: most providers put what went wrong under "error" as an object with a message; Ollama puts the words there.
+    let said = serde_json::from_str::<Value>(body)
+        .ok()
+        .and_then(|value| value.pointer("/error/message").or_else(|| value.get("error")).and_then(Value::as_str).map(str::to_owned));
     let said = said.unwrap_or_else(|| body.chars().take(300).collect());
     match status {
         401 | 403 => format!("The provider didn't accept the API key ({status}): {said}"),

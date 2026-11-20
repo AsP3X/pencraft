@@ -25,6 +25,7 @@ pub mod code;
 pub mod critic;
 pub mod files;
 pub mod history;
+pub mod ollama;
 pub mod openai;
 pub mod plain;
 pub mod steps;
@@ -43,6 +44,8 @@ const KEY_VARIABLE: &str = "ANTHROPIC_API_KEY";
 pub const MESSAGES_API: &str = "Anthropic Messages";
 /// See [`MESSAGES_API`].
 pub const COMPLETIONS_API: &str = "OpenAI Completions";
+/// See [`MESSAGES_API`]: the API of an Ollama model server.
+pub const OLLAMA_API: &str = "Ollama";
 /// The kinds of command-line agent, as the settings window names them: Anthropic's Claude Code, xAI's Grok,
 /// and any other program that takes a prompt and prints its answer.
 pub const KIND_CLAUDE: &str = "Claude Code";
@@ -204,6 +207,8 @@ pub enum Wire {
     Messages,
     /// The Chat Completions API `OpenAI` introduced.
     Completions,
+    /// Ollama's own chat API.
+    Ollama,
 }
 
 impl Wire {
@@ -213,6 +218,7 @@ impl Wire {
         match api {
             MESSAGES_API => Some(Wire::Messages),
             COMPLETIONS_API => Some(Wire::Completions),
+            OLLAMA_API => Some(Wire::Ollama),
             _ => None,
         }
     }
@@ -285,12 +291,12 @@ pub fn rename(all: &mut [Choice], names: &[AgentName]) {
 
 /// How the chat reaches `provider`: its wire and where its key is. `None` when it can't: an API the chat
 /// doesn't speak, or the Messages API without a key.
-// Human: a Chat Completions provider may have no key: model servers on one's own computer take none.
+// Human: a Chat Completions or Ollama provider may have no key: model servers on one's own computer take none.
 fn reach(provider: &CustomProvider) -> Option<(Wire, KeySource)> {
     let wire = Wire::of(&provider.api)?;
     match (&provider.key_ref, wire) {
         (Some(name), _) => Some((wire, KeySource::Keychain(name.clone()))),
-        (None, Wire::Completions) => Some((wire, KeySource::None)),
+        (None, Wire::Completions | Wire::Ollama) => Some((wire, KeySource::None)),
         (None, Wire::Messages) => None,
     }
 }
@@ -404,6 +410,7 @@ pub fn choices(agents: &Agents, find: &dyn Fn(&str) -> Option<PathBuf>, key_in_e
         let (endpoint, official) = match wire {
             Wire::Messages => (endpoint(&provider.base_url), is_anthropic(&provider.base_url)),
             Wire::Completions => (openai::endpoint(&provider.base_url), false),
+            Wire::Ollama => (ollama::endpoint(&provider.base_url), false),
         };
         out.extend(provider.models.iter().map(|model| {
             let plain = format!("{} · {}", provider.name, MODELS.iter().find(|(id, _)| *id == model.id).map_or(model.id.as_str(), |(_, name)| name));
@@ -573,6 +580,7 @@ fn answer(ask: &Ask, said: Said<'_>, flag: &AtomicBool, held: &Mutex<Option<Chil
             let run = match wire {
                 Wire::Messages => api::run,
                 Wire::Completions => openai::run,
+                Wire::Ollama => ollama::run,
             };
             run(
                 &api::Job {

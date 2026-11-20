@@ -7,7 +7,6 @@
 use std::io::{BufRead, BufReader};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use craft_ai_core::SecretString;
 use serde_json::{Value, json};
 
 use super::api::{self, Job, MOST_ROUNDS};
@@ -15,7 +14,7 @@ use super::{Event, KeySource};
 use crate::app::lock;
 
 /// The most tool calls one answer may hold; a stream naming more is broken.
-const MOST_CALLS: usize = 64;
+pub(super) const MOST_CALLS: usize = 64;
 /// What stands in for a picture the provider's model can't take.
 const NO_PICTURES: &str = "(A picture belongs here, but this model doesn't take pictures. Check your work with read_layers instead.)";
 
@@ -28,7 +27,7 @@ pub fn endpoint(base: &str) -> String {
 }
 
 /// The tools as the API takes them.
-fn tools(off: &[String]) -> Value {
+pub(super) fn tools(off: &[String]) -> Value {
     let all = crate::agent::tools_without(off);
     all.as_array()
         .into_iter()
@@ -77,19 +76,19 @@ fn without_pictures(history: &mut [Value]) -> bool {
 
 /// One tool call of an answer, as the stream builds it.
 #[derive(Default)]
-struct ToolCall {
-    id: String,
-    name: String,
+pub(super) struct ToolCall {
+    pub(super) id: String,
+    pub(super) name: String,
     /// The JSON of its input, as written so far.
-    arguments: String,
+    pub(super) arguments: String,
 }
 
 /// One answer of the model as it comes in.
 #[derive(Default)]
-struct Turn {
-    text: String,
-    calls: Vec<ToolCall>,
-    finish: Option<String>,
+pub(super) struct Turn {
+    pub(super) text: String,
+    pub(super) calls: Vec<ToolCall>,
+    pub(super) finish: Option<String>,
 }
 
 impl Turn {
@@ -141,7 +140,7 @@ impl Turn {
     }
 
     /// The answer as it goes back to the API with the next request.
-    fn message(&self) -> Value {
+    pub(super) fn message(&self) -> Value {
         let calls: Vec<Value> = self
             .calls
             .iter()
@@ -166,13 +165,12 @@ impl Turn {
 fn ask(
     agent: &ureq::Agent,
     job: &Job<'_>,
-    key: Option<&SecretString>,
+    bearer: Option<&str>,
     body: &Value,
     stop: &AtomicBool,
     tell: &dyn Fn(Event) -> bool,
 ) -> Result<Turn, (u16, String)> {
-    let bearer = key.map(|key| format!("Bearer {}", key.expose()));
-    let headers: Vec<(&str, &str)> = bearer.iter().map(|bearer| ("authorization", bearer.as_str())).collect();
+    let headers: Vec<(&str, &str)> = bearer.iter().map(|bearer| ("authorization", *bearer)).collect();
     let mut response = api::post(agent, job.endpoint, &headers, &body.to_string(), stop)?;
     let mut turn = Turn::default();
     for line in BufReader::new(response.body_mut().as_reader()).lines() {
@@ -248,26 +246,44 @@ fn heard(job: &Job<'_>, history: &mut Vec<Value>, tell: &dyn Fn(Event) -> bool) 
     any
 }
 
+/// What a request says to show the job's key, if the provider has one.
+///
+/// # Errors
+/// A sentence for the user when the key couldn't be read.
+pub(super) fn bearer(job: &Job<'_>) -> Result<Option<String>, String> {
+    match job.key {
+        KeySource::None => Ok(None),
+        source => api::key(source).map(|key| Some(format!("Bearer {}", key.expose()))),
+    }
+}
+
 /// Answers `job`, telling the chat what the model says and does. Returns when the model is done.
-// Human: a request the provider declines while pictures are in the conversation is sent once more without
-// them: many models read no pictures, and the run would otherwise end at the first screenshot.
 pub fn run(job: &Job<'_>, stop: &AtomicBool, tell: &dyn Fn(Event) -> bool) {
-    let key = match job.key {
-        KeySource::None => None,
-        source => match api::key(source) {
-            Ok(key) => Some(key),
-            Err(error) => {
-                tell(Event::Problem(error));
-                return;
-            }
-        },
+    let bearer = match bearer(job) {
+        Ok(bearer) => bearer,
+        Err(error) => {
+            tell(Event::Problem(error));
+            return;
+        }
     };
     let agent = api::agent();
+    converse(job, stop, tell, &|history| ask(&agent, job, bearer.as_deref(), &request(job, history), stop, tell));
+}
+
+/// Sends the conversation as it stands and gives the model's answer, or the provider's status (0 when there is
+/// none) and what went wrong.
+pub(super) type Ask<'a> = dyn Fn(&[Value]) -> Result<Turn, (u16, String)> + 'a;
+
+/// Leads the conversation of `job`: `ask` sends it as it stands and gives the model's answer, the tools the
+/// answer calls are run, and so on until the model has nothing more to do.
+// Human: a request the provider declines while pictures are in the conversation is sent once more without
+// them: many models read no pictures, and the run would otherwise end at the first screenshot.
+pub(super) fn converse(job: &Job<'_>, stop: &AtomicBool, tell: &dyn Fn(Event) -> bool, ask: &Ask<'_>) {
     let mut history = job.history.clone();
     history.push(user(job.prompt, job.pictures));
     let mut blind = false;
     for _ in 0..MOST_ROUNDS {
-        let turn = match ask(&agent, job, key.as_ref(), &request(job, &history), stop, tell) {
+        let turn = match ask(&history) {
             Ok(turn) => turn,
             Err((status, error)) => {
                 if stop.load(Ordering::Relaxed) || error.is_empty() {
