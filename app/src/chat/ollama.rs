@@ -162,10 +162,10 @@ fn ask(
         if stop.load(Ordering::Relaxed) {
             return Err((0, String::new()));
         }
-        let line = line.map_err(|error| (0, format!("The connection broke while the model was answering: {error}")))?;
+        let line = line.map_err(|error| (api::BROKE_OFF, format!("The connection broke while the model was answering: {error}")))?;
         let Ok(event) = serde_json::from_str::<Value>(line.trim()) else { continue };
-        for event in take(&mut turn, &event).map_err(|error| (0, error))? {
-            if !tell(event) {
+        for told in take(&mut turn, &event).map_err(|error| (api::broke(&event), error))? {
+            if !tell(told) {
                 return Err((0, String::new()));
             }
         }

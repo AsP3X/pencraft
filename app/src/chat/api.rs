@@ -240,6 +240,34 @@ pub(super) fn stream_error(error: &Value) -> String {
     format!("The provider reported an error while the model was answering{kind}: {said}")
 }
 
+/// The status an answer is given that began and then broke off: the provider reported an error in the middle
+/// of the stream, or the connection broke. No provider answers with it.
+pub(super) const BROKE_OFF: u16 = 1;
+
+/// The status for what went wrong while the stream's `event` was taken in: [`BROKE_OFF`] when the event is the
+/// provider reporting an error, 0 when the app couldn't make sense of the answer.
+pub(super) fn broke(event: &Value) -> u16 {
+    if event.get("error").is_some_and(|error| !error.is_null()) { BROKE_OFF } else { 0 }
+}
+
+/// Whether the same request is sent once more after an answer ended with `status`: it is when the answer broke
+/// off and this is not the third time in a row (`tries` counts them). The chat is told, and a moment passes.
+// Human: a provider's error in the middle of an answer is nearly always passing (an overloaded server, a model
+// that wrote a tool call the provider couldn't read). Nothing of a broken answer was acted on: its tools run
+// only once it is whole. So asking again loses nothing, and usually gets the answer.
+// Agent: BLOCKS for a few seconds before a retry; READS the stop flag.
+pub(super) fn again(status: u16, tries: &mut u32, stop: &AtomicBool, tell: &dyn Fn(Event) -> bool) -> bool {
+    if status != BROKE_OFF || *tries >= RETRIES || stop.load(Ordering::Relaxed) {
+        return false;
+    }
+    *tries += 1;
+    if !tell(Event::Again(format!("The provider broke off its answer; asking again ({tries} of {RETRIES})"))) {
+        return false;
+    }
+    std::thread::sleep(Duration::from_secs(u64::from(*tries) * 3));
+    !stop.load(Ordering::Relaxed)
+}
+
 /// The name the provider gave this request, which its support can find it by; `None` when it gave none.
 pub(super) fn request_id(response: &ureq::http::Response<ureq::Body>) -> Option<String> {
     ["request-id", "x-request-id"].into_iter().find_map(|name| response.headers().get(name)?.to_str().ok().map(str::to_owned))
@@ -321,25 +349,26 @@ fn ask(
     body: &Value,
     stop: &AtomicBool,
     tell: &dyn Fn(Event) -> bool,
-) -> Result<Turn, String> {
+) -> Result<Turn, (u16, String)> {
     let mut headers = vec![("anthropic-version", VERSION), ("x-api-key", key.expose())];
     if body.get("fallbacks").is_some() {
         headers.push(("anthropic-beta", FALLBACK_BETA));
     }
-    let mut response = post(agent, job.endpoint, &headers, &body.to_string(), stop).map_err(|(_, said)| said)?;
+    let mut response = post(agent, job.endpoint, &headers, &body.to_string(), stop)?;
     let request = request_id(&response);
     let mut turn = Turn::default();
     for line in BufReader::new(response.body_mut().as_reader()).lines() {
         if stop.load(Ordering::Relaxed) {
-            return Err(String::new());
+            return Err((0, String::new()));
         }
-        let line = line.map_err(|error| named(format!("The connection broke while the model was answering: {error}"), request.as_deref()))?;
+        let line =
+            line.map_err(|error| (BROKE_OFF, named(format!("The connection broke while the model was answering: {error}"), request.as_deref())))?;
         let Some(data) = line.strip_prefix("data:") else { continue };
         let Ok(event) = serde_json::from_str::<Value>(data.trim()) else { continue };
-        if let Some(event) = turn.take(&event).map_err(|error| named(error, request.as_deref()))?
-            && !tell(event)
+        if let Some(told) = turn.take(&event).map_err(|error| (broke(&event), named(error, request.as_deref())))?
+            && !tell(told)
         {
-            return Err(String::new());
+            return Err((0, String::new()));
         }
     }
     Ok(turn)
@@ -434,17 +463,22 @@ pub fn run(job: &Job<'_>, stop: &AtomicBool, tell: &dyn Fn(Event) -> bool) {
     let agent = agent();
     let mut history = job.history.clone();
     history.push(json!({ "role": "user", "content": super::files::content(job.prompt, job.pictures) }));
+    let mut tries = 0;
     for _ in 0..MOST_ROUNDS {
         let turn = match ask(&agent, job, &key, &request(job, &history), stop, tell) {
             Ok(turn) => turn,
-            Err(error) => {
+            Err((status, error)) => {
                 if stop.load(Ordering::Relaxed) || error.is_empty() {
                     return;
+                }
+                if again(status, &mut tries, stop, tell) {
+                    continue;
                 }
                 tell(Event::Problem(error));
                 break;
             }
         };
+        tries = 0;
         if !turn.blocks.is_empty() {
             history.push(json!({ "role": "assistant", "content": turn.blocks }));
         }

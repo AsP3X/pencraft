@@ -174,6 +174,9 @@ pub enum Event {
     Thought(String),
     /// The model's next words start a new paragraph of the conversation.
     Break,
+    /// The answer broke off before it was whole and the same request is sent once more: what the chat says
+    /// about it. What the broken answer began (a tool call it was still writing) never happened.
+    Again(String),
     /// The model starts a call of the tool `name`; `id` tells this call from the others.
     Tool {
         /// The call.
@@ -1155,6 +1158,12 @@ impl Chat {
                 self.thought.push_str(&more);
             }
             Event::Break => self.fresh = true,
+            Event::Again(text) => {
+                // Human: a call the broken answer was still writing was never made; its note would turn for ever.
+                self.entries.retain(|entry| entry.step.as_ref().is_none_or(|step| step.state != State::Running));
+                self.fresh = true;
+                self.entries.push(Entry::new(Role::Step, text));
+            }
             Event::Tool { id, name } => {
                 self.fresh = true;
                 let mut note = Entry::note(steps::short(&name), State::Running, "");
@@ -1431,6 +1440,43 @@ mod tests {
         assert_eq!(
             via(&Engine::Plain { program: PathBuf::from("/usr/local/bin/aider"), arguments: String::new(), model: String::new() }),
             "the program aider"
+        );
+    }
+
+    #[test]
+    fn an_answer_that_broke_off_is_asked_for_again_and_its_unmade_call_is_forgotten() {
+        let mut chat = with_events(Vec::new());
+        let now = Instant::now();
+        chat.hear(Event::Text("I'll change the headline.".to_owned()), now);
+        chat.hear(Event::Tool { id: "t1".to_owned(), name: "edit_layers".to_owned() }, now);
+        chat.hear(Event::Again("The provider broke off its answer; asking again (1 of 2)".to_owned()), now);
+        chat.hear(Event::Text("The headline is larger now.".to_owned()), now);
+        let said: Vec<(Role, &str)> = chat.entries.iter().map(|entry| (entry.role, entry.text.as_str())).collect();
+        assert_eq!(
+            said,
+            vec![
+                (Role::User, "Make a card"),
+                (Role::Assistant, "I'll change the headline."),
+                (Role::Step, "The provider broke off its answer; asking again (1 of 2)"),
+                (Role::Assistant, "The headline is larger now."),
+            ]
+        );
+        // Only an answer that broke off is asked for again, twice in a row at most, and never once stopped.
+        let stop = AtomicBool::new(true);
+        let told = std::cell::RefCell::new(Vec::new());
+        let tell = |event: Event| {
+            told.borrow_mut().push(format!("{event:?}"));
+            true
+        };
+        let mut tries = 0;
+        assert!(!api::again(api::BROKE_OFF, &mut tries, &stop, &tell) && tries == 0);
+        let stop = AtomicBool::new(false);
+        assert!(!api::again(500, &mut tries, &stop, &tell) && !api::again(0, &mut tries, &stop, &tell) && tries == 0);
+        tries = 2;
+        assert!(!api::again(api::BROKE_OFF, &mut tries, &stop, &tell) && told.borrow().is_empty());
+        assert_eq!(
+            (api::broke(&serde_json::json!({ "error": { "message": "x" } })), api::broke(&serde_json::json!({ "choices": [] }))),
+            (api::BROKE_OFF, 0)
         );
     }
 

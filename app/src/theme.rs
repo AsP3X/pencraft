@@ -218,10 +218,11 @@ pub const CHAT_DOT_LIFT: f32 = 3.0;
 pub const CHAT_DOT_PACE: f32 = 6.0;
 /// From how many seconds on a wait for the model says how long it has lasted.
 pub const CHAT_WAIT_COUNTED: u64 = 3;
-/// The most lines of the model's latest thought the chat shows under a wait.
+/// How many lines high the place under a wait is that shows what the model thinks: always this many.
 pub const CHAT_THOUGHT_ROWS: usize = 2;
-/// The fewest letters of a sentence the model has begun to think for it to take the place of the one before.
-pub const CHAT_THOUGHT_LEAST: usize = 12;
+/// How fast the thought's lines glide up when a new one begins: the share of the way left that is covered
+/// each second, as the rate of an exponential approach.
+pub const CHAT_THOUGHT_GLIDE: f32 = 14.0;
 /// How long the button that copies a problem's details says that it did, in seconds.
 pub const CHAT_COPIED_STAYS: f64 = 1.6;
 /// How much larger the chat's text is at the settings' Medium and Large sizes.

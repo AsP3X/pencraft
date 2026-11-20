@@ -9,6 +9,20 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Fixed
+
+- **An answer that breaks off is asked for again.** When a provider
+  reports an error in the middle of an answer ("Internal Server Error"),
+  or the connection drops there, Pencraft now sends the request again by
+  itself, twice at most, and says so in the chat. Before, the run simply
+  ended and you had to ask again. Nothing is done twice: the tools of an
+  answer only run once the answer is whole.
+- **The chat holds still while the model thinks.** The glimpse of the
+  model's thinking grew, shrank and swapped its sentence as the words came
+  in, and pushed the conversation around with it. It now has a place that
+  is always two lines high: the thought flows through it, and when a new
+  line begins the lines glide up by one.
+
 ## [0.3.24] - 2026-11-20
 
 A problem in the chat now says enough to act on it or report it, and its

@@ -178,20 +178,20 @@ fn ask(
     let headers: Vec<(&str, &str)> = bearer.iter().map(|bearer| ("authorization", *bearer)).collect();
     let mut response = api::post(agent, job.endpoint, &headers, &body.to_string(), stop)?;
     let request = api::request_id(&response);
-    let named = |problem: String| (0, api::named(problem, request.as_deref()));
+    let named = |status: u16, problem: String| (status, api::named(problem, request.as_deref()));
     let mut turn = Turn::default();
     for line in BufReader::new(response.body_mut().as_reader()).lines() {
         if stop.load(Ordering::Relaxed) {
             return Err((0, String::new()));
         }
-        let line = line.map_err(|error| named(format!("The connection broke while the model was answering: {error}")))?;
+        let line = line.map_err(|error| named(api::BROKE_OFF, format!("The connection broke while the model was answering: {error}")))?;
         let Some(data) = line.strip_prefix("data:").map(str::trim) else { continue };
         if data == "[DONE]" {
             break;
         }
         let Ok(event) = serde_json::from_str::<Value>(data) else { continue };
-        for event in turn.take(&event).map_err(named)? {
-            if !tell(event) {
+        for told in turn.take(&event).map_err(|error| named(api::broke(&event), error))? {
+            if !tell(told) {
                 return Err((0, String::new()));
             }
         }
@@ -289,6 +289,7 @@ pub(super) fn converse(job: &Job<'_>, stop: &AtomicBool, tell: &dyn Fn(Event) ->
     let mut history = job.history.clone();
     history.push(user(job.prompt, job.pictures));
     let mut blind = false;
+    let mut tries = 0;
     for _ in 0..MOST_ROUNDS {
         let turn = match ask(&history) {
             Ok(turn) => turn,
@@ -300,10 +301,14 @@ pub(super) fn converse(job: &Job<'_>, stop: &AtomicBool, tell: &dyn Fn(Event) ->
                     blind = true;
                     continue;
                 }
+                if api::again(status, &mut tries, stop, tell) {
+                    continue;
+                }
                 tell(Event::Problem(error));
                 break;
             }
         };
+        tries = 0;
         if !turn.text.is_empty() || !turn.calls.is_empty() {
             history.push(turn.message());
         }

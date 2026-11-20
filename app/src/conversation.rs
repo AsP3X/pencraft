@@ -18,7 +18,7 @@ use crate::theme::{
     self, CHAT_APPEAR, CHAT_BUBBLE_SHARE, CHAT_COPIED_STAYS, CHAT_DOT, CHAT_DOT_GAP, CHAT_DOT_LIFT, CHAT_DOT_PACE, CHAT_GAP, CHAT_ICON_AT_WORK,
     CHAT_ICON_BREATH, CHAT_ICON_BURST, CHAT_ICON_FROM_OWN, CHAT_ICON_LEAST, CHAT_ICON_RING, CHAT_ICON_SETTLE, CHAT_ICON_SHAKE, CHAT_ICON_TAIL,
     CHAT_ICON_TURN, CHAT_NOTE_GAP, CHAT_NOTE_ICON, CHAT_RISE, CHAT_STATUS_HEIGHT, CHAT_STATUS_HOLD, CHAT_STATUS_MORPH, CHAT_STATUS_PAD,
-    CHAT_THOUGHT_LEAST, CHAT_THOUGHT_ROWS, CHAT_WAIT_COUNTED, CHAT_WRITE_CATCH_UP, CHAT_WRITE_PACE, CHIP_CORNER, CHIP_ICON, CHIP_ICON_AT,
+    CHAT_THOUGHT_GLIDE, CHAT_THOUGHT_ROWS, CHAT_WAIT_COUNTED, CHAT_WRITE_CATCH_UP, CHAT_WRITE_PACE, CHIP_CORNER, CHIP_ICON, CHIP_ICON_AT,
     ISLAND_RADIUS, MESSAGE_TEXT_SIZE, PROBLEM, Palette, SIDEBAR_TEXT_SIZE,
 };
 
@@ -115,7 +115,7 @@ pub fn show(ui: &mut Ui, chat: &Chat, key: u64, scale: f32, palette: Palette, an
             let wait = (pause != Pause::Writing).then(|| Wait {
                 words: pause.words(chat.answering().unwrap_or_default()),
                 lasted: chat.paused(),
-                thought: latest(chat.thought()),
+                thought: flow(chat.thought()),
             });
             waiting(ui, wait.as_ref(), scale, palette, animate.then_some(now));
         }
@@ -830,13 +830,13 @@ fn dots(ui: &Ui, slot: egui::Rect, time: Option<f64>) {
 }
 
 /// A wait of the model's as the panel tells it.
-struct Wait<'a> {
+struct Wait {
     /// What the wait is for, without the dots after it.
     words: String,
     /// How long it has lasted.
     lasted: std::time::Duration,
-    /// The model's latest thought; empty when none can be read.
-    thought: &'a str,
+    /// What the model has thought in this wait, as one flow of words; empty when none can be read.
+    thought: String,
 }
 
 /// `text` without the white space and the Markdown marks around it.
@@ -844,22 +844,27 @@ fn tidy(text: &str) -> &str {
     text.trim_matches(|letter: char| letter.is_whitespace() || matches!(letter, '*' | '#' | '`' | '-' | '_'))
 }
 
-/// The sentence the model is thinking now, out of all it has `thought` since it last did something.
-// Human: thoughts come as a stream of sentences, often with Markdown around them. One sentence at a time can be
-// followed: the newest one that is long enough to read, so the line doesn't jump with every first word.
-fn latest(thought: &str) -> &str {
-    let Some(line) = thought.lines().rev().map(tidy).find(|line| !line.is_empty()) else { return "" };
-    // The ends of sentences are single bytes, so the byte after one starts a letter.
-    let mut starts =
-        line.char_indices().filter(|(at, letter)| matches!(letter, '.' | '?' | '!') && line[at + 1..].starts_with(' ')).map(|(at, _)| at + 1);
-    let from = starts.rfind(|&from| line[from..].trim().chars().count() >= CHAT_THOUGHT_LEAST).unwrap_or(0);
-    tidy(&line[from..])
+/// All the model has `thought` since it last did something, as one flow of words: its lines joined, without
+/// the Markdown marks around them, and with one space wherever there was white space.
+fn flow(thought: &str) -> String {
+    thought.lines().map(tidy).flat_map(str::split_whitespace).collect::<Vec<_>>().join(" ")
+}
+
+/// How far the thought's lines are moved up so that its last ones show, given how far they `were` moved the
+/// frame before, how far they `should` be now and the time `step` since that frame; `None` when nothing glides.
+// Human: a new line of the thought doesn't snap into place, it glides up. A thought that starts over (the
+// model thinks anew) is simply there.
+fn glide(were: f32, should: f32, step: Option<f32>) -> f32 {
+    match step {
+        Some(step) if should > were && should - were > 0.5 => were + (should - were) * (1.0 - (-CHAT_THOUGHT_GLIDE * step).exp()),
+        _ => should,
+    }
 }
 
 /// The dots that say the model is at it, and what the `wait` is for beside them: its words, how long it has
-/// lasted once that is worth saying, and under them the model's latest thought. Without a `wait` the dots stand
-/// alone; without a `time` they rest.
-fn waiting(ui: &mut Ui, wait: Option<&Wait<'_>>, scale: f32, palette: Palette, time: Option<f64>) {
+/// lasted once that is worth saying, and under them the last lines of what the model thinks. Without a `wait`
+/// the dots stand alone; without a `time` they rest and nothing glides.
+fn waiting(ui: &mut Ui, wait: Option<&Wait>, scale: f32, palette: Palette, time: Option<f64>) {
     let font = FontId::proportional((SIDEBAR_TEXT_SIZE - 1.0) * scale);
     let quiet = palette.muted.gamma_multiply(0.7);
     ui.horizontal(|ui| {
@@ -875,16 +880,28 @@ fn waiting(ui: &mut Ui, wait: Option<&Wait<'_>>, scale: f32, palette: Palette, t
         }
         ui.add(egui::Label::new(text).truncate().selectable(false));
     });
-    let Some(thought) = wait.map(|wait| wait.thought).filter(|thought| !thought.is_empty()) else { return };
-    // Human: the thought stands under the words, not under the dots, and takes two lines at most: it is a
-    // glimpse of what the model is at, not something to read through.
+    let Some(wait) = wait else { return };
+    // Human: the thought stands under the words, not under the dots, in a place that is always two lines high
+    // and as wide as the panel, whether the model has thought a word, a page or nothing yet: nothing under or
+    // over it moves while the thought streams in. Its last two lines show; when a third begins, the lines
+    // glide up by one. It is a glimpse of what the model is at, not something to read through.
     let indent = DOTS_WIDTH + LEAD_GAP;
-    let mut job = LayoutJob::simple(thought.to_owned(), font, quiet, (ui.available_width() - indent).max(0.0));
-    job.wrap.max_rows = CHAT_THOUGHT_ROWS;
-    let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
+    let width = (ui.available_width() - indent).max(0.0);
+    let text = if wait.thought.is_empty() { " " } else { wait.thought.as_str() };
+    let galley = ui.fonts_mut(|fonts| fonts.layout_job(LayoutJob::simple(text.to_owned(), font, quiet, width)));
+    let rows = galley.rows.len().max(1);
+    #[expect(clippy::cast_precision_loss, reason = "a handful of lines of text")]
+    let (row, shown) = (galley.size().y / rows as f32, CHAT_THOUGHT_ROWS as f32);
+    #[expect(clippy::cast_precision_loss, reason = "a handful of lines of text")]
+    let should = rows.saturating_sub(CHAT_THOUGHT_ROWS) as f32 * row;
+    let id = egui::Id::unique("chat-thought-glide");
+    let were: f32 = ui.data(|data| data.get_temp(id)).unwrap_or(should);
+    let moved = glide(were, should, time.map(|_| ui.input(|input| input.stable_dt).min(0.1)));
+    ui.data_mut(|data| data.insert_temp(id, moved));
     ui.add_space(3.0);
-    let (place, _) = ui.allocate_exact_size(vec2(indent + galley.size().x, galley.size().y), Sense::hover());
-    ui.painter().galley(place.min + vec2(indent, 0.0), galley, quiet);
+    let (place, _) = ui.allocate_exact_size(vec2(indent + width, row * shown), Sense::hover());
+    let window = egui::Rect::from_min_max(place.min + vec2(indent, 0.0), place.max);
+    ui.painter().with_clip_rect(window.intersect(ui.clip_rect())).galley(window.min - vec2(0.0, moved), galley, quiet);
 }
 
 #[cfg(test)]
@@ -1032,13 +1049,23 @@ mod tests {
     }
 
     #[test]
-    fn the_newest_thought_long_enough_to_read_is_shown() {
-        assert_eq!(latest(""), "");
-        assert_eq!(latest("**Planning the page**\n\n"), "Planning the page");
-        assert_eq!(latest("A dark page first. Then blocky type for the title"), "Then blocky type for the title");
-        // A sentence only just begun doesn't take the line yet, and a number's point ends no sentence.
-        assert_eq!(latest("A dark page with a grid of 8.5 squares. Th"), "A dark page with a grid of 8.5 squares. Th");
-        assert_eq!(latest("First line.\n- Grüße an alle, die bauen!"), "Grüße an alle, die bauen!");
+    fn a_thought_is_one_flow_of_words_whose_new_lines_glide_into_view() {
+        assert_eq!(flow(""), "");
+        assert_eq!(
+            flow("**Planning the page**\n\nA dark   page first.\n- Grüße an alle, die bauen!"),
+            "Planning the page A dark page first. Grüße an alle, die bauen!"
+        );
+        // A new line comes into view over a few frames, never past its place, and ends exactly there.
+        let mut moved = 0.0;
+        for _ in 0..120 {
+            let next = glide(moved, 16.0, Some(0.016));
+            assert!(next >= moved && next <= 16.0, "{next}");
+            moved = next;
+        }
+        assert!((moved - 16.0).abs() < f32::EPSILON);
+        assert!(glide(0.0, 16.0, Some(0.016)) < 8.0);
+        // With nothing moving it is there at once, and so is a thought that starts over.
+        assert!((glide(0.0, 16.0, None) - 16.0).abs() < f32::EPSILON && glide(32.0, 0.0, Some(0.016)).abs() < f32::EPSILON);
     }
 
     #[test]
