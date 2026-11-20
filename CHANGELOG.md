@@ -9,6 +9,11 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.23] - 2026-11-20
+
+The chat says what the assistant is doing while you wait and shows a glimpse
+of what it thinks, and your own messages read from a straight left edge.
+
 ### Added
 
 - **The chat says what the assistant is waiting on.** Where it only said
@@ -690,7 +695,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.22...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.23...HEAD
+[0.3.23]: https://github.com/AsP3X/pencraft/compare/v0.3.22...v0.3.23
 [0.3.22]: https://github.com/AsP3X/pencraft/compare/v0.3.21...v0.3.22
 [0.3.21]: https://github.com/AsP3X/pencraft/compare/v0.3.20...v0.3.21
 [0.3.20]: https://github.com/AsP3X/pencraft/compare/v0.3.19...v0.3.20
