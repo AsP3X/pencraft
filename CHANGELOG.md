@@ -9,6 +9,11 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.25] - 2026-11-20
+
+An answer that a provider breaks off is asked for again by itself, and the
+chat holds still while the model thinks.
+
 ### Fixed
 
 - **An answer that breaks off is asked for again.** When a provider
@@ -726,7 +731,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.24...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.25...HEAD
+[0.3.25]: https://github.com/AsP3X/pencraft/compare/v0.3.24...v0.3.25
 [0.3.24]: https://github.com/AsP3X/pencraft/compare/v0.3.23...v0.3.24
 [0.3.23]: https://github.com/AsP3X/pencraft/compare/v0.3.22...v0.3.23
 [0.3.22]: https://github.com/AsP3X/pencraft/compare/v0.3.21...v0.3.22
