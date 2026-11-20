@@ -382,6 +382,13 @@ impl App {
         if let Some(entries) = entries {
             self.front_talk().chat.entries = entries;
         }
+        // Human: `thinking` shows the chat in the middle of a run, while the model thinks.
+        let view = if name == "thinking" {
+            self.front_talk().chat.pose_thinking();
+            "chat"
+        } else {
+            view
+        };
         self.sidebar.pose(view);
     }
 

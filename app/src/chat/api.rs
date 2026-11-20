@@ -168,9 +168,11 @@ impl Turn {
                 }
                 let word = |field: &str| block[field].as_str().unwrap_or_default().to_owned();
                 let tool = (block["type"] == "tool_use").then(|| Event::Tool { id: word("id"), name: word("name") });
+                // Human: a model whose thoughts are kept from the app still says that it thinks.
+                let thinks = matches!(block["type"].as_str(), Some("thinking" | "redacted_thinking")).then(|| Event::Thought(word("thinking")));
                 self.blocks.push(block);
                 self.inputs.push(String::new());
-                Ok(tool)
+                Ok(tool.or(thinks))
             }
             Some("content_block_delta") => {
                 let (Some(block), Some(input)) = (self.blocks.get_mut(index), self.inputs.get_mut(index)) else { return Ok(None) };
@@ -185,7 +187,11 @@ impl Turn {
                         return Ok(Some(Event::Text(more.to_owned())));
                     }
                     Some("input_json_delta") => input.push_str(text("/delta/partial_json").unwrap_or_default()),
-                    Some("thinking_delta") => append(block, "thinking", text("/delta/thinking").unwrap_or_default()),
+                    Some("thinking_delta") => {
+                        let more = text("/delta/thinking").unwrap_or_default();
+                        append(block, "thinking", more);
+                        return Ok(Some(Event::Thought(more.to_owned())));
+                    }
                     Some("signature_delta") => block["signature"] = json!(text("/delta/signature").unwrap_or_default()),
                     _ => {}
                 }
@@ -487,8 +493,9 @@ mod tests {
             told.extend(turn.take(&event).unwrap().map(|e| format!("{e:?}")));
         }
         let told: Vec<&str> = told.iter().map(|event| event.split([' ', '(']).next().unwrap_or_default()).collect();
-        // Each call is told when it starts, and again with its input once that is written out.
-        assert_eq!(told, vec!["Text", "Text", "Tool", "ToolInput", "Tool", "ToolInput", "Tool", "ToolInput"]);
+        // That the model thinks is told when it starts to, and then what it thinks. Each call is told when it
+        // starts, and again with its input once that is written out.
+        assert_eq!(told, vec!["Thought", "Thought", "Text", "Text", "Tool", "ToolInput", "Tool", "ToolInput", "Tool", "ToolInput"]);
         assert_eq!(turn.blocks[0], json!({ "type": "thinking", "thinking": "A card.", "signature": "sig" }));
         assert_eq!(turn.blocks[1], json!({ "type": "text", "text": "On it." }));
         assert_eq!(turn.blocks[2]["input"], json!({ "operations": [{ "op": "delete", "id": "a" }] }));

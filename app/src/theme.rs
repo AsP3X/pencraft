@@ -216,6 +216,12 @@ pub const CHAT_DOT_GAP: f32 = 3.0;
 pub const CHAT_DOT_LIFT: f32 = 3.0;
 /// How fast the dots rise and fall, in radians a second.
 pub const CHAT_DOT_PACE: f32 = 6.0;
+/// From how many seconds on a wait for the model says how long it has lasted.
+pub const CHAT_WAIT_COUNTED: u64 = 3;
+/// The most lines of the model's latest thought the chat shows under a wait.
+pub const CHAT_THOUGHT_ROWS: usize = 2;
+/// The fewest letters of a sentence the model has begun to think for it to take the place of the one before.
+pub const CHAT_THOUGHT_LEAST: usize = 12;
 /// How much larger the chat's text is at the settings' Medium and Large sizes.
 pub const CHAT_TEXT_MEDIUM: f32 = 1.15;
 /// See [`CHAT_TEXT_MEDIUM`].

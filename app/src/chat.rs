@@ -11,6 +11,7 @@ use std::process::Child;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -57,6 +58,9 @@ pub const KIND_PLAIN: &str = "Other (prints its answer)";
 pub const KINDS: [&str; 3] = [KIND_CLAUDE, KIND_GROK, KIND_PLAIN];
 /// How many earlier messages are retold to an engine that wasn't there for them.
 const RETOLD: usize = 24;
+/// How long the model must have thought for the conversation to keep a note of it.
+// Human: a thought of a second or two is no news; a note for each would bury the notes on what was done.
+const THOUGHT_NOTED: Duration = Duration::from_secs(3);
 
 /// What the model is told about its job, whichever engine runs it.
 pub const BRIEF: &str = "You are the design assistant built into Pencraft, a canvas design editor. The user talks to you in the app's chat panel and watches the canvas while you work. \
@@ -153,6 +157,9 @@ impl Entry {
 pub enum Event {
     /// More of the model's words.
     Text(String),
+    /// The model thinks before it writes or uses a tool: more of what it thinks, or nothing when its engine
+    /// only says that it does.
+    Thought(String),
     /// The model's next words start a new paragraph of the conversation.
     Break,
     /// The model starts a call of the tool `name`; `id` tells this call from the others.
@@ -186,6 +193,70 @@ pub enum Event {
     Problem(String),
     /// The run is over.
     Done,
+}
+
+/// What the model is doing while it neither writes nor has a tool at work, as far as the app can tell.
+// Human: "Thinking…" for every wait says nothing. What the app does know is told: that nothing has come back
+// yet, that the model thinks, or what it was just handed to go on with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pause {
+    /// Nothing has come back yet: the message is on its way, or the model hasn't begun.
+    Reaching,
+    /// It thinks.
+    Thinking,
+    /// It was just handed the picture it took of the design.
+    Looking,
+    /// It was just handed what the reviewer wants changed.
+    Reviewed,
+    /// The tool it used last answered with an error.
+    Retrying,
+    /// It was just handed what a tool answered.
+    Next,
+    /// It is in the middle of its own words.
+    Writing,
+}
+
+impl Pause {
+    /// What the conversation `entries` waits on in a run: `reached` once the run has told anything, `thinking`
+    /// while the engine says the model thinks.
+    #[must_use]
+    pub fn of(entries: &[Entry], reached: bool, thinking: bool) -> Pause {
+        let last = entries.last();
+        match last.and_then(|entry| entry.step.as_ref()) {
+            _ if thinking => Pause::Thinking,
+            Some(step) if step.state == State::Failed => Pause::Retrying,
+            Some(step) if step.tool == "screenshot" => Pause::Looking,
+            Some(step) if step.tool == critic::TOOL => Pause::Reviewed,
+            Some(_) => Pause::Next,
+            None if last.is_some_and(|entry| entry.role == Role::Assistant) => Pause::Writing,
+            None if !reached => Pause::Reaching,
+            None => Pause::Thinking,
+        }
+    }
+
+    /// The wait in a few words, without the dots after them; `model` is the name of the model that answers.
+    #[must_use]
+    pub fn words(self, model: &str) -> String {
+        match self {
+            Pause::Reaching if model.is_empty() => "Waiting for the assistant".to_owned(),
+            Pause::Reaching => format!("Waiting for {model}"),
+            Pause::Thinking => "Thinking".to_owned(),
+            Pause::Looking => "Looking at the picture".to_owned(),
+            Pause::Reviewed => "Reading the review".to_owned(),
+            Pause::Retrying => "Finding another way".to_owned(),
+            Pause::Next => "Planning the next step".to_owned(),
+            Pause::Writing => "Writing".to_owned(),
+        }
+    }
+}
+
+/// "8 s", "1 min 5 s": how long something took, in whole seconds.
+#[must_use]
+pub fn span(time: Duration) -> String {
+    match time.as_secs() {
+        seconds @ 0..60 => format!("{seconds} s"),
+        seconds => format!("{} min {} s", seconds / 60, seconds % 60),
+    }
 }
 
 /// Where an API key comes from.
@@ -636,6 +707,14 @@ pub struct Chat {
     wire: Wire,
     /// Messages written while the assistant worked, oldest first; each is sent when the run before it is over.
     pub waiting: Vec<Waiting>,
+    /// What the model has thought since it last wrote or used a tool, as far as its engine lets it be read.
+    thought: String,
+    /// Since when the model thinks.
+    thinking: Option<Instant>,
+    /// When the run last wrote, used a tool or was handed something: the wait the panel counts starts there.
+    quiet: Option<Instant>,
+    /// The run has told something of the model's: the model was reached.
+    reached: bool,
 }
 
 impl Chat {
@@ -649,6 +728,55 @@ impl Chat {
     #[must_use]
     pub fn answering(&self) -> Option<&str> {
         self.run.as_ref().map(|run| run.model.as_str())
+    }
+
+    /// What the run waits on while the model neither writes nor has a tool at work; `None` without a run.
+    #[must_use]
+    pub fn pause(&self) -> Option<Pause> {
+        self.running().then(|| Pause::of(&self.entries, self.reached, self.thinking.is_some()))
+    }
+
+    /// How long that wait has lasted.
+    #[must_use]
+    pub fn paused(&self) -> Duration {
+        self.quiet.map_or(Duration::ZERO, |since| since.elapsed())
+    }
+
+    /// What the model has thought in that wait, where its engine lets it be read; empty otherwise.
+    #[must_use]
+    pub fn thought(&self) -> &str {
+        &self.thought
+    }
+
+    /// Puts the chat in the middle of a made-up run in which the model thinks, for a picture of the panel
+    /// (`--sidebar thinking`).
+    // Human: the run's thread tells nothing and only keeps the run open until it is stopped.
+    // Agent: SPAWNS a thread that sleeps until the chat is stopped or cleared.
+    pub fn pose_thinking(&mut self) {
+        let (send, events) = channel::<Event>();
+        let stop = Arc::new(AtomicBool::new(false));
+        let flag = stop.clone();
+        let held = std::thread::Builder::new().name("chat-pose".to_owned()).spawn(move || {
+            while !flag.load(Ordering::Relaxed) {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            drop(send);
+        });
+        if held.is_err() {
+            return;
+        }
+        self.entries = vec![
+            Entry::new(
+                Role::User,
+                "Create a landingpage for my minecraft community server. It must have a hightly pixelated look while staying modern and AI Slop free",
+            ),
+            Entry::note("get_state", State::Done, ""),
+        ];
+        "The document is empty, so the page starts from nothing. A dark ground with one loud green would read as a server at night.          The headline should sit on a hard pixel grid, set in a blocky face, with the join address right under it"
+            .clone_into(&mut self.thought);
+        let since = Instant::now().checked_sub(Duration::from_secs(14));
+        (self.thinking, self.quiet, self.reached) = (since, since, true);
+        self.run = Some(Run { events, stop, child: Arc::new(Mutex::new(None)), model: "Opus 5.5".to_owned(), steering: None });
     }
 
     /// Whether the assistant at work takes a further message while it works.
@@ -732,6 +860,8 @@ impl Chat {
             let _ = child.wait();
         }
         self.settle();
+        self.thought.clear();
+        (self.thinking, self.quiet) = (None, None);
         let unsent = self.waiting.len() + run.steering.map_or(0, |inbox| lock(&inbox).len());
         self.waiting.clear();
         let text = match unsent {
@@ -826,6 +956,8 @@ impl Chat {
         self.dismiss();
         self.entries.push(Entry { pointed: ask.pointed.clone(), ..Entry::new(Role::User, ask.shown.clone()) });
         self.fresh = true;
+        self.thought.clear();
+        (self.thinking, self.quiet, self.reached) = (None, Some(Instant::now()), false);
         let (send, events) = channel();
         let stop = Arc::new(AtomicBool::new(false));
         let child = Arc::new(Mutex::new(None));
@@ -911,39 +1043,9 @@ impl Chat {
             }
         }
         let changed = over || !events.is_empty();
+        let now = Instant::now();
         for event in events {
-            match event {
-                Event::Text(more) => match self.entries.last_mut() {
-                    Some(last) if last.role == Role::Assistant && !self.fresh => last.text.push_str(&more),
-                    _ if more.trim().is_empty() => {}
-                    _ => {
-                        self.entries.push(Entry::new(Role::Assistant, more.trim_start()));
-                        self.fresh = false;
-                    }
-                },
-                Event::Break => self.fresh = true,
-                Event::Tool { id, name } => {
-                    self.fresh = true;
-                    let mut note = Entry::note(steps::short(&name), State::Running, "");
-                    if let Some(step) = &mut note.step {
-                        step.id = id;
-                    }
-                    self.entries.push(note);
-                }
-                Event::ToolInput { id, input } => self.describe(&id, &input),
-                Event::ToolEnd { id, failed } => self.finish(&id, failed),
-                Event::Session(session) => self.session = Some(session),
-                Event::History(history) => self.history = history,
-                Event::Heard(message) => {
-                    self.fresh = true;
-                    self.entries.push(Entry { pointed: message.pointed, ..Entry::new(Role::User, message.shown) });
-                }
-                Event::Problem(text) => {
-                    self.fresh = true;
-                    self.entries.push(Entry::new(Role::Problem, text));
-                }
-                Event::Done => {}
-            }
+            self.hear(event, now);
         }
         if over {
             // Human: a message handed to the run that it ended without taking goes first among the waiting ones.
@@ -951,9 +1053,72 @@ impl Chat {
                 let unheard: Vec<Waiting> = std::mem::take(&mut *lock(&inbox)).into_iter().map(|steer| steer.message).collect();
                 self.waiting.splice(0..0, unheard);
             }
+            self.thought_over(now);
+            self.quiet = None;
             self.settle();
         }
         changed
+    }
+
+    /// Takes in one thing the run said, at `now`.
+    fn hear(&mut self, event: Event, now: Instant) {
+        // Human: the model thinks until it writes, uses a tool or is done; what its engine tells for its own
+        // books (the session, the record of the conversation) says nothing about that.
+        match &event {
+            Event::Session(_) | Event::History(_) => {}
+            Event::Thought(_) => self.reached = true,
+            _ => {
+                self.thought_over(now);
+                (self.quiet, self.reached) = (Some(now), true);
+            }
+        }
+        match event {
+            Event::Text(more) => match self.entries.last_mut() {
+                Some(last) if last.role == Role::Assistant && !self.fresh => last.text.push_str(&more),
+                _ if more.trim().is_empty() => {}
+                _ => {
+                    self.entries.push(Entry::new(Role::Assistant, more.trim_start()));
+                    self.fresh = false;
+                }
+            },
+            Event::Thought(more) => {
+                self.thinking.get_or_insert(now);
+                self.thought.push_str(&more);
+            }
+            Event::Break => self.fresh = true,
+            Event::Tool { id, name } => {
+                self.fresh = true;
+                let mut note = Entry::note(steps::short(&name), State::Running, "");
+                if let Some(step) = &mut note.step {
+                    step.id = id;
+                }
+                self.entries.push(note);
+            }
+            Event::ToolInput { id, input } => self.describe(&id, &input),
+            Event::ToolEnd { id, failed } => self.finish(&id, failed),
+            Event::Session(session) => self.session = Some(session),
+            Event::History(history) => self.history = history,
+            Event::Heard(message) => {
+                self.fresh = true;
+                self.entries.push(Entry { pointed: message.pointed, ..Entry::new(Role::User, message.shown) });
+            }
+            Event::Problem(text) => {
+                self.fresh = true;
+                self.entries.push(Entry::new(Role::Problem, text));
+            }
+            Event::Done => {}
+        }
+    }
+
+    /// The model has stopped thinking at `now`: a thought that took a while leaves a note saying how long.
+    fn thought_over(&mut self, now: Instant) {
+        self.thought.clear();
+        let Some(since) = self.thinking.take() else { return };
+        let took = now.saturating_duration_since(since);
+        if took >= THOUGHT_NOTED {
+            self.fresh = true;
+            self.entries.push(Entry::new(Role::Step, format!("Thought for {}", span(took))));
+        }
     }
 
     /// No call is at work any more: the run is over or was stopped.
@@ -1096,6 +1261,45 @@ mod tests {
         assert!(chat.retold("note", false).contains("User: Make a card\nAssistant: I'll look first.\nAssistant: Done: a card."));
         chat.clear();
         assert!(chat.entries.is_empty() && chat.session.is_none());
+    }
+
+    #[test]
+    fn a_wait_says_what_the_model_is_doing_and_a_long_thought_leaves_a_note() {
+        let mut chat = with_events(Vec::new());
+        let start = Instant::now();
+        let after = |seconds: u64| start + Duration::from_secs(seconds);
+        // Nothing has come back: the wait is for the model, by its name.
+        assert_eq!(chat.pause(), Some(Pause::Reaching));
+        assert_eq!(Pause::Reaching.words("Opus 5.5"), "Waiting for Opus 5.5");
+        assert_eq!(Pause::Reaching.words(""), "Waiting for the assistant");
+        // It thinks, at first without saying what; what it thinks is kept only while it does.
+        chat.hear(Event::Session("s1".to_owned()), after(0));
+        assert_eq!(chat.pause(), Some(Pause::Reaching));
+        chat.hear(Event::Thought(String::new()), after(1));
+        chat.hear(Event::Thought("A dark page. ".to_owned()), after(2));
+        chat.hear(Event::Thought("Blocky type.".to_owned()), after(3));
+        assert_eq!((chat.pause(), chat.thought()), (Some(Pause::Thinking), "A dark page. Blocky type."));
+        chat.hear(Event::Tool { id: "t1".to_owned(), name: "screenshot".to_owned() }, after(9));
+        assert_eq!((chat.thought(), chat.entries[1].text.as_str()), ("", "Thought for 8 s"));
+        assert!(chat.entries[1].step.is_none() && chat.entries[1].role == Role::Step);
+        // What it was just handed says what it does next.
+        chat.hear(Event::ToolEnd { id: "t1".to_owned(), failed: false }, after(10));
+        assert_eq!(chat.pause(), Some(Pause::Looking));
+        chat.hear(Event::Tool { id: "t2".to_owned(), name: "edit_layers".to_owned() }, after(11));
+        chat.hear(Event::ToolEnd { id: "t2".to_owned(), failed: true }, after(11));
+        assert_eq!(chat.pause(), Some(Pause::Retrying));
+        chat.hear(Event::Tool { id: "t3".to_owned(), name: "read_layers".to_owned() }, after(12));
+        chat.hear(Event::ToolEnd { id: "t3".to_owned(), failed: false }, after(12));
+        assert_eq!(chat.pause(), Some(Pause::Next));
+        // A short thought leaves no note, and its own words are not a wait to name.
+        chat.hear(Event::Thought("Now the answer.".to_owned()), after(13));
+        chat.hear(Event::Text("A page.".to_owned()), after(14));
+        assert_eq!((chat.pause(), chat.entries.len()), (Some(Pause::Writing), 6));
+        assert_eq!(Pause::of(&[Entry::note(critic::TOOL, State::Done, "")], true, false), Pause::Reviewed);
+        assert_eq!(Pause::of(&[Entry::new(Role::User, "wider")], true, false), Pause::Thinking);
+        assert_eq!((span(Duration::from_secs(59)), span(Duration::from_secs(65))), ("59 s".to_owned(), "1 min 5 s".to_owned()));
+        chat.stop();
+        assert_eq!(chat.pause(), None);
     }
 
     #[test]

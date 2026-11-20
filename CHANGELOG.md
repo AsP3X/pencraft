@@ -9,6 +9,27 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Added
+
+- **The chat says what the assistant is waiting on.** Where it only said
+  "Thinking…", the line now says what the wait is for: "Waiting for
+  Opus 5.5…" until the model answers at all, "Thinking…" while it thinks,
+  and after a tool "Looking at the picture…", "Reading the review…",
+  "Finding another way…" when the tool failed, or "Planning the next
+  step…". From three seconds on it counts how long the wait has lasted.
+- **A glimpse of what the model thinks.** Where the model's thinking can be
+  read (Anthropic's API, Claude Code, Ollama, and other providers that
+  send it), the sentence it is thinking now stands under that line in
+  quiet letters. Thinking that took three seconds or more leaves a note in
+  the conversation, such as "Thought for 8 s".
+
+### Fixed
+
+- **Your messages in the chat read from the left.** The lines of a message
+  in its bubble were each pushed to the bubble's right edge, so a longer
+  message started ragged. They now start at the bubble's left edge and
+  wrap like any text; the bubble still stands at the right of the panel.
+
 ## [0.3.22] - 2026-11-20
 
 Chat with models that run on your own computer through Ollama, or with

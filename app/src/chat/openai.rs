@@ -102,6 +102,11 @@ impl Turn {
         let mut told = Vec::new();
         let text = |value: &Value, key: &str| value.get(key).and_then(Value::as_str).filter(|text| !text.is_empty()).map(str::to_owned);
         let Some(choice) = event.pointer("/choices/0") else { return Ok(told) };
+        // Human: providers that let a model's thinking be read send it beside the answer, under one of two names.
+        let delta = choice.get("delta");
+        if let Some(more) = delta.and_then(|delta| text(delta, "reasoning_content").or_else(|| text(delta, "reasoning"))) {
+            told.push(Event::Thought(more));
+        }
         if let Some(more) = choice.get("delta").and_then(|delta| text(delta, "content")) {
             self.text.push_str(&more);
             told.push(Event::Text(more));
@@ -337,6 +342,9 @@ mod tests {
         let mut told = Vec::new();
         for event in [
             json!({ "choices": [{ "index": 0, "delta": { "role": "assistant", "content": "" } }] }),
+            // What the model thinks comes under one of two names, where a provider lets it be read.
+            json!({ "choices": [{ "index": 0, "delta": { "reasoning_content": "A card" } }] }),
+            json!({ "choices": [{ "index": 0, "delta": { "reasoning": "." } }] }),
             json!({ "choices": [{ "index": 0, "delta": { "content": "On " } }] }),
             json!({ "choices": [{ "index": 0, "delta": { "content": "it." } }] }),
             json!({ "choices": [{ "index": 0, "delta": { "tool_calls": [{ "index": 0, "id": "c1", "type": "function", "function": { "name": "edit_layers", "arguments": "" } }] } }] }),
@@ -354,6 +362,8 @@ mod tests {
         assert_eq!(
             told,
             vec![
+                r#"Thought("A card")"#,
+                r#"Thought(".")"#,
                 r#"Text("On ")"#,
                 r#"Text("it.")"#,
                 r#"Tool { id: "c1", name: "edit_layers" }"#,

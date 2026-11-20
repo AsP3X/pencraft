@@ -221,6 +221,10 @@ fn read_line(line: &str, wrote: &mut bool) -> Vec<Event> {
                 *wrote = true;
                 text("/event/delta/text").map(|more| Event::Text(more.to_owned())).into_iter().collect()
             }
+            (Some("content_block_delta"), Some("thinking_delta"), _) => {
+                text("/event/delta/thinking").map(|more| Event::Thought(more.to_owned())).into_iter().collect()
+            }
+            (Some("content_block_start"), _, Some("thinking" | "redacted_thinking")) => vec![Event::Thought(String::new())],
             (Some("content_block_start"), _, Some("tool_use")) => text("/event/content_block/name")
                 .map(|name| Event::Tool { id: text("/event/content_block/id").unwrap_or_default().to_owned(), name: name.to_owned() })
                 .into_iter()
@@ -355,6 +359,7 @@ mod tests {
                 r#"ToolInput { id: "t1", input: Object {"description": String("add")} }"#,
                 r#"ToolEnd { id: "t1", failed: true }"#,
                 "Break",
+                r#"Thought("hm")"#,
                 r#"Problem("Not logged in")"#
             ]
         );

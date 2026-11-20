@@ -2,7 +2,8 @@
 //! it does, drawn with a little motion so what is new can be followed.
 //!
 //! A new line fades in and settles into place; the assistant's words flow in at an even pace however unevenly
-//! they arrive; a tool at work turns a spinner beside what it is doing; three dots wait while the model thinks.
+//! they arrive; a tool at work turns a spinner beside what it is doing; three dots wait while the model thinks,
+//! beside what the wait is for, how long it has lasted, and the model's latest thought where it can be read.
 //! With "Animations & effects" off in the settings everything simply appears.
 
 use egui::text::{LayoutJob, TextFormat};
@@ -11,13 +12,14 @@ use egui::{Align, Color32, FontId, Layout, RichText, Sense, Ui, Vec2, pos2, vec2
 pub use crate::asking::Pick;
 use crate::chat::asks::Asked;
 use crate::chat::steps::{self, State};
-use crate::chat::{Chat, Entry, Role};
+use crate::chat::{Chat, Entry, Pause, Role};
 use crate::icons;
 use crate::theme::{
     self, CHAT_APPEAR, CHAT_BUBBLE_SHARE, CHAT_DOT, CHAT_DOT_GAP, CHAT_DOT_LIFT, CHAT_DOT_PACE, CHAT_GAP, CHAT_ICON_AT_WORK, CHAT_ICON_BREATH,
     CHAT_ICON_BURST, CHAT_ICON_FROM_OWN, CHAT_ICON_LEAST, CHAT_ICON_RING, CHAT_ICON_SETTLE, CHAT_ICON_SHAKE, CHAT_ICON_TAIL, CHAT_ICON_TURN,
-    CHAT_NOTE_GAP, CHAT_NOTE_ICON, CHAT_RISE, CHAT_STATUS_HEIGHT, CHAT_STATUS_HOLD, CHAT_STATUS_MORPH, CHAT_STATUS_PAD, CHAT_WRITE_CATCH_UP,
-    CHAT_WRITE_PACE, CHIP_CORNER, CHIP_ICON, CHIP_ICON_AT, ISLAND_RADIUS, MESSAGE_TEXT_SIZE, PROBLEM, Palette, SIDEBAR_TEXT_SIZE,
+    CHAT_NOTE_GAP, CHAT_NOTE_ICON, CHAT_RISE, CHAT_STATUS_HEIGHT, CHAT_STATUS_HOLD, CHAT_STATUS_MORPH, CHAT_STATUS_PAD, CHAT_THOUGHT_LEAST,
+    CHAT_THOUGHT_ROWS, CHAT_WAIT_COUNTED, CHAT_WRITE_CATCH_UP, CHAT_WRITE_PACE, CHIP_CORNER, CHIP_ICON, CHIP_ICON_AT, ISLAND_RADIUS,
+    MESSAGE_TEXT_SIZE, PROBLEM, Palette, SIDEBAR_TEXT_SIZE,
 };
 
 /// What the panel remembers between frames to move things: it lives in egui's memory, not in the chat.
@@ -107,23 +109,21 @@ pub fn show(ui: &mut Ui, chat: &Chat, key: u64, scale: f32, palette: Palette, an
                 pick = picked.inner;
             }
         }
-        if chat.running() && !chat.entries.last().is_some_and(at_work) {
+        if let Some(pause) = chat.pause().filter(|_| !chat.entries.last().is_some_and(at_work)) {
             ui.add_space(CHAT_GAP);
             // Human: under its own words the dots alone say that more is coming.
-            let label = if chat.entries.last().is_some_and(|entry| entry.role == Role::Assistant) { "" } else { "Thinking…" };
-            waiting(ui, label, now, palette, animate);
+            let wait = (pause != Pause::Writing).then(|| Wait {
+                words: pause.words(chat.answering().unwrap_or_default()),
+                lasted: chat.paused(),
+                thought: latest(chat.thought()),
+            });
+            waiting(ui, wait.as_ref(), scale, palette, animate.then_some(now));
         }
         // Human: a message written while the assistant works stands greyed at the end until the assistant
         // has taken it: at its next step when it is steered, or when the run is over.
         for (text, steered) in chat.pending() {
             ui.add_space(CHAT_GAP);
-            let width = ui.available_width() * CHAT_BUBBLE_SHARE;
-            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                egui::Frame::new().fill(palette.hover).corner_radius(10.0).inner_margin(egui::Margin::symmetric(11, 7)).show(ui, |ui| {
-                    ui.set_max_width(width);
-                    ui.add(egui::Label::new(RichText::new(&text).size(MESSAGE_TEXT_SIZE * scale).color(palette.muted)).wrap());
-                });
-            });
+            bubble(ui, palette, |ui| flowing(ui, &text, MESSAGE_TEXT_SIZE * scale, palette.muted));
             ui.add_space(CHAT_NOTE_GAP);
             let says = if steered { "Goes to the assistant at its next step" } else { "Queued until the assistant is done" };
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
@@ -134,6 +134,9 @@ pub fn show(ui: &mut Ui, chat: &Chat, key: u64, scale: f32, palette: Palette, an
     });
     if animate && (moving || chat.running()) {
         ui.request_repaint();
+    } else if chat.running() {
+        // Human: nothing moves, but the seconds of a wait still count up.
+        ui.ctx().request_repaint_after(std::time::Duration::from_secs(1));
     }
     ui.data_mut(|data| data.insert_temp(motion_id(key), motion));
     pick
@@ -196,19 +199,13 @@ fn line(ui: &mut Ui, entry: &Entry, shown: &str, looks: Looks) -> Option<Pick> {
     let Looks { scale, palette, clock, live } = looks;
     let words = |text: &str, color: Color32| egui::Label::new(RichText::new(text).size(MESSAGE_TEXT_SIZE * scale).color(color)).wrap();
     match entry.role {
-        Role::User => {
-            let width = ui.available_width() * CHAT_BUBBLE_SHARE;
-            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                egui::Frame::new().fill(palette.hover).corner_radius(10.0).inner_margin(egui::Margin::symmetric(11, 7)).show(ui, |ui| {
-                    ui.set_max_width(width);
-                    if entry.pointed.is_empty() {
-                        ui.add(words(shown, palette.foreground));
-                    } else {
-                        pointing(ui, entry, scale, palette);
-                    }
-                });
-            });
-        }
+        Role::User => bubble(ui, palette, |ui| {
+            if entry.pointed.is_empty() {
+                flowing(ui, shown, MESSAGE_TEXT_SIZE * scale, palette.foreground);
+            } else {
+                pointing(ui, entry, scale, palette);
+            }
+        }),
         Role::Assistant => {
             ui.add(words(shown, palette.foreground));
         }
@@ -222,6 +219,30 @@ fn line(ui: &mut Ui, entry: &Entry, shown: &str, looks: Looks) -> Option<Pick> {
         }
     }
     None
+}
+
+/// The bubble of a message of the user's: it stands at the right of the panel, as wide as what is `inside` it
+/// and no wider than a message may be.
+fn bubble(ui: &mut Ui, palette: Palette, inside: impl FnOnce(&mut Ui)) {
+    let width = ui.available_width() * CHAT_BUBBLE_SHARE;
+    ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+        egui::Frame::new().fill(palette.hover).corner_radius(10.0).inner_margin(egui::Margin::symmetric(11, 7)).show(ui, |ui| {
+            ui.set_max_width(width);
+            inside(ui);
+        });
+    });
+}
+
+/// The words of a message in its bubble: every line starts at the bubble's left edge.
+// Human: the bubble is laid out from the right, to stand at the right of the panel. Words put straight into it
+// would be laid out from the right too: each line would end at the right edge and start wherever it happened
+// to, which reads badly. So the words are measured first and given a place of their own that fills from the left.
+fn flowing(ui: &mut Ui, text: &str, size: f32, color: Color32) {
+    let job = LayoutJob::simple(text.to_owned(), FontId::proportional(size), color, ui.available_width());
+    let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
+    ui.allocate_ui_with_layout(vec2(galley.size().x, 0.0), Layout::top_down(Align::Min), |ui| {
+        ui.add(egui::Label::new(galley));
+    });
 }
 
 /// Draws the question that waits for the user in the chat at the bottom of `body`, for a sidebar view that
@@ -466,8 +487,8 @@ fn note(ui: &mut Ui, entry: &Entry, scale: f32, palette: Palette, clock: Option<
 enum Status<'a> {
     /// A tool is at work: its note.
     Tool(&'a Entry),
-    /// The model is thinking, or writing its answer.
-    Waiting(&'static str),
+    /// The model is thinking, or writing its answer: what the wait is for.
+    Waiting(&'a str),
     /// The answer is there to read.
     Answered,
     /// The run ended with this problem.
@@ -476,20 +497,17 @@ enum Status<'a> {
     Asking(&'a Asked),
 }
 
-/// What that line says: `running` while a message is being answered, and for a while after (`fresh`).
+/// What that line says: `waiting` is what a run waits for while a message is being answered ("Thinking…"),
+/// and for a while after the run the line stays (`fresh`).
 // Human: a question of the assistant's comes before everything else and stays until it is answered or closed:
 // the run that asked it can't go on without the user.
-fn status(entries: &[Entry], running: bool, fresh: bool) -> Option<Status<'_>> {
+fn status<'a>(entries: &'a [Entry], waiting: Option<&'a str>, fresh: bool) -> Option<Status<'a>> {
     let last = entries.last()?;
     if let Some((_, asked)) = crate::chat::asking(entries) {
         return Some(Status::Asking(asked));
     }
-    if running {
-        return Some(match entries.iter().rev().find(|entry| at_work(entry)) {
-            Some(note) => Status::Tool(note),
-            None if last.role == Role::Assistant => Status::Waiting("Writing…"),
-            None => Status::Waiting("Thinking…"),
-        });
+    if let Some(waiting) = waiting {
+        return Some(entries.iter().rev().find(|entry| at_work(entry)).map_or(Status::Waiting(waiting), Status::Tool));
     }
     match last.role {
         _ if !fresh => None,
@@ -519,8 +537,8 @@ pub struct Line {
 enum Face {
     /// A tool at work: its note.
     Tool(Entry),
-    /// The dots and a word beside them.
-    Waiting(&'static str),
+    /// The dots and a few words beside them.
+    Waiting(String),
     /// The answer is there to read.
     Answered,
     /// The run ended with this problem.
@@ -533,7 +551,7 @@ impl From<Status<'_>> for Face {
     fn from(status: Status<'_>) -> Self {
         match status {
             Status::Tool(entry) => Face::Tool(entry.clone()),
-            Status::Waiting(label) => Face::Waiting(label),
+            Status::Waiting(label) => Face::Waiting(label.to_owned()),
             Status::Answered => Face::Answered,
             Status::Problem(text) => Face::Problem(text.to_owned()),
             Status::Asking(asked) => Face::Asking(asked.clone()),
@@ -716,7 +734,9 @@ fn status_id() -> egui::Id {
 // the island turns.
 pub fn status_line(ctx: &egui::Context, line: &Line, chat: &Chat, palette: Palette, animate: bool) -> Option<Tap> {
     let Line { foot, most_width, ask_width, fresh, opacity } = *line;
-    let Some(status) = status(&chat.entries, chat.running(), fresh) else {
+    // Human: the line says what the wait is for, as the panel does; the seconds and the thought are the panel's.
+    let waiting = chat.pause().map(|pause| format!("{}…", pause.words(chat.answering().unwrap_or_default())));
+    let Some(status) = status(&chat.entries, waiting.as_deref(), fresh) else {
         ctx.data_mut(|data| data.remove::<Morph>(status_id()));
         return None;
     };
@@ -767,16 +787,62 @@ fn dots(ui: &Ui, slot: egui::Rect, time: Option<f64>) {
     }
 }
 
-/// The dots and `label` beside them: the model is thinking.
-fn waiting(ui: &mut Ui, label: &str, now: f64, palette: Palette, animate: bool) {
+/// A wait of the model's as the panel tells it.
+struct Wait<'a> {
+    /// What the wait is for, without the dots after it.
+    words: String,
+    /// How long it has lasted.
+    lasted: std::time::Duration,
+    /// The model's latest thought; empty when none can be read.
+    thought: &'a str,
+}
+
+/// `text` without the white space and the Markdown marks around it.
+fn tidy(text: &str) -> &str {
+    text.trim_matches(|letter: char| letter.is_whitespace() || matches!(letter, '*' | '#' | '`' | '-' | '_'))
+}
+
+/// The sentence the model is thinking now, out of all it has `thought` since it last did something.
+// Human: thoughts come as a stream of sentences, often with Markdown around them. One sentence at a time can be
+// followed: the newest one that is long enough to read, so the line doesn't jump with every first word.
+fn latest(thought: &str) -> &str {
+    let Some(line) = thought.lines().rev().map(tidy).find(|line| !line.is_empty()) else { return "" };
+    // The ends of sentences are single bytes, so the byte after one starts a letter.
+    let mut starts =
+        line.char_indices().filter(|(at, letter)| matches!(letter, '.' | '?' | '!') && line[at + 1..].starts_with(' ')).map(|(at, _)| at + 1);
+    let from = starts.rfind(|&from| line[from..].trim().chars().count() >= CHAT_THOUGHT_LEAST).unwrap_or(0);
+    tidy(&line[from..])
+}
+
+/// The dots that say the model is at it, and what the `wait` is for beside them: its words, how long it has
+/// lasted once that is worth saying, and under them the model's latest thought. Without a `wait` the dots stand
+/// alone; without a `time` they rest.
+fn waiting(ui: &mut Ui, wait: Option<&Wait<'_>>, scale: f32, palette: Palette, time: Option<f64>) {
+    let font = FontId::proportional((SIDEBAR_TEXT_SIZE - 1.0) * scale);
+    let quiet = palette.muted.gamma_multiply(0.7);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = LEAD_GAP;
         let (slot, _) = ui.allocate_exact_size(vec2(DOTS_WIDTH, CHAT_NOTE_ICON), Sense::hover());
-        dots(ui, slot, animate.then_some(now));
-        if !label.is_empty() {
-            ui.add(egui::Label::new(RichText::new(label).size(SIDEBAR_TEXT_SIZE - 1.0).color(palette.muted)).selectable(false));
+        dots(ui, slot, time);
+        let Some(wait) = wait else { return };
+        let mut text = LayoutJob::default();
+        let mut say = |words: &str, color: Color32| text.append(words, 0.0, TextFormat { font_id: font.clone(), color, ..TextFormat::default() });
+        say(&format!("{}…", wait.words), palette.foreground.gamma_multiply(0.85));
+        if wait.lasted.as_secs() >= CHAT_WAIT_COUNTED {
+            say(&format!("  ·  {}", crate::chat::span(wait.lasted)), quiet);
         }
+        ui.add(egui::Label::new(text).truncate().selectable(false));
     });
+    let Some(thought) = wait.map(|wait| wait.thought).filter(|thought| !thought.is_empty()) else { return };
+    // Human: the thought stands under the words, not under the dots, and takes two lines at most: it is a
+    // glimpse of what the model is at, not something to read through.
+    let indent = DOTS_WIDTH + LEAD_GAP;
+    let mut job = LayoutJob::simple(thought.to_owned(), font, quiet, (ui.available_width() - indent).max(0.0));
+    job.wrap.max_rows = CHAT_THOUGHT_ROWS;
+    let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
+    ui.add_space(3.0);
+    let (place, _) = ui.allocate_exact_size(vec2(indent + galley.size().x, galley.size().y), Sense::hover());
+    ui.painter().galley(place.min + vec2(indent, 0.0), galley, quiet);
 }
 
 #[cfg(test)]
@@ -845,24 +911,25 @@ mod tests {
     #[test]
     fn the_folded_chat_says_in_one_line_what_is_going_on() {
         let mut entries = vec![Entry::new(Role::User, "Make a dog")];
-        assert_eq!(status(&[], true, true), None);
-        assert_eq!(status(&entries, true, false), Some(Status::Waiting("Thinking…")));
+        assert_eq!(status(&[], Some("Thinking…"), true), None);
+        assert_eq!(status(&entries, Some("Thinking…"), false), Some(Status::Waiting("Thinking…")));
         entries.extend(crate::chat::sample().into_iter().filter(|entry| entry.step.is_some()).take(2));
         // A finished tool is no news; one at work is.
-        assert_eq!(status(&entries, true, false), Some(Status::Waiting("Thinking…")));
+        assert_eq!(status(&entries, Some("Thinking…"), false), Some(Status::Waiting("Thinking…")));
         if let Some(step) = entries[2].step.as_mut() {
             step.state = State::Running;
         }
-        assert!(matches!(status(&entries, true, false), Some(Status::Tool(note)) if note == &entries[2]));
+        assert!(matches!(status(&entries, Some("Thinking…"), false), Some(Status::Tool(note)) if note == &entries[2]));
         entries.push(Entry::new(Role::Assistant, "A dog."));
         if let Some(step) = entries[2].step.as_mut() {
             step.state = State::Done;
         }
-        assert_eq!(status(&entries, true, false), Some(Status::Waiting("Writing…")));
+        // Whatever the wait is for is said as the chat words it.
+        assert_eq!(status(&entries, Some("Writing…"), false), Some(Status::Waiting("Writing…")));
         // After the run the line says the answer is there, for a while.
-        assert_eq!((status(&entries, false, true), status(&entries, false, false)), (Some(Status::Answered), None));
+        assert_eq!((status(&entries, None, true), status(&entries, None, false)), (Some(Status::Answered), None));
         entries.push(Entry::new(Role::Problem, "No connection"));
-        assert_eq!(status(&entries, false, true), Some(Status::Problem("No connection")));
+        assert_eq!(status(&entries, None, true), Some(Status::Problem("No connection")));
     }
 
     #[test]
@@ -871,7 +938,7 @@ mod tests {
         if let Some(step) = note.step.as_mut() {
             step.state = State::Running;
         }
-        let (thinking, tool) = (Face::Waiting("Thinking…"), Face::Tool(note));
+        let (thinking, tool) = (Face::Waiting("Thinking…".to_owned()), Face::Tool(note));
         // A line that wasn't there comes from nothing; one that says the same stays as it is.
         let first = Morph::next(None, thinking.clone(), 10.0);
         assert_eq!((first.from.as_ref(), first.since), (None, 10.0));
@@ -897,29 +964,39 @@ mod tests {
     fn a_question_takes_the_status_lines_place_until_it_is_answered() {
         let mut entries = crate::chat::sample_asking(false);
         // It is there while the assistant still writes, and long after the run: it waits for the user.
-        assert!(matches!(status(&entries, true, false), Some(Status::Asking(asked)) if asked.questions.len() == 2));
-        assert!(matches!(status(&entries, false, false), Some(Status::Asking(_))));
+        assert!(matches!(status(&entries, Some("Thinking…"), false), Some(Status::Asking(asked)) if asked.questions.len() == 2));
+        assert!(matches!(status(&entries, None, false), Some(Status::Asking(_))));
         // The island that said "Thinking…" becomes the dialog, from the size it had; the next question, and
         // the line after the last answer, come out of the dialog the same way.
         let pill = vec2(90.0, CHAT_STATUS_HEIGHT);
-        let line = Morph { size: pill, ..Morph::next(None, Face::Waiting("Thinking…"), 1.0) };
-        let first: Face = status(&entries, true, false).unwrap().into();
+        let line = Morph { size: pill, ..Morph::next(None, Face::Waiting("Thinking…".to_owned()), 1.0) };
+        let first: Face = status(&entries, Some("Thinking…"), false).unwrap().into();
         let asking = Morph::next(Some(line), first.clone(), 2.0);
-        assert_eq!((&asking.face, asking.from.as_ref()), (&first, Some(&(Face::Waiting("Thinking…"), pill))));
+        assert_eq!((&asking.face, asking.from.as_ref()), (&first, Some(&(Face::Waiting("Thinking…".to_owned()), pill))));
         let grown = vec2(440.0, 190.0);
         if let Some(asked) = entries[3].asked.as_mut() {
             asked.answer(0, "Dark and technical");
         }
-        let second: Face = status(&entries, false, false).unwrap().into();
+        let second: Face = status(&entries, None, false).unwrap().into();
         let next = Morph::next(Some(Morph { size: grown, ..asking }), second.clone(), 3.0);
         assert_eq!(next.from, Some((first, grown)));
         if let Some(asked) = entries[3].asked.as_mut() {
             asked.answer(1, "Phone");
         }
-        assert_eq!(status(&entries, false, false), None);
+        assert_eq!(status(&entries, None, false), None);
         entries.push(Entry::new(Role::User, "Dark and technical\nPhone"));
-        let after: Face = status(&entries, true, false).unwrap().into();
+        let after: Face = status(&entries, Some("Thinking…"), false).unwrap().into();
         assert_eq!(Morph::next(Some(Morph { size: grown, ..next }), after, 4.0).from, Some((second, grown)));
+    }
+
+    #[test]
+    fn the_newest_thought_long_enough_to_read_is_shown() {
+        assert_eq!(latest(""), "");
+        assert_eq!(latest("**Planning the page**\n\n"), "Planning the page");
+        assert_eq!(latest("A dark page first. Then blocky type for the title"), "Then blocky type for the title");
+        // A sentence only just begun doesn't take the line yet, and a number's point ends no sentence.
+        assert_eq!(latest("A dark page with a grid of 8.5 squares. Th"), "A dark page with a grid of 8.5 squares. Th");
+        assert_eq!(latest("First line.\n- Grüße an alle, die bauen!"), "Grüße an alle, die bauen!");
     }
 
     #[test]

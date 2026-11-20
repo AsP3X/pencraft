@@ -96,6 +96,9 @@ fn take(turn: &mut Turn, event: &Value) -> Result<Vec<Event>, String> {
         return Err(error.as_str().or_else(|| error["message"].as_str()).unwrap_or("Ollama reported an error").to_owned());
     }
     let mut told = Vec::new();
+    if let Some(more) = event.pointer("/message/thinking").and_then(Value::as_str).filter(|more| !more.is_empty()) {
+        told.push(Event::Thought(more.to_owned()));
+    }
     if let Some(more) = event.pointer("/message/content").and_then(Value::as_str).filter(|more| !more.is_empty()) {
         turn.text.push_str(more);
         told.push(Event::Text(more.to_owned()));
@@ -261,7 +264,13 @@ mod tests {
         }
         assert_eq!(
             told,
-            vec![r#"Text("On ")"#, r#"Text("it.")"#, r#"Tool { id: "call_0", name: "get_state" }"#, r#"Tool { id: "c9", name: "edit_layers" }"#]
+            vec![
+                r#"Thought("Hm")"#,
+                r#"Text("On ")"#,
+                r#"Text("it.")"#,
+                r#"Tool { id: "call_0", name: "get_state" }"#,
+                r#"Tool { id: "c9", name: "edit_layers" }"#
+            ]
         );
         assert_eq!((turn.finish.as_deref(), turn.text.as_str()), (Some("stop"), "On it."));
         // The answer goes back into the conversation the way every other one does.

@@ -741,6 +741,30 @@
    "source": "Pencraft's own rule (src/theme.rs)"
   },
   {
+   "name": "chat: seconds before a wait says how long it has lasted",
+   "group": "chat",
+   "value": 3,
+   "source": "Pencraft's own rule (src/theme.rs)"
+  },
+  {
+   "name": "chat: most lines of the model's latest thought",
+   "group": "chat",
+   "value": 2,
+   "source": "Pencraft's own rule (src/theme.rs)"
+  },
+  {
+   "name": "chat: fewest letters of a begun thought before it is shown",
+   "group": "chat",
+   "value": 12,
+   "source": "Pencraft's own rule (src/theme.rs)"
+  },
+  {
+   "name": "chat: seconds of thinking that leave a note",
+   "group": "chat",
+   "value": 3,
+   "source": "Pencraft's own rule (src/chat.rs)"
+  },
+  {
    "name": "chat: assistant menu width",
    "group": "chat",
    "value": 240,
