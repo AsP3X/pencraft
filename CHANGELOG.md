@@ -9,6 +9,12 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.26] - 2026-11-20
+
+Search for models and assistants instead of scrolling for them, let the
+provider fill in a model's numbers, and answer the assistant's questions
+with several answers and your own.
+
 ### Changed
 
 - **The assistant menu in the message box has a search and groups.** The
@@ -759,7 +765,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.25...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.26...HEAD
+[0.3.26]: https://github.com/AsP3X/pencraft/compare/v0.3.25...v0.3.26
 [0.3.25]: https://github.com/AsP3X/pencraft/compare/v0.3.24...v0.3.25
 [0.3.24]: https://github.com/AsP3X/pencraft/compare/v0.3.23...v0.3.24
 [0.3.23]: https://github.com/AsP3X/pencraft/compare/v0.3.22...v0.3.23
