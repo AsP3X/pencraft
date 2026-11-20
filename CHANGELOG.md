@@ -9,8 +9,23 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.27] - 2026-11-20
+
+See what each answer took in tokens and money, follow a long job task by
+task, paste pictures into your messages, and ask for charts, slides, landing
+pages, Android screens and designs at the size their destination needs.
+
 ### Added
 
+- **A long job shows its tasks.** Before the assistant starts on something
+  big (a whole screen, several screens, a redesign) it splits the work into
+  tasks. The list stands at the top of the chat while the conversation
+  scrolls, with a tick on what is done and a bar for how far it is. When the
+  list is worked through it is filed into the conversation.
+- **The assistant knows more kinds of design.** Charts that are true to
+  their numbers, slides, landing pages, Android screens in Material 3, and
+  designs at the exact size of where they go (social posts, store listings,
+  print, email), with more interface components to draw from.
 - Paste a picture into a chat message. A screenshot or a copied picture
   becomes a small chip with a tiny preview, right where you pasted it, and the
   assistant gets the picture at that place in your sentence. Hold the pointer
@@ -777,7 +792,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.26...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.27...HEAD
+[0.3.27]: https://github.com/AsP3X/pencraft/compare/v0.3.26...v0.3.27
 [0.3.26]: https://github.com/AsP3X/pencraft/compare/v0.3.25...v0.3.26
 [0.3.25]: https://github.com/AsP3X/pencraft/compare/v0.3.24...v0.3.25
 [0.3.24]: https://github.com/AsP3X/pencraft/compare/v0.3.23...v0.3.24
