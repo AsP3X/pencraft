@@ -9,6 +9,11 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.22] - 2026-11-20
+
+Chat with models that run on your own computer through Ollama, or with
+Ollama's hosted models.
+
 ### Added
 
 - **Ollama in the chat.** Ollama has its own card in Settings → Agents: its
@@ -664,7 +669,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.21...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.22...HEAD
+[0.3.22]: https://github.com/AsP3X/pencraft/compare/v0.3.21...v0.3.22
 [0.3.21]: https://github.com/AsP3X/pencraft/compare/v0.3.20...v0.3.21
 [0.3.20]: https://github.com/AsP3X/pencraft/compare/v0.3.19...v0.3.20
 [0.3.19]: https://github.com/AsP3X/pencraft/compare/v0.3.18...v0.3.19
