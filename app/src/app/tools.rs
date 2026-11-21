@@ -44,6 +44,8 @@ const FACE_PATIENCE: Duration = Duration::from_secs(3);
 const STAGING_MOST: Duration = Duration::from_millis(250);
 /// The tools that change a document.
 const CHANGING: [&str; 2] = ["edit_layers", "select_layers"];
+/// The tools that work on the design, which an answer that has offered next steps may not use any more.
+const WORKING: [&str; 3] = ["edit_layers", "generate_image", "edit_image"];
 /// The tools whose call waits for a picture to be made ([`App::start_picture`]).
 const PICTURING: [&str; 2] = ["generate_image", "edit_image"];
 
@@ -240,6 +242,18 @@ impl App {
             }
             // Human: a picture takes up to a minute, made or changed; its call is kept and answered when the
             // picture is there.
+            // Human: next steps the assistant offers are the user's to pick. An answer that has offered some
+            // and goes on working is told to stop; the step it wanted is done when the user picks it.
+            if WORKING.contains(&call.tool.as_str())
+                && let Some(talk) = call.chat.and_then(|id| self.talk_mut(id)).filter(|talk| talk.chat.awaits_choice())
+            {
+                let why = crate::chat::asks::NOT_CHOSEN;
+                log::warn!("the tool {} was refused: {why}", call.tool);
+                talk.chat.tool_failed(&call.tool, why);
+                // A client that stopped waiting has gone; there is no one to tell.
+                let _ = call.reply.send(Err(why.to_owned()));
+                continue;
+            }
             if PICTURING.contains(&call.tool.as_str()) && self.prefs.get().agents.tools {
                 // Human: layers an edit sends as they look are drawn when it starts, so it waits for the faces
                 // of the document's text as a screenshot does, and goes on without them after as long.
@@ -266,6 +280,13 @@ impl App {
             } else {
                 self.tool(&call, ctx)
             };
+            // Human: a call that failed says why in the app's log and in the chat it came from.
+            if let Err(why) = &result {
+                log::warn!("the tool {} failed: {why}", call.tool);
+                if let Some(talk) = call.chat.and_then(|id| self.talk_mut(id)) {
+                    talk.chat.tool_failed(&call.tool, why);
+                }
+            }
             // A client that stopped waiting has gone; there is no one to tell.
             let _ = call.reply.send(result);
         }
@@ -414,10 +435,14 @@ impl App {
     /// as its run reports it.
     // Human: the call answers at once. The user's answer is their next message, so the assistant doesn't hold
     // a tool call open for as long as the user takes to decide.
-    fn ask_tool(&self, call: &Call) -> Result<Vec<Value>, String> {
+    fn ask_tool(&mut self, call: &Call) -> Result<Vec<Value>, String> {
         let asked = crate::chat::asks::parse(&call.arguments)?;
-        if call.chat.and_then(|id| self.talk(id)).is_none() {
+        let Some(talk) = call.chat.and_then(|id| self.talk_mut(id)) else {
             return Err(crate::chat::asks::NO_CHAT.to_owned());
+        };
+        // Human: from an offer of next steps on, the answer changes nothing more: the user chooses.
+        if asked.suggests {
+            talk.chat.hold_for_choice();
         }
         let said = if asked.suggests { crate::chat::asks::SUGGESTED } else { crate::chat::asks::ASKED };
         Ok(vec![json!({ "type": "text", "text": said })])

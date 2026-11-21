@@ -13,12 +13,14 @@ use crate::chat::{Chat, Choice};
 use crate::chips::Chip;
 use crate::editor::{Editor, Tool};
 use crate::icons;
+use crate::tasklist::{tint as blend, turned};
 use crate::theme::{
-    self, CHAT_ASK_WIDTH, CHAT_STATUS_GAP, CHAT_STATUS_STAY, CHIP_CORNER, CHIP_HEIGHT, CHIP_ICON, CHIP_ICON_AT, CHIP_RADIUS, CHIP_THUMB,
-    COMPOSER_HEIGHT, ICON_SIZE, IDEA_ROW, IDEA_ROW_GAP, ISLAND_GAP, ISLAND_PADDING, ISLAND_RADIUS, MESSAGE_BAR_HEIGHT, MESSAGE_BAR_SELECTED_WIDTH,
-    MESSAGE_BAR_TYPING_ROOM, MESSAGE_BAR_WIDTH, MESSAGE_TEXT_SIZE, Palette, RAIL_ACTIVE, RAIL_ARROW_STEP, RAIL_MENU_ROW, RAIL_MENU_WIDTH, RAIL_STEP,
-    RAIL_WIDTH, SELECTION_CHIP_HEIGHT, SEND_BUTTON, SIDEBAR_ANIMATION, SIDEBAR_GROW_START, SIDEBAR_HEADER_PADDING, SIDEBAR_ROW, SIDEBAR_SLIDE_END,
-    SIDEBAR_TEXT_SIZE, SIDEBAR_TITLE_SIZE, SIDEBAR_WIDE_WIDTH, SIDEBAR_WIDTH, ZOOM_ISLAND,
+    self, CHAT_ACCENT, CHAT_ASK_WIDTH, CHAT_SPENT_PAD, CHAT_SPENT_PILL, CHAT_SPENT_STRIP, CHAT_STATUS_GAP, CHAT_STATUS_STAY, CHIP_CORNER,
+    CHIP_HEIGHT, CHIP_ICON, CHIP_ICON_AT, CHIP_RADIUS, CHIP_THUMB, COMPOSER_GROW_TIME, COMPOSER_HEIGHT, COMPOSER_LIGHT_SHARE, COMPOSER_LIGHT_TURN,
+    COMPOSER_ROWS_MOST, ICON_SIZE, IDEA_ROW, IDEA_ROW_GAP, ISLAND_GAP, ISLAND_PADDING, ISLAND_RADIUS, MESSAGE_BAR_HEIGHT, MESSAGE_BAR_SELECTED_WIDTH,
+    MESSAGE_BAR_TYPING_ROOM, MESSAGE_BAR_WIDTH, MESSAGE_SEND, MESSAGE_SEND_TIME, MESSAGE_SEND_TURN, MESSAGE_TEXT_SIZE, Palette, RAIL_ACTIVE,
+    RAIL_ARROW_STEP, RAIL_MENU_ROW, RAIL_MENU_WIDTH, RAIL_STEP, RAIL_WIDTH, SELECTION_CHIP_HEIGHT, SEND_ARROW, SIDEBAR_ANIMATION, SIDEBAR_GROW_START,
+    SIDEBAR_HEADER_PADDING, SIDEBAR_ROW, SIDEBAR_SLIDE_END, SIDEBAR_TEXT_SIZE, SIDEBAR_TITLE_SIZE, SIDEBAR_WIDE_WIDTH, SIDEBAR_WIDTH, ZOOM_ISLAND,
 };
 
 /// Said when a chat control is used: the chat has no assistant behind it in this version.
@@ -33,15 +35,8 @@ const NO_MODES: &str = "Modes aren't available yet.";
 /// The grey text in the empty message box.
 const HINT: &str = "Create, plan or research... @ to attach, / for skills";
 /// The assistant named in the message box.
-/// Ideas offered in a new chat; a click puts one into the message box.
-const SUGGESTIONS: [&str; 6] = [
-    "Plan a car-free weekend in Kyoto for two, with a rainy-day backup",
-    "Design a retro-futuristic landing page for a private space travel company",
-    "Design a vintage ticketing site for an independent arthouse cinema",
-    "Design a playful ordering app for matcha cakes",
-    "Design a soft neumorphic meditation app inspired by Nordic design",
-    "Design a high-contrast realtime trading terminal",
-];
+/// The icon of the button that deals another handful of ideas.
+const SHUFFLE_ICON: &str = "shuffle";
 
 /// Ideas offered under the message bar while the sidebar is folded away; the new chat's ideas follow them.
 const BAR_IDEAS: [&str; 3] = [
@@ -140,6 +135,12 @@ pub struct Sidebar {
     posed_chip: bool,
     /// The task list's motion is held at this many seconds into it, for a picture of it (`--sidebar pouring`).
     posed_tasks: Option<f32>,
+    /// The ideas an empty chat offers right now ([`crate::ideas`]), and the chat they were picked for.
+    ideas: Vec<&'static str>,
+    ideas_for: Option<u64>,
+    /// What the ideas are picked by when the sidebar is set up for a picture, so they are the same every
+    /// time; `None` picks afresh.
+    ideas_seed: Option<u64>,
     /// The assistant menu of the message box, while it is open.
     assistants: crate::assistants::Menu,
     /// Whether the assistant was at work the last time the sidebar was drawn, and when it last finished (in
@@ -195,6 +196,8 @@ pub enum ChatAsk {
     Assistants,
     /// Take what the user did with a question of the assistant's: an answer picked, or the question closed.
     Answer(crate::conversation::Pick),
+    /// Take what the user did with the next steps the assistant offers: one sent, all sent, or one dropped.
+    Offer(crate::offers::Act),
 }
 
 impl ChatAsk {
@@ -220,6 +223,9 @@ impl Default for Sidebar {
             chips: Vec::new(),
             posed_chip: false,
             posed_tasks: None,
+            ideas: Vec::new(),
+            ideas_for: None,
+            ideas_seed: None,
             assistants: crate::assistants::Menu::default(),
             chat_ended: (false, None),
         }
@@ -324,6 +330,13 @@ impl Sidebar {
             _ => None,
         };
         self.posed_chip = name == "chip";
+        self.ideas_seed = Some(0);
+        // Human: `writing` shows the message box grown for a message of several lines.
+        if name == "writing" {
+            "Now create the view for a single picture. It needs a design that fits the album and the library, with the \
+             same glass bars, a close button at the top left and the date under the picture, and it must not look generic."
+                .clone_into(&mut self.draft);
+        }
         // Human: the task list in the middle of what it does: pooling, dropping its rows, stepping on.
         self.posed_tasks = match name {
             "pooling" => Some(0.62),
@@ -336,7 +349,8 @@ impl Sidebar {
         if name == "assistants" {
             self.assistants.hold_open();
         }
-        let chat = matches!(name, "assistants" | "tasks" | "pooling" | "pouring" | "stepping" | "finished" | "adding" | "handing" | "landing");
+        let chat =
+            matches!(name, "assistants" | "tasks" | "pooling" | "pouring" | "stepping" | "finished" | "adding" | "handing" | "landing" | "writing");
         self.view = if chat { View::Chat } else { View::named(name).unwrap_or(self.view) };
     }
 
@@ -364,6 +378,7 @@ impl Sidebar {
         let dark = look.dark;
         let palette = theme::palette(dark);
         let mut notice = None;
+        self.deal_ideas(look.chat_id, look.chat.entries.is_empty());
         if self.posed_chip
             && let Some(chip) = crate::chips::chip(editor, &editor.selection, "")
         {
@@ -375,20 +390,7 @@ impl Sidebar {
         // layer is selected its chip takes the place of the long hint, so the bar is narrower.
         let chip = selection_chip(editor);
         self.selected.clone_from(&chip);
-        // Attached files take room too: with them the bar keeps its full width.
-        // Human: the narrower bar still has to leave room to type beside the chip and the assistant's name, which
-        // can be long; and once something is typed, or the field is being typed in, the bar takes its full width.
-        let wanted = match &chip {
-            Some((_, name)) if self.attached.is_empty() => {
-                let typing = !self.draft.is_empty() || ctx.memory(|memory| memory.has_focus(egui::Id::unique("message-field")));
-                let measure =
-                    |text: String, size: f32| ctx.fonts_mut(|fonts| fonts.layout_no_wrap(text, FontId::proportional(size), Color32::WHITE)).size().x;
-                let taken =
-                    bar_controls(measure(chip_text(name), SIDEBAR_TEXT_SIZE - 2.0), measure(look.assistant.to_owned(), SIDEBAR_TEXT_SIZE - 1.0));
-                if typing { MESSAGE_BAR_WIDTH } else { (taken + MESSAGE_BAR_TYPING_ROOM).clamp(MESSAGE_BAR_SELECTED_WIDTH, MESSAGE_BAR_WIDTH) }
-            }
-            _ => MESSAGE_BAR_WIDTH,
-        };
+        let wanted = self.bar_width(ctx, chip.as_ref(), look.assistant);
         let space = area;
         let width = wanted.min(space.width() - 2.0 * ISLAND_GAP);
         let bottom = area.bottom() - ISLAND_GAP;
@@ -397,14 +399,22 @@ impl Sidebar {
         let ideas = look.ideas && self.draft.is_empty() && editor.scene.is_empty();
         let bar_bottom = if ideas { bottom - IDEA_ROW - IDEA_ROW_GAP } else { bottom };
         let bar = Rect::from_min_size(pos2(space.center().x - width / 2.0, bar_bottom - MESSAGE_BAR_HEIGHT), vec2(width, MESSAGE_BAR_HEIGHT));
-        let docked = Rect::from_min_size(pos2(area.left() + ISLAND_GAP, bottom - COMPOSER_HEIGHT), vec2(self.width(), COMPOSER_HEIGHT));
+        // Human: the message box grows with what is written in it, and the panel over it gives way.
+        let tall = self.composer_height(ctx, look.animate);
+        let docked = Rect::from_min_size(pos2(area.left() + ISLAND_GAP, bottom - tall), vec2(self.width(), tall));
         let pose = Pose::at(openness, bar, docked);
+        // Human: what an answer takes counts up in a pill between the conversation and the message box while
+        // the assistant works; the panel makes room for it, a little at a time. When the answer is there, its
+        // sum stands under it in the conversation. Folded away, the pill over the bar keeps the last sum.
+        let counted = crate::conversation::counter_size(ctx, look.chat, false);
+        let counting = crate::conversation::counter_size(ctx, look.chat, true);
+        let strip = ctx.animate_bool(egui::Id::unique("chat-counter"), counting.is_some()) * CHAT_SPENT_STRIP;
         if pose.rect.width() < 4.0 * ISLAND_PADDING || pose.rect.top() < area.top() {
             return None;
         }
         // Human: in a very short window the message box keeps its place and the panel gives way.
-        let full = Rect::from_min_max(pos2(docked.left(), area.top() + ISLAND_GAP), pos2(docked.right(), docked.top() - ISLAND_GAP));
-        let panel = pose.above(full);
+        let full = Rect::from_min_max(pos2(docked.left(), area.top() + ISLAND_GAP), pos2(docked.right(), docked.top() - ISLAND_GAP - strip));
+        let panel = pose.above(full, strip);
         if full.height() > 2.0 * SIDEBAR_ROW + 4.0 * ISLAND_PADDING && panel.height() > 2.0 {
             egui::Area::new(egui::Id::unique("sidebar-panel")).fade_in(false).fixed_pos(panel.min).order(egui::Order::Foreground).show(ctx, |ui| {
                 let (rect, _) = ui.allocate_exact_size(panel.size(), Sense::hover());
@@ -423,6 +433,10 @@ impl Sidebar {
         egui::Area::new(egui::Id::unique("message-box")).fade_in(false).fixed_pos(pose.rect.min).order(egui::Order::Foreground).show(ctx, |ui| {
             let (rect, _) = ui.allocate_exact_size(pose.rect.size(), Sense::hover());
             island(ui, rect, pose.radius, palette);
+            // Human: the box being typed in has a stronger edge.
+            if pose.boxed && ctx.memory(|memory| memory.has_focus(egui::Id::unique("message-field"))) {
+                ui.painter().rect_stroke(rect, pose.radius, Stroke::new(1.0, palette.muted.gamma_multiply(0.6 * pose.opacity)), StrokeKind::Inside);
+            }
             ui.scope_builder(UiBuilder::new().max_rect(rect), |ui| {
                 ui.set_clip_rect(rect.intersect(ui.clip_rect()));
                 ui.multiply_opacity(pose.opacity);
@@ -433,6 +447,10 @@ impl Sidebar {
                 }
             });
         });
+        let slot = Rect::from_min_max(pos2(docked.left(), full.bottom()), pos2(docked.right(), docked.top()));
+        if let Some(words) = counting.filter(|_| pose.boxed) {
+            counter_strip(ctx, slot, words.x, look.chat, palette, pose.opacity * strip / CHAT_SPENT_STRIP);
+        }
         // Human: the ideas are there only with the sidebar folded; they fade as it starts to open.
         let fade = 1.0 - (openness * 5.0).clamp(0.0, 1.0);
         // Human: folded away, the conversation can't be seen. One line over the bar then says what the assistant
@@ -449,7 +467,10 @@ impl Sidebar {
             ctx.request_repaint_after(std::time::Duration::from_secs_f64(CHAT_STATUS_STAY - since));
         }
         if fade > 0.0 {
-            let foot = pos2(bar.center().x, bar.top() - CHAT_STATUS_GAP);
+            // Human: folded away, the counter is a small pill right over the bar, where it stays in sight; the
+            // line saying what the assistant is doing stands over the pill.
+            let over_bar = counted.map_or(bar.top(), |words| counter_pill(ctx, bar, words.x, look.chat, palette, fade)) - CHAT_STATUS_GAP;
+            let foot = pos2(bar.center().x, over_bar);
             // Human: a question of the assistant's is a dialog in the same place, as wide as the window allows.
             let ask_width = (space.width() - 2.0 * ISLAND_GAP).min(CHAT_ASK_WIDTH);
             let line = crate::conversation::Line { foot, most_width: bar.width(), ask_width, fresh: since < CHAT_STATUS_STAY, opacity: fade };
@@ -470,7 +491,31 @@ impl Sidebar {
                 Rect::from_min_max(pos2(area.left() + ISLAND_GAP, bottom - IDEA_ROW), pos2(area.right() - 2.0 * ISLAND_GAP - ZOOM_ISLAND[0], bottom));
             self.idea_row(ctx, row, fade, palette);
         }
+        self.offers(ctx, area.right(), (pose.rect, pose.boxed), look);
         notice
+    }
+
+    /// The next steps the assistant offers, collected beside the message box `spot` (its rectangle, and whether
+    /// it is the box under the open sidebar), wherever it stands; `edge` is where the room for them ends.
+    // Human: the pills keep clear of what stands to the right of them (the properties, the window's edge).
+    fn offers(&mut self, ctx: &egui::Context, edge: f32, spot: (Rect, bool), look: Look<'_>) {
+        let (anchor, beside) = spot;
+        let room = edge - anchor.right() - 2.0 * ISLAND_GAP;
+        let offers = crate::offers::Look { anchor, palette: theme::palette(look.dark), animate: look.animate, beside, room };
+        self.chat_asks.extend(crate::offers::show(ctx, look.chat.offers(), look.chat_id, offers).map(ChatAsk::Offer));
+    }
+
+    /// How wide the folded message bar wants to be, with the selection's `chip` in it and `assistant` named.
+    // Human: attached files take room too: with them the bar keeps its full width. The narrower bar still has to
+    // leave room to type beside the chip and the assistant's name, which can be long; and once something is
+    // typed, or the field is being typed in, the bar takes its full width.
+    fn bar_width(&self, ctx: &egui::Context, chip: Option<&(&'static str, String)>, assistant: &str) -> f32 {
+        let Some((_, name)) = chip.filter(|_| self.attached.is_empty()) else { return MESSAGE_BAR_WIDTH };
+        let typing = !self.draft.is_empty() || ctx.memory(|memory| memory.has_focus(egui::Id::unique("message-field")));
+        let measure =
+            |text: String, size: f32| ctx.fonts_mut(|fonts| fonts.layout_no_wrap(text, FontId::proportional(size), Color32::WHITE)).size().x;
+        let taken = bar_controls(measure(chip_text(name), SIDEBAR_TEXT_SIZE - 2.0), measure(assistant.to_owned(), SIDEBAR_TEXT_SIZE - 1.0));
+        if typing { MESSAGE_BAR_WIDTH } else { (taken + MESSAGE_BAR_TYPING_ROOM).clamp(MESSAGE_BAR_SELECTED_WIDTH, MESSAGE_BAR_WIDTH) }
     }
 
     /// The panel island: view buttons, the view's title row, a line, the view.
@@ -532,7 +577,11 @@ impl Sidebar {
             });
         });
         let line = title.bottom() + 11.0;
-        ui.painter().hline(panel.x_range(), line, Stroke::new(1.0, palette.outline.gamma_multiply(0.7)));
+        // Human: the chat has no line under the header: its task list belongs to the header, and the
+        // conversation fades out under both as it scrolls up.
+        if self.view != View::Chat {
+            ui.painter().hline(panel.x_range(), line, Stroke::new(1.0, palette.outline.gamma_multiply(0.7)));
+        }
         let body = Rect::from_min_max(pos2(panel.left() + ISLAND_PADDING, line + 1.0), pos2(panel.right() - ISLAND_PADDING, panel.bottom() - 1.0));
         // Human: a view that isn't the chat still shows a question of the assistant's, under itself. The chat
         // has the task list of a long job above its conversation.
@@ -574,17 +623,38 @@ impl Sidebar {
         }
     }
 
+    /// Picks the ideas the chat `chat` offers while it is `empty`, unless they are picked already.
+    // Human: every empty chat gets a handful of ideas of its own, picked when it is first shown empty; a chat
+    // that has been talked in and is emptied again gets new ones.
+    fn deal_ideas(&mut self, chat: u64, empty: bool) {
+        if !empty {
+            self.ideas_for = None;
+        } else if self.ideas_for != Some(chat) {
+            let seed = self.ideas_seed.unwrap_or_else(|| crate::ideas::fresh_seed(chat));
+            self.ideas = crate::ideas::pick(seed, crate::ideas::SHOWN);
+            self.ideas_for = Some(chat);
+        }
+    }
+
     /// The new chat view: ideas to start from, and two short explanations.
     fn start_of_chat(&mut self, ui: &mut Ui, palette: Palette) {
         egui::ScrollArea::vertical().id_salt("new-chat").auto_shrink([false, false]).show(ui, |ui| {
             // Human: the ideas sit a little above the middle; in a short window they move up instead of scrolling.
             ui.add_space((ui.available_height() * 0.17).clamp(12.0, 93.0));
-            heading(ui, "Ask me to design anything");
-            ui.add_space(10.0);
+            // Human: there are far more ideas than the six that show; the button deals another six.
+            ui.horizontal(|ui| {
+                heading(ui, "Ask me to design anything");
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if icon_button(ui, SHUFFLE_ICON, Vec2::splat(22.0), false, palette).on_hover_text("Other ideas").clicked() {
+                        self.ideas = crate::ideas::pick(crate::ideas::fresh_seed(0), crate::ideas::SHOWN);
+                    }
+                });
+            });
+            ui.add_space(8.0);
             ui.scope(|ui| {
                 ui.spacing_mut().item_spacing.y = 9.0;
                 ui.spacing_mut().button_padding = vec2(11.0, 6.0);
-                for idea in SUGGESTIONS {
+                for idea in self.ideas.clone() {
                     let chip = egui::Button::new(idea)
                         .truncate()
                         .fill(Color32::TRANSPARENT)
@@ -611,8 +681,11 @@ impl Sidebar {
         let palette = theme::palette(look.dark);
         let controls =
             Rect::from_min_max(pos2(composer.left() + 11.0, composer.bottom() - 34.0), pos2(composer.right() - 11.0, composer.bottom() - 6.0));
-        let text = Rect::from_min_max(composer.min + vec2(ISLAND_PADDING, 17.0), pos2(composer.right() - ISLAND_PADDING, controls.top() - 2.0));
+        // Human: the text has the upper floor to itself and never runs into the controls under it: the box
+        // grows with it, and past its tallest the text scrolls.
+        let text = Rect::from_min_max(composer.min + vec2(ISLAND_PADDING, 14.0), pos2(composer.right() - ISLAND_PADDING, controls.top() - 2.0));
         ui.scope_builder(UiBuilder::new().max_rect(text), |ui| {
+            ui.set_clip_rect(text.intersect(ui.clip_rect()));
             egui::ScrollArea::vertical().id_salt("message").max_height(text.height()).show(ui, |ui| {
                 // Human: Return sends, alone or with ⌘ (Ctrl on Windows); ⇧Return starts a new line. While the
                 // assistant works, what is sent waits its turn or goes to the assistant at once, as the settings say.
@@ -628,8 +701,31 @@ impl Sidebar {
                 self.chat_asks.push(ChatAsk::Attach);
             }
             self.file_chips(ui, palette);
+            // Human: what is selected shows as a chip here too, where there is room beside the assistant's name.
+            if let Some((icon, name)) = self.selected.clone() {
+                let assistant = ui.painter().layout_no_wrap(look.assistant.to_owned(), FontId::proportional(SIDEBAR_TEXT_SIZE - 1.0), Color32::WHITE);
+                let others = (MESSAGE_SEND + 8.0) + (assistant.size().x + 16.0 + 8.0) + (22.0 + 8.0);
+                if ui.available_width() - others >= layer_chip_width(ui, &name) {
+                    layer_chip(ui, icon, &name, palette);
+                }
+            }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| self.send_controls(ui, look, notice));
         });
+        if look.animate && look.chat.running() {
+            working_light(ui, composer);
+        }
+    }
+
+    /// How tall the message box is for what is written in it: two lines at least, a line more for each line
+    /// written up to [`COMPOSER_ROWS_MOST`], gliding to its new height when `animate`.
+    fn composer_height(&self, ctx: &egui::Context, animate: bool) -> f32 {
+        let font = FontId::proportional(MESSAGE_TEXT_SIZE);
+        let wrap = self.width() - 2.0 * ISLAND_PADDING;
+        let (row, written) =
+            ctx.fonts_mut(|fonts| (fonts.row_height(&font), fonts.layout(self.draft.clone(), font.clone(), Color32::WHITE, wrap).size().y));
+        let rows = (written / row).ceil().clamp(2.0, COMPOSER_ROWS_MOST);
+        let tall = COMPOSER_HEIGHT + (rows - 2.0) * row;
+        if animate { ctx.animate_value_with_time(egui::Id::unique("composer-height"), tall, COMPOSER_GROW_TIME) } else { tall }
     }
 
     /// The message box as one row: attach, the text, mode, assistant and send.
@@ -686,7 +782,7 @@ impl Sidebar {
                 ui.spacing_mut().button_padding = vec2(11.0, 6.0);
                 // Human: an idea that doesn't fit whole is shortened with "…"; none is started in less room than
                 // a few words need. Nothing reaches past the row, so the layer never covers what is beside it.
-                for idea in BAR_IDEAS.into_iter().chain(SUGGESTIONS) {
+                for idea in BAR_IDEAS.into_iter().chain(self.ideas.clone()) {
                     let room = place.right() - ui.cursor().left();
                     if room < 120.0 {
                         break;
@@ -930,14 +1026,29 @@ impl Sidebar {
     fn send_controls(&mut self, ui: &mut Ui, look: Look<'_>, notice: &mut Option<&'static str>) {
         let palette = theme::palette(look.dark);
         let running = look.chat.running();
-        let ready = running || !self.draft.trim().is_empty() || !self.attached.is_empty();
-        let (rect, send) = ui.allocate_exact_size(Vec2::splat(SEND_BUTTON), Sense::click());
-        let (fill, mark) = if ready { (palette.primary, palette.primary_text) } else { (palette.input, palette.muted) };
-        ui.painter().circle_filled(rect.center(), SEND_BUTTON / 2.0, fill);
+        let ready = !running && (!self.draft.trim().is_empty() || !self.attached.is_empty());
+        let (rect, send) = ui.allocate_exact_size(Vec2::splat(MESSAGE_SEND), Sense::click());
+        // Human: the button is grey while there is nothing to send and turns dark, growing a little, once
+        // there is. While the assistant works it is the stop button: a square in a ring a light runs around.
+        let id = egui::Id::unique("message-send-ready");
+        let dark = match (look.animate, ready) {
+            (true, _) => ui.ctx().animate_bool_with_time(id, ready, MESSAGE_SEND_TIME),
+            (false, true) => 1.0,
+            (false, false) => 0.0,
+        };
+        let (centre, radius) = (rect.center(), MESSAGE_SEND / 2.0);
         if running {
-            ui.painter().rect_filled(Rect::from_center_size(rect.center(), Vec2::splat(7.0)), 1.5, mark);
+            ui.painter().circle(centre, radius - 0.75, palette.island, Stroke::new(1.5, palette.outline));
+            if look.animate {
+                let head = turned(ui.input(|input| input.time), MESSAGE_SEND_TURN) * std::f32::consts::TAU;
+                crate::conversation::comet(ui.painter(), centre, radius - 0.75, head, CHAT_ACCENT);
+                ui.ctx().request_repaint();
+            }
+            ui.painter().rect_filled(Rect::from_center_size(centre, Vec2::splat(8.0)), 2.0, palette.foreground);
         } else {
-            icons::paint(ui.painter(), Rect::from_center_size(rect.center(), Vec2::splat(12.0)), "arrow-up", mark);
+            ui.painter().circle_filled(centre, radius * (0.9 + 0.1 * dark), blend(palette.input, palette.primary, dark));
+            let mark = blend(palette.muted, palette.primary_text, dark);
+            icons::paint(ui.painter(), Rect::from_center_size(centre, Vec2::splat(SEND_ARROW + 1.0)), "arrow-up", mark);
         }
         if send.on_hover_text(if running { "Stop" } else { "Send" }).clicked() {
             if running {
@@ -1100,7 +1211,25 @@ fn chip_text(name: &str) -> String {
 /// `chip` wide and an assistant's name that is `assistant` wide: the bar's ends, the attach button, the chip,
 /// mode, the assistant's name with its arrow, and send, each with its gap.
 fn bar_controls(chip: f32, assistant: f32) -> f32 {
-    20.0 + (22.0 + 12.0) + (chip + 31.0 + 12.0) + (22.0 + 8.0) + (assistant + 16.0 + 8.0) + (SEND_BUTTON + 8.0)
+    20.0 + (22.0 + 12.0) + (chip + 31.0 + 12.0) + (22.0 + 8.0) + (assistant + 16.0 + 8.0) + (MESSAGE_SEND + 8.0)
+}
+
+/// The light that runs along the top edge of the message box `composer` while the assistant works.
+// Agent: MAIN-THREAD; asks for the next frame.
+fn working_light(ui: &Ui, composer: Rect) {
+    const PIECES: u8 = 24;
+    let (from, to) = (composer.left() + ISLAND_RADIUS, composer.right() - ISLAND_RADIUS);
+    let reach = (to - from) * COMPOSER_LIGHT_SHARE;
+    let start = from - reach + turned(ui.input(|input| input.time), COMPOSER_LIGHT_TURN) * (to - from + reach);
+    let painter = ui.painter().with_clip_rect(Rect::from_x_y_ranges(from..=to, composer.y_range()).intersect(ui.clip_rect()));
+    let at = |piece: u8| pos2(start + reach * f32::from(piece) / f32::from(PIECES), composer.top() + 1.0);
+    for piece in 0..PIECES {
+        // Brightest in its middle, and gone at both ends.
+        let strength = 1.0 - (2.0 * (f32::from(piece) + 0.5) / f32::from(PIECES) - 1.0).abs();
+        let color = blend(CHAT_ACCENT, Color32::WHITE, 0.7 * strength.powi(3)).gamma_multiply(strength);
+        painter.line_segment([at(piece), at(piece + 1)], Stroke::new(1.5, color));
+    }
+    ui.ctx().request_repaint();
 }
 
 /// How wide the chip of a layer called `name` is.
@@ -1166,11 +1295,43 @@ impl Pose {
     }
 
     /// Where the panel island is at this moment, on its way to `full`: as wide as the message box, standing a
-    /// gap above it, as tall as it has risen.
-    fn above(&self, full: Rect) -> Rect {
-        let bottom = self.rect.top() - ISLAND_GAP;
+    /// gap above it (and `strip` more, where the counter stands), as tall as it has risen.
+    fn above(&self, full: Rect, strip: f32) -> Rect {
+        let bottom = self.rect.top() - ISLAND_GAP - strip;
         Rect::from_min_max(pos2(self.rect.left(), bottom - full.height() * self.risen), pos2(self.rect.right(), bottom))
     }
+}
+
+/// The counter of what the answer under way has taken so far, as a pill in the gap `slot` between the
+/// conversation and the message box; `words` is how wide its words are. It comes up into place as it shows.
+// Agent: MAIN-THREAD; a floating layer of its own, since the islands around it are.
+fn counter_strip(ctx: &egui::Context, slot: Rect, words: f32, chat: &crate::chat::Chat, palette: Palette, opacity: f32) {
+    // Human: nothing is there while the sidebar is folded.
+    if opacity <= 0.0 {
+        return;
+    }
+    let size = vec2((words + 2.0 * CHAT_SPENT_PAD).min(slot.width()), CHAT_SPENT_PILL);
+    let pill = Rect::from_center_size(slot.center() + vec2(0.0, (1.0 - opacity) * ISLAND_GAP), size);
+    egui::Area::new(egui::Id::unique("chat-counter-strip")).fade_in(false).fixed_pos(pill.min).order(egui::Order::Foreground).show(ctx, |ui| {
+        ui.multiply_opacity(opacity);
+        island(ui, pill, CHAT_SPENT_PILL / 2.0, palette);
+        crate::conversation::counter(ui, pill, chat, palette, 1.0);
+    });
+}
+
+/// The counter as a small pill right over the message bar `bar`, for the sidebar folded away; `words` is how
+/// wide its words are. Returns where the pill's top is, so what stands over the bar can stand over the pill.
+// Human: over the canvas the words need a ground of their own, so they get an island like the bar's.
+// Agent: MAIN-THREAD; a floating layer over the canvas.
+fn counter_pill(ctx: &egui::Context, bar: Rect, words: f32, chat: &crate::chat::Chat, palette: Palette, opacity: f32) -> f32 {
+    let size = vec2((words + 2.0 * CHAT_SPENT_PAD).min(bar.width()), CHAT_SPENT_PILL);
+    let pill = Rect::from_center_size(pos2(bar.center().x, bar.top() - CHAT_STATUS_GAP - CHAT_SPENT_PILL / 2.0), size);
+    egui::Area::new(egui::Id::unique("chat-counter-pill")).fade_in(false).fixed_pos(pill.min).order(egui::Order::Foreground).show(ctx, |ui| {
+        ui.multiply_opacity(opacity);
+        island(ui, pill, CHAT_SPENT_PILL / 2.0, palette);
+        crate::conversation::counter(ui, pill, chat, palette, 1.0);
+    });
+    pill.top()
 }
 
 /// How far the message box has slid to the left edge at `openness`: fast at first, slowing as it arrives.
@@ -1392,6 +1553,29 @@ mod tests {
         for (icon, ..) in RAIL {
             assert!(icons::outline("lucide", icon).is_some(), "{icon}");
         }
+        assert!(icons::outline("lucide", SHUFFLE_ICON).is_some());
+    }
+
+    #[test]
+    fn an_empty_chat_keeps_its_ideas_and_another_chat_gets_its_own() {
+        let mut sidebar = Sidebar::default();
+        sidebar.deal_ideas(1, true);
+        let first = sidebar.ideas.clone();
+        assert_eq!(first.len(), crate::ideas::SHOWN);
+        // Drawn again, the same chat shows the same ideas; they don't change under the pointer.
+        sidebar.deal_ideas(1, true);
+        assert_eq!(sidebar.ideas, first);
+        // Once the chat has been talked in, its ideas are picked anew the next time it is empty.
+        sidebar.deal_ideas(1, false);
+        assert_eq!(sidebar.ideas_for, None);
+        // Set up for a picture, what is picked is the same every time.
+        let mut posed = Sidebar::default();
+        posed.pose("chat");
+        posed.deal_ideas(1, true);
+        let mut again = Sidebar::default();
+        again.pose("chat");
+        again.deal_ideas(2, true);
+        assert_eq!(posed.ideas, again.ideas);
     }
 
     #[test]
@@ -1406,7 +1590,7 @@ mod tests {
         let sliding = Pose::at(SIDEBAR_GROW_START, bar, docked);
         assert_eq!((sliding.rect.size(), sliding.rect.bottom()), (bar.size(), bar.bottom()));
         assert!(sliding.rect.left() < bar.left() && sliding.rect.left() > docked.left());
-        assert_eq!((sliding.above(full).height(), sidebar.room(SIDEBAR_GROW_START)), (0.0, 0.0));
+        assert_eq!((sliding.above(full, 0.0).height(), sidebar.room(SIDEBAR_GROW_START)), (0.0, 0.0));
         // Between the start of growing and the end of sliding both happen at once.
         let both = Pose::at(f32::midpoint(SIDEBAR_GROW_START, SIDEBAR_SLIDE_END), bar, docked);
         assert!(both.rect.left() > docked.left() && both.rect.height() > bar.height());
@@ -1414,7 +1598,7 @@ mod tests {
         let growing = Pose::at(0.8, bar, docked);
         assert_eq!((growing.rect.left(), growing.rect.bottom()), (8.0, 700.0));
         assert!(growing.rect.height() > 37.0 && growing.rect.height() < 91.0);
-        let rising = growing.above(full);
+        let rising = growing.above(full, 0.0);
         assert_eq!((rising.left(), rising.width(), rising.bottom()), (8.0, growing.rect.width(), growing.rect.top() - ISLAND_GAP));
         assert!(rising.height() > 0.0 && rising.height() < full.height());
         // The layouts change over where nothing shows: half grown.
@@ -1422,7 +1606,7 @@ mod tests {
         assert!(change.opacity < 0.01);
         let end = Pose::at(1.0, bar, docked);
         assert_eq!((end.rect, end.radius, end.boxed, end.opacity), (docked, ISLAND_RADIUS, true, 1.0));
-        assert_eq!((end.above(full), sidebar.room(1.0)), (full, SIDEBAR_WIDTH + ISLAND_GAP));
+        assert_eq!((end.above(full, 0.0), sidebar.room(1.0)), (full, SIDEBAR_WIDTH + ISLAND_GAP));
         // A bar that stands higher than the box (over the row of ideas) starts there and comes down as it grows.
         let raised = bar.translate(vec2(0.0, -42.0));
         assert_eq!(Pose::at(0.0, raised, docked).rect, raised);
@@ -1433,11 +1617,29 @@ mod tests {
     }
 
     #[test]
+    fn the_message_box_grows_with_what_is_written_and_stops_growing() {
+        let mut sidebar = Sidebar::default();
+        let ctx = egui::Context::default();
+        let mut heights = Vec::new();
+        let mut drawn = ctx.run_ui(egui::RawInput::default(), |ui| {
+            for lines in [0, 1, 4, 40] {
+                sidebar.draft = vec!["A line of the message"; lines].join("\n");
+                heights.push(sidebar.composer_height(ui.ctx(), false));
+            }
+        });
+        drawn.textures_delta.clear();
+        // Nothing and one line take the box as it always was; four lines a taller one; forty no more than the most.
+        assert!((heights[0] - COMPOSER_HEIGHT).abs() < f32::EPSILON && (heights[1] - COMPOSER_HEIGHT).abs() < f32::EPSILON);
+        assert!(heights[2] > COMPOSER_HEIGHT && heights[3] > heights[2]);
+        assert!(heights[3] < COMPOSER_HEIGHT + COMPOSER_ROWS_MOST * 24.0);
+    }
+
+    #[test]
     fn the_bar_with_a_selection_leaves_room_to_type() {
         // A short chip and a short name fit the narrow bar with room to spare; a long name asks for more.
         assert!(bar_controls(60.0, 70.0) + MESSAGE_BAR_TYPING_ROOM < MESSAGE_BAR_WIDTH);
         assert!(bar_controls(90.0, 150.0) + MESSAGE_BAR_TYPING_ROOM > MESSAGE_BAR_SELECTED_WIDTH);
-        assert_eq!(bar_controls(0.0, 0.0), 179.0);
+        assert_eq!(bar_controls(0.0, 0.0), 185.0);
         assert_eq!((chip_text("Card"), chip_text(&"n".repeat(30)).chars().count()), ("Card".to_owned(), 22));
     }
 

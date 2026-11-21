@@ -390,12 +390,18 @@ impl App {
             "conversation" => (Some(crate::chat::sample()), "chat"),
             "question" => (Some(crate::chat::sample_asking(false)), "hidden"),
             "suggestions" => (Some(crate::chat::sample_asking(true)), "hidden"),
+            "offers" | "offered" => (Some(crate::chat::sample()), if name == "offers" { "chat" } else { "hidden" }),
             "asked" => (Some(crate::chat::sample_asking(false)), "chat"),
             "pinned" => (Some(crate::chat::sample_asking(false)), "layers"),
             _ => (None, name),
         };
         if let Some(entries) = entries {
             self.front_talk().chat.entries = entries;
+        }
+        // Human: `offers` shows the assistant's next steps beside the open chat, `offered` beside the folded bar.
+        if matches!(name, "offers" | "offered") {
+            let steps = ["Unify the matcha level across all screens of the ordering app", "Make the headline bolder", "Export the hero as a PNG"];
+            self.front_talk().chat.offer(&steps.map(str::to_owned));
         }
         // Human: `thinking` shows the chat in the middle of a run, while the model thinks.
         let view = if name == "thinking" {

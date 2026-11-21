@@ -17,6 +17,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use serde_json::{Value, json};
 
 use super::Event;
+use super::usage::{self, Used};
 use crate::app::lock;
 
 /// The name the app's tool server has for Claude Code.
@@ -220,11 +221,71 @@ fn input(job: &Job<'_>) -> String {
 /// What one line of the program's output means for the chat.
 // Human: the lines carry the same events as the API's own stream (words as they are written, tool calls as
 // they start), each wrapped with the session's name; the last line says how the run went.
-fn read_line(line: &str, wrote: &mut bool) -> Vec<Event> {
+fn read_line(line: &str, wrote: &mut bool, meter: &mut Meter) -> Vec<Event> {
     let Ok(value) = serde_json::from_str::<Value>(line) else { return Vec::new() };
+    let mut told: Vec<Event> = meter.take(&value).into_iter().collect();
+    told.extend(events_of(&value, wrote));
+    told
+}
+
+/// The tokens a program's run has taken so far, by the requests its output shows.
+// Human: the program says what a run took only on its last line. Until then the chat counts along: each of the
+// run's requests says at its start what the model read and at its end what it wrote.
+#[derive(Default)]
+struct Meter {
+    /// The requests that are over.
+    done: Used,
+    /// The request under way.
+    now: Used,
+}
+
+impl Meter {
+    /// Takes in one line of the program's output. Returns the run's count so far when the line changed it.
+    fn take(&mut self, line: &Value) -> Option<Event> {
+        let event = line.get("event").filter(|_| line["type"] == "stream_event")?;
+        let before = self.so_far();
+        match event["type"].as_str() {
+            Some("message_start") => {
+                self.done.add(self.now);
+                self.now = Used::default();
+                usage::messages(&event["message"]["usage"], &mut self.now);
+            }
+            Some("message_delta") => usage::messages(&event["usage"], &mut self.now),
+            _ => return None,
+        }
+        let so_far = self.so_far();
+        (so_far != before).then_some(Event::Meanwhile(so_far))
+    }
+
+    /// What the requests so far took together.
+    fn so_far(&self) -> Used {
+        let mut sum = self.done;
+        sum.add(self.now);
+        sum
+    }
+}
+
+/// What to look at when the provider doesn't accept the program's key.
+const SIGN_IN_HINT: &str = "Its key or sign-in isn't accepted: run `claude` in a terminal to check, and look at where Claude Code is set up to \
+                            send its requests (ANTHROPIC_BASE_URL in its settings, or a router in front of it and that router's key).";
+
+/// What the line `value` of the program's output means for the chat, its tokens aside.
+fn events_of(value: &Value, wrote: &mut bool) -> Vec<Event> {
     let text = |pointer: &str| value.pointer(pointer).and_then(Value::as_str);
     match (text("/type"), text("/subtype")) {
         (Some("system"), Some("init")) => text("/session_id").map(|id| Event::Session(id.to_owned())).into_iter().collect(),
+        // Human: the program tries a request again by itself when its provider can't take it just now. A
+        // provider that doesn't accept its key will not accept it the tenth time either, and the tries take
+        // minutes in which the chat would only say that it waits: that is a problem to tell at once.
+        (Some("system"), Some("api_retry")) => {
+            let status = value.get("error_status").and_then(Value::as_u64);
+            let why = text("/error").map(|why| format!(", {}", why.replace('_', " "))).unwrap_or_default();
+            status
+                .filter(|status| matches!(status, 401 | 403))
+                .map(|status| Event::Problem(format!("Claude Code's provider turned it away ({status}{why}). {SIGN_IN_HINT}")))
+                .into_iter()
+                .collect()
+        }
         (Some("stream_event"), _) => match (text("/event/type"), text("/event/delta/type"), text("/event/content_block/type")) {
             (Some("message_start"), ..) if *wrote => vec![Event::Break],
             (Some("content_block_delta"), Some("text_delta"), _) => {
@@ -243,15 +304,15 @@ fn read_line(line: &str, wrote: &mut bool) -> Vec<Event> {
         },
         // Human: after the stream of a turn the program writes the turn out whole: there each tool call has its
         // complete input. The tools' answers come back as a message "from the user", saying whether one failed.
-        (Some("assistant"), _) => parts(&value, "tool_use")
+        (Some("assistant"), _) => parts(value, "tool_use")
             .map(|part| Event::ToolInput { id: part["id"].as_str().unwrap_or_default().to_owned(), input: part["input"].clone() })
             .collect(),
-        (Some("user"), _) => parts(&value, "tool_result")
+        (Some("user"), _) => parts(value, "tool_result")
             .map(|part| Event::ToolEnd { id: part["tool_use_id"].as_str().unwrap_or_default().to_owned(), failed: part["is_error"] == true })
             .collect(),
         // Human: the last line says how the run went, and what it took and cost.
         (Some("result"), _) => {
-            let mut told: Vec<Event> = super::usage::program(&value).map(Event::Used).into_iter().collect();
+            let mut told: Vec<Event> = super::usage::program(value).map(Event::Used).into_iter().collect();
             if value.get("is_error").and_then(Value::as_bool) == Some(true) {
                 told.push(Event::Problem(text("/result").filter(|said| !said.is_empty()).unwrap_or("Claude Code ended with an error.").to_owned()));
             }
@@ -314,14 +375,24 @@ pub fn run(job: &Job<'_>, stop: &AtomicBool, child: &Mutex<Option<Child>>, tell:
     let errors = collect_errors(&mut running);
     *lock(child) = Some(running);
     let (mut wrote, mut failed, mut ended) = (false, false, false);
+    let mut meter = Meter::default();
     for line in output.into_iter().flat_map(|output| BufReader::new(output).lines()) {
         let Ok(line) = line else { break };
         ended |= line.contains("\"type\":\"result\"");
-        for event in read_line(&line, &mut wrote) {
+        for event in read_line(&line, &mut wrote, &mut meter) {
             failed |= matches!(event, Event::Problem(_));
             if !tell(event) {
                 break;
             }
+        }
+        // Human: a problem told before the program's last line means it would only go on trying: it is ended.
+        if failed && !ended {
+            if let Some(mut running) = lock(child).take() {
+                // A program that has already ended can't be ended again; either way it is gone.
+                let _ = running.kill();
+                let _ = running.wait();
+            }
+            break;
         }
     }
     let status = lock(child).take().and_then(|mut running| running.wait().ok());
@@ -346,6 +417,7 @@ mod tests {
     #[test]
     fn the_programs_lines_become_events() {
         let mut wrote = false;
+        let mut meter = Meter::default();
         let mut events = Vec::new();
         for line in [
             r#"{"type":"system","subtype":"init","session_id":"abc","tools":[]}"#,
@@ -362,7 +434,7 @@ mod tests {
             r#"{"type":"result","subtype":"success","is_error":false,"result":"yo","total_cost_usd":0.16488039999999998,"usage":{"input_tokens":2,"cache_creation_input_tokens":4724,"cache_read_input_tokens":53281,"output_tokens":4},"modelUsage":{"claude-fable-5-2":{"inputTokens":4,"outputTokens":8,"cacheReadInputTokens":106562,"cacheCreationInputTokens":8951,"costUSD":0.16488039999999998}},"model_usage_since_last_result":{"claude-fable-5-2":{"inputTokens":2,"outputTokens":4,"cacheReadInputTokens":53281,"cacheCreationInputTokens":4724,"costUSD":0.0864162,"costBasis":"list"}}}"#,
             r#"{"type":"result","is_error":true,"result":"Not logged in"}"#,
         ] {
-            events.extend(read_line(line, &mut wrote));
+            events.extend(read_line(line, &mut wrote, &mut meter));
         }
         let shown: Vec<String> = events.iter().map(|e| format!("{e:?}")).collect();
         assert_eq!(
@@ -379,6 +451,43 @@ mod tests {
                 r#"Problem("Not logged in")"#
             ]
         );
+    }
+
+    #[test]
+    fn a_provider_that_turns_the_program_away_is_a_problem_at_once() {
+        let events = |line: &str| read_line(line, &mut false, &mut Meter::default());
+        let turned_away =
+            events(r#"{"type":"system","subtype":"api_retry","attempt":3,"max_retries":10,"error_status":401,"error":"authentication_failed"}"#);
+        let [Event::Problem(said)] = turned_away.as_slice() else { panic!("{turned_away:?}") };
+        assert!(said.starts_with("Claude Code's provider turned it away (401, authentication failed). Its key or sign-in isn't accepted"), "{said}");
+        // A provider that is only busy is waited for, as before.
+        assert!(events(r#"{"type":"system","subtype":"api_retry","attempt":1,"max_retries":10,"error_status":529,"error":"overloaded"}"#).is_empty());
+        assert!(events(r#"{"type":"system","subtype":"api_retry","attempt":1,"max_retries":10,"error":"timeout"}"#).is_empty());
+    }
+
+    #[test]
+    fn a_runs_tokens_are_counted_along_from_its_requests() {
+        let (mut wrote, mut meter) = (false, Meter::default());
+        let mut counts = Vec::new();
+        for line in [
+            r#"{"type":"stream_event","event":{"type":"message_start","message":{"usage":{"input_tokens":2,"cache_read_input_tokens":5000,"cache_creation_input_tokens":300,"output_tokens":1}}}}"#,
+            r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}}"#,
+            r#"{"type":"stream_event","event":{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":40}}}"#,
+            // The same count again changes nothing and is not told twice.
+            r#"{"type":"stream_event","event":{"type":"message_delta","delta":{},"usage":{"output_tokens":40}}}"#,
+            // The run's next request counts on top of the first.
+            r#"{"type":"stream_event","event":{"type":"message_start","message":{"usage":{"input_tokens":10,"cache_read_input_tokens":5300,"output_tokens":1}}}}"#,
+            r#"{"type":"stream_event","event":{"type":"message_delta","delta":{},"usage":{"output_tokens":7}}}"#,
+            // A whole message written out after its stream is not counted a second time.
+            r#"{"type":"assistant","message":{"content":[],"usage":{"input_tokens":10,"output_tokens":7}}}"#,
+        ] {
+            for event in read_line(line, &mut wrote, &mut meter) {
+                if let Event::Meanwhile(used) = event {
+                    counts.push((used.input, used.cached, used.written, used.output));
+                }
+            }
+        }
+        assert_eq!(counts, vec![(2, 5000, 300, 1), (2, 5000, 300, 40), (12, 10_300, 300, 41), (12, 10_300, 300, 47)]);
     }
 
     #[test]

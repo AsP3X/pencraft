@@ -226,7 +226,8 @@ impl Turn {
             Some("message_start") => {
                 usage::messages(&event["message"]["usage"], &mut self.used);
                 self.model = text("/message/model").map(str::to_owned);
-                Ok(None)
+                // Human: what the model reads is known as the answer starts; the chat counts along from there.
+                Ok((!self.used.is_empty()).then_some(Event::Meanwhile(self.used)))
             }
             Some("message_delta") => {
                 usage::messages(&event["usage"], &mut self.used);

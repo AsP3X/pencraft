@@ -81,8 +81,8 @@ For real facts or wording use search_web and read_web_page; for a real photo use
 Each message from the user starts with a note from the app in <pencraft_context> tags saying which document this chat works on (your tools work on it unless a call names another) and what is selected; \"this\" or \"the selection\" means those layers. \
 Keep replies short and plain: a few sentences on what you made and what to look at, without lists of ids. The chat panel shows your words exactly as you write them, so use no Markdown of any kind: no asterisks for bold, no bullet or numbered lists, no headings, no backticks, no tables. \
 If a request is unclear in a way that changes the design, ask instead of guessing: with the ask_user tool when you have it (one to three short questions, each with two to four answers to pick from), then end your turn, since the answer comes as the user's next message; without that tool, ask one short question in your reply. \
-When you have finished something and there are clear next steps, you may offer two or three with ask_user's `suggestions`, each worded as the user would ask for it; offer none that only repeat what you did. \
-A job of many steps (a whole screen or page, several screens, a redesign, a set of components, anything you would not finish in two or three changes) is worked through as a task list, and this is not optional: after get_state and before the first layer, call plan_tasks with the tasks in the order you will do them, each a few plain words the user can follow (\"Set up colours and type\", \"Build the navigation\", \"Check the result\"). Then work on the task at work only, and call finish_task with its number the moment it is done; the next task is at work then. Tasks can't be skipped or finished out of their turn, and you never work ahead of the task at work. When a task turns up more work (checking the result shows something to fix or change), add it with add_tasks before you finish that task: the new tasks come right after it. If the whole plan changes, call plan_tasks again with the tasks still to do. The user follows the list above the chat, so finish every task before you answer. A small request (one layer, one change, a question) needs no list.";
+When you have finished something and there are clear next steps, you may offer two or three with ask_user's `suggestions`, each worded as the user would ask for it; offer none that only repeat what you did, and never one that means several of the others (\"Do both\", \"All of the above\"): the user can take all of them with one click. A suggestion is the user's to choose: never start on one yourself, and end your answer once you have offered them. \
+A job of many steps (a whole screen or page, several screens, a redesign, a set of components, anything you would not finish in two or three changes) is worked through as a task list, and this is not optional: after get_state and before the first layer, call plan_tasks with the tasks in the order you will do them, each a few plain words the user can follow (\"Set up colours and type\", \"Build the navigation\", \"Check the result\"). Then work on the task at work only, and call finish_task with its number the moment it is done; the next task is at work then. Tasks can't be skipped or finished out of their turn, and you never work ahead of the task at work. When a task turns up more work (checking the result shows something to fix or change), add it with add_tasks before you finish that task: the new tasks come right after it. If the whole plan changes, call plan_tasks again with the tasks still to do. The user follows the list above the chat, so finish every task before you answer: never end your answer while a task is open, and if you do, you are sent back to the list. A small request (one layer, one change, a question) needs no list.";
 
 /// The last thing an engine is told, after everything long: how its replies have to look.
 // Human: said once at the start, the rule is forgotten by the time a long design is done; the end of the
@@ -170,7 +170,7 @@ impl Entry {
     /// A note on a call of `tool` that is in `state`, saying the tool's usual words and `detail`.
     fn note(tool: &str, state: State, detail: &str) -> Self {
         let text = if state == State::Failed { steps::failed(tool) } else { steps::did(tool) };
-        let step = Step { tool: tool.to_owned(), id: String::new(), detail: detail.to_owned(), state, times: 1, named: false };
+        let step = Step { tool: tool.to_owned(), id: String::new(), detail: detail.to_owned(), state, times: 1, named: false, why: String::new() };
         Entry { step: Some(step), ..Entry::new(Role::Step, text) }
     }
 }
@@ -217,8 +217,13 @@ pub enum Event {
     Heard(Waiting),
     /// What a request took (a program: what its whole run took).
     Used(usage::Report),
+    /// What the request under way (a program: the run under way) has taken so far, before its report. Each
+    /// one replaces the one before, and the report replaces them all.
+    Meanwhile(usage::Used),
     /// Something went wrong; the run goes on or ends as it says next.
     Problem(String),
+    /// The reviewer has asked for changes: the assistant goes back to work on the design.
+    Revising,
     /// The run is over.
     Done,
 }
@@ -852,10 +857,21 @@ pub struct Chat {
     quiet: Option<Instant>,
     /// The run has told something of the model's: the model was reached.
     reached: bool,
+    /// The reasons tools gave for calls that failed and whose notes are not finished yet: the tool, and why.
+    refused: Vec<(String, String)>,
+    /// The next steps the assistant has offered that the user has neither taken nor dropped, newest first.
+    offered: Vec<String>,
+    /// The run under way has offered next steps: until it is over it changes nothing more.
+    holds: bool,
+    /// How often in a row the assistant was sent back to its unfinished task list, and which list that was
+    /// with how many tasks finished ([`tasks::Tasks::made`]); a task finished since starts the count anew.
+    urged: (u32, u64, usize),
     /// The task list of a long job, which the assistant makes and works through ([`tasks`]).
     pub tasks: tasks::Tasks,
-    /// What the run under way has taken so far.
+    /// What the run under way has taken so far, by the reports of its finished requests.
     spent: usage::Spent,
+    /// What the request under way has taken so far, as its engine counts along; nothing between requests.
+    live: usage::Used,
     /// What the whole conversation has taken.
     pub total: usage::Spent,
 }
@@ -958,13 +974,42 @@ impl Chat {
         let steered =
             self.run.as_ref().and_then(|run| run.steering.as_ref()).map(|inbox| lock(inbox).iter().map(|s| s.message.shown.clone()).collect());
         let steered: Vec<String> = steered.unwrap_or_default();
-        steered.into_iter().map(|text| (text, true)).chain(self.waiting.iter().map(|waiting| (waiting.shown.clone(), false))).collect()
+        // What the app sends by itself to keep the assistant at its task list is not a message of the user's.
+        let waiting = self.waiting.iter().filter(|waiting| waiting.shown != tasks::WENT_ON).map(|waiting| (waiting.shown.clone(), false));
+        steered.into_iter().map(|text| (text, true)).chain(waiting).collect()
+    }
+
+    /// Takes back the message at `place` of those that haven't gone to an assistant yet ([`Chat::pending`]):
+    /// the user doesn't want it sent after all.
+    // Agent: LOCKS the run's inbox briefly. A message the assistant took a moment ago is no longer there; then
+    // nothing happens.
+    pub fn unqueue(&mut self, place: usize) {
+        let inbox = self.run.as_ref().and_then(|run| run.steering.as_ref());
+        let steered = inbox.map_or(0, |inbox| lock(inbox).len());
+        if place < steered {
+            if let Some(mut inbox) = inbox.map(|inbox| lock(inbox))
+                && place < inbox.len()
+            {
+                inbox.remove(place);
+            }
+            return;
+        }
+        // What the app itself queued to keep the assistant at its task list is not among the messages shown.
+        let own: Vec<usize> = (0..self.waiting.len()).filter(|at| self.waiting[*at].shown != tasks::WENT_ON).collect();
+        if let Some(at) = own.get(place - steered) {
+            self.waiting.remove(*at);
+        }
     }
 
     /// Does what the user did in the question the assistant asks: ticks an answer, takes what they wrote, or
     /// sends what they chose. Sending the last answer gives the message to send to the assistant.
     pub fn choose(&mut self, pick: &crate::asking::Pick) -> Option<Waiting> {
         use crate::asking::Pick;
+        // Human: taking a queued message back has nothing to do with a question; it is done whatever is asked.
+        if let Pick::Unqueue(place) = pick {
+            self.unqueue(*place);
+            return None;
+        }
         let asked = self.entries.iter_mut().rev().find_map(|entry| entry.asked.as_mut())?;
         let (shown, told) = match pick {
             Pick::Toggle { question, answer } => {
@@ -980,8 +1025,69 @@ impl Chat {
                 self.dismiss();
                 return None;
             }
+            // Taken care of above.
+            Pick::Unqueue(_) => return None,
         };
         Some(Waiting { shown, told, files: Vec::new(), pasted: Vec::new(), pointed: Vec::new() })
+    }
+
+    /// The assistant has just offered next steps: for the rest of its answer it changes nothing more.
+    // Human: what the assistant suggests is for the user to choose. Left alone, a model offers three steps and
+    // then starts on the first one itself; from the offer on its tools that change the design are refused
+    // until the answer is over, so a suggestion is only ever worked on because the user picked it.
+    pub fn hold_for_choice(&mut self) {
+        self.holds = self.running();
+    }
+
+    /// Whether the run under way has offered next steps and so may change nothing more.
+    #[must_use]
+    pub fn awaits_choice(&self) -> bool {
+        self.holds && self.running()
+    }
+
+    /// The next steps the assistant has offered and the user hasn't taken or dropped yet, newest first.
+    #[must_use]
+    pub fn offers(&self) -> &[String] {
+        &self.offered
+    }
+
+    /// Takes in next steps the assistant offers: they go before the ones already there, none twice, and the
+    /// oldest give way when there are too many.
+    pub fn offer(&mut self, steps: &[String]) {
+        // Human: "Do both" is not a step; taking several at once is what the button beside the pills is for.
+        for step in steps.iter().rev().filter(|step| !asks::only_points_at_others(step)) {
+            if !self.offered.contains(step) {
+                self.offered.insert(0, step.clone());
+            }
+        }
+        self.offered.truncate(asks::MOST_OFFERED);
+    }
+
+    /// Takes the offered step at `place`: gives the message that asks for it.
+    pub fn take_offer(&mut self, place: usize) -> Option<Waiting> {
+        (place < self.offered.len()).then(|| {
+            let step = self.offered.remove(place);
+            Waiting { shown: step.clone(), told: step, files: Vec::new(), pasted: Vec::new(), pointed: Vec::new() }
+        })
+    }
+
+    /// Takes every offered step at once: gives the one message that asks for all of them.
+    pub fn take_offers(&mut self) -> Option<Waiting> {
+        let steps = std::mem::take(&mut self.offered);
+        (!steps.is_empty()).then(|| Waiting {
+            shown: asks::all_shown(&steps),
+            told: asks::all_told(&steps),
+            files: Vec::new(),
+            pasted: Vec::new(),
+            pointed: Vec::new(),
+        })
+    }
+
+    /// Drops the offered step at `place`: the user doesn't want it.
+    pub fn drop_offer(&mut self, place: usize) {
+        if place < self.offered.len() {
+            self.offered.remove(place);
+        }
     }
 
     /// Closes what the assistant asks: the user doesn't want to answer it.
@@ -1137,7 +1243,10 @@ impl Chat {
         // Human: a message of the user's is their answer; a question still open then is closed by it.
         self.dismiss();
         self.tasks.resume();
-        self.entries.push(Entry { pointed: ask.pointed.clone(), ..Entry::new(Role::User, ask.shown.clone()) });
+        self.refused.clear();
+        // Human: what the app itself sends to keep the assistant at its list is a note, not words of the user's.
+        let role = if ask.shown == tasks::WENT_ON { Role::Step } else { Role::User };
+        self.entries.push(Entry { pointed: ask.pointed.clone(), ..Entry::new(role, ask.shown.clone()) });
         let from = self.entries.len();
         self.fresh = true;
         self.thought.clear();
@@ -1204,6 +1313,7 @@ impl Chat {
                     break;
                 }
                 tell(Event::Break);
+                tell(Event::Revising);
                 answer(&critic::follow_up(&changes), &[]);
             }
             tell(Event::Done);
@@ -1280,8 +1390,62 @@ impl Chat {
             self.quiet = None;
             self.settle();
             self.close(from);
+            self.holds = false;
+            self.keep_at_the_list();
         }
         changed
+    }
+
+    /// The run is over. When it left its task list unfinished, the assistant is sent back to it.
+    // Human: the list is the job the user was promised. An assistant that ends its answer in the middle of it
+    // (a weaker model that loses the thread, or one that ran into the most requests one message may take) is
+    // told where the list stands and to go on, as a waiting message of the app's own. A run that ended with a
+    // problem, that asks the user something, or that the user stopped is left alone, and so is a list on
+    // which nothing got finished [`tasks::URGED_MOST`] times in a row: its task is then marked as broken off.
+    fn keep_at_the_list(&mut self) {
+        let ended_badly = self.entries.last().is_some_and(|entry| entry.role == Role::Problem);
+        if !self.tasks.open() || ended_badly || !self.waiting.is_empty() || asking(&self.entries).is_some() {
+            return;
+        }
+        let stands = (self.tasks.made(), self.tasks.done());
+        if (self.urged.1, self.urged.2) != stands {
+            self.urged = (0, stands.0, stands.1);
+        }
+        if self.urged.0 >= tasks::URGED_MOST {
+            self.tasks.halt();
+            self.entries.push(Entry::new(Role::Step, tasks::GAVE_UP));
+            return;
+        }
+        self.urged.0 += 1;
+        self.waiting.push(Waiting {
+            shown: tasks::WENT_ON.to_owned(),
+            told: self.tasks.unfinished(),
+            files: Vec::new(),
+            pasted: Vec::new(),
+            pointed: Vec::new(),
+        });
+    }
+
+    /// What the run under way has taken so far, to show while it works; `None` when nothing is answered or
+    /// nothing is counted yet.
+    // Human: while a request is under way only its tokens are known. A price for the finished requests alone
+    // would read as the price so far, so the line shows tokens until the request reports.
+    #[must_use]
+    pub fn spending(&self) -> Option<usage::Spent> {
+        let mut so_far = self.spent.clone();
+        if !self.live.is_empty() {
+            so_far.used.add(self.live);
+            (so_far.cost, so_far.partial) = (None, false);
+        }
+        (self.run.is_some() && !so_far.is_empty()).then_some(so_far)
+    }
+
+    /// What the counter by the message box shows: what the answer under way has taken so far, or what the last
+    /// answer took. Also says whether the answer is still under way. `None` when nothing was counted.
+    #[must_use]
+    pub fn counter(&self) -> Option<(usage::Spent, bool)> {
+        let last = || self.entries.iter().rev().find_map(|entry| entry.spent.clone());
+        self.spending().map(|so_far| (so_far, true)).or_else(|| last().map(|spent| (spent, false)))
     }
 
     /// Adds what one request took, priced by `pricing`, to the run's sum.
@@ -1293,6 +1457,12 @@ impl Chat {
     // Human: the last line is the assistant's last words, or the problem the run ended with. A run that left
     // neither (it was stopped before it wrote) still counts in the conversation's sum.
     fn close(&mut self, from: usize) {
+        // Human: a request that never reported (it broke off, or the run was stopped) still took what was
+        // counted along; its price is not known, so the sum becomes the least the run cost.
+        let live = std::mem::take(&mut self.live);
+        if !live.is_empty() {
+            self.spent.add(&usage::Spent { used: live, ..usage::Spent::default() });
+        }
         let spent = std::mem::take(&mut self.spent);
         if spent.is_empty() {
             return;
@@ -1311,7 +1481,7 @@ impl Chat {
         // Human: the model thinks until it writes, uses a tool or is done; what its engine tells for its own
         // books (the session, the record of the conversation) says nothing about that.
         match &event {
-            Event::Session(_) | Event::History(_) | Event::Used(_) => {}
+            Event::Session(_) | Event::History(_) | Event::Used(_) | Event::Meanwhile(_) => {}
             Event::Thought(_) => self.reached = true,
             _ => {
                 self.thought_over(now);
@@ -1359,11 +1529,17 @@ impl Chat {
                 self.fresh = true;
                 self.entries.push(Entry { about, ..Entry::new(Role::Problem, text) });
             }
+            Event::Meanwhile(used) => self.live = used,
             Event::Used(report) => {
+                // Human: the report is the engine's last word on what it counted along.
+                self.live = usage::Used::default();
                 if let Some(pricing) = self.run.as_ref().map(|run| run.pricing.clone()) {
                     self.count(&pricing, &report);
                 }
             }
+            // Human: what the reviewer asks for is work on what was made, not a step the assistant suggested;
+            // an answer that had offered next steps may change the design again for it.
+            Event::Revising => self.holds = false,
             Event::Done => {}
         }
     }
@@ -1422,8 +1598,14 @@ impl Chat {
         // Human: the note of a question is the question itself, with its answers to pick from; an earlier
         // question that is still open gives way to it.
         if tool == asks::TOOL {
-            let Ok(asked) = asks::parse(input) else { return };
+            let Ok(mut asked) = asks::parse(input) else { return };
             self.dismiss();
+            // Human: next steps are not a question that waits in the conversation: they are collected beside
+            // the message box, where the user picks them when they like, one by one or all at once.
+            if asked.suggests {
+                self.offer(asked.questions.first().map_or(&[][..], |steps| &steps.options));
+                asked.closed = true;
+            }
             let entry = &mut self.entries[at];
             if asked.suggests { "Suggested next steps" } else { "Asked a question" }.clone_into(&mut entry.text);
             if let Some(step) = &mut entry.step {
@@ -1455,11 +1637,26 @@ impl Chat {
         }
     }
 
+    /// A call of `tool` from this chat has failed, and the tool said `why`. The note of the call says it once
+    /// the call is over.
+    // Human: "Couldn't change the design" alone leaves the user guessing; the tool's own reason is what tells
+    // them, and whoever they report it to, what went wrong.
+    pub fn tool_failed(&mut self, tool: &str, why: &str) {
+        self.refused.push((tool.to_owned(), why.to_owned()));
+    }
+
     /// The call `id` is over, well or with an error.
     fn finish(&mut self, id: &str, failed: bool) {
-        let Some(entry) = self.note_of(id).and_then(|at| self.entries.get_mut(at)) else { return };
+        let Some(at) = self.note_of(id) else { return };
+        let Some(entry) = self.entries.get_mut(at) else { return };
         let Some(step) = &mut entry.step else { return };
         step.state = if failed { State::Failed } else { State::Done };
+        // The reason the tool gave for this call, when it gave one: calls of one tool end in the order they failed.
+        let heard = self.refused.iter().position(|(tool, _)| *tool == step.tool);
+        step.why = match heard {
+            Some(place) if failed => self.refused.remove(place).1,
+            _ => String::new(),
+        };
         if failed {
             // A question the app refused is not put to the user.
             entry.asked = None;
@@ -1477,6 +1674,131 @@ impl Chat {
 mod tests {
     use super::*;
     use crate::prefs::{CustomProvider, ProviderModel};
+
+    #[test]
+    fn a_failed_call_keeps_the_reason_its_tool_gave() {
+        let why = "Operation 0 failed: there is no layer with the id \"hero\". Nothing of this call was kept.";
+        let mut chat = with_events(vec![
+            Event::Tool { id: "t1".to_owned(), name: "mcp__pencraft__edit_layers".to_owned() },
+            Event::ToolInput { id: "t1".to_owned(), input: serde_json::json!({ "description": "darken the hero", "operations": [{}] }) },
+            Event::ToolEnd { id: "t1".to_owned(), failed: true },
+            Event::Tool { id: "t2".to_owned(), name: "read_layers".to_owned() },
+            Event::ToolInput { id: "t2".to_owned(), input: serde_json::json!({ "ids": ["a"] }) },
+            Event::ToolEnd { id: "t2".to_owned(), failed: true },
+            Event::Done,
+        ]);
+        // The tool says why before the engine says that the call is over.
+        chat.tool_failed("edit_layers", why);
+        assert!(chat.poll());
+        let notes: Vec<(&str, &str, &str)> = chat
+            .entries
+            .iter()
+            .filter_map(|entry| entry.step.as_ref().map(|step| (entry.text.as_str(), step.detail.as_str(), step.why.as_str())))
+            .collect();
+        // What was wanted stays beside the reason; a failure nothing was heard about has none.
+        assert_eq!(notes, [("Couldn't change the design", "Darken the hero", why), ("Couldn't read the layers", "1 layer", "")]);
+        assert_eq!(steps::brief(why), "there is no layer with the id \"hero\".");
+        assert_eq!(
+            steps::brief("Operation 3 failed: `update` needs `properties`. Nothing of this call was kept."),
+            "Operation 3 failed: `update` needs `properties`."
+        );
+        assert_eq!(steps::brief("The document was closed."), "The document was closed.");
+    }
+
+    #[test]
+    fn an_assistant_that_leaves_its_task_list_unfinished_is_sent_back_to_it() {
+        let ended = |chat: &mut Chat| {
+            let (send, receive) = channel();
+            send.send(Event::Done).unwrap();
+            chat.run.as_mut().unwrap().events = receive;
+            assert!(chat.poll() && !chat.running());
+        };
+        let mut chat = with_events(vec![Event::Text("Halfway.".to_owned())]);
+        chat.tasks = tasks::Tasks::sample(2);
+        ended(&mut chat);
+        // The app's own message waits to be sent, and the panel doesn't show it as one of the user's.
+        assert_eq!(chat.pending(), []);
+        let urged = chat.next_waiting().unwrap();
+        assert_eq!(urged.shown, tasks::WENT_ON);
+        assert!(urged.told.contains("task 3 of 6"), "{}", urged.told);
+        // Sent back a second time without a task finished in between; the third time the list is left.
+        for expected in [true, false] {
+            chat.run = with_events(Vec::new()).run;
+            ended(&mut chat);
+            assert_eq!(chat.next_waiting().is_some(), expected);
+        }
+        assert!(chat.tasks.halted());
+        assert_eq!(chat.entries.last().map(|entry| entry.text.as_str()), Some(tasks::GAVE_UP));
+        // A task finished since starts the count anew.
+        chat.tasks.resume();
+        chat.tasks.finish(&serde_json::json!({})).unwrap();
+        chat.run = with_events(Vec::new()).run;
+        ended(&mut chat);
+        assert!(chat.next_waiting().is_some());
+        // A run that ended with a problem, and a list that is worked through, are left alone.
+        chat.entries.push(Entry::new(Role::Problem, "The provider answered with an error."));
+        chat.run = with_events(Vec::new()).run;
+        ended(&mut chat);
+        assert!(chat.next_waiting().is_none());
+    }
+
+    #[test]
+    fn next_steps_are_collected_and_taken_one_by_one_or_all_at_once() {
+        let offer = |id: &str, steps: Value| {
+            vec![
+                Event::Tool { id: id.to_owned(), name: asks::TOOL.to_owned() },
+                Event::ToolInput { id: id.to_owned(), input: serde_json::json!({ "suggestions": steps }) },
+                Event::ToolEnd { id: id.to_owned(), failed: false },
+            ]
+        };
+        let mut events = offer("a1", serde_json::json!(["Add a dark version", "Export it"]));
+        events.extend(offer("a2", serde_json::json!(["Make it bolder", "Export it"])));
+        events.push(Event::Done);
+        let mut chat = with_events(events);
+        assert!(chat.poll());
+        // An answer that has offered next steps changes nothing more; when it is over, the next one may.
+        let mut offering = with_events(Vec::new());
+        assert!(!offering.awaits_choice());
+        offering.hold_for_choice();
+        assert!(offering.awaits_choice());
+        offering.run.as_mut().unwrap().events = {
+            let (send, receive) = channel();
+            send.send(Event::Done).unwrap();
+            receive
+        };
+        assert!(offering.poll() && !offering.awaits_choice());
+        // The reviewer's changes are work on what was made: for them the answer may change the design again.
+        let mut reviewed = with_events(Vec::new());
+        reviewed.hold_for_choice();
+        reviewed.hear(Event::Revising, Instant::now());
+        assert!(reviewed.running() && !reviewed.awaits_choice());
+        // Outside an answer there is nothing to hold.
+        offering.hold_for_choice();
+        assert!(!offering.awaits_choice());
+        // The newest come first and none stands twice; nothing waits in the conversation as a question.
+        assert_eq!(chat.offers(), ["Make it bolder", "Add a dark version", "Export it"]);
+        assert!(asking(&chat.entries).is_none());
+        // One is taken as the user's own message, one is dropped.
+        let taken = chat.take_offer(1).unwrap();
+        assert_eq!((taken.shown.as_str(), taken.told.as_str()), ("Add a dark version", "Add a dark version"));
+        chat.drop_offer(0);
+        assert_eq!(chat.offers(), ["Export it"]);
+        assert!(chat.take_offer(4).is_none());
+        // All at once is one message that lists them.
+        chat.offer(&["Add a footer".to_owned()]);
+        let all = chat.take_offers().unwrap();
+        assert_eq!(all.shown, "Add a footer\nExport it");
+        assert_eq!(all.told, "Do these next steps, one after the other:\n- Add a footer\n- Export it");
+        assert!(chat.offers().is_empty() && chat.take_offers().is_none());
+        // "Do both" and the like only point at the other steps: they are not kept.
+        chat.offer(&["Do both".to_owned(), "All of the above".to_owned(), "Do all three.".to_owned(), "Both".to_owned()]);
+        assert_eq!(chat.offers().len(), 0);
+        assert!(!asks::only_points_at_others("Do all the icons in one style") && !asks::only_points_at_others("Make both buttons round"));
+        // More than are kept push the oldest out.
+        let many: Vec<String> = (0..12).map(|n| format!("Step {n}")).collect();
+        chat.offer(&many);
+        assert_eq!((chat.offers().len(), chat.offers()[0].as_str()), (asks::MOST_OFFERED, "Step 0"));
+    }
 
     fn with_events(events: Vec<Event>) -> Chat {
         let (send, receive) = channel();
@@ -1531,6 +1853,40 @@ mod tests {
         // A new conversation starts at nothing.
         chat.clear();
         assert!(chat.total.is_empty());
+    }
+
+    #[test]
+    fn what_an_answer_takes_counts_up_while_the_assistant_works() {
+        use usage::{Report, Used};
+        let used = |input, output| Used { input, output, ..Used::default() };
+        let (send, receive) = channel();
+        let mut chat = with_events(Vec::new());
+        if let Some(run) = &mut chat.run {
+            run.events = receive;
+        }
+        // Nothing is counted yet, so nothing is shown.
+        assert!(chat.spending().is_none());
+        // The request under way says what it has taken so far, each time anew: tokens, and no price yet.
+        send.send(Event::Meanwhile(used(1000, 0))).unwrap();
+        send.send(Event::Meanwhile(used(1000, 40))).unwrap();
+        chat.poll();
+        let so_far = chat.spending().unwrap();
+        assert_eq!((so_far.used, so_far.cost, so_far.line().as_str()), (used(1000, 40), None, "1k in · 40 out"));
+        // Its report takes the place of what was counted along, and has a price.
+        send.send(Event::Used(Report { used: used(1000, 100), model: None, billed: None })).unwrap();
+        chat.poll();
+        let so_far = chat.spending().unwrap();
+        assert_eq!((so_far.used, so_far.cost), (used(1000, 100), Some(1000 * 1_000_000 + 100 * 2_000_000)));
+        // The next request counts on top of the finished one, again without a price until it reports.
+        send.send(Event::Text("On it.".to_owned())).unwrap();
+        send.send(Event::Meanwhile(used(2000, 5))).unwrap();
+        chat.poll();
+        assert_eq!(chat.spending().map(|so_far| (so_far.used, so_far.cost)), Some((used(3000, 105), None)));
+        // A run that ends before that request reports keeps what was counted, as the least it cost.
+        chat.stop();
+        let spent = chat.entries[1].spent.clone().unwrap();
+        assert_eq!((spent.used, spent.cost, spent.partial), (used(3000, 105), Some(1000 * 1_000_000 + 100 * 2_000_000), true));
+        assert!(chat.spending().is_none() && chat.total == spent);
     }
 
     #[test]
@@ -1888,6 +2244,15 @@ mod tests {
         assert!(chat.poll() && !chat.running());
         assert_eq!(chat.entries.last().map(|e| (e.role, e.text.as_str(), e.pointed.as_slice())), Some((Role::User, "wider", &[chip][..])));
         assert_eq!((chat.next_waiting(), chat.next_waiting(), chat.next_waiting()), (Some(message("too late")), Some(message("then export")), None));
+        // A message that waits can be taken back, by its place among those the panel shows; a place that
+        // isn't there changes nothing.
+        chat.waiting = vec![message("one"), message("two"), message("three")];
+        chat.unqueue(1);
+        chat.unqueue(7);
+        assert_eq!(chat.pending(), [("one".to_owned(), false), ("three".to_owned(), false)]);
+        assert!(chat.choose(&crate::asking::Pick::Unqueue(0)).is_none());
+        assert_eq!(chat.pending(), [("three".to_owned(), false)]);
+        chat.waiting.clear();
         // Stopping sends none of them.
         let mut chat = with_events(Vec::new());
         chat.steer(message("a"), "note", &[]).unwrap();

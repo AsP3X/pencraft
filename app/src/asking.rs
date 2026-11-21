@@ -48,6 +48,9 @@ pub enum Pick {
     },
     /// Closed it without answering.
     Dismiss,
+    /// Took back the message at this place of those that wait to be sent: not an answer to a question, but
+    /// something the user did in the conversation that the chat takes the same way.
+    Unqueue(usize),
 }
 
 /// How a sheet is laid out.

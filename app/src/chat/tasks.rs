@@ -33,6 +33,16 @@ const MOST_TASK: usize = 80;
 // after this many calls is a long job, whatever it looked like at the start.
 const LOOSE_CHANGES: u32 = 6;
 
+/// How often in a row the assistant is sent back to a list it left unfinished without finishing a task
+/// in between; after that the list is left as it stands.
+// Human: a model that stops early usually goes on when told to. One that stops again and again without
+// getting a task done can't do it, and telling it for ever would only spend the user's money.
+pub const URGED_MOST: u32 = 2;
+/// What the conversation shows when the app sends the assistant back to its list.
+pub const WENT_ON: &str = "Went on with the task list";
+/// What it shows when the assistant has left the list unfinished too often.
+pub const GAVE_UP: &str = "The assistant stopped before the task list was finished";
+
 /// What a caller outside the app's own chat is told.
 pub const NO_CHAT: &str = "Only the assistant in Pencraft's own chat keeps a task list. Work without one.";
 /// What a run that changes the design many times without a list is told, once.
@@ -322,6 +332,19 @@ impl Tasks {
         format!("Your task list is not finished. {} Go on with it unless the user asks for something else.", self.told())
     }
 
+    /// What the assistant is told when it ends its answer while tasks are still open; empty when none is.
+    #[must_use]
+    pub fn unfinished(&self) -> String {
+        if !self.open() {
+            return String::new();
+        }
+        format!(
+            "You stopped, but your task list is not finished. {} Go on now: do the task at work, call finish_task, then do the next, until every task \
+             is finished. Do not answer before that. If something makes it impossible to go on, say exactly what.",
+            self.told()
+        )
+    }
+
     /// The run was stopped or broke off: the task at work is marked until work on the list goes on.
     pub fn halt(&mut self) {
         self.halted = self.open();
@@ -446,6 +469,18 @@ mod tests {
         tasks.plan(&json!({ "tasks": ["Same", "Same", "x".repeat(200)] })).unwrap();
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks.each().nth(1).map(|(text, _)| text.chars().count()), Some(MOST_TASK));
+    }
+
+    #[test]
+    fn an_assistant_that_stops_early_is_told_where_its_list_stands() {
+        let mut tasks = Tasks::sample(2);
+        let told = tasks.unfinished();
+        assert!(told.starts_with("You stopped, but your task list is not finished. At work now: task 3 of 6"), "{told}");
+        // A list that is worked through leaves nothing to say.
+        while tasks.open() {
+            tasks.finish(&serde_json::json!({})).unwrap();
+        }
+        assert_eq!(tasks.unfinished(), "");
     }
 
     #[test]

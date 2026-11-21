@@ -32,6 +32,9 @@ pub struct Step {
     pub times: u32,
     /// The note's words are the model's own description of the change, not the tool's usual words.
     pub named: bool,
+    /// Why the call failed, as the tool told the model; empty for a call that worked or whose reason the app
+    /// didn't hear.
+    pub why: String,
 }
 
 /// The words and the icon of a tool.
@@ -164,6 +167,15 @@ pub fn doing(tool: &str) -> String {
 #[must_use]
 pub fn did(tool: &str) -> String {
     words(tool).map_or_else(|| format!("Used {tool}"), |words| words.did.to_owned())
+}
+
+/// The heart of the reason `why` a call failed, for the one line of its note: without the words every failed
+/// change starts and ends with.
+#[must_use]
+pub fn brief(why: &str) -> &str {
+    let why = why.trim().strip_suffix("Nothing of this call was kept.").unwrap_or(why).trim();
+    // "Operation 3 failed: …" keeps its number only when the call had more than its first operation fail.
+    why.strip_prefix("Operation 0 failed: ").unwrap_or(why)
 }
 
 /// What a note says when `tool` didn't work.

@@ -22,7 +22,42 @@ const MOST_OPTION: usize = 90;
 /// What the model is told when its questions are on the screen.
 pub const ASKED: &str = "The user now sees your questions with the answers to pick from; they may pick several and add words of their own. End your turn with one short sentence and change nothing meanwhile: their answer arrives as their next message.";
 /// What the model is told when its suggestions are on the screen.
-pub const SUGGESTED: &str = "The user now sees your suggestions to tick. Finish your reply as usual; if they pick some, or write something else, it arrives as their next message.";
+pub const SUGGESTED: &str = "The user now has your suggestions beside the chat and picks them when they like. Do not start on any of them yourself, now or later: a suggestion is only done when the user picks it, and it then arrives as their next message. End your answer now with a sentence or two on what you made.";
+/// What the model is told when it goes on changing the design after it has offered next steps.
+pub const NOT_CHOSEN: &str = "You offered next steps and the user hasn't picked one. Nothing more is changed in this answer: end it now. A step the user picks arrives as their next message.";
+/// The most suggestions that are kept for the user at a time; the oldest go first.
+pub const MOST_OFFERED: usize = 6;
+
+/// Whether `step` only says to do the other steps ("Do both", "All of the above"): that is no step of its own.
+// Human: a model likes to end its suggestions with "Do both". The app has its own way of taking several
+// at once, and a pill that says so is one the user can't tell from a step.
+#[must_use]
+pub fn only_points_at_others(step: &str) -> bool {
+    let plain: String = step.to_lowercase().chars().map(|letter| if letter.is_alphanumeric() { letter } else { ' ' }).collect();
+    let words: Vec<&str> =
+        plain.split_whitespace().filter(|word| !matches!(*word, "do" | "them" | "it" | "of" | "the" | "these" | "those" | "please")).collect();
+    matches!(
+        words.as_slice(),
+        ["both" | "all" | "everything" | "neither" | "none" | "nothing" | "either" | "any"]
+            | ["all" | "both", "above" | "two" | "three" | "four" | "steps" | "suggestions" | "options"]
+            | ["all", "two" | "three" | "four", "steps" | "suggestions" | "options"]
+    )
+}
+
+/// The message that takes all of `steps` at once, as the panel shows it: each step on a line of its own.
+#[must_use]
+pub fn all_shown(steps: &[String]) -> String {
+    steps.join("\n")
+}
+
+/// The same message as the assistant reads it.
+#[must_use]
+pub fn all_told(steps: &[String]) -> String {
+    match steps {
+        [one] => one.clone(),
+        many => format!("Do these next steps, one after the other:\n{}", many.iter().map(|step| format!("- {step}")).collect::<Vec<_>>().join("\n")),
+    }
+}
 /// What a caller outside the app's own chat is told.
 pub const NO_CHAT: &str = "Only the assistant in Pencraft's own chat can ask the user this way. Ask in your reply instead.";
 

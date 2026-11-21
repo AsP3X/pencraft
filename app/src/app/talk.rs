@@ -242,6 +242,7 @@ impl App {
                 ChatAsk::Send { shown, pointed, told, files, pasted } => self.send_chat(shown, pointed, told, &files, pasted, ctx),
                 ChatAsk::Attach => self.ask_attach(),
                 ChatAsk::Answer(pick) => self.answer_chat(&pick, ctx),
+                ChatAsk::Offer(act) => self.take_offer(act, ctx),
             }
         }
     }
@@ -345,6 +346,24 @@ impl App {
     /// the question is closed.
     fn answer_chat(&mut self, pick: &crate::conversation::Pick, ctx: &egui::Context) {
         if let Some(message) = self.shown_talk().chat.choose(pick) {
+            self.hand_over(message, ctx);
+        }
+    }
+
+    /// Does what the user did with the next steps the assistant offers: one is sent as their message, all are
+    /// sent as one message, or one is dropped.
+    fn take_offer(&mut self, act: crate::offers::Act, ctx: &egui::Context) {
+        use crate::offers::Act;
+        let chat = &mut self.shown_talk().chat;
+        let message = match act {
+            Act::Take(place) => chat.take_offer(place),
+            Act::TakeAll => chat.take_offers(),
+            Act::Drop(place) => {
+                chat.drop_offer(place);
+                None
+            }
+        };
+        if let Some(message) = message {
             self.hand_over(message, ctx);
         }
     }

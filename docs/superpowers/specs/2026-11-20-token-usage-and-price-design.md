@@ -13,6 +13,16 @@ never a guess.
 - Under the last words of every answered message stands one quiet line: `12.4k in · 1.8k out · $0.08`.
   "In" is everything the model read (cached or not), "out" everything it wrote (thinking included), summed
   over all the requests the message took, the review's included.
+- The line's places: the finished sum stands under the answer it belongs to. While the assistant works, a
+  small pill in the gap between the conversation and the message box counts up, where it is seen without
+  scrolling. With the sidebar folded away a small pill over the message bar shows the count, and afterwards
+  what the last answer took, under the line that says what the assistant is doing.
+- While the assistant works, that pill counts up: the tokens of
+  the finished requests, plus what the request under way has taken so far where its engine says (the Messages
+  API says what was read as an answer starts; Claude Code and Grok say it request by request). It shows no
+  price while a request is under way. A request that never reports (it broke off, or the run was stopped)
+  keeps what was counted, and the run's sum is then written `≥`. Chat Completions and Ollama say nothing
+  until a request is done, so their line moves once per request.
 - Hovering the line shows the parts: input, read from cache, written to cache, output, the model that
   answered, where the price comes from, and the total of the whole conversation.
 - The price is written by what is known:

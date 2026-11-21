@@ -1,7 +1,7 @@
 //! The task list at the top of the chat panel: the tasks of a long job, and how far the assistant has got.
 //!
 //! The list ([`crate::chat::tasks`]) stands under the panel's header, above the conversation, and stays there
-//! while the conversation scrolls. A finished task has a tick, the task at work a small blob of liquid that
+//! while the conversation scrolls; no line parts it from either, the conversation fades out under it. A finished task has a tick, the task at work a small blob of liquid that
 //! breathes, with a frame a light runs around; the tasks still to come wait with an empty ring. A bar shows how
 //! far the list is. A click on the header folds the list to one line and opens it again.
 //!
@@ -93,14 +93,14 @@ fn tall(tasks: usize, folded: bool, finished: bool) -> f32 {
 
 /// The colour `share` of the way from `from` to `to`.
 #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "colour channels, kept between 0 and 255")]
-fn tint(from: Color32, to: Color32, share: f32) -> Color32 {
+pub fn tint(from: Color32, to: Color32, share: f32) -> Color32 {
     let share = share.clamp(0.0, 1.0);
     let channel = |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * share).round() as u8;
     Color32::from_rgba_premultiplied(channel(from.r(), to.r()), channel(from.g(), to.g()), channel(from.b(), to.b()), channel(from.a(), to.a()))
 }
 
 /// 0 below `from`, 1 above `to`, and a smooth rise between.
-fn smooth(from: f32, to: f32, value: f32) -> f32 {
+pub fn smooth(from: f32, to: f32, value: f32) -> f32 {
     let share = ((value - from) / (to - from)).clamp(0.0, 1.0);
     share * share * (3.0 - 2.0 * share)
 }
@@ -113,7 +113,7 @@ fn seconds(now: f64, since: f64) -> f32 {
 
 /// `time` as the share of a turn that takes `turn` seconds, from 0 to 1.
 #[expect(clippy::cast_possible_truncation, reason = "a share between 0 and 1")]
-fn turned(time: f64, turn: f32) -> f32 {
+pub fn turned(time: f64, turn: f32) -> f32 {
     (time / f64::from(turn)).rem_euclid(1.0) as f32
 }
 
@@ -150,7 +150,7 @@ fn ticked(painter: &egui::Painter, slot: Rect, palette: Palette, burst: Option<f
 /// The blob of the task at work, around `centre`: a drop of the liquid that swells and shrinks, slowly goes
 /// through shapes that are not quite round, and has a light running around its rim. Without `time`
 /// ("Animations & effects" is off) it is a still, round drop.
-fn blob(painter: &egui::Painter, centre: Pos2, radius: f32, time: Option<f64>) {
+pub fn blob(painter: &egui::Painter, centre: Pos2, radius: f32, time: Option<f64>) {
     let pulse = time.map_or(1.0, |time| 0.95 + 0.13 * (turned(time, TASKS_BLOB_PULSE) * std::f32::consts::TAU).sin());
     let warp = time.map_or(0.0, |time| turned(time, TASKS_BLOB_WARP) * std::f32::consts::TAU);
     let give = if time.is_some() { 1.0 } else { 0.0 };
@@ -341,8 +341,7 @@ fn bar(painter: &egui::Painter, track: Rect, share: f32, palette: Palette, time:
 pub struct Look {
     /// The room of the conversation; the list takes the top of it.
     pub area: Rect,
-    /// How far the panel goes on to each side of `area`: the liquid and the line under the list use the
-    /// panel's whole width.
+    /// How far the panel goes on to each side of `area`: the liquid uses the panel's whole width.
     pub reach: f32,
     /// The panel's colours.
     pub palette: Palette,
@@ -541,7 +540,6 @@ pub fn show(ui: &Ui, chat: &Chat, key: u64, look: Look) -> Rect {
     }
     let wet = liquid_over(ui, &painter, &mut motion.picture, tasks, look, &moment);
 
-    ui.painter().hline(whole.x_range(), whole.bottom(), Stroke::new(1.0, palette.outline.gamma_multiply(0.7)));
     let moving = wet || gliding || since_step < TASKS_BURST + 0.4 || (chat.running() && tasks.open());
     if look.animate && moving {
         ui.request_repaint();
@@ -585,9 +583,6 @@ fn leave(ui: &Ui, chat: &Chat, key: u64, look: Look, mut motion: Motion) -> Rect
         let from = slot.right() + TASKS_MARK_GAP - 1.0;
         let text = words(ui, &format!("All {count} tasks done"), color, line.right() - from);
         painter.galley(pos2(from, line.center().y - text.size().y / 2.0), text, color);
-    }
-    if height > 0.5 {
-        ui.painter().hline(whole.x_range(), whole.bottom(), Stroke::new(1.0, look.palette.outline.gamma_multiply(0.7)));
     }
     ui.request_repaint();
     ui.data_mut(|data| data.insert_temp(motion_id(key), motion));

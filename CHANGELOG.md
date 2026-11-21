@@ -9,6 +9,52 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Added
+
+- **The assistant's suggestions wait beside the message box.** The next
+  steps it offers no longer sit in the conversation. They are collected
+  behind a round button beside the message box: open it and they fan out as
+  small pills. Click one to send it, "Do all" to send them together, or the
+  cross at a pill's end to remove it. New suggestions join the ones you
+  haven't used, and the button shows how many are waiting. The assistant
+  never starts on a suggestion by itself: once it has offered next steps, its
+  answer changes nothing more, and a step is only done when you pick it.
+- An empty chat offers six ideas picked at random from more than a hundred,
+  and a button beside them deals six others.
+- A message that waits for the assistant has a "Remove" button under it, for
+  the one sent too soon or no longer wanted.
+- A button under each answer copies it.
+
+### Changed
+
+- **The chat moves more and reads more easily.** Your message rises out of
+  the message box; each thing the assistant does slides in as its own line,
+  with a light running through it while it works and the time it took when
+  it is done; and the assistant's words fade in behind a small orange drop.
+- Once the assistant goes on, the steps it took fold into one line such as
+  "5 steps · 8 s". Click it to see them again.
+- What an answer takes counts up in a small pill over the message box while
+  the assistant works, and then stands under the answer. With the sidebar
+  folded away the pill over the message bar keeps the last sum. Hold the
+  pointer over it for the parts and the conversation's sum.
+- The message box grows with what you write, up to seven lines. The send
+  button turns dark when there is something to send and becomes a stop
+  button while the assistant works.
+- The conversation has a thin scroll bar and fades out under the task list
+  and the header; the lines that boxed the task list in are gone.
+
+### Fixed
+
+- An assistant that ended its answer while its task list was unfinished
+  left the job half done. It is now sent back to the list, so a long job is
+  worked through to its last task. If it stops twice more without finishing
+  a task, the list is left and the chat says so.
+- A step that failed only said that it failed. It now says why: the reason
+  stands in its line, and the pointer over it shows all of it.
+- When Claude Code's provider didn't accept its key, the chat waited for
+  minutes without a word. It now says so at once.
+- Text in the message box could run into the buttons under it.
+
 ## [0.3.27] - 2026-11-20
 
 See what each answer took in tokens and money, follow a long job task by

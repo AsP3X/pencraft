@@ -353,7 +353,7 @@ pub fn tools() -> Value {
                     "question": { "type": "string", "description": "One short question." },
                     "options": { "type": "array", "maxItems": 4, "items": { "type": "string" }, "description": "Two to four short answers to pick from, a few words each. Leave out a catch-all like \"Other\": the user can always type." }
                 } } },
-                "suggestions": { "type": "array", "minItems": 1, "maxItems": 4, "items": { "type": "string" }, "description": "Next steps to offer, each a short request in the user's voice." }
+                "suggestions": { "type": "array", "minItems": 1, "maxItems": 4, "items": { "type": "string" }, "description": "Next steps to offer, each a short request in the user's voice and one concrete step of its own; never \"Do both\" or \"All of the above\"." }
             } }
         },
         {

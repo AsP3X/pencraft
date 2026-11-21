@@ -53,6 +53,21 @@ pub const MESSAGE_TEXT_SIZE: f32 = 13.5;
 pub const SIDEBAR_TEXT_SIZE: f32 = 13.0;
 /// Diameter of the round send button in the message box.
 pub const SEND_BUTTON: f32 = 20.0;
+/// Diameter of the send button of the chat's message box.
+pub const MESSAGE_SEND: f32 = 26.0;
+/// How long that button takes to turn dark once there is something to send, in seconds.
+pub const MESSAGE_SEND_TIME: f32 = 0.16;
+/// How long the light around it takes for one turn while the assistant works, in seconds.
+pub const MESSAGE_SEND_TURN: f32 = 0.9;
+/// How many lines of a message the message box grows to before it scrolls.
+pub const COMPOSER_ROWS_MOST: f32 = 7.0;
+/// How long the message box takes to grow by a line, in seconds.
+pub const COMPOSER_GROW_TIME: f32 = 0.12;
+/// How long the light takes to run along the message box's top edge while the assistant works, in seconds,
+/// and the share of the edge it covers.
+pub const COMPOSER_LIGHT_TURN: f32 = 1.5;
+/// See [`COMPOSER_LIGHT_TURN`].
+pub const COMPOSER_LIGHT_SHARE: f32 = 0.3;
 /// Side of the arrow on a round send button (the message box's, and the quick field's under a picture).
 pub const SEND_ARROW: f32 = 12.0;
 /// Diameter of the highlight behind the active tool in the rail.
@@ -143,9 +158,98 @@ pub const CHAT_BUBBLE_SHARE: f32 = 0.86;
 pub const CHAT_GAP: f32 = 10.0;
 /// The room between two notes on what the assistant did, which read as one list.
 pub const CHAT_NOTE_GAP: f32 = 6.0;
-/// The room between an answer and the line saying what it took.
-pub const CHAT_SPENT_GAP: f32 = 3.0;
-/// How faint that line is, as a share of the muted text's strength.
+/// The colour of what the assistant is doing in the conversation: the liquid's, as in the task list.
+pub const CHAT_ACCENT: Color32 = LIQUID;
+/// How high the line of one note is, at the small text size.
+pub const CHAT_NOTE_ROW: f32 = 22.0;
+/// The least time a tool call has to take for its note to say how long it took, in seconds.
+pub const CHAT_NOTE_TIMED: f32 = 0.1;
+/// From how many notes on a stretch of work is folded into one line once the assistant goes on.
+pub const CHAT_STEPS_FOLD: usize = 2;
+/// How long folding such a stretch, or opening it again, takes, in seconds.
+pub const CHAT_STEPS_TIME: f32 = 0.32;
+/// How high the one line of a folded stretch is, at the small text size.
+pub const CHAT_STEPS_HEAD: f32 = 22.0;
+/// The size of each tool's round icon on that line, and how far each lies over the one before it.
+pub const CHAT_STEPS_ICON: f32 = 18.0;
+/// See [`CHAT_STEPS_ICON`].
+pub const CHAT_STEPS_LAP: f32 = 6.0;
+/// How long the light takes to run once through the words of a tool at work, in seconds.
+pub const CHAT_SHIMMER_TURN: f32 = 1.5;
+/// How many letters to each side of its middle that light reaches.
+pub const CHAT_SHIMMER_BAND: f32 = 5.0;
+/// How far under its place a message of the user's starts when it is sent, and how long it takes to rise.
+pub const CHAT_SEND_RISE: f32 = 44.0;
+/// See [`CHAT_SEND_RISE`].
+pub const CHAT_SEND_TIME: f32 = 0.4;
+/// The corners of a message of the user's, and the one corner that points at the message box.
+pub const CHAT_BUBBLE_RADIUS: u8 = 14;
+/// See [`CHAT_BUBBLE_RADIUS`].
+pub const CHAT_BUBBLE_TAIL: u8 = 4;
+/// How many of the letters the assistant wrote last are still fading in.
+pub const CHAT_WRITE_FADE: usize = 14;
+/// The radius of the drop that stands after the assistant's words while it writes.
+pub const CHAT_CARET: f32 = 3.5;
+/// The room between an answer and the line under it (what it took, and the button that copies it).
+pub const CHAT_FOOT_GAP: f32 = 4.0;
+/// How far under the panel's header the conversation fades out as it scrolls up.
+pub const CHAT_FADE: f32 = 22.0;
+/// How wide the conversation's scroll bar is, and how wide under the pointer.
+pub const CHAT_SCROLL_BAR: f32 = 3.0;
+/// See [`CHAT_SCROLL_BAR`].
+pub const CHAT_SCROLL_HELD: f32 = 6.0;
+/// The size of the round button the assistant's next steps are collected behind, beside the message box.
+pub const OFFER_BUTTON: f32 = 40.0;
+/// How high the pill of one step is, the room between two pills, and the room beside a pill's words.
+pub const OFFER_PILL: f32 = 32.0;
+/// See [`OFFER_PILL`].
+pub const OFFER_GAP: f32 = 6.0;
+/// See [`OFFER_PILL`].
+pub const OFFER_PAD: f32 = 12.0;
+/// The widest a pill gets, and on how many lines a step's words may stand in it: a step of the most letters
+/// one may have still shows whole.
+pub const OFFER_MOST_WIDTH: f32 = 300.0;
+/// See [`OFFER_MOST_WIDTH`].
+pub const OFFER_ROWS: usize = 3;
+/// The narrowest a pill is made where there is little room beside the button.
+pub const OFFER_NARROWEST: f32 = 150.0;
+/// The room the cross that removes a step takes at the right end of its pill: all of it can be clicked.
+pub const OFFER_CROSS: f32 = 30.0;
+/// The size of the count on the folded button.
+pub const OFFER_BADGE: f32 = 18.0;
+/// How long the steps take to open or fold, in seconds, and how much later each pill sets off than the one
+/// before it, as a share of that.
+pub const OFFER_OPEN_TIME: f32 = 0.34;
+/// See [`OFFER_OPEN_TIME`].
+pub const OFFER_OPEN_APART: f32 = 0.18;
+/// How fast a pill glides to its place when the others make room or close a gap.
+pub const OFFER_GLIDE: f32 = 16.0;
+/// How many seconds lie between two steps that come together, and how long a new pill glows.
+pub const OFFER_BORN_APART: f32 = 0.08;
+/// See [`OFFER_BORN_APART`].
+pub const OFFER_GLOW_TIME: f32 = 0.9;
+/// How long a step that was sent flies into the conversation, in seconds, and how many seconds lie between
+/// two pills when all are sent.
+pub const OFFER_FLY_TIME: f32 = 0.62;
+/// See [`OFFER_FLY_TIME`].
+pub const OFFER_FLY_APART: f32 = 0.09;
+/// How long a dropped pill falls away, in seconds.
+pub const OFFER_DROP_TIME: f32 = 0.22;
+/// How long the button shows its tick when the last step was taken, the ring around it widens when steps
+/// come, and the count of new steps rises over it, each in seconds.
+pub const OFFER_DONE_TIME: f32 = 0.9;
+/// See [`OFFER_DONE_TIME`].
+pub const OFFER_RING_TIME: f32 = 0.8;
+/// See [`OFFER_DONE_TIME`].
+pub const OFFER_PLUS_TIME: f32 = 1.0;
+/// How much taller the gap between the conversation and the message box is while the counter of what an
+/// answer takes stands in it: the counter's pill and the gap over it.
+pub const CHAT_SPENT_STRIP: f32 = CHAT_SPENT_PILL + ISLAND_GAP;
+/// How tall the counter's pill over the message bar is while the sidebar is folded away.
+pub const CHAT_SPENT_PILL: f32 = 22.0;
+/// The room beside the words in that pill.
+pub const CHAT_SPENT_PAD: f32 = 10.0;
+/// How faint the counter's words are, as a share of the muted text's strength.
 pub const CHAT_SPENT_INK: f32 = 0.7;
 /// The size of a note's icon, with the circle that goes around it while its tool works.
 pub const CHAT_NOTE_ICON: f32 = 16.0;
