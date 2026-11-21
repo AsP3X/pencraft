@@ -9,6 +9,12 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.3.28] - 2026-11-21
+
+A livelier chat that shows each step as it happens, the assistant's
+suggestions collected beside the message box for you to pick, and long jobs
+that are worked through to their last task.
+
 ### Added
 
 - **The assistant's suggestions wait beside the message box.** The next
@@ -838,7 +844,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.27...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.28...HEAD
+[0.3.28]: https://github.com/AsP3X/pencraft/compare/v0.3.27...v0.3.28
 [0.3.27]: https://github.com/AsP3X/pencraft/compare/v0.3.26...v0.3.27
 [0.3.26]: https://github.com/AsP3X/pencraft/compare/v0.3.25...v0.3.26
 [0.3.25]: https://github.com/AsP3X/pencraft/compare/v0.3.24...v0.3.25
