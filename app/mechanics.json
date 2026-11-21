@@ -12,17 +12,32 @@
    "value": 1
   },
   {
-   "name": "bundle: layout version in the manifest",
+   "name": ".quill file: layout number",
    "group": "file",
    "value": 1
   },
   {
-   "name": "bundle: most bytes unpacked",
+   "name": ".quill file: deepest nesting of values in the document block",
+   "group": "file",
+   "value": 127
+  },
+  {
+   "name": ".quill file: most bytes of keys in the document block",
+   "group": "file",
+   "value": 268435456
+  },
+  {
+   "name": "old bundle: layout version in the manifest",
+   "group": "file",
+   "value": 1
+  },
+  {
+   "name": ".quill file: most bytes unpacked, and most a save packs",
    "group": "file",
    "value": 2147483648
   },
   {
-   "name": "bundle: seconds a new working folder is left alone",
+   "name": ".quill file: seconds a new working folder is left alone",
    "group": "file",
    "value": 60
   },

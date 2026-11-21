@@ -52,7 +52,7 @@ struct Words {
 }
 
 /// The tools the app gives a model, as the chat names them.
-const TOOLS: [Words; 23] = [
+const TOOLS: [Words; 24] = [
     Words {
         tool: "get_state",
         icon: "eye",
@@ -82,6 +82,13 @@ const TOOLS: [Words; 23] = [
     Words { tool: "select_layers", icon: "mouse-pointer-2", doing: "Selecting layers", did: "Selected layers", failed: "Couldn't select the layers" },
     Words { tool: "open_document", icon: "folder-open", doing: "Opening a document", did: "Opened a document", failed: "Couldn't open the document" },
     Words { tool: "save_document", icon: "save", doing: "Saving the document", did: "Saved the document", failed: "Couldn't save the document" },
+    Words {
+        tool: "export_document",
+        icon: "download",
+        doing: "Exporting the document",
+        did: "Exported the document",
+        failed: "Couldn't export the document",
+    },
     Words { tool: "export_layers", icon: "download", doing: "Exporting layers", did: "Exported layers", failed: "Couldn't export the layers" },
     Words {
         tool: "generate_image",
@@ -213,7 +220,7 @@ pub fn detail(tool: &str, input: &Value) -> String {
             0 | 1 => String::new(),
             changes => counted(changes, "change", "changes"),
         },
-        "open_document" | "save_document" | "export_layers" => path(),
+        "open_document" | "save_document" | "export_document" | "export_layers" => path(),
         "generate_image" => quoted(input.get("prompt")),
         "search_web" | "search_images" => quoted(input.get("query")),
         // Human: a page or a picture is told by the site it is on; its whole address is too long for a note.
@@ -333,7 +340,8 @@ mod tests {
         assert_eq!(detail("edit_layers", &json!({ "operations": [{}, {}] })), "2 changes");
         assert_eq!(detail("edit_layers", &json!({ "operations": [{}] })), "");
         assert_eq!(detail("export_layers", &json!({ "path": "C:\\Users\\me\\Desktop\\dog.png" })), "dog.png");
-        assert_eq!(detail("save_document", &json!({ "path": "/designs/site.pen" })), "site.pen");
+        assert_eq!(detail("save_document", &json!({ "path": "/designs/site.quill" })), "site.quill");
+        assert_eq!(detail("export_document", &json!({ "path": "/designs/site.pen" })), "site.pen");
         assert_eq!(detail("get_state", &json!({})), "");
     }
 

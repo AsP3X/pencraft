@@ -514,6 +514,99 @@ pub(super) fn settle(editor: &mut Editor, was: Option<&Path>, home: Option<&Path
     told
 }
 
+/// Writes the document of `editor` as a `.pen` file at `target`, with the files it names beside it, and gives a
+/// sentence for each thing the user should know about the file: a file that couldn't be copied or was there
+/// already as another one, a picture named from outside the folder, what in it only Pencraft draws, parts a
+/// newer Pencraft added that a `.pen` file has no place for.
+///
+/// # Errors
+/// A sentence when the document or the file can't be written.
+// Human: an export. It is made from a copy of the document, in which a picture kept under the home folder is
+// named from beside `target` as in a document saved there ([`settle`]), and the files the document names inside
+// its folder are copied to the same place beside `target`. A file that is there already is never written
+// over: the same file is used; when it is another one, a picture is copied under a free name and the copy of
+// the document names that one, and for a shader file or an imported document, which are named in more places
+// than a picture is, the export says that the exported file shows the one that was there. The document in
+// the tab is not touched: it keeps its file, its working folder, its paths and its unsaved changes.
+// Agent: READS the files the document names; WRITES `target` and the copies beside it. BLOCKS on them.
+pub(super) fn export_pen(editor: &Editor, target: &Path, home: Option<&Path>) -> Result<Vec<String>, String> {
+    let mut copy = Editor::new(editor.doc.clone(), Some(target.to_path_buf()), 0);
+    let mut told = settle(&mut copy, None, home);
+    if let (Some(from), Some(to)) = (editor.folder(), target.parent())
+        && from != to
+    {
+        told.extend(bring_along(&mut copy, from, to, target));
+    }
+    pen_doc::stamp::apply(&mut copy.doc);
+    let text = pen_doc::write(&copy.doc).map_err(|error| error.to_string())?;
+    craft_atomic::atomic_write(target, text.as_bytes()).map_err(|error| format!("{}: {error}", target.display()))?;
+    told.extend(copy.only_here());
+    if editor.keeps_parts() {
+        told.push("Parts a newer Pencraft added to the .quill file are not in the .pen file.".to_owned());
+    }
+    Ok(told)
+}
+
+/// Copies the files the document `copy`, to be written at `target` in the folder `to`, names inside the folder
+/// `from` to the same place in `to`, and gives a sentence for each thing to know: a file that couldn't be
+/// copied, a picture that got another name because another file had its own, a file that was left because
+/// another one is there, a picture named by a path that leaves the folder.
+// Agent: READS under `from` and `to`; WRITES under `to`. BLOCKS on both.
+fn bring_along(copy: &mut Editor, from: &Path, to: &Path, target: &Path) -> Vec<String> {
+    let same = |one: &Path, other: &Path| std::fs::read(one).ok().zip(std::fs::read(other).ok()).is_some_and(|(one, other)| one == other);
+    let mut told = Vec::new();
+    copy.repicture(&mut |url| {
+        let Some(name) = crate::bundle::relative(url) else {
+            // Human: a path that leaves the folder (`../shared/a.png`) is not followed by an export, as a
+            // `.pen` file's never was by a save; from the exported file it leads somewhere else.
+            if crate::images::resolve(None, url).is_none() && crate::images::resolve(Some(from), url).is_some_and(|file| file.is_file()) {
+                told.push(format!(
+                    "The picture {url} lies outside the document's folder: the exported file names it by the same path, which starts at {} there.",
+                    to.display()
+                ));
+            }
+            return None;
+        };
+        let (source, there) = (from.join(&name), to.join(&name));
+        if !source.is_file() || same(&source, &there) {
+            return None;
+        }
+        let done = if there.exists() {
+            store::adopt(&source, target).inspect(|new| {
+                told.push(format!(
+                    "Another picture lies at {name} in {}: this one was copied as {new}, and the exported file names it so.",
+                    to.display()
+                ));
+            })
+        } else {
+            store::bring(&source, &there).map(|()| url.to_owned())
+        };
+        match done {
+            Ok(new) => Some(new).filter(|new| new != url),
+            Err(why) => {
+                told.push(why);
+                None
+            }
+        }
+    });
+    // Human: what is left are the shader files and the imported documents; the pictures are there by now.
+    for name in crate::bundle::named(&copy.doc) {
+        let (source, there) = (from.join(&name), to.join(&name));
+        if !source.is_file() || same(&source, &there) {
+            continue;
+        }
+        if there.exists() {
+            told.push(format!("Another file lies at {name} in {}: it was left as it is, and the exported file uses that one.", to.display()));
+            continue;
+        }
+        let copied = there.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::copy(&source, &there));
+        if let Err(error) = copied {
+            told.push(format!("The file {} couldn't be brought to {}: {error}.", source.display(), to.display()));
+        }
+    }
+    told
+}
+
 /// A small picture of the picture file at `path`, at most [`PIECE_PIXELS`] a side; `None` when it isn't a PNG,
 /// JPEG, WebP or GIF file that can be read.
 // Human: opened as a file to send is (`sources::open`): the size cap, the format the first bytes say and the
@@ -1597,16 +1690,16 @@ mod tests {
         let mut editor = Editor::new(doc, Some(folder.join("site.pen")), 7);
 
         // Into a bundle: every picture comes in, also the one named by a full path, and the shader file.
-        let bundle = folder.join("site.pencraft");
+        let bundle = folder.join("site.quill");
         let was = editor.move_to(bundle.clone()).unwrap();
         assert_eq!(was, Some(folder.join("site.pen")));
         assert_eq!(settle(&mut editor, was.as_deref(), None), Vec::<String>::new());
         let told = editor.save().unwrap();
         assert!(told.len() == 1 && told[0].contains("images/gone.png"), "{told:?}");
-        let files = crate::bundle::zip::read(&std::fs::read(&bundle).unwrap(), 1 << 20, &|_| true).unwrap();
+        let files = crate::bundle::quill::read(&std::fs::read(&bundle).unwrap(), 1 << 20).unwrap().entries;
         let names: Vec<&str> = files.iter().map(|file| file.name.as_str()).collect();
-        assert_eq!(names, ["manifest.json", "document.pen", "fx/glow.glsl", "images/a.png", "images/far.png", "images/credits.json"]);
-        let written = String::from_utf8(files[1].bytes.clone()).unwrap();
+        assert_eq!(names, ["", "fx/glow.glsl", "images/a.png", "images/far.png", "images/credits.json"]);
+        let written = pen_doc::write(&pen_doc::binary::read(&files[0].bytes).unwrap()).unwrap();
         assert!(written.contains("\"./images/far.png\"") && !written.contains(&far), "{written}");
         assert!(written.contains("\"pencraft\": {\n    \"format\": 1,\n    \"features\": [\n      \"mask\"\n    ]"), "{written}");
         assert!(!folder.join("site.pen").exists() && outside.join("far.png").is_file());
@@ -1627,18 +1720,40 @@ mod tests {
         editor.save().unwrap();
         assert_eq!(std::fs::read(&bundle).unwrap(), first);
 
-        // Out again to a `.pen` file elsewhere: the files come to lie beside it, and its paths start there.
-        let was = editor.move_to(back.join("back.pen")).unwrap();
-        assert_eq!(settle(&mut editor, was.as_deref(), None), Vec::<String>::new());
-        assert_eq!(editor.only_here().as_deref(), Some("Only Pencraft draws its masks; other programs that open .pen files leave them out."));
-        assert_eq!(editor.save().unwrap(), Vec::<String>::new());
-        assert_eq!(editor.folder(), Some(back.as_path()));
+        // Exported as a `.pen` file elsewhere: the files come to lie beside that file, and the document stays as
+        // it is, in its `.quill` file, with its unsaved changes.
+        editor.dirty = true;
+        let before = pen_doc::write(&editor.doc).unwrap();
+        let told = export_pen(&editor, &back.join("back.pen"), None).unwrap();
+        assert_eq!(told, ["Only Pencraft draws its masks; other programs that open .pen files leave them out."]);
+        assert_eq!((editor.path.as_ref(), editor.folder(), editor.dirty), (Some(&bundle), Some(unpacked.as_path()), true));
+        assert_eq!(pen_doc::write(&editor.doc).unwrap(), before);
         assert_eq!(std::fs::read(back.join("images/far.png")).unwrap(), b"far");
         assert_eq!(std::fs::read(back.join("fx/glow.glsl")).unwrap(), b"void main(){}");
         let credits = std::fs::read_to_string(back.join("images/credits.json")).unwrap();
         assert!(credits.contains("a.png"), "{credits}");
         let plain = std::fs::read_to_string(back.join("back.pen")).unwrap();
-        assert!(plain.starts_with("{\n  \"version\": \"2.22\",\n  \"pencraft\": {"), "{plain}");
+        assert!(plain.starts_with("{\n  \"version\": \"2.22\",\n  \"pencraft\": {") && plain.contains("\"./images/far.png\""), "{plain}");
+        // Exported there again, the files that are there are used and nothing is said.
+        assert_eq!(export_pen(&editor, &back.join("back.pen"), None).unwrap().len(), 1);
+        assert_eq!(std::fs::read_dir(back.join("images")).unwrap().count(), 3, "two pictures and the credits");
+        // When other files lie there under those names, none is written over. The picture is copied under a
+        // free name and the exported file names that one; of the shader file it is said that the other is used.
+        std::fs::write(back.join("images/far.png"), b"another").unwrap();
+        std::fs::write(back.join("fx/glow.glsl"), b"another").unwrap();
+        let told = export_pen(&editor, &back.join("back.pen"), None).unwrap();
+        assert_eq!(told.len(), 3, "{told:?}");
+        assert!(told[0].starts_with("Another picture lies at images/far.png in ") && told[0].contains("copied as ./images/far-0000.png"), "{told:?}");
+        assert!(told[1].starts_with("Another file lies at fx/glow.glsl in ") && told[1].ends_with("the exported file uses that one."), "{told:?}");
+        assert_eq!(std::fs::read(back.join("images/far.png")).unwrap(), b"another");
+        assert_eq!(std::fs::read(back.join("images/far-0000.png")).unwrap(), b"far");
+        assert_eq!(std::fs::read(back.join("fx/glow.glsl")).unwrap(), b"another");
+        let plain = std::fs::read_to_string(back.join("back.pen")).unwrap();
+        assert!(plain.contains("\"./images/far-0000.png\"") && !plain.contains("\"./images/far.png\""), "{plain}");
+        assert_eq!(pen_doc::write(&editor.doc).unwrap(), before, "the document in the tab names its pictures as before");
+        // The exported file opens as a document of its own, with its pictures beside it.
+        let (exported, said) = Editor::open(&back.join("back.pen"), 7).unwrap();
+        assert_eq!((said, exported.bundled(), exported.folder()), (None, false, Some(back.as_path())));
         editor.close();
         assert!(!unpacked.exists());
         for folder in [folder, outside, back] {
@@ -1656,8 +1771,198 @@ mod tests {
         assert!(!editor.bundled() && editor.folder() == Some(folder.as_path()));
         std::fs::write(&file, r#"{"version":"2.22","children":[]}"#).unwrap();
         assert_eq!(Editor::open(&file, 7).unwrap().1, None);
-        assert!(Editor::open(&folder.join("missing.pencraft"), 7).is_err());
+        assert!(Editor::open(&folder.join("missing.quill"), 7).is_err());
         std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn a_pencraft_file_is_not_written_and_a_packed_file_named_pen_is_not_read_as_text() {
+        let folder = empty("old-bundle");
+        let mut editor = Editor::new(pen_doc::Document::default(), None, 7);
+        editor.move_to(folder.join("old.pencraft")).unwrap();
+        assert!(editor.save().unwrap_err().contains(".quill"));
+        assert!(!folder.join("old.pencraft").exists());
+        // Saved as a `.quill` file, then given the wrong ending by hand.
+        editor.move_to(folder.join("new.quill")).unwrap();
+        editor.save().unwrap();
+        editor.close();
+        std::fs::copy(folder.join("new.quill"), folder.join("wrong.pen")).unwrap();
+        assert!(Editor::open(&folder.join("wrong.pen"), 7).err().is_some_and(|said| said.contains("ending .quill")));
+        let (mut again, said) = Editor::open(&folder.join("new.quill"), 7).unwrap();
+        assert_eq!((said, again.bundled()), (None, true));
+        again.close();
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn a_part_a_later_pencraft_put_in_a_quill_file_is_still_in_it_after_saving() {
+        use crate::bundle::quill;
+        let folder = empty("later-part");
+        let file = folder.join("later.quill");
+        let entry = |kind: u8, name: &str, bytes: Vec<u8>| quill::Entry { kind, name: name.to_owned(), bytes };
+        let document = pen_doc::binary::write(&pen_doc::read(r#"{"version":"2.22","children":[]}"#).unwrap()).unwrap();
+        // Kind 2 is what a later version keeps the chat in; this one has no name for it.
+        let chat = entry(2, "chat", "what was said about the design. ".repeat(50).into_bytes());
+        let parts = [entry(quill::DOCUMENT, "", document), chat.clone()];
+        std::fs::write(&file, quill::write(&parts).unwrap()).unwrap();
+        let (mut editor, said) = Editor::open(&file, 7).unwrap();
+        assert_eq!(
+            said.as_deref(),
+            Some("A newer Pencraft wrote this file. This version may not draw all of it; what it doesn't know is kept when you save.")
+        );
+        editor.save().unwrap();
+        editor.save().unwrap();
+        let saved = quill::read(&std::fs::read(&file).unwrap(), 1 << 20).unwrap();
+        assert_eq!((saved.unknown, saved.entries.len()), (vec![chat], 1));
+        // Exported as a `.pen` file, which has no place for it: that is said, and the document still holds it.
+        let told = export_pen(&editor, &folder.join("plain.pen"), None).unwrap();
+        assert_eq!(told, ["Parts a newer Pencraft added to the .quill file are not in the .pen file."]);
+        editor.save().unwrap();
+        assert_eq!(quill::read(&std::fs::read(&file).unwrap(), 1 << 20).unwrap().unknown.len(), 1);
+        editor.close();
+        // A file in a later layout opens too, and is told apart: what saving it here loses can't be known.
+        let mut later = quill::write(&parts).unwrap();
+        later[8..12].copy_from_slice(&2u32.to_le_bytes());
+        std::fs::write(&file, later).unwrap();
+        let (mut editor, said) = Editor::open(&file, 7).unwrap();
+        assert_eq!(
+            said.as_deref(),
+            Some(
+                "A newer Pencraft wrote this file. This version may not draw all of it. Saving it here writes this version's layout, so parts this version doesn't know may be left out."
+            )
+        );
+        editor.close();
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn a_save_under_a_new_name_that_fails_leaves_the_document_at_the_file_it_had() {
+        let folder = empty("stays");
+        // Nothing can be written beside a file that lies in a file.
+        std::fs::write(folder.join("blocked"), b"a file, not a folder").unwrap();
+        let old = folder.join("blocked").join("site.pencraft");
+        let mut editor = Editor::new(pen_doc::Document::default(), Some(old.clone()), 7);
+        let before = editor.place();
+        editor.move_to(crate::bundle::successor(&old).unwrap()).unwrap();
+        assert!(editor.save_or_return(Some(before)).is_err());
+        assert_eq!(editor.path.as_ref(), Some(&old));
+        editor.close();
+        // A document without a file has none again, and a `.pen` document keeps no working folder of the try.
+        let mut editor = Editor::new(pen_doc::Document::default(), None, 7);
+        let before = editor.place();
+        editor.move_to(folder.join("blocked").join("new.quill")).unwrap();
+        let made = editor.folder().unwrap().to_path_buf();
+        assert!(editor.bundled() && made.is_dir());
+        assert!(editor.save_or_return(Some(before)).is_err());
+        assert_eq!((editor.path.as_ref(), editor.bundled(), made.exists()), (None, false, false));
+        std::fs::write(folder.join("plain.pen"), r#"{"version":"2.22","children":[]}"#).unwrap();
+        let (mut editor, _) = Editor::open(&folder.join("plain.pen"), 7).unwrap();
+        let before = editor.place();
+        editor.move_to(folder.join("blocked").join("plain.quill")).unwrap();
+        assert!(editor.save_or_return(Some(before)).is_err());
+        assert_eq!((editor.path.clone(), editor.bundled(), editor.folder()), (Some(folder.join("plain.pen")), false, Some(folder.as_path())));
+        // A save that works leaves it where it was saved.
+        let before = editor.place();
+        editor.move_to(folder.join("site.quill")).unwrap();
+        assert!(editor.save_or_return(Some(before)).is_ok());
+        assert_eq!(editor.path, Some(folder.join("site.quill")));
+        editor.close();
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn a_failed_save_into_a_quill_file_that_took_pictures_in_stays_where_its_pictures_are() {
+        let (folder, outside) = (empty("took-in"), empty("took-in-outside"));
+        std::fs::write(folder.join("blocked"), b"a file, not a folder").unwrap();
+        std::fs::write(outside.join("far.png"), b"far").unwrap();
+        let far = outside.join("far.png").to_string_lossy().replace('\\', "/");
+        let doc = json!({ "version": "2.22", "children": [{ "type": "rectangle", "id": "b", "fill": { "type": "image", "url": far } }] });
+        let mut editor = Editor::new(pen_doc::read(&doc.to_string()).unwrap(), Some(folder.join("site.pen")), 7);
+        let before = editor.place();
+        let next = folder.join("blocked").join("site.quill");
+        let was = editor.move_to(next.clone()).unwrap();
+        // The picture named by a full path is now named from the working folder: going back would lose it.
+        assert_eq!(settle(&mut editor, was.as_deref(), None), Vec::<String>::new());
+        let said = editor.save_or_return(Some(before)).unwrap_err();
+        assert!(said.ends_with(". The document is now site.quill and is not written yet"), "{said}");
+        assert_eq!(editor.path, Some(next));
+        assert!(editor.folder().unwrap().join("images/far.png").is_file());
+        editor.close();
+        for folder in [folder, outside] {
+            std::fs::remove_dir_all(folder).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_pen_document_is_saved_as_a_quill_file_beside_it_with_its_pictures() {
+        let folder = empty("pen-to-quill");
+        std::fs::create_dir_all(folder.join("images")).unwrap();
+        std::fs::write(folder.join("images/x.png"), b"x").unwrap();
+        let text = r#"{"version":"2.22","children":[{"type":"rectangle","id":"a","fill":{"type":"image","url":"./images/x.png"}}]}"#;
+        std::fs::write(folder.join("site.pen"), text).unwrap();
+        let (mut editor, said) = Editor::open(&folder.join("site.pen"), 7).unwrap();
+        assert_eq!(said, None);
+        // The `.pen` file is opened, not saved to.
+        assert_eq!(editor.save().unwrap_err(), "this file is opened, not saved to: save the document as a .quill file");
+        assert_eq!(std::fs::read_to_string(folder.join("site.pen")).unwrap(), text);
+        // What Save does with it: the `.quill` file of its name, with the picture that lay beside it.
+        let (before, was) = (editor.place(), editor.anchor());
+        let next = crate::bundle::successor(&folder.join("site.pen")).unwrap();
+        editor.move_to(next.clone()).unwrap();
+        assert_eq!(settle(&mut editor, was.as_deref(), None), Vec::<String>::new());
+        assert_eq!(editor.save_or_return(Some(before)).unwrap(), Vec::<String>::new());
+        assert_eq!((editor.path.as_ref(), editor.bundled(), editor.dirty), (Some(&folder.join("site.quill")), true, false));
+        let files = crate::bundle::quill::read(&std::fs::read(&next).unwrap(), 1 << 20).unwrap().entries;
+        let held: Vec<(&str, usize)> = files.iter().map(|file| (file.name.as_str(), file.bytes.len())).collect();
+        assert_eq!((held[1], held.len(), files[1].bytes.as_slice()), (("images/x.png", 1), 2, &b"x"[..]));
+        // The `.pen` file and what lies beside it are as they were.
+        assert_eq!(std::fs::read_to_string(folder.join("site.pen")).unwrap(), text);
+        assert_eq!(std::fs::read_dir(folder.join("images")).unwrap().count(), 1);
+        assert_eq!(std::fs::read(folder.join("images/x.png")).unwrap(), b"x");
+        editor.close();
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn a_document_opened_from_a_file_of_another_name_is_saved_as_a_quill_file_and_exported_with_what_it_names() {
+        let (folder, out) = (empty("other-name"), empty("other-name-out"));
+        std::fs::create_dir_all(folder.join("site/images")).unwrap();
+        std::fs::write(folder.join("site/images/x.png"), b"x").unwrap();
+        std::fs::write(folder.join("shared.png"), b"shared").unwrap();
+        let text = r#"{"version":"2.22","children":[
+            {"type":"rectangle","id":"a","fill":{"type":"image","url":"./images/x.png"}},
+            {"type":"rectangle","id":"b","fill":{"type":"image","url":"../shared.png"}}]}"#;
+        let file = folder.join("site/design.json");
+        std::fs::write(&file, text).unwrap();
+        let (mut editor, said) = Editor::open(&file, 7).unwrap();
+        assert_eq!((said, editor.bundled()), (None, false));
+        // Exported from where it lies: the picture in its folder comes along, and of the one named from
+        // outside the folder it is said that the path is kept.
+        let told = export_pen(&editor, &out.join("copy.pen"), None).unwrap();
+        assert_eq!(told.len(), 1, "{told:?}");
+        assert!(told[0].starts_with("The picture ../shared.png lies outside the document's folder"), "{told:?}");
+        assert_eq!(std::fs::read(out.join("images/x.png")).unwrap(), b"x");
+        assert!(std::fs::read_to_string(out.join("copy.pen")).unwrap().contains("\"../shared.png\""));
+        // The file itself is not saved to; Save writes its name with `.quill` after it, and takes both
+        // pictures in, so nothing in a `.quill` file is named from outside.
+        assert!(editor.save().is_err());
+        let (before, was) = (editor.place(), editor.anchor());
+        let next = crate::bundle::successor(&file).unwrap();
+        assert_eq!(next, folder.join("site/design.json.quill"));
+        editor.move_to(next.clone()).unwrap();
+        assert_eq!(settle(&mut editor, was.as_deref(), None), Vec::<String>::new());
+        assert_eq!(editor.save_or_return(Some(before)).unwrap(), Vec::<String>::new());
+        assert_eq!((editor.path.as_ref(), editor.title().as_str()), (Some(&next), "design.json"));
+        let files = crate::bundle::quill::read(&std::fs::read(&next).unwrap(), 1 << 20).unwrap().entries;
+        let names: Vec<&str> = files.iter().map(|file| file.name.as_str()).collect();
+        assert_eq!(names, ["", "images/shared.png", "images/x.png"]);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
+        assert_eq!(export_pen(&editor, &out.join("again.pen"), None).unwrap(), Vec::<String>::new());
+        assert_eq!(std::fs::read(out.join("images/shared.png")).unwrap(), b"shared");
+        editor.close();
+        for folder in [folder, out] {
+            std::fs::remove_dir_all(folder).unwrap();
+        }
     }
 
     #[test]

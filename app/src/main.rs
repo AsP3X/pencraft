@@ -1,7 +1,7 @@
-//! Pencraft: a canvas design editor for `.pen` files, written in Rust as a Craft app.
+//! Pencraft: a canvas design editor for `.quill` and `.pen` files, written in Rust as a Craft app.
 //!
-//! `pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--update-required] [--update-collapsed] [--update-download [PERCENT]] [--home] [--export FILE]]`
-//! `pencraft [--background] [--private] [--no-update-check] [--update-download [PERCENT]] [--assistant ID] [--ask MESSAGE] [FILE.pen]...` opens the window behind what the user is doing.
+//! `pencraft [FILE.quill|FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--update-required] [--update-collapsed] [--update-download [PERCENT]] [--home] [--export FILE]]`
+//! `pencraft [--background] [--private] [--no-update-check] [--update-download [PERCENT]] [--assistant ID] [--ask MESSAGE] [FILE.quill|FILE.pen]...` opens the window behind what the user is doing.
 //! `pencraft mcp` connects an AI client to the running app (Model Context Protocol over standard input and output).
 
 // Human: on Windows a shipped (release) build is a window app: started from the Start menu or the Explorer it
@@ -80,7 +80,7 @@ const SAMPLES: u16 = 4;
 // Human: a Mac icon is a plate with room and a shadow round it, as the Dock expects; elsewhere the plate fills
 // the square. Pencraft.app has the same picture as its own icon; this one is for a Pencraft started without it.
 const ICON: &[u8] = if cfg!(target_os = "macos") { include_bytes!("../assets/icon-macos.png") } else { include_bytes!("../assets/icon.png") };
-const USAGE: &str = "usage: pencraft [FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--update-required] [--update-collapsed] [--update-download [PERCENT]] [--home] [--export FILE]]\n       pencraft [--background] [--private] [--no-update-check] [--update-download [PERCENT]] [--assistant ID] [--ask MESSAGE] [FILE.pen]...\n       pencraft mcp
+const USAGE: &str = "usage: pencraft [FILE.quill|FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--update-required] [--update-collapsed] [--update-download [PERCENT]] [--home] [--export FILE]]\n       pencraft [--background] [--private] [--no-update-check] [--update-download [PERCENT]] [--assistant ID] [--ask MESSAGE] [FILE.quill|FILE.pen]...\n       pencraft mcp
        pencraft skills [show NAME [FILE] | install [--project DIR | --dir DIR]]";
 
 fn main() -> ExitCode {

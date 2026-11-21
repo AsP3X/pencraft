@@ -6,7 +6,7 @@
 [![Latest release](https://img.shields.io/github/v/release/AsP3X/pencraft)](https://github.com/AsP3X/pencraft/releases/latest)
 [![License: Apache-2.0 with Commons Clause](https://img.shields.io/badge/license-Apache--2.0%20%2B%20Commons%20Clause-blue)](#license)
 
-Pencraft is a canvas design editor for `.pen` files, written in Rust. You
+Pencraft is a canvas design editor, written in Rust. It opens `.pen` files. You
 draw frames, shapes, text and paths on an endless canvas, turn layers into
 components, lay them out in rows and columns, and export them as PNG, JPEG,
 WebP, PDF or SVG. An AI assistant is built in: it works on the document in
@@ -23,12 +23,14 @@ It runs on Windows and macOS.
 - **Components and layout.** Reusable components with instances, variables
   and light and dark themes, and flex layout that arranges children by
   itself.
-- **Reads and writes `.pen` files faithfully.** Keys Pencraft does not know
-  survive, and a file Pencraft wrote is byte for byte the same when it is
-  read and written again. Pencraft adds one key of its own, `pencraft`,
+- **Reads and writes `.pen` files faithfully.** It opens them and exports
+  them (File › Export .pen File…). Keys Pencraft does not know survive, and
+  a file Pencraft wrote is byte for byte the same when it is read and
+  written again. Pencraft adds one key of its own, `pencraft`,
   which says what the design uses that only Pencraft draws.
-- **Bundles.** Save As Bundle puts a design and its pictures and shader
-  files into one `.pencraft` file, to send or to keep.
+- **One file per design.** Save writes a `.quill` file that holds the design
+  with its pictures and shader files, to send or to keep. A `.pen` file you
+  open is saved as a `.quill` file of the same name beside it.
 - **Exports.** Any layer to PNG, JPEG, WebP, PDF or SVG.
 - **An assistant in the app.** The chat talks to Claude through the
   installed Claude Code program or a provider's API with your key, and a
@@ -72,7 +74,7 @@ There are no downloads for Linux yet; see [Building](docs/BUILDING.md).
    `Ctrl+P` (`⌘P` on a Mac) searches every action.
 3. Type into the message box at the bottom to have the assistant design or
    change something. [app/AI.md](app/AI.md) explains how to connect a model.
-4. `Ctrl+S` saves the `.pen` file.
+4. `Ctrl+S` saves the design as a `.quill` file.
 
 On a Mac the menus are in the menu bar and shortcuts use `⌘`; on Windows the
 menus are behind `☰` in the tab strip and the same shortcuts use `Ctrl`.

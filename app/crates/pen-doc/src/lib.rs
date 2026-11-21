@@ -1,6 +1,7 @@
 //! The `.pen` design document without a window.
 //!
 //! - [`model`]: the document tree as the file stores it, read and written without losing keys.
+//! - [`binary`]: the same tree as binary values, each key written once: what a `.quill` file holds.
 //! - [`vars`]: variables and themes.
 //! - [`scene`]: the document with component instances expanded.
 //! - [`layout`]: flex layout, sizing and transforms.
@@ -9,6 +10,7 @@
 //! - [`edit`]: finding and moving nodes by id.
 //! - [`stamp`]: Pencraft's own mark in a document, and the features only Pencraft draws.
 
+pub mod binary;
 pub mod color;
 pub mod connector;
 pub mod edit;

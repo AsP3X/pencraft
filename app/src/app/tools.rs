@@ -162,6 +162,47 @@ fn full_path(args: &Value, key: &str) -> Result<Option<PathBuf>, String> {
     if path.is_absolute() { Ok(Some(path)) } else { Err(format!("`{key}` must be a full path, starting at the root: \"{text}\" isn't.")) }
 }
 
+/// The path `save_document` saves under, from the `path` it was given: a `.quill` file's, with that ending put
+/// after a name that has none.
+// Human: a document is saved as a `.quill` file only. A `.pen` file is written by `export_document`, which the
+// refusal names; a `.pencraft` file by nothing any more.
+fn save_path(path: PathBuf) -> Result<PathBuf, String> {
+    if crate::bundle::is_old(&path) {
+        return Err("A .pencraft file is no longer written: give `path` the ending .quill.".to_owned());
+    }
+    if path.extension().is_some_and(|ending| ending.eq_ignore_ascii_case(crate::bundle::PLAIN)) {
+        return Err("A document is saved as a .quill file: give `path` the ending .quill, or write a .pen file with `export_document`.".to_owned());
+    }
+    crate::bundle::ended(path, crate::bundle::ENDING).map_err(|error| format!("Couldn't save: {error}."))
+}
+
+/// `export_document`: writes the document of `editor` as a `.pen` file at the `path` in `args`, with the files
+/// it names beside it, and answers with where it was written and what there is to know about the file.
+// Human: the same export as File › Export .pen File… (`pictures::export_pen`): the document keeps its file, its
+// working folder and its unsaved changes.
+// Agent: READS and WRITES files; BLOCKS on them.
+fn export_document(editor: &Editor, args: &Value, home: Option<&Path>) -> Result<Value, String> {
+    let path = full_path(args, "path")?.ok_or("`export_document` needs the `path` of the .pen file to write.")?;
+    if crate::bundle::is_old(&path) {
+        return Err("A .pencraft file is no longer written: `export_document` writes a .pen file, `save_document` a .quill file.".to_owned());
+    }
+    if crate::bundle::is_bundle(&path) {
+        return Err("`export_document` writes a .pen file: a .quill file is saved with `save_document`.".to_owned());
+    }
+    let target = crate::bundle::ended(path, crate::bundle::PLAIN).map_err(|error| format!("Couldn't export: {error}."))?;
+    // Human: nobody is asked here before a file is replaced, as the file dialog asks the person: a file that
+    // is there, also the `.pen` file the document was opened from, is not written over.
+    if target.exists() {
+        return Err(format!("{} is there already: `export_document` doesn't replace a file. Choose another name.", target.display()));
+    }
+    let notes = super::pictures::export_pen(editor, &target, home).map_err(|error| format!("Couldn't export: {error}."))?;
+    let mut answer = json!({ "exported": target.display().to_string() });
+    if !notes.is_empty() {
+        answer["notes"] = json!(notes);
+    }
+    Ok(answer)
+}
+
 /// Puts what `get_state` says about image services into `state`: the `listed` ones, or, when the assistant may
 /// not make pictures (`assistant` is off), none and why.
 fn tell_services(state: &mut Value, assistant: bool, listed: Value) {
@@ -395,17 +436,30 @@ impl App {
                 let path = full_path(args, "path")?;
                 let editor = self.tabs.get_mut(tab).ok_or("The document was closed.")?;
                 let mut was = editor.anchor();
+                // Human: when the file can't be written under a new name, the document has the file it had again.
+                let before = editor.place();
+                let (mut moved, mut left) = (false, None);
                 if let Some(path) = path {
-                    // Human: `.pencraft` saves a bundle; any other ending, or none, a `.pen` file.
-                    let path = if crate::bundle::is_design(&path) { path } else { path.with_extension(crate::bundle::PLAIN) };
-                    was = editor.move_to(path).map_err(|error| format!("Couldn't save: {error}."))?;
+                    was = editor.move_to(save_path(path)?).map_err(|error| format!("Couldn't save: {error}."))?;
+                    moved = true;
+                } else if let Some(next) = editor.path.as_deref().and_then(crate::bundle::successor) {
+                    // Human: as when the person saves a `.pen` document or an old bundle: it becomes a `.quill`
+                    // file beside it.
+                    let old = editor.tab_name();
+                    if next.exists() {
+                        return Err(format!("{} is there already: give `path` to say where {old} is saved as a .quill file.", next.display()));
+                    }
+                    was = editor.move_to(next).map_err(|error| format!("Couldn't save: {error}."))?;
+                    (moved, left) = (true, Some(old));
                 }
                 // Human: as when the person saves: the pictures come to where the document is saved.
                 let stuck = super::pictures::settle(editor, was.as_deref(), crate::imagery::store::home().as_deref());
-                let plain = editor.path.as_deref().is_some_and(|path| !crate::bundle::is_bundle(path));
-                let only_here = editor.only_here().filter(|_| plain && was != editor.anchor());
-                let mut notes = editor.save().map_err(|error| format!("Couldn't save: {error}. A document without a file needs `path`."))?;
-                notes.extend(only_here);
+                let from = moved.then_some(before);
+                let mut notes =
+                    editor.save_or_return(from).map_err(|error| format!("Couldn't save: {error}. A document without a file needs `path`."))?;
+                if let Some(left) = left {
+                    notes.push(format!("The design was opened from {left}. It is saved as {} now; {left} is left as it is.", editor.tab_name()));
+                }
                 let saved = editor.path.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
                 self.prefs.update(|p| p.files.touch(&saved));
                 self.remember_tabs();
@@ -426,6 +480,11 @@ impl App {
             "select_layers" => self.select_tool(call, ctx),
             crate::chat::asks::TOOL => self.ask_tool(call),
             crate::chat::tasks::PLAN | crate::chat::tasks::ADD | crate::chat::tasks::FINISH => self.task_tool(call),
+            "export_document" => {
+                let tab = self.document(call)?;
+                let editor = self.tabs.get(tab).ok_or("The document was closed.")?;
+                Ok(text(&export_document(editor, args, crate::imagery::store::home().as_deref())?))
+            }
             "export_layers" => self.export_tool(call, ctx),
             other => Err(format!("There is no tool called \"{other}\".")),
         }
@@ -850,6 +909,55 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn a_document_is_exported_as_a_pen_file_and_saved_only_as_a_quill_file() {
+        let folder = std::env::temp_dir().join(format!("pencraft-tools-export-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(folder.join("out")).unwrap();
+        let doc = r#"{"version":"2.22","children":[{"type":"rectangle","id":"a","fill":{"type":"image","url":"./images/x.png"}}]}"#;
+        let mut editor = Editor::new(pen_doc::read(doc).unwrap(), None, 7);
+        editor.move_to(folder.join("site.quill")).unwrap();
+        let unpacked = editor.folder().unwrap().to_path_buf();
+        std::fs::create_dir_all(unpacked.join("images")).unwrap();
+        std::fs::write(unpacked.join("images/x.png"), b"x").unwrap();
+        editor.save().unwrap();
+        editor.dirty = true;
+        // A name without the ending gets it; the picture comes to lie beside the file; the document stays.
+        let path = |name: &str| json!({ "path": folder.join("out").join(name).display().to_string() });
+        let answer = export_document(&editor, &path("copy.v2"), None).unwrap();
+        assert_eq!(answer, json!({ "exported": folder.join("out").join("copy.v2.pen").display().to_string() }));
+        let written = std::fs::read_to_string(folder.join("out/copy.v2.pen")).unwrap();
+        assert!(written.starts_with("{\n  \"version\": \"2.22\"") && written.contains("\"./images/x.png\""), "{written}");
+        assert_eq!(std::fs::read(folder.join("out/images/x.png")).unwrap(), b"x");
+        assert_eq!((editor.path.as_ref(), editor.folder(), editor.dirty), (Some(&folder.join("site.quill")), Some(unpacked.as_path()), true));
+        // A `.pen` file that is there is not replaced, under the name given or the name with the ending added.
+        let before = std::fs::read(folder.join("out/copy.v2.pen")).unwrap();
+        assert!(export_document(&editor, &path("copy.v2.pen"), None).unwrap_err().contains("is there already: `export_document` doesn't replace"));
+        assert!(export_document(&editor, &path("copy.v2"), None).unwrap_err().contains("copy.v2.pen is there already"));
+        assert_eq!(std::fs::read(folder.join("out/copy.v2.pen")).unwrap(), before);
+        // Another picture that lies there under the name is left, and the exported file names its own copy.
+        std::fs::write(folder.join("out/images/x.png"), b"another").unwrap();
+        let answer = export_document(&editor, &path("copy.pen"), None).unwrap();
+        assert!(answer["notes"][0].as_str().is_some_and(|note| note.contains("images/x.png") && note.contains("x-0000.png")), "{answer}");
+        assert_eq!(std::fs::read(folder.join("out/images/x.png")).unwrap(), b"another");
+        assert!(std::fs::read_to_string(folder.join("out/copy.pen")).unwrap().contains("\"./images/x-0000.png\""));
+        // What it refuses: another kind of design file, a path that isn't whole or names no file, no path.
+        let refused = |args: Value| export_document(&editor, &args, None).unwrap_err();
+        assert!(refused(path("copy.quill")).contains("`save_document`") && refused(path("copy.QUILL")).contains("`save_document`"));
+        assert!(refused(path("copy.pencraft")).contains("no longer written"));
+        assert!(refused(path("..")).contains("names no file"));
+        assert!(refused(json!({ "path": "copy.pen" })).contains("full path") && refused(json!({})).contains("needs the `path`"));
+        assert!(!folder.join("out/copy.quill").exists() && !folder.join("out/copy.pencraft").exists());
+        // `save_document` saves a `.quill` file and nothing else.
+        assert_eq!(save_path(folder.join("home.v2")), Ok(folder.join("home.v2.quill")));
+        assert_eq!(save_path(folder.join("home.QUILL")), Ok(folder.join("home.QUILL")));
+        assert!(save_path(folder.join("home.pen")).is_err_and(|said| said.contains("`export_document`") && said.contains(".quill")));
+        assert!(save_path(folder.join("home.pencraft")).is_err_and(|said| said.contains("no longer written")));
+        assert!(save_path(folder.join("..")).is_err_and(|said| said.contains("names no file")));
+        editor.close();
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
 
     #[test]
     fn get_state_lists_no_image_service_when_the_assistant_may_not_make_pictures() {

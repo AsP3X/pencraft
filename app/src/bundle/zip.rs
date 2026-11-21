@@ -1,12 +1,18 @@
-//! The zip container of a bundle: files by name, deflated or stored, read and written in memory.
+//! The zip container of an old `.pencraft` bundle: files by name, deflated or stored, read in memory.
 //!
-//! Only what a bundle needs: no zip64 (4 GB and 65 535 files at most), no encryption, no multi-part archives.
+//! Only what a bundle needed: no zip64 (4 GB and 65 535 files at most), no encryption, no multi-part archives.
 //! Archives other programs made read too, when they stay inside that (Finder, Explorer, `zip`).
+// Human: bundles are written as `.quill` files now (`super::quill`). This reader stays so the bundles people
+// already have still open; the writer is here for the tests, which need old bundles to read.
 
-use std::io::{Read, Write};
+use std::io::Read;
+#[cfg(test)]
+use std::io::Write;
 
+#[cfg(test)]
 use flate2::Compression;
 use flate2::read::DeflateDecoder;
+#[cfg(test)]
 use flate2::write::DeflateEncoder;
 
 /// A file in an archive.
@@ -26,20 +32,25 @@ const LOCAL_LENGTH: usize = 30;
 const CENTRAL_LENGTH: usize = 46;
 const END_LENGTH: usize = 22;
 /// Zip 2.0: deflate and folders.
+#[cfg(test)]
 const VERSION: u16 = 20;
 /// Bit 11: names are UTF-8.
+#[cfg(test)]
 const UTF8: u16 = 0x0800;
 const STORED: u16 = 0;
 const DEFLATED: u16 = 8;
 /// 1 January 1980, the earliest day the format can say: the same bytes for the same files, whenever written.
+#[cfg(test)]
 const DAY: u16 = 0x0021;
 /// Endings of files that are compressed already; deflating them again costs time and gains nothing.
+#[cfg(test)]
 const PACKED: [&str; 5] = ["png", "jpg", "jpeg", "webp", "gif"];
 
 /// Writes `entries` as a zip archive.
 ///
 /// # Errors
 /// A sentence when there are more files or bytes than a plain zip holds.
+#[cfg(test)]
 pub fn write(entries: &[Entry]) -> Result<Vec<u8>, String> {
     let too_large = |_| "the bundle would be larger than 4 GB, which this format can't hold".to_owned();
     let count = u16::try_from(entries.len()).map_err(|_| "the bundle would hold more than 65 535 files".to_owned())?;
@@ -88,6 +99,7 @@ pub fn write(entries: &[Entry]) -> Result<Vec<u8>, String> {
 }
 
 /// The method an entry is kept with, and its bytes that way: deflated when that is smaller, else as it is.
+#[cfg(test)]
 fn packed(entry: &Entry) -> (u16, std::borrow::Cow<'_, [u8]>) {
     let ending = entry.name.rsplit('.').next().unwrap_or_default().to_ascii_lowercase();
     if PACKED.contains(&ending.as_str()) {

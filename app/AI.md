@@ -178,8 +178,9 @@ A client that speaks MCP over HTTP can skip `pencraft mcp`: the address and the 
 | `screenshot` | A picture of layers as Pencraft draws them, with a review of what makes them read as generated or broken, so the model can check and improve its work |
 | `check_glass` | Measures a design that uses glass materials: which appearance each material came to, the contrast of every label on glass against the worst of what is under it, and how the glass is built |
 | `select_layers` | Selects layers for you and brings them into view |
-| `open_document` | Opens a `.pen` file, or starts an empty document |
-| `save_document` | Saves the document, or saves it under a new path; a path ending in `.pencraft` saves a bundle with its pictures and shader files |
+| `open_document` | Opens a design file (`.quill`, `.pen` or an old `.pencraft`), or starts an empty document |
+| `save_document` | Saves the document as a `.quill` file, one file with its pictures and shader files in it, or saves it under a new path ending in `.quill`; a document opened from a `.pen` or `.pencraft` file is saved as the `.quill` file of the same name beside it |
+| `export_document` | Writes the document as a `.pen` file, with the pictures and shader files it names copied beside it; a file already at that path is not replaced; the document stays where it is saved |
 | `export_layers` | Writes layers to a PNG, JPEG, WebP, PDF or SVG file |
 | `generate_image` | Has an image model make a picture from a description and gives back the file to use in an image fill, or puts it on a layer. Needs an image service (see Pictures) |
 | `search_web` | Web results for a query: titles, addresses and the lines under them |
@@ -195,7 +196,7 @@ A client that speaks MCP over HTTP can skip `pencraft mcp`: the address and the 
 ## The web
 
 Ask the assistant for real content or a real photo ("use a real picture of the Elbphilharmonie here") and it
-searches, fetches the picture into the `images` folder beside your `.pen` file, and fills the layer with it.
+searches, fetches the picture into the `images` folder of your design, and fills the layer with it.
 The picture is filed in `images/credits.json` like a generated one, with the address it came from and its
 credit line. A document that has no file yet keeps the picture in Pencraft's own folder until it is saved.
 
@@ -228,9 +229,9 @@ pictures, and a Google AI Pro subscription does not count for the API. Gemini's 
 (`gemini-3.1-flash-lite-image`) makes the normal size only; for large pictures set the model to
 `gemini-3.1-flash-image` in Settings → Images.
 
-A picture is saved as a file in an `images` folder beside the document, with a line in `images/credits.json`
+A picture is saved as a file in the document's `images` folder (packed into the `.quill` file when you save), with a line in `images/credits.json`
 saying which service and model made it from which description. A document that has no file yet keeps its
-pictures in `~/.pencraft/images` until then; when it is saved, they are copied into `images` beside it with
+pictures in `~/.pencraft/images` until then; when it is saved, they are copied into its `images` folder with
 their credits, and the document names them from there. Saving a document under a new name in another folder
 copies the pictures it names from its own folder along. If `credits.json` can't be read (it is not valid JSON), the picture
 is not saved and the message says so; fix or remove the file and ask again. Pencraft never replaces it.

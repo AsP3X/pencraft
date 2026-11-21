@@ -112,10 +112,14 @@ fn holds_shown(node: &Node, shown: &HashSet<&str>) -> bool {
 pub struct Editor {
     /// A number of its own among the documents opened in this run; it stays the same however its tab moves.
     pub id: u64,
-    /// Where it is saved; `None` until first saved. A `.pen` file or a bundle ([`crate::bundle`]).
+    /// Where it is saved, a `.quill` file ([`crate::bundle`]), or the `.pen` file or old bundle it was opened
+    /// from, which Save leaves for the `.quill` file of its name; `None` until first saved.
     pub path: Option<PathBuf>,
     /// The folder a bundle's files lie unpacked in; `None` for a `.pen` file.
     work: Option<crate::bundle::Work>,
+    /// The parts its `.quill` file had that this version doesn't know; they are written back when it is saved
+    /// as one ([`crate::bundle::pack`]).
+    kept: Vec<crate::bundle::quill::Entry>,
     /// The document as the user made it.
     pub doc: Document,
     /// The document with instances expanded and laid out; rebuilt by [`Editor::refresh`].
@@ -187,6 +191,7 @@ impl Editor {
             id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             path,
             work: None,
+            kept: Vec::new(),
             doc,
             scene: Vec::new(),
             generation: 0,
@@ -213,23 +218,30 @@ impl Editor {
     }
 
     /// An editor for the design file at `path`: a `.pen` document, or a bundle, which is unpacked. With it, a
-    /// sentence when a newer Pencraft wrote the file and this one doesn't know all of it.
+    /// sentence for what the user should know about the file: a newer Pencraft wrote it and this one doesn't
+    /// know all of it, or a file in it was damaged and left out.
     ///
     /// # Errors
     /// A sentence when the file can't be read or isn't a design file.
     // Agent: READS `path`; for a bundle WRITES its working folder. BLOCKS on both.
     pub fn open(path: &Path, seed: u64) -> Result<(Editor, Option<String>), String> {
-        let (doc, work, layout) = if crate::bundle::is_bundle(path) {
+        let (doc, work, layout, told, kept, later) = if crate::bundle::is_bundle(path) {
             let opened = crate::bundle::open(path)?;
-            (opened.doc, Some(opened.work), opened.newer)
+            (opened.doc, Some(opened.work), opened.newer, opened.told, opened.kept, opened.later)
         } else {
-            let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-            (pen_doc::read(&text).map_err(|e| e.to_string())?, None, None)
+            let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+            // Human: a packed design under a `.pen` name would be read as text and fail with words about JSON.
+            if crate::bundle::looks_packed(&bytes) {
+                return Err("it is a packed design: give its name the ending .quill".to_owned());
+            }
+            let text = String::from_utf8(bytes).map_err(|e| e.to_string())?;
+            (pen_doc::read(&text).map_err(|e| e.to_string())?, None, None, Vec::new(), Vec::new(), false)
         };
-        let newer = newer_than_this(&doc, layout);
+        let said: Vec<String> = newer_than_this(&doc, layout, later).into_iter().chain(told).collect();
         let mut editor = Editor::new(doc, Some(path.to_path_buf()), seed);
         editor.work = work;
-        Ok((editor, newer))
+        editor.kept = kept;
+        Ok((editor, (!said.is_empty()).then(|| said.join(" "))))
     }
 
     /// The folder the document's relative paths start in: that of its `.pen` file, or where its bundle lies
@@ -253,8 +265,7 @@ impl Editor {
     }
 
     /// The working folder, while the document is saved as a bundle.
-    // Human: a document that went from a bundle to a `.pen` file keeps the folder until it is closed, but
-    // its paths start beside the `.pen` file from then on.
+    // Human: a document whose file is a `.pen` file has none: its paths start beside that file.
     fn unpacked(&self) -> Option<&crate::bundle::Work> {
         self.work.as_ref().filter(|_| self.path.as_deref().is_some_and(crate::bundle::is_bundle))
     }
@@ -266,8 +277,7 @@ impl Editor {
     }
 
     /// Says the document is to be saved at `path` from now on, and gives the [`Editor::anchor`] it had. Going
-    /// to a bundle, it gets a working folder; going from one to a `.pen` file, it keeps the folder until it is
-    /// closed.
+    /// to a bundle, it gets a working folder when it has none.
     ///
     /// # Errors
     /// A sentence when a working folder can't be made; the document then stays where it was.
@@ -302,7 +312,8 @@ impl Editor {
         }
     }
 
-    /// The tab title: the file name without `.pen`, or "Untitled".
+    /// The document's name: its file's name without the ending (`site` for `site.quill` and for `site.pen`), or
+    /// "Untitled".
     #[must_use]
     pub fn title(&self) -> String {
         self.path.as_ref().and_then(|p| p.file_stem()).map_or_else(|| "Untitled".to_owned(), |s| s.to_string_lossy().into_owned())
@@ -597,44 +608,113 @@ impl Editor {
         self.needs_layout = true;
     }
 
-    /// Writes the document to its file, crash-safely: a `.pen` file as JSON, a bundle with the files the
-    /// document names. Stamps it as Pencraft's first ([`pen_doc::stamp`]). Gives a sentence for what the user
+    /// Writes the document to its file, crash-safely: a `.quill` file with the files the document names. Stamps it as Pencraft's first ([`pen_doc::stamp`]). Gives a sentence for what the user
     /// should know about the file that was written.
     ///
     /// # Errors
-    /// When there is no path yet, the JSON can't be made, or the file can't be written.
-    // Agent: WRITES the file; for a bundle READS the files it names, whole. BLOCKS on both.
+    /// When there is no path yet, the path is not a `.quill` file's (a `.pen` document and an old `.pencraft`
+    /// bundle are opened, not saved to), the document can't be written, or the file can't be.
+    // Human: a document is saved as a `.quill` file and as nothing else. A `.pen` file is made by an export
+    // (`pictures::export_pen` in the app), which leaves the document where it is.
+    // Agent: WRITES the file; READS the files it names, whole. BLOCKS on both.
     pub fn save(&mut self) -> Result<Vec<String>, String> {
         let Some(path) = self.path.clone() else { return Err("the document has no file yet".to_owned()) };
+        // Human: nothing writes the old format any more; whoever saves gives the file the new ending first.
+        if crate::bundle::is_old(&path) {
+            return Err("a .pencraft file is no longer written: save it as a .quill file".to_owned());
+        }
+        let Some(work) = self.unpacked() else {
+            return Err("this file is opened, not saved to: save the document as a .quill file".to_owned());
+        };
+        let folder = work.folder().to_path_buf();
         pen_doc::stamp::apply(&mut self.doc);
         let mut told = Vec::new();
-        let bytes = match self.unpacked() {
-            Some(work) => {
-                let packed = crate::bundle::pack(&self.doc, work.folder())?;
-                if !packed.missing.is_empty() {
-                    told.push(format!("These files the document names weren't found and aren't in the bundle: {}.", packed.missing.join(", ")));
-                }
-                packed.bytes
-            }
-            None => pen_doc::write(&self.doc).map_err(|e| e.to_string())?.into_bytes(),
-        };
-        craft_atomic::atomic_write(&path, &bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+        let packed = crate::bundle::pack(&self.doc, &folder, &self.kept)?;
+        if !packed.missing.is_empty() {
+            told.push(format!("These files the document names weren't found and aren't in the .quill file: {}.", packed.missing.join(", ")));
+        }
+        craft_atomic::atomic_write(&path, &packed.bytes).map_err(|e| format!("{}: {e}", path.display()))?;
         self.dirty = false;
         Ok(told)
     }
+
+    /// Whether the document holds parts of its `.quill` file that this version doesn't know: they are written
+    /// back into a `.quill` file, and a `.pen` file has no place for them.
+    #[must_use]
+    pub fn keeps_parts(&self) -> bool {
+        !self.kept.is_empty()
+    }
+
+    /// Where the document is now, to go back to when a save under another name fails
+    /// ([`Editor::save_or_return`]). Taken before [`Editor::move_to`].
+    #[must_use]
+    pub fn place(&self) -> Place {
+        Place { path: self.path.clone(), anchor: self.anchor(), unpacked: self.work.is_some(), doc: self.doc.clone() }
+    }
+
+    /// Saves as [`Editor::save`] does, for a document that was moved ([`Editor::move_to`]) from `from` only so
+    /// that this save writes it under another name: when the save fails, its file is the one it had again, and
+    /// a working folder the move made is removed.
+    ///
+    /// # Errors
+    /// As [`Editor::save`]; when the document could not go back, the sentence says under which name it is now,
+    /// unwritten.
+    // Human: when the new file can't be written the document must not point at a file that isn't there. It
+    // goes back only when nothing in it was changed for the new place, or the new place is where its pictures
+    // lay already (an old bundle saved under the ending `.quill`): pictures that were taken into a working
+    // folder and named from there (`pictures::settle`) would not be found from the old file. Such a document
+    // stays at the name it was given, where saving again writes it.
+    // Agent: WRITES and READS as [`Editor::save`]; BLOCKS on both. WRITES (removes a working folder).
+    pub fn save_or_return(&mut self, from: Option<Place>) -> Result<Vec<String>, String> {
+        let moved = from.is_some();
+        let back = from.filter(|from| from.anchor == self.anchor() || from.doc == self.doc);
+        let saved = self.save();
+        let Err(error) = saved else { return saved };
+        match back {
+            Some(back) => {
+                self.path = back.path;
+                if !back.unpacked {
+                    self.close();
+                }
+                Err(error)
+            }
+            // Human: the user must know that the tab's name is now one no file has.
+            None if moved => Err(format!("{error}. The document is now {} and is not written yet", self.tab_name())),
+            None => Err(error),
+        }
+    }
+}
+
+/// Where a document was before it was moved to be saved under another name ([`Editor::place`]).
+pub struct Place {
+    /// The file it had.
+    path: Option<PathBuf>,
+    /// Its [`Editor::anchor`].
+    anchor: Option<PathBuf>,
+    /// Whether it had a working folder.
+    unpacked: bool,
+    /// The document as it was, to see whether the move changed how it names its pictures.
+    doc: Document,
 }
 
 /// A sentence for a file a newer Pencraft wrote: its stamp says a higher format number or features this
-/// version has no name for, or its bundle a higher layout number (`layout`). `None` for a file this version
-/// knows all of.
-fn newer_than_this(doc: &Document, layout: Option<u64>) -> Option<String> {
+/// version has no name for, or its bundle a higher layout number or a kind of part this version doesn't know
+/// (`layout`). `None` for a file this version knows all of.
+// Human: what this version doesn't know is kept: unknown keys in the document, unknown parts of a `.quill` file.
+// Only of a `.quill` file in a later layout (`later`) that can't be promised: it is written in this version's.
+fn newer_than_this(doc: &Document, layout: Option<u64>, later: bool) -> Option<String> {
     let stamp = pen_doc::stamp::newer(doc);
     if stamp.is_none() && layout.is_none() {
         return None;
     }
     let unknown = stamp.map(|stamp| stamp.features).unwrap_or_default();
     let what = if unknown.is_empty() { String::new() } else { format!(" ({})", unknown.join(", ")) };
-    Some(format!("A newer Pencraft wrote this file. This version may not draw all of it{what}; what it doesn't know is kept when you save."))
+    let saved = if later {
+        ". Saving it here writes this version's layout, so parts this version doesn't know may be left out."
+    } else {
+        "; what it doesn't know is kept when you save."
+    };
+    Some(format!("A newer Pencraft wrote this file. This version may not draw all of it{what}{saved}"))
 }
 
 /// Shows `visit` the `url` of every image paint in `doc`: in fills and strokes, and in what instances override.

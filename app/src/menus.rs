@@ -14,8 +14,6 @@ use crate::palette::Command;
 pub struct State<'a> {
     /// Whether a document is open in front.
     pub document: bool,
-    /// Whether that document is saved as a bundle.
-    pub bundle: bool,
     /// Whether anything is selected in it.
     pub selection: bool,
     /// The recent files, most recent first.
@@ -42,7 +40,7 @@ const COMMANDS: [(&str, Command); 23] = [
     ("file.generate", Command::GenerateImage),
     ("file.save", Command::Save),
     ("file.save_as", Command::SaveAs),
-    ("file.save_as_other", Command::SaveAsOther),
+    ("file.export_pen", Command::ExportPen),
     ("file.close_tab", Command::CloseTab),
     ("edit.undo", Command::Undo),
     ("edit.redo", Command::Redo),
@@ -69,7 +67,8 @@ pub fn command(chosen: &CommandRef) -> Option<Command> {
         SHOW_TAB => index().map(Command::ShowTab),
         "window.move_tab_left" => Some(Command::MoveTab(true)),
         "window.move_tab_right" => Some(Command::MoveTab(false)),
-        id if id.starts_with(EXPORT) => {
+        // Human: `file.export.png` and its like; `file.export_pen` is a plain item.
+        id if id.strip_prefix(EXPORT).is_some_and(|format| format.starts_with('.')) => {
             Format::ALL.into_iter().find(|format| id.strip_prefix(EXPORT) == Some(&format!(".{}", format.extension()))).map(Command::Export)
         }
         id => COMMANDS.iter().find(|(known, _)| *known == id).map(|(_, command)| *command),
@@ -152,8 +151,8 @@ pub fn bar(state: &State<'_>) -> MenuBar {
             Node::Separator,
             item("file.save", "Save", "⌘S", doc),
             item("file.save_as", "Save As…", "⇧⌘S", doc),
-            // Human: the way into the other format: a bundle holds the document's pictures and files with it.
-            item("file.save_as_other", if state.bundle { "Save As .pen File…" } else { "Save As Bundle…" }, "", doc),
+            // Human: a document is saved as a `.quill` file; a `.pen` file, which other programs open, is exported.
+            item("file.export_pen", "Export .pen File…", "", doc),
             Node::Separator,
             item("file.close_tab", "Close Tab", "⌘W", doc),
         ],
@@ -228,13 +227,7 @@ mod tests {
     #[test]
     fn the_menus_keep_their_items_and_order() {
         let recent = ["/designs/site.pen".to_owned()];
-        let bar = bar(&State {
-            document: true,
-            bundle: false,
-            selection: false,
-            recent: &recent,
-            tabs: vec![("site".to_owned(), true), ("app".to_owned(), false)],
-        });
+        let bar = bar(&State { document: true, selection: false, recent: &recent, tabs: vec![("site".to_owned(), true), ("app".to_owned(), false)] });
         assert_eq!(bar.menus.iter().map(|m| m.title.as_str()).collect::<Vec<_>>(), ["File", "Edit", "View", "Window", "Help"]);
         assert_eq!(
             labels(&bar.menus[0]),
@@ -255,7 +248,7 @@ mod tests {
                 "—",
                 "Save",
                 "Save As…",
-                "Save As Bundle…",
+                "Export .pen File…",
                 "—",
                 "Close Tab"
             ]
@@ -282,8 +275,13 @@ mod tests {
         assert_eq!(command(&CommandRef::new("file.export.jpg")), Some(Command::Export(Format::Jpeg)));
         assert_eq!(command(&CommandRef::new("file.export.gif")), None);
         // Without anything selected, Cut, Copy and Delete are greyed; with no document so is Save.
-        let none = bar(&State { document: false, bundle: false, selection: false, recent: &[], tabs: Vec::new() });
+        let none = bar(&State { document: false, selection: false, recent: &[], tabs: Vec::new() });
         let enabled = |id: &str| none.find(&CommandRef::new(id)).is_some_and(|item| item.enabled);
         assert!(!enabled("file.save") && !enabled("edit.copy") && enabled("file.open") && enabled("file.new"));
+        // A `.pen` file is exported, from the document in front.
+        assert_eq!(command(&CommandRef::new("file.export_pen")), Some(Command::ExportPen));
+        assert!(!enabled("file.export_pen") && !enabled("file.save_as"));
+        let open = super::bar(&State { document: true, selection: false, recent: &[], tabs: Vec::new() });
+        assert!(open.find(&CommandRef::new("file.export_pen")).is_some_and(|item| item.enabled && item.label == "Export .pen File…"));
     }
 }

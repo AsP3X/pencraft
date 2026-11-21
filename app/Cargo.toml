@@ -47,7 +47,8 @@ lucide-static-svg = { version = "=1.72.0", default-features = false, features = 
 image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 # Human: Writes the `--screenshot` picture.
 png = "=0.18.1"
-# Human: Deflate and the CRC-32 checksum for the zip container of a `.pencraft` bundle (`src/bundle/zip.rs`). The
+# Human: Deflate and the CRC-32 checksum for a `.quill` file's blocks (`src/bundle/quill.rs`) and for reading the
+# zip container of an old `.pencraft` bundle (`src/bundle/zip.rs`). The
 # version the png crate already builds with, so no crate is added to Cargo.lock.
 flate2 = { version = "=1.1.11", default-features = false, features = ["rust_backend"] }
 log = "=0.4.34"

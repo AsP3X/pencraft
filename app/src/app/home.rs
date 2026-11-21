@@ -420,7 +420,13 @@ impl Home {
             let font = FontId::proportional(HOME_CARD_TEXT);
             ui.painter().text(middle + vec2(0.0, 2.0), Align2::CENTER_CENTER, "Designs you open or save show up here", font, palette.foreground);
             let small = FontId::proportional(HOME_SMALL_TEXT);
-            ui.painter().text(middle + vec2(0.0, 22.0), Align2::CENTER_CENTER, "Drop a .pen file on the window to open it", small, palette.muted);
+            ui.painter().text(
+                middle + vec2(0.0, 22.0),
+                Align2::CENTER_CENTER,
+                "Drop a .quill or .pen file on the window to open it",
+                small,
+                palette.muted,
+            );
             return;
         }
         let count = columns(width, HOME_RECENT_WIDTH, HOME_CARD_GAP);

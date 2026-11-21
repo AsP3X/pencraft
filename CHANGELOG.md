@@ -9,6 +9,32 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Added
+
+- **A design is one file now: `.quill`.** Save writes a single `.quill`
+  file that holds the design together with its pictures and shader files,
+  so it opens the same on any computer. Save always writes a `.quill`
+  file now. A picture used
+  several times is stored once, and if one picture in a file is damaged the
+  rest of the design still opens.
+
+### Changed
+
+- **`.pencraft` bundles become `.quill` files.** Your bundles still open.
+  The first time you save one, Pencraft writes a `.quill` file of the same
+  name beside it and continues there; the `.pencraft` file is left as it
+  is.
+- **`.pen` files are opened and exported, no longer saved to.** A `.pen`
+  file opens as before. The first time you save it, Pencraft writes a
+  `.quill` file of the same name beside it, with the pictures the design
+  uses, and continues there; the `.pen` file is left as it is. To make a
+  `.pen` file, use File › Export .pen File…: it writes the plain document
+  with its pictures beside it and leaves the design you are working on
+  where it is. File › Save As .pen File… is gone, and Save As offers
+  `.quill` only.
+- **For AI clients:** `save_document` saves `.quill` files only; the new
+  tool `export_document` writes a `.pen` file.
+
 ## [0.3.28] - 2026-11-21
 
 A livelier chat that shows each step as it happens, the assistant's

@@ -35,6 +35,9 @@ enum Then {
     Open,
     /// Save tab `tab` under the chosen name; close it afterwards when `close` (part of closing or quitting).
     SaveAs { tab: usize, close: bool },
+    /// Write the document with this id ([`Editor::id`]) as a `.pen` file under the chosen name, if it is still
+    /// open.
+    ExportPen(u64),
     /// Add the chosen pictures and SVG files to the document.
     Import,
     /// Attach the chosen files to the chat message being written.
@@ -622,36 +625,58 @@ impl App {
     }
 
     fn ask_open(&mut self) {
-        self.dialogs.ask(FileDialog::open_many().title("Open").filter("Design files", &[bundle::PLAIN, bundle::ENDING]), Then::Open);
+        self.dialogs.ask(FileDialog::open_many().title("Open").filter("Design files", &[bundle::ENDING, bundle::PLAIN, bundle::OLD]), Then::Open);
     }
 
     fn save(&mut self, tab: usize, close: bool) {
         let was = self.tabs.get(tab).and_then(Editor::anchor);
-        self.save_from(tab, close, was.as_deref());
+        self.save_from(tab, close, was.as_deref(), None);
     }
 
     /// Saves the document in the tab `tab`, whose files lay beside `was` when it was last saved (its
     /// [`Editor::anchor`] then; `None` when never), asking for a file first when it has none; its pictures are
-    /// brought to where it is saved (`pictures::settle`).
-    fn save_from(&mut self, tab: usize, close: bool, was: Option<&Path>) {
+    /// brought to where it is saved (`pictures::settle`). `moved` is where the document was before it was given
+    /// the name it has now for this save (Save As): it goes back there when the save fails.
+    fn save_from(&mut self, tab: usize, close: bool, was: Option<&Path>, moved: Option<crate::editor::Place>) {
         let Some(editor) = self.tabs.get_mut(tab) else { return };
         if editor.path.is_none() {
-            self.ask_save("Save", tab, close, false);
+            self.ask_save("Save", tab, close);
             return;
         }
+        // Human: a `.pen` document, an old `.pencraft` bundle and a document opened from a file of any other
+        // name are opened, not saved to: they are saved as a `.quill` file beside them, and stay as they are. A `.quill` file of that name that is
+        // there already is somebody's: the user says where to.
+        let (mut renamed, mut from) = (None, moved);
+        if let Some(next) = editor.path.as_deref().and_then(bundle::successor) {
+            let name = |path: &Path| path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+            if next.exists() {
+                self.say(format!("{} is there already: choose where to save.", name(&next)));
+                self.ask_save("Save As", tab, close);
+                return;
+            }
+            let left = editor.path.as_deref().map(name).unwrap_or_default();
+            from = Some(editor.place());
+            if let Err(error) = editor.move_to(next.clone()) {
+                self.say(format!("Couldn't save: {error}"));
+                return;
+            }
+            renamed = Some(format!("It is now {}; {left} is left as it is.", name(&next)));
+        }
         let mut told = pictures::settle(editor, was, crate::imagery::store::home().as_deref());
-        // Human: said once, when the document first goes to a `.pen` file of this name, not at every save.
-        let plain = editor.path.as_deref().is_some_and(|path| !bundle::is_bundle(path));
-        let only_here = editor.only_here().filter(|_| plain && was != editor.anchor().as_deref());
-        match editor.save() {
+        // Human: when the file can't be written under its new name, the document has the file it had again.
+        let moved = from.is_some();
+        match editor.save_or_return(from) {
             Ok(more) => {
                 if let Some(path) = editor.path.as_ref().map(|p| p.display().to_string()) {
                     self.prefs.update(|p| p.files.touch(&path));
                 }
+                told.extend(renamed);
                 told.extend(more);
-                told.extend(only_here);
                 if !told.is_empty() {
                     self.say(format!("Saved. {}", told.join(" ")));
+                }
+                if moved {
+                    self.remember_tabs();
                 }
                 if close {
                     self.close_tab_now(tab);
@@ -662,21 +687,43 @@ impl App {
     }
 
     fn save_as(&mut self, tab: usize) {
-        self.ask_save("Save As", tab, false, false);
+        self.ask_save("Save As", tab, false);
     }
 
-    /// Asks where to save the document in the tab `tab`. The name offered ends as the file it has does (`.pen`
-    /// for one without a file), or the other way when `other` says so; either ending can be typed.
-    // Human: the ending picks the format: `.pen` is the document alone, `.pencraft` a bundle with its files.
-    fn ask_save(&mut self, title: &str, tab: usize, close: bool, other: bool) {
+    /// Asks where to save the document in the tab `tab`: as a `.quill` file, the one format a document is
+    /// saved as.
+    // Human: a `.quill` file is one file with the document's pictures and files in it. A `.pen` file, the
+    // document alone, is made by File › Export .pen File… ([`App::ask_export_pen`]).
+    fn ask_save(&mut self, title: &str, tab: usize, close: bool) {
         let Some(editor) = self.tabs.get(tab) else { return };
-        let bundle = editor.path.as_deref().is_some_and(bundle::is_bundle) != other;
-        let (name, endings) = if bundle {
-            (format!("{}.{}", editor.title(), bundle::ENDING), [bundle::ENDING, bundle::PLAIN])
-        } else {
-            (format!("{}.{}", editor.title(), bundle::PLAIN), [bundle::PLAIN, bundle::ENDING])
+        let name = format!("{}.{}", editor.title(), bundle::ENDING);
+        self.dialogs.ask(FileDialog::save().title(title).filter("Pencraft designs", &[bundle::ENDING]).file_name(name), Then::SaveAs { tab, close });
+    }
+
+    /// Asks where to write the document in front as a `.pen` file.
+    fn ask_export_pen(&mut self) {
+        let Some(editor) = self.active.and_then(|tab| self.tabs.get(tab)) else { return };
+        let name = format!("{}.{}", editor.title(), bundle::PLAIN);
+        self.dialogs
+            .ask(FileDialog::save().title("Export .pen File").filter(".pen documents", &[bundle::PLAIN]).file_name(name), Then::ExportPen(editor.id));
+    }
+
+    /// Writes the document with the id `doc` as a `.pen` file at `path`, and says how it went.
+    // Human: an export: the document keeps its file, its working folder and its unsaved changes, and the file
+    // that is written is not opened or remembered.
+    // Agent: READS and WRITES files (`pictures::export_pen`); BLOCKS on them.
+    fn export_pen(&mut self, doc: u64, path: PathBuf) {
+        let Some(editor) = self.tabs.iter().find(|tab| tab.id == doc) else { return };
+        let made = bundle::ended(path, bundle::PLAIN)
+            .and_then(|target| pictures::export_pen(editor, &target, crate::imagery::store::home().as_deref()).map(|told| (target, told)));
+        // Human: the file's name alone, as Save says it: a whole path is cut off before the name in the message.
+        let name = |target: &Path| target.file_name().map_or_else(|| target.display().to_string(), |name| name.to_string_lossy().into_owned());
+        let said = match made {
+            Ok((target, told)) if told.is_empty() => format!("Exported {}", name(&target)),
+            Ok((target, told)) => format!("Exported {}. {}", name(&target), told.join(" ")),
+            Err(error) => format!("Couldn't export: {error}"),
         };
-        self.dialogs.ask(FileDialog::save().title(title).filter("Design files", &endings).file_name(name), Then::SaveAs { tab, close });
+        self.say(said);
     }
 
     /// Closes a tab, asking first when it has unsaved changes.
@@ -764,11 +811,12 @@ impl App {
                     self.save(tab, false);
                 }
             }
-            Command::SaveAs | Command::SaveAsOther => {
+            Command::SaveAs => {
                 if let Some(tab) = self.active {
-                    self.ask_save("Save As", tab, false, command == Command::SaveAsOther);
+                    self.save_as(tab);
                 }
             }
+            Command::ExportPen => self.ask_export_pen(),
             Command::NewFile => self.new_file(),
             Command::OpenFile => self.ask_open(),
             Command::CloseTab => {
@@ -862,7 +910,6 @@ impl App {
         let editor = self.active.and_then(|tab| self.tabs.get(tab));
         crate::menus::bar(&crate::menus::State {
             document: editor.is_some(),
-            bundle: editor.and_then(|e| e.path.as_deref()).is_some_and(bundle::is_bundle),
             selection: editor.is_some_and(|e| !e.selection.is_empty()),
             recent: &self.prefs.get().files.recent,
             tabs: self.tabs.iter().enumerate().map(|(index, tab)| (tab.title(), self.active == Some(index))).collect(),
@@ -900,15 +947,27 @@ impl App {
                     }
                 }
                 (Then::SaveAs { tab, close }, Answer::Paths(paths)) => {
-                    if let (Some(path), Some(editor)) = (paths.into_iter().next(), self.tabs.get_mut(tab)) {
-                        let path = if path.extension().is_some() { path } else { path.with_extension(bundle::PLAIN) };
+                    let Some(path) = paths.into_iter().next() else { continue };
+                    // Human: a name ending `.pen` or `.pencraft` is refused, with how such a file is made.
+                    let path = match bundle::ended(path, bundle::ENDING) {
+                        Ok(path) => path,
+                        Err(error) => {
+                            self.say(format!("Couldn't save: {error}"));
+                            continue;
+                        }
+                    };
+                    if let Some(editor) = self.tabs.get_mut(tab) {
+                        // Human: the tabs to open next time are noted when the save worked (`save_from`).
+                        let before = editor.place();
                         match editor.move_to(path) {
-                            Ok(was) => {
-                                self.save_from(tab, close, was.as_deref());
-                                self.remember_tabs();
-                            }
+                            Ok(was) => self.save_from(tab, close, was.as_deref(), Some(before)),
                             Err(error) => self.say(format!("Couldn't save: {error}")),
                         }
+                    }
+                }
+                (Then::ExportPen(doc), Answer::Paths(paths)) => {
+                    if let Some(path) = paths.into_iter().next() {
+                        self.export_pen(doc, path);
                     }
                 }
                 (Then::Export(options), Answer::Paths(paths)) => self.exporting = paths.into_iter().next().map(|path| (path, options)),
@@ -1325,6 +1384,9 @@ impl App {
                     }
                     if menu_item(ui, "Save As…        ⇧⌘S") {
                         self.save_as(tab);
+                    }
+                    if menu_item(ui, "Export .pen File…") {
+                        self.ask_export_pen();
                     }
                     if menu_item(ui, "Close tab         ⌘W") {
                         self.close_tab(tab);
@@ -1915,7 +1977,7 @@ fn run_on(editor: &mut Editor, command: Command, view: egui::Rect) {
         Command::Dashboard
         | Command::Save
         | Command::SaveAs
-        | Command::SaveAsOther
+        | Command::ExportPen
         | Command::NewFile
         | Command::OpenFile
         | Command::CloseTab

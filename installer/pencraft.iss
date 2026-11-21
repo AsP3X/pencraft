@@ -6,7 +6,7 @@
 ;
 ; The wizard asks whether to install for this user only (no administrator
 ; rights needed) or for everyone. It adds a Start menu entry, optionally a
-; desktop icon, optionally opens .pen files with Pencraft, and optionally
+; desktop icon, optionally opens .quill and .pen files with Pencraft, and optionally
 ; puts the folder on PATH so AI clients can run `pencraft mcp`.
 ; The AppId must never change: it is how an update finds the old install.
 
@@ -38,7 +38,7 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 ; The icon of the setup program itself. pencraft.exe carries the same one
-; (app\build.rs), which is what the shortcuts and .pen files show.
+; (app\build.rs), which is what the shortcuts and design files show.
 SetupIconFile=pencraft.ico
 ChangesEnvironment=yes
 ChangesAssociations=yes
@@ -51,7 +51,7 @@ UninstallDisplayIcon={app}\{#AppExe}
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "associate"; Description: "Open .pen and .pencraft files with {#AppName}"
+Name: "associate"; Description: "Open .quill, .pen and .pencraft files with {#AppName}"
 Name: "addtopath"; Description: "Add to PATH, so AI clients can run pencraft mcp"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
 
@@ -59,13 +59,14 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
 Source: "{#ExePath}"; DestDir: "{app}"; DestName: "{#AppExe}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; Comment: "Canvas design editor for .pen files"
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; Comment: "Canvas design editor for .quill and .pen files"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Registry]
 ; HKA is the machine's registry for an install for everyone, the user's own otherwise.
 Root: HKA; Subkey: "Software\Classes\.pen\OpenWithProgids"; ValueType: string; ValueName: "Pencraft.Design"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
 Root: HKA; Subkey: "Software\Classes\.pencraft\OpenWithProgids"; ValueType: string; ValueName: "Pencraft.Design"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\.quill\OpenWithProgids"; ValueType: string; ValueName: "Pencraft.Design"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
 Root: HKA; Subkey: "Software\Classes\Pencraft.Design"; ValueType: string; ValueName: ""; ValueData: "Pencraft design"; Flags: uninsdeletekey; Tasks: associate
 Root: HKA; Subkey: "Software\Classes\Pencraft.Design\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#AppExe},0"; Tasks: associate
 Root: HKA; Subkey: "Software\Classes\Pencraft.Design\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""; Tasks: associate
