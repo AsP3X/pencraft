@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Quill splash: the finished board</title>
+<!-- The bookshop page as beat C leaves it, alone and edge to edge at 1200 x 750. A screenshot of this page is the
+     picture the app flies into the wall of designs (app/assets/splash/board.jpg). -->
+<style>html, body { margin: 0; background: #131316; overflow: hidden; } canvas { display: block; }</style>
+<canvas id="page" width="1200" height="750"></canvas>
+<script src="splash.js"></script>
+<script>
+  PICTURES_READY.then(() => {
+    const c = document.getElementById('page').getContext('2d');
+    c.scale(1.5, 1.5);
+    board(c, { ...boardState(6.3), flat: true });
+    document.title = 'ready';
+  });
+</script>

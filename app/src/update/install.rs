@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-use super::{API, PATIENCE, REPOSITORY, ReleaseFile, quiet};
+use super::{API, PATIENCE, ReleaseFile, quiet};
 
 /// The file the setup wizard leaves beside the program it installed.
 const UNINSTALLER: &str = "unins000.exe";
@@ -169,10 +169,11 @@ impl Prepared {
     }
 }
 
-/// Where GitHub hands out a release file of this repository.
-// Human: built from the file's number, so nothing in GitHub's answer can send the download anywhere else.
-fn file_address(api: &str, id: u64) -> String {
-    format!("{api}/repos/{REPOSITORY}/releases/assets/{id}")
+/// Where GitHub hands out a release file of `repository`.
+// Human: built from the repository the release was found in and the file's number, so nothing in GitHub's
+// answer can send the download anywhere else.
+fn file_address(api: &str, repository: &str, id: u64) -> String {
+    format!("{api}/repos/{repository}/releases/assets/{id}")
 }
 
 /// The checksum `SHA256SUMS.txt` gives for a file: 64 hex digits, in lowercase.
@@ -357,7 +358,8 @@ pub fn fetch(installer: &ReleaseFile, checksums: &ReleaseFile, place: &Place, pr
         Place::Setup => "pencraft-setup.exe",
         Place::Bundle(_) => "pencraft.dmg",
     });
-    let order = Order { file: &file_address(API, installer.id), sums: &file_address(API, checksums.id), name: &installer.name };
+    let file = file_address(API, installer.repository, installer.id);
+    let order = Order { file: &file, sums: &file_address(API, checksums.repository, checksums.id), name: &installer.name };
     receive(&order, &to, progress, &super::token)?;
     match place {
         Place::Setup => Ok(Prepared::Setup(to)),
@@ -453,7 +455,8 @@ mod tests {
 
     #[test]
     fn a_release_file_is_only_ever_asked_for_in_this_repository() {
-        assert_eq!(file_address(API, 42), "https://api.github.com/repos/AsP3X/pencraft/releases/assets/42");
+        assert_eq!(file_address(API, "AsP3X/pencraft", 42), "https://api.github.com/repos/AsP3X/pencraft/releases/assets/42");
+        assert_eq!(file_address(API, "AsP3X/quill", 42), "https://api.github.com/repos/AsP3X/quill/releases/assets/42");
     }
 
     #[test]

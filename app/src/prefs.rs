@@ -24,6 +24,16 @@ pub struct Prefs {
     pub agents: Agents,
     /// Looking for newer versions of the app.
     pub updates: Updates,
+    /// The welcome film a new user is shown.
+    pub welcome: Welcome,
+}
+
+/// The welcome film a new user is shown.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Welcome {
+    /// It has been shown to its end or skipped, and isn't shown again.
+    pub seen: bool,
 }
 
 /// Look of the window.

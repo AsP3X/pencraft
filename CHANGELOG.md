@@ -9,14 +9,29 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-21
+
+Pencraft is now called Quill. A design is saved as one `.quill` file with its
+pictures in it, and a short welcome film greets you the first time the app
+starts.
+
 ### Added
 
+- **A welcome film on first start.** The first time Quill starts it plays a
+  ten-second film, with music, of what the app is for: describe a design,
+  watch the assistant draw it, change it yourself. A click or Esc skips to
+  its end, where "Start designing" opens the app and "Set up an assistant"
+  opens the settings for assistants. It is shown once. With animations
+  turned off in the settings only its last picture shows, without sound.
 - **A design is one file now: `.quill`.** Save writes a single `.quill`
   file that holds the design together with its pictures and shader files,
   so it opens the same on any computer. Save always writes a `.quill`
   file now. A picture used
   several times is stored once, and if one picture in a file is damaged the
   rest of the design still opens.
+- **On Windows a `.quill` file opens with a double click** and shows
+  Quill's icon in the Explorer, when the installer's file association is
+  chosen.
 
 ### Changed
 
@@ -43,6 +58,10 @@ in the app before they download the update. Write it for them.
   `.quill` only.
 - **For AI clients:** `save_document` saves `.quill` files only; the new
   tool `export_document` writes a `.pen` file.
+- **Updates will keep arriving after Quill's project page moves.** Quill's
+  releases are moving to a new address on GitHub. This version already
+  looks there, and at the present address until the move, so later updates
+  install as usual with nothing to download by hand.
 
 ## [0.3.28] - 2026-11-21
 
@@ -879,7 +898,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.3.28...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/AsP3X/pencraft/compare/v0.3.28...v0.4.0
 [0.3.28]: https://github.com/AsP3X/pencraft/compare/v0.3.27...v0.3.28
 [0.3.27]: https://github.com/AsP3X/pencraft/compare/v0.3.26...v0.3.27
 [0.3.26]: https://github.com/AsP3X/pencraft/compare/v0.3.25...v0.3.26

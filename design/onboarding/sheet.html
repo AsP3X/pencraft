@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Quill splash contact sheet</title>
+<!-- sheet.html?from=0&to=3&n=24&cols=6 draws n frames between two times side by side, each with its time. -->
+<style>body { margin: 0; background: #202020; } canvas { display: block; }</style>
+<canvas id="sheet"></canvas>
+<script src="splash.js"></script>
+<script>
+  // Human: `?s=from_to_n_cols_scale` says the same in one value, for command lines where `&` is awkward.
+  const q = new URLSearchParams(location.search), short = (q.get('s') || '').split('_');
+  const from = +(short[0] || q.get('from') || 0), to = +(short[1] || q.get('to') || DUR);
+  const n = +(short[2] || q.get('n') || 24), cols = +(short[3] || q.get('cols') || 6), k = +(short[4] || q.get('scale') || 0.5), pad = 6;
+  const rows = Math.ceil(n / cols), sheet = document.getElementById('sheet'), c = sheet.getContext('2d');
+  sheet.width = cols * (W * k + pad) + pad; sheet.height = rows * (H * k + pad) + pad;
+  PICTURES_READY.then(() => {
+    for (let i = 0; i < n; i++) {
+      const t = from + (to - from) * i / (n - 1), x = pad + (i % cols) * (W * k + pad), y = pad + Math.floor(i / cols) * (H * k + pad);
+      c.save(); c.translate(x, y); c.beginPath(); c.rect(0, 0, W * k, H * k); c.clip(); c.scale(k, k); drawFrame(c, t); c.restore();
+      c.fillStyle = 'rgba(0,0,0,.7)'; c.fillRect(x, y + H * k - 20, 54, 20);
+      c.fillStyle = '#fff'; c.font = '13px Arial'; c.fillText(t.toFixed(2) + 's', x + 6, y + H * k - 6);
+    }
+    document.title = 'ready';
+  });
+</script>

@@ -31,8 +31,12 @@ use crate::theme::{
     UPDATE_NOTE_GAP, UPDATE_NOTES_HEIGHT, UPDATE_PILL, UPDATE_PILL_PADDING, UPDATE_TITLE_SIZE, UPDATE_WIDTH,
 };
 
-/// The GitHub repository whose releases are the updates.
-pub const REPOSITORY: &str = "AsP3X/pencraft";
+/// The GitHub repositories whose releases are the updates, in the order they are asked: the one Quill is
+/// moving to, then the one it has been released from so far.
+// Human: the app was renamed and its repository will be too. A copy installed before the move must find the
+// releases made after it, so it already asks the new repository, which answers "not there" until it exists
+// and has a release; from then on the old one is no longer asked.
+pub const REPOSITORIES: [&str; 2] = ["AsP3X/quill", "AsP3X/pencraft"];
 /// The version of the running app, from `Cargo.toml`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Where GitHub answers questions about repositories.
@@ -67,6 +71,8 @@ pub struct ReleaseFile {
     pub name: String,
     /// The file's size in bytes, 0 when GitHub didn't say.
     pub size: u64,
+    /// The repository whose release it is a file of; the download asks that one.
+    pub repository: &'static str,
 }
 
 /// A release that is newer than the running app.
@@ -84,6 +90,8 @@ pub struct Release {
     pub checksums: Option<ReleaseFile>,
     /// Nobody may stay on an older version: this release, or one between it and the running app, says so.
     pub required: bool,
+    /// The repository it was released in, one of [`REPOSITORIES`].
+    pub repository: &'static str,
 }
 
 /// What the user chose in the card.
@@ -147,20 +155,23 @@ struct ApiAsset {
     browser_download_url: String,
 }
 
-/// Reads what GitHub says about a release.
+/// Reads what GitHub says about a release of `repository`.
 ///
 /// # Errors
 /// When the answer isn't a release.
-pub fn parse_release(json: &str) -> Result<Release, String> {
+pub fn parse_release(json: &str, repository: &'static str) -> Result<Release, String> {
     let api: ApiRelease = serde_json::from_str(json).map_err(|error| format!("unexpected answer from GitHub: {error}"))?;
     let installer = api.assets.iter().find(|asset| is_installer_for_this_system(&asset.name)).map(|asset| asset.browser_download_url.as_str());
     // Human: the browser is only ever sent to this repository's own pages, whatever the answer says.
-    let download =
-        [installer, Some(api.html_url.as_str())].into_iter().flatten().find(|address| is_ours(address)).map_or_else(releases_page, str::to_owned);
+    let download = [installer, Some(api.html_url.as_str())]
+        .into_iter()
+        .flatten()
+        .find(|address| is_ours(address, repository))
+        .map_or_else(|| releases_page(repository), str::to_owned);
     // Human: a file without a number can't be asked for, so it counts as not there.
     let file = |wanted: &dyn Fn(&str) -> bool| {
         let asset = api.assets.iter().find(|asset| asset.id != 0 && wanted(&asset.name))?;
-        Some(ReleaseFile { id: asset.id, name: asset.name.clone(), size: asset.size })
+        Some(ReleaseFile { id: asset.id, name: asset.name.clone(), size: asset.size, repository })
     };
     let body = api.body.unwrap_or_default();
     // Human: the marker is for the app; the notes the user reads are without it.
@@ -169,20 +180,21 @@ pub fn parse_release(json: &str) -> Result<Release, String> {
         version: api.tag_name.trim_start_matches(['v', 'V']).to_owned(),
         notes: notes.join("\n").trim().to_owned(),
         required: says_required(&body),
+        repository,
         download,
         installer: file(&is_installer_for_this_system),
         checksums: file(&|name| name == CHECKSUMS),
     })
 }
 
-/// The page that lists every release, for when a release names no page of its own.
-fn releases_page() -> String {
-    format!("https://github.com/{REPOSITORY}/releases/latest")
+/// The page that lists every release of `repository`, for when a release names no page of its own.
+fn releases_page(repository: &str) -> String {
+    format!("https://github.com/{repository}/releases/latest")
 }
 
-/// Whether an address is a page or a file of this repository on GitHub, and plain enough to hand to a browser.
-fn is_ours(address: &str) -> bool {
-    let start = format!("https://github.com/{REPOSITORY}/");
+/// Whether an address is a page or a file of `repository` on GitHub, and plain enough to hand to a browser.
+fn is_ours(address: &str, repository: &str) -> bool {
+    let start = format!("https://github.com/{repository}/");
     let plain = address.chars().all(|c| c.is_ascii_alphanumeric() || "/:.-_".contains(c));
     plain && address.get(..start.len()).is_some_and(|head| head.eq_ignore_ascii_case(&start))
 }
@@ -228,7 +240,7 @@ pub fn is_newer(candidate: &str, current: &str) -> bool {
 /// Asks GitHub for the latest release, with a sign-in or without; gives the status and the text of the answer.
 type Fetch<'a> = &'a dyn Fn(Option<&str>) -> Result<(u16, String), String>;
 
-/// Finds the latest release and gives it when it is newer than `current`.
+/// Finds the latest release of `repository` and gives it when it is newer than `current`.
 ///
 /// `fetch` asks GitHub for the latest release, with a sign-in or without, and gives the status and the text of
 /// the answer. `token` finds a sign-in; it is only asked when GitHub says there is nothing to see without one,
@@ -236,7 +248,7 @@ type Fetch<'a> = &'a dyn Fn(Option<&str>) -> Result<(u16, String), String>;
 ///
 /// # Errors
 /// When GitHub couldn't be reached, refused, or answered something that isn't a release.
-pub fn latest(current: &str, fetch: Fetch<'_>, token: impl FnOnce() -> Option<String>) -> Result<Option<Release>, String> {
+pub fn latest(current: &str, repository: &'static str, fetch: Fetch<'_>, token: impl FnOnce() -> Option<String>) -> Result<Option<Release>, String> {
     let (mut status, mut body) = fetch(None)?;
     if status == 404
         && let Some(token) = token()
@@ -250,8 +262,39 @@ pub fn latest(current: &str, fetch: Fetch<'_>, token: impl FnOnce() -> Option<St
     if !(200..300).contains(&status) {
         return Err(format!("GitHub answered {status}"));
     }
-    let release = parse_release(&body)?;
+    let release = parse_release(&body, repository)?;
     Ok(is_newer(&release.version, current).then_some(release))
+}
+
+/// Asks GitHub for an address, with a sign-in or without; gives the status and the text of the answer.
+type Ask<'a> = &'a dyn Fn(&str, Option<&str>) -> Result<(u16, String), String>;
+
+/// Looks for a release newer than `current` in each of [`REPOSITORIES`] in turn, and stops at the first one
+/// that is there and has releases: that one's answer counts, also when it has nothing newer.
+///
+/// `api` is where GitHub answers (`https://api.github.com`), `ask` asks it for an address, `token` finds a
+/// sign-in ([`latest`] says when it is used).
+///
+/// # Errors
+/// When GitHub couldn't be reached, refused, or answered something that isn't a release.
+// Human: a repository that isn't there, or has no release yet, answers 404. That is how the one Quill is
+// moving to answers until the move, and the look then goes on to the one before it.
+pub fn newest(current: &str, api: &str, ask: Ask<'_>, token: &dyn Fn() -> Option<String>) -> Result<Option<Release>, String> {
+    let mut found = Ok(None);
+    for repository in REPOSITORIES {
+        let address = format!("{api}/repos/{repository}/releases/latest");
+        let missing = std::cell::Cell::new(false);
+        let fetch = |sign_in: Option<&str>| {
+            let answer = ask(&address, sign_in)?;
+            missing.set(answer.0 == 404);
+            Ok(answer)
+        };
+        found = latest(current, repository, &fetch, token);
+        if !missing.get() {
+            break;
+        }
+    }
+    found
 }
 
 /// Asks for `address` the way GitHub's API wants to be asked; gives the status and the text of the answer.
@@ -426,10 +469,11 @@ impl Updates {
         self.offered = Some(Release {
             version: "9.1.0".to_owned(),
             notes: notes.to_owned(),
-            download: releases_page(),
+            download: releases_page(REPOSITORIES[1]),
             installer: None,
             checksums: None,
             required: false,
+            repository: REPOSITORIES[1],
         });
     }
 
@@ -517,17 +561,21 @@ impl Updates {
         self.looking = true;
         let (send, ctx) = (self.send.clone(), ctx.clone());
         let work = move || {
-            let address = format!("{API}/repos/{REPOSITORY}/releases/latest");
-            let mut found = latest(VERSION, &|token| get(&address, token), token);
+            let mut found = newest(VERSION, API, &get, &token);
             // Human: the newest release may be an ordinary one while a required one lies between it and this
             // copy. The list of recent releases says so; when it can't be had, the update stays optional.
+            // Human: such a release may also lie in the repository Quill was released from before, so the
+            // lists of the release's own repository and of every earlier one are read.
             if let Ok(Some(release)) = &mut found
                 && !release.required
             {
-                let list = format!("{API}/repos/{REPOSITORY}/releases?per_page={RECENT}");
-                let listed = |sign_in: Option<&str>| get(&list, sign_in).ok().filter(|(status, _)| *status == 200);
-                let answer = listed(None).or_else(|| token().and_then(|token| listed(Some(&token))));
-                release.required = answer.is_some_and(|(_, body)| any_required(VERSION, &body));
+                let own = REPOSITORIES.iter().position(|repository| *repository == release.repository).unwrap_or(0);
+                release.required = REPOSITORIES.iter().skip(own).any(|repository| {
+                    let list = format!("{API}/repos/{repository}/releases?per_page={RECENT}");
+                    let listed = |sign_in: Option<&str>| get(&list, sign_in).ok().filter(|(status, _)| *status == 200);
+                    let answer = listed(None).or_else(|| token().and_then(|token| listed(Some(&token))));
+                    answer.is_some_and(|(_, body)| any_required(VERSION, &body))
+                });
             }
             // Human: the app may have quit meanwhile; then nobody waits for the answer.
             let _ = send.send(found);
@@ -1089,6 +1137,10 @@ fn notes(ui: &mut Ui, text: &str, palette: Palette) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The repository Quill has been released from so far, and the one it is moving to.
+    const OLD: &str = REPOSITORIES[1];
+    const NEW: &str = REPOSITORIES[0];
     use std::cell::RefCell;
     use std::io::{Read as _, Write as _};
 
@@ -1108,17 +1160,18 @@ mod tests {
         Release {
             version: version.to_owned(),
             notes: "- New things".to_owned(),
-            download: releases_page(),
+            download: releases_page(OLD),
             installer: None,
             checksums: None,
             required: false,
+            repository: OLD,
         }
     }
 
     /// An offered release this copy could install itself, with a download under way that `send` ends.
     fn fetching() -> (Updates, Sender<Result<Prepared, String>>, Arc<Progress>) {
         let mut updates = Updates::new(true, false);
-        let file = |name: &str| Some(ReleaseFile { id: 1, name: name.to_owned(), size: 3 });
+        let file = |name: &str| Some(ReleaseFile { id: 1, name: name.to_owned(), size: 3, repository: OLD });
         updates.offered = Some(Release { installer: file("pencraft-9.1.0-setup.exe"), checksums: file(CHECKSUMS), ..release("9.1.0") });
         updates.place = Some(Place::Setup);
         let (send, result) = channel();
@@ -1145,7 +1198,7 @@ mod tests {
 
     #[test]
     fn a_release_names_its_version_its_notes_and_the_download_for_this_system() {
-        let release = parse_release(NEWER).unwrap();
+        let release = parse_release(NEWER, OLD).unwrap();
         assert_eq!(release.version, "9.1.0");
         assert_eq!(release.notes, "- New things");
         if cfg!(all(windows, target_arch = "x86_64")) {
@@ -1161,26 +1214,27 @@ mod tests {
         assert!(is_mac_image("pencraft-9.1.0-macos-universal.dmg"));
 
         // A release without files or notes still reads, and leads to the list of releases.
-        let bare = parse_release(r#"{"tag_name": "v9.2.0"}"#).unwrap();
+        let bare = parse_release(r#"{"tag_name": "v9.2.0"}"#, OLD).unwrap();
         assert_eq!(
             bare,
             Release {
                 version: "9.2.0".to_owned(),
                 notes: String::new(),
-                download: releases_page(),
+                download: releases_page(OLD),
                 installer: None,
                 checksums: None,
-                required: false
+                required: false,
+                repository: OLD,
             }
         );
-        assert!(parse_release("not json").is_err());
+        assert!(parse_release("not json", OLD).is_err());
     }
 
     #[test]
     fn a_release_names_the_files_an_update_in_place_needs() {
         let numbered = NEWER.replace(r#"{"name": "#, r#"{"id": 7, "size": 9, "name": "#);
-        let release = parse_release(&numbered).unwrap();
-        assert_eq!(release.checksums, Some(ReleaseFile { id: 7, name: CHECKSUMS.to_owned(), size: 9 }));
+        let release = parse_release(&numbered, OLD).unwrap();
+        assert_eq!(release.checksums, Some(ReleaseFile { id: 7, name: CHECKSUMS.to_owned(), size: 9, repository: OLD }));
         if cfg!(all(windows, target_arch = "x86_64")) {
             assert_eq!(release.installer.unwrap().name, "pencraft-9.1.0-setup.exe");
         } else if cfg!(target_os = "macos") {
@@ -1189,7 +1243,7 @@ mod tests {
             assert_eq!(release.installer, None);
         }
         // Human: files GitHub gave no number can't be asked for.
-        let release = parse_release(NEWER).unwrap();
+        let release = parse_release(NEWER, OLD).unwrap();
         assert_eq!((release.installer, release.checksums), (None, None));
     }
 
@@ -1199,14 +1253,14 @@ mod tests {
         let (mut updates, _send, _progress) = fetching();
         updates.stage = Stage::Offered;
         updates.place = None;
-        assert_eq!(updates.clicked(Click::Take, &ctx), Some(Answer::Get(releases_page())));
+        assert_eq!(updates.clicked(Click::Take, &ctx), Some(Answer::Get(releases_page(OLD))));
         assert_eq!(updates.offered, None);
 
         // Human: so does a release without an installer or without checksums.
         let mut updates = Updates::new(true, false);
         updates.place = Some(Place::Setup);
         updates.offered = Some(release("9.1.0"));
-        assert_eq!(updates.clicked(Click::Take, &ctx), Some(Answer::Get(releases_page())));
+        assert_eq!(updates.clicked(Click::Take, &ctx), Some(Answer::Get(releases_page(OLD))));
     }
 
     #[test]
@@ -1258,29 +1312,70 @@ mod tests {
 
     #[test]
     fn the_browser_is_only_sent_to_this_repository() {
-        assert!(is_ours("https://github.com/AsP3X/pencraft/releases/tag/v9.1.0"));
-        assert!(is_ours("https://github.com/asp3x/Pencraft/releases/download/v9.1.0/pencraft-9.1.0-setup.exe"));
-        assert!(!is_ours("https://github.com/someone/else/releases/tag/v9.1.0"));
-        assert!(!is_ours("https://github.com/AsP3X/pencraft-evil/releases"));
-        assert!(!is_ours("http://github.com/AsP3X/pencraft/releases"));
-        assert!(!is_ours("https://github.com/AsP3X/pencraft/releases?x=1 & calc.exe"));
-        assert!(!is_ours("file:///C:/Windows/System32/calc.exe"));
+        assert!(is_ours("https://github.com/AsP3X/pencraft/releases/tag/v9.1.0", OLD));
+        assert!(is_ours("https://github.com/asp3x/Pencraft/releases/download/v9.1.0/pencraft-9.1.0-setup.exe", OLD));
+        assert!(!is_ours("https://github.com/someone/else/releases/tag/v9.1.0", OLD));
+        assert!(!is_ours("https://github.com/AsP3X/pencraft-evil/releases", OLD));
+        assert!(!is_ours("http://github.com/AsP3X/pencraft/releases", OLD));
+        assert!(!is_ours("https://github.com/AsP3X/pencraft/releases?x=1 & calc.exe", OLD));
+        assert!(!is_ours("file:///C:/Windows/System32/calc.exe", OLD));
         let elsewhere = r#"{"tag_name": "v9.1.0", "html_url": "https://example.com/get", "assets": [
             {"name": "pencraft-9.1.0-setup.exe", "browser_download_url": "https://example.com/pencraft-9.1.0-setup.exe"},
             {"name": "pencraft-9.1.0-macos-universal.dmg", "browser_download_url": "https://example.com/pencraft.dmg"}]}"#;
-        assert_eq!(parse_release(elsewhere).unwrap().download, releases_page());
+        assert_eq!(parse_release(elsewhere, OLD).unwrap().download, releases_page(OLD));
+    }
+
+    #[test]
+    fn the_repository_quill_moves_to_is_asked_first_and_the_one_before_it_while_that_is_not_there() {
+        let asked = RefCell::new(Vec::new());
+        // Human: before the move the new repository is not there, and the release comes from the old one.
+        let before = |address: &str, _: Option<&str>| {
+            asked.borrow_mut().push(address.to_owned());
+            Ok(if address.contains(NEW) { (404, String::new()) } else { (200, NEWER.to_owned()) })
+        };
+        let release = newest("9.0.9", "https://api", &before, &|| None).unwrap().unwrap();
+        assert_eq!((release.version.as_str(), release.repository), ("9.1.0", OLD));
+        assert_eq!(*asked.borrow(), vec![format!("https://api/repos/{NEW}/releases/latest"), format!("https://api/repos/{OLD}/releases/latest")]);
+
+        // Human: after it the new one answers, its files are asked for there, and the old one is left alone.
+        let moved = NEWER.replace("AsP3X/pencraft", NEW).replace(r#"{"name": "#, r#"{"id": 7, "name": "#);
+        let after =
+            |address: &str, _: Option<&str>| if address.contains(NEW) { Ok((200, moved.clone())) } else { Err("the old one was asked".to_owned()) };
+        let release = newest("9.0.9", "https://api", &after, &|| None).unwrap().unwrap();
+        assert_eq!(release.repository, NEW);
+        assert_eq!(release.checksums.map(|file| file.repository), Some(NEW));
+        assert!(release.download.starts_with(&format!("https://github.com/{NEW}/")));
+        // Human: also when it has nothing newer: the old repository's releases are history by then.
+        assert_eq!(newest("9.1.0", "https://api", &after, &|| None).unwrap(), None);
+    }
+
+    #[test]
+    fn when_neither_repository_is_there_or_github_fails_there_is_no_release() {
+        assert_eq!(newest("0.1.0", "https://api", &|_, _| Ok((404, String::new())), &|| None).unwrap(), None);
+        assert!(newest("0.1.0", "https://api", &|_, _| Err("offline".to_owned()), &|| None).is_err());
+        // Human: an answer that is not "not there" ends the look, so a refusal is not papered over by the old one.
+        let refused = |address: &str, _: Option<&str>| Ok(if address.contains(NEW) { (403, String::new()) } else { (200, NEWER.to_owned()) });
+        assert_eq!(newest("0.1.0", "https://api", &refused, &|| None).unwrap_err(), "GitHub answered 403");
+    }
+
+    #[test]
+    fn a_release_only_leads_to_pages_of_its_own_repository() {
+        assert!(is_ours("https://github.com/AsP3X/quill/releases/tag/v9.1.0", NEW));
+        assert!(!is_ours("https://github.com/AsP3X/quill/releases/tag/v9.1.0", OLD));
+        assert!(!is_ours("https://github.com/AsP3X/quill-evil/releases", NEW));
+        assert_eq!(releases_page(NEW), "https://github.com/AsP3X/quill/releases/latest");
     }
 
     #[test]
     fn only_a_higher_version_is_news() {
         let ok = |_: Option<&str>| Ok((200, NEWER.to_owned()));
-        assert_eq!(latest("9.0.9", &ok, || None).unwrap().unwrap().version, "9.1.0");
-        assert_eq!(latest("9.1.0", &ok, || None).unwrap(), None);
-        assert_eq!(latest("10.0.0", &ok, || None).unwrap(), None);
+        assert_eq!(latest("9.0.9", OLD, &ok, || None).unwrap().unwrap().version, "9.1.0");
+        assert_eq!(latest("9.1.0", OLD, &ok, || None).unwrap(), None);
+        assert_eq!(latest("10.0.0", OLD, &ok, || None).unwrap(), None);
         // GitHub out of reach, refusing, or talking nonsense is an error for the caller to keep quiet about.
-        assert!(latest("0.1.0", &|_| Err("offline".to_owned()), || None).is_err());
-        assert_eq!(latest("0.1.0", &|_| Ok((403, "rate limit".to_owned())), || None).unwrap_err(), "GitHub answered 403");
-        assert!(latest("0.1.0", &|_| Ok((200, "<html>".to_owned())), || None).is_err());
+        assert!(latest("0.1.0", OLD, &|_| Err("offline".to_owned()), || None).is_err());
+        assert_eq!(latest("0.1.0", OLD, &|_| Ok((403, "rate limit".to_owned())), || None).unwrap_err(), "GitHub answered 403");
+        assert!(latest("0.1.0", OLD, &|_| Ok((200, "<html>".to_owned())), || None).is_err());
     }
 
     #[test]
@@ -1292,7 +1387,7 @@ mod tests {
             Ok((200, NEWER.to_owned()))
         };
         let never = || -> Option<String> { panic!("no sign-in is needed") };
-        assert!(latest("0.1.0", &open, never).unwrap().is_some());
+        assert!(latest("0.1.0", OLD, &open, never).unwrap().is_some());
         assert_eq!(*asked.borrow(), vec![None]);
 
         // Human: a private one says 404 first, and answers the same question asked with a sign-in.
@@ -1301,12 +1396,12 @@ mod tests {
             asked.borrow_mut().push(token.map(str::to_owned));
             Ok(if token == Some("secret") { (200, NEWER.to_owned()) } else { (404, String::new()) })
         };
-        assert!(latest("0.1.0", &private, || Some("secret".to_owned())).unwrap().is_some());
+        assert!(latest("0.1.0", OLD, &private, || Some("secret".to_owned())).unwrap().is_some());
         assert_eq!(*asked.borrow(), vec![None, Some("secret".to_owned())]);
 
         // Human: without a sign-in, or with one that doesn't help, there is simply no news.
-        assert_eq!(latest("0.1.0", &private, || None).unwrap(), None);
-        assert_eq!(latest("0.1.0", &private, || Some("wrong".to_owned())).unwrap(), None);
+        assert_eq!(latest("0.1.0", OLD, &private, || None).unwrap(), None);
+        assert_eq!(latest("0.1.0", OLD, &private, || Some("wrong".to_owned())).unwrap(), None);
     }
 
     /// Answers one request with `reply` and hands back what was asked, in lowercase.
@@ -1385,10 +1480,10 @@ mod tests {
             format!(r#"{{"tag_name":"{tag}","html_url":"","body":{},"assets":[]}}"#, serde_json::Value::String(body.to_owned()))
         };
         // The marker on a line of its own says so, and is not part of what the user reads.
-        let marked = parse_release(&json("v9.2.0", "Safer saves.\n\n<!-- required -->\n\n- A fix")).unwrap();
+        let marked = parse_release(&json("v9.2.0", "Safer saves.\n\n<!-- required -->\n\n- A fix"), OLD).unwrap();
         assert!(marked.required);
         assert_eq!(marked.notes, "Safer saves.\n\n\n- A fix");
-        let plain = parse_release(&json("v9.2.0", "We talk about <!-- required --> here, in a sentence.")).unwrap();
+        let plain = parse_release(&json("v9.2.0", "We talk about <!-- required --> here, in a sentence."), OLD).unwrap();
         assert!(!plain.required && plain.notes.contains("required"));
         // A newer release that is required counts though the newest is not; older ones, drafts and
         // pre-releases don't.

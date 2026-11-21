@@ -836,3 +836,45 @@ pub const HOME_THUMB_SCALE: f32 = 2.0;
 pub const HOME_EMPTY_HEIGHT: f32 = 112.0;
 /// Height of a shortcut's key on the home screen's last line.
 pub const HOME_KEY_HEIGHT: f32 = 20.0;
+
+/// The space the welcome film is drawn in; it is fitted into the window whole.
+pub const SPLASH_STAGE: egui::Vec2 = egui::vec2(1280.0, 800.0);
+/// Seconds the welcome film runs.
+pub const SPLASH_LENGTH: f32 = 9.6;
+/// Seconds into the welcome film at which its two buttons are there; skipping goes here.
+pub const SPLASH_READY: f32 = 8.95;
+/// The film's dark ground, and its text on the light one.
+pub const SPLASH_INK: Color32 = Color32::from_rgb(0x0b, 0x0b, 0x0c);
+/// The film's light ground, and its text on the dark one.
+pub const SPLASH_PAPER: Color32 = Color32::from_rgb(0xf4, 0xf2, 0xec);
+/// Islands on the film's dark ground (the message box, the toolbar).
+pub const SPLASH_INK_ISLAND: Color32 = Color32::from_rgb(0x1b, 0x1b, 0x1f);
+/// Edges and unlit marks on the film's dark ground.
+pub const SPLASH_INK_EDGE: Color32 = Color32::from_rgb(0x34, 0x34, 0x3a);
+/// Quiet text on the film's dark ground.
+pub const SPLASH_INK_MUTED: Color32 = Color32::from_rgb(0x8a, 0x8a, 0x92);
+/// Edges on the film's light ground.
+pub const SPLASH_PAPER_EDGE: Color32 = Color32::from_rgb(0xde, 0xdb, 0xd2);
+/// Quiet text on the film's light ground.
+pub const SPLASH_PAPER_MUTED: Color32 = Color32::from_rgb(0x8b, 0x87, 0x7c);
+/// Marks not reached yet on the film's light ground.
+pub const SPLASH_PAPER_FAINT: Color32 = Color32::from_rgb(0xcb, 0xc7, 0xbb);
+/// The page drawn in the film, in its dark theme.
+pub const SPLASH_PAGE_DARK: Color32 = Color32::from_rgb(0x13, 0x13, 0x16);
+/// Quiet text of that page: on its light theme, and on its dark one.
+pub const SPLASH_PAGE_MUTED: [Color32; 2] = [Color32::from_rgb(0x6b, 0x6b, 0x6b), Color32::from_rgb(0x9a, 0x9a, 0xa2)];
+/// The fills the page's picture is given in turn while it is restyled; the first one stays.
+pub const SPLASH_FILLS: [Color32; 2] = [Color32::from_rgb(0xf9, 0x73, 0x16), Color32::from_rgb(0x16, 0xa3, 0x4a)];
+/// What lies under each of the page's four covers until its picture is there.
+pub const SPLASH_COVERS: [Color32; 4] = [
+    Color32::from_rgb(0xc8, 0x55, 0x3d),
+    Color32::from_rgb(0x2f, 0x5d, 0x50),
+    Color32::from_rgb(0xe3, 0xb2, 0x3c),
+    Color32::from_rgb(0x28, 0x33, 0x4a),
+];
+/// Size of the film's first line ("Describe it."), in the stage's points.
+pub const SPLASH_TITLE: f32 = 184.0;
+/// Size of its two other lines.
+pub const SPLASH_HEADING: f32 = 124.0;
+/// Size of the name at its end.
+pub const SPLASH_NAME: f32 = 140.0;

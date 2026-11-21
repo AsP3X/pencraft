@@ -1,7 +1,7 @@
 //! Quill: a canvas design editor for `.quill` and `.pen` files, written in Rust as a Craft app.
 //!
-//! `pencraft [FILE.quill|FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--update-required] [--update-collapsed] [--update-download [PERCENT]] [--home] [--export FILE]]`
-//! `pencraft [--background] [--private] [--no-update-check] [--update-download [PERCENT]] [--assistant ID] [--ask MESSAGE] [FILE.quill|FILE.pen]...` opens the window behind what the user is doing.
+//! `pencraft [FILE.quill|FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--update-required] [--update-collapsed] [--update-download [PERCENT]] [--home] [--welcome [SECONDS]] [--export FILE]]`
+//! `pencraft [--background] [--private] [--no-update-check] [--update-download [PERCENT]] [--welcome] [--assistant ID] [--ask MESSAGE] [FILE.quill|FILE.pen]...` opens the window behind what the user is doing.
 //! `pencraft mcp` connects an AI client to the running app (Model Context Protocol over standard input and output).
 
 // Human: on Windows a shipped (release) build is a window app: started from the Start menu or the Explorer it
@@ -58,6 +58,7 @@ mod shader;
 mod sidebar;
 mod skills;
 mod snap;
+mod splash;
 mod tasklist;
 mod theme;
 mod toast;
@@ -80,7 +81,7 @@ const SAMPLES: u16 = 4;
 // Human: a Mac icon is a plate with room and a shadow round it, as the Dock expects; elsewhere the plate fills
 // the square. Pencraft.app has the same picture as its own icon; this one is for a Quill started without it.
 const ICON: &[u8] = if cfg!(target_os = "macos") { include_bytes!("../assets/icon-macos.png") } else { include_bytes!("../assets/icon.png") };
-const USAGE: &str = "usage: pencraft [FILE.quill|FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--update-required] [--update-collapsed] [--update-download [PERCENT]] [--home] [--export FILE]]\n       pencraft [--background] [--private] [--no-update-check] [--update-download [PERCENT]] [--assistant ID] [--ask MESSAGE] [FILE.quill|FILE.pen]...\n       pencraft mcp
+const USAGE: &str = "usage: pencraft [FILE.quill|FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--update-required] [--update-collapsed] [--update-download [PERCENT]] [--home] [--welcome [SECONDS]] [--export FILE]]\n       pencraft [--background] [--private] [--no-update-check] [--update-download [PERCENT]] [--welcome] [--assistant ID] [--ask MESSAGE] [FILE.quill|FILE.pen]...\n       pencraft mcp
        pencraft skills [show NAME [FILE] | install [--project DIR | --dir DIR]]";
 
 fn main() -> ExitCode {
@@ -200,6 +201,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<app::Launch, String>
         update_required: false,
         update_collapsed: false,
         home: false,
+        welcome: None,
     };
     let mut args = args.peekable();
     while let Some(arg) = args.next() {
@@ -234,6 +236,13 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<app::Launch, String>
                 launch.update_download = Some(percent.unwrap_or(42));
             }
             "--home" => launch.home = true,
+            // Human: the moment of the welcome film a picture shows may follow, in seconds; without it, its end.
+            "--welcome" => {
+                let at = args
+                    .next_if(|next| next.parse::<f32>().is_ok_and(|at| (0.0..=theme::SPLASH_LENGTH).contains(&at)))
+                    .and_then(|at| at.parse().ok());
+                launch.welcome = Some(at.unwrap_or(theme::SPLASH_LENGTH));
+            }
             "--ask" => launch.ask = Some(args.next().ok_or("--ask needs a message")?),
             "--assistant" => launch.assistant = Some(args.next().ok_or("--assistant needs an id, like code/claude-opus-5-5")?),
             "--export" => launch.export = Some(PathBuf::from(args.next().ok_or("--export needs a file name")?)),
@@ -282,6 +291,9 @@ mod tests {
         assert!(parse(&["--screenshot", "shot.png", "--update-prompt"]).update_prompt);
         // A made-up download: how far it has come may follow; a file's name after it is still a file.
         assert_eq!(parse(&["--update-download"]).update_download, Some(42));
+        assert_eq!(parse(&["--welcome"]).welcome, Some(theme::SPLASH_LENGTH));
+        assert_eq!(parse(&["--screenshot", "shot.png", "--welcome", "3.5"]).welcome, Some(3.5));
+        assert_eq!(parse(&[]).welcome, None);
         assert_eq!(parse(&["--screenshot", "shot.png", "--update-download", "80"]).update_download, Some(80));
         let named = parse(&["--update-download", "a.pen"]);
         assert_eq!((named.update_download, named.files.len()), (Some(42), 1));

@@ -145,6 +145,9 @@ pub struct Launch {
     pub update_download: Option<u8>,
     /// `--home`: the picture shows the home screen, with the files named on the command line as its recent files.
     pub home: bool,
+    /// `--welcome [SECONDS]`: the welcome film plays although it has been seen; a picture shows it standing
+    /// still at this moment.
+    pub welcome: Option<f32>,
 }
 
 impl Launch {
@@ -220,6 +223,31 @@ pub struct App {
     home: home::Home,
     /// The price list of the providers' models, which a fetch on another thread may replace.
     prices: Arc<std::sync::Mutex<crate::chat::prices::Catalogue>>,
+    /// The welcome film, while it shows in the place of everything else.
+    film: Option<crate::splash::Splash>,
+}
+
+/// Makes the fonts ready, and the GPU for shader effects.
+fn install_drawing(cc: &eframe::CreationContext<'_>) {
+    fonts::install(&cc.egui_ctx);
+    // Human: shader effects run on the same GPU device the window is drawn with.
+    if let Some(state) = &cc.wgpu_render_state {
+        crate::gpu::install(state.device.clone(), state.queue.clone());
+    }
+}
+
+/// The welcome film this run starts with, if any; `seen` is whether the user has been shown it before.
+// Human: someone who starts Quill for the first time gets it once. A run that was started to do something (a
+// file to open, a message to send, a picture, an AI client's background run, a private run) goes straight to
+// that. `--welcome` plays it whatever else is true, and in a picture it stands still at the moment asked for.
+fn welcome_film(launch: &Launch, seen: bool) -> Option<crate::splash::Splash> {
+    let busy = launch.private || launch.background || launch.ask.is_some() || !launch.files.is_empty();
+    match (launch.welcome, launch.screenshot.is_some()) {
+        (Some(at), true) => Some(crate::splash::Splash::new(Some(at))),
+        (Some(_), false) => Some(crate::splash::Splash::new(None)),
+        (None, false) if !seen && !busy => Some(crate::splash::Splash::new(None)),
+        _ => None,
+    }
 }
 
 /// Whether this run fetches the price list of the providers' models when the kept one is a day old.
@@ -239,11 +267,7 @@ const CLIPBOARD_KEY: &str = "pencraftNodes";
 impl App {
     /// Builds the app from the eframe creation context.
     pub fn new(cc: &eframe::CreationContext<'_>, launch: Launch) -> App {
-        fonts::install(&cc.egui_ctx);
-        // Human: shader effects run on the same GPU device the window is drawn with.
-        if let Some(state) = &cc.wgpu_render_state {
-            crate::gpu::install(state.device.clone(), state.queue.clone());
-        }
+        install_drawing(cc);
         sweep_working_folders();
         let location = if launch.screenshot.is_some() || launch.private { Location::Memory } else { Location::Auto };
         let (prefs, report) = SettingsStore::<Prefs>::open(location);
@@ -257,6 +281,7 @@ impl App {
         let mut app = App {
             // Human: the price list goes by the settings, so it is started before the app takes them over.
             prices: crate::chat::prices::start(looks_up_prices(&prefs.get().agents, &launch)),
+            film: welcome_film(&launch, prefs.get().welcome.seen),
             prefs,
             tabs: Vec::new(),
             recovery: Recovery::start(launch.private || launch.screenshot.is_some()),
@@ -1809,6 +1834,28 @@ impl App {
     }
 }
 
+impl App {
+    /// Shows the welcome film in the place of everything else. Returns whether it took this frame.
+    // Human: when the user goes on, the film is over for good: the settings remember that it was seen. "Set up
+    // an assistant" goes on to the settings window where assistants are set up.
+    fn show_film(&mut self, ui: &mut egui::Ui) -> bool {
+        let Some(film) = &mut self.film else { return false };
+        let animations = self.prefs.get().appearance.animations;
+        let mut outcome = crate::splash::Outcome::Playing;
+        egui::CentralPanel::default().frame(egui::Frame::new()).show(ui, |ui| outcome = film.show(ui, animations));
+        if outcome == crate::splash::Outcome::Playing {
+            return true;
+        }
+        self.film = None;
+        self.prefs.update(|prefs| prefs.welcome.seen = true);
+        if outcome == crate::splash::Outcome::Assistant {
+            self.settings.open_named("agents");
+        }
+        ui.ctx().request_repaint();
+        true
+    }
+}
+
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Closing the window (or ⌘Q) asks about unsaved tabs first, one at a time.
@@ -1861,6 +1908,9 @@ impl eframe::App for App {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        if self.show_film(ui) {
+            return;
+        }
         self.handle_dialog_answers();
         self.finish_export(&ctx);
         self.native_menus(&ctx);

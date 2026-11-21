@@ -87,8 +87,13 @@ install in `app/src/update/install.rs`.
 1. **Look.** When the app starts, and then as often as Settings → General
    → Updates → "Check every" says (every 5 minutes unless changed) while it
    stays open, also when the window is left alone, a thread asks
-   `https://api.github.com/repos/AsP3X/pencraft/releases/latest`. The window
-   never waits for it. The request gives up after 20 seconds.
+   `https://api.github.com/repos/AsP3X/quill/releases/latest`, the repository
+   Quill is moving to. While that one answers 404 (it is not there yet, or
+   has no release), the thread asks
+   `https://api.github.com/repos/AsP3X/pencraft/releases/latest` next. Once
+   the new repository has a release its answer counts, also when it has
+   nothing newer, and the old one is no longer asked. The window never waits
+   for it. A request gives up after 20 seconds.
 2. **Compare.** The tag is read as three numbers. If it is a higher version
    than the running one, and not the version the user chose to skip, the
    card appears.
@@ -100,7 +105,8 @@ install in `app/src/update/install.rs`.
    `SHA256SUMS.txt` and the installer for the system (the file ending in
    `-setup.exe` on Windows, in `.dmg` on a Mac) into `pencraft-update` in
    the temporary folder. Both are asked for by their asset number at
-   `api.github.com/repos/AsP3X/pencraft/releases/assets/<id>`. The card
+   `api.github.com/repos/<repository>/releases/assets/<id>`, in the
+   repository the release was found in. The card
    shows the progress and a **Cancel** button.
 5. **Check.** The file's SHA-256, worked out by `certutil` on Windows and
    `shasum` on a Mac, must be the one `SHA256SUMS.txt` gives for the file's
@@ -158,9 +164,11 @@ Things that follow from this design:
 - **Some runs never look**: `--screenshot` (and with it `--export`),
   `--private`, `--background`, `--no-update-check`, `pencraft mcp`, and any
   run with Settings → General → "Look for new versions" switched off.
-- **The browser is only sent to this repository**, and the download only
-  asks this repository. An address in GitHub's answer that is not under
-  `https://github.com/AsP3X/pencraft/` is ignored.
+- **The browser is only sent to the release's own repository**, and the
+  download only asks that one. An address in GitHub's answer that is not
+  under `https://github.com/AsP3X/quill/` for a release found there, or
+  `https://github.com/AsP3X/pencraft/` for one found there, is ignored. The
+  two names are in `REPOSITORIES` in `app/src/update.rs`.
 
 ### While the repository is private
 

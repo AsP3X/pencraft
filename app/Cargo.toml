@@ -7,7 +7,7 @@ resolver = "3"
 members = ["crates/pen-doc"]
 
 [workspace.package]
-version = "0.3.28"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.99"
 license-file = "../LICENSE"
@@ -64,6 +64,9 @@ winit = { version = "=0.30.13", default-features = false }
 # only to switch on its GLSL reader, since shader files are WebGL fragment shaders. That adds one crate, pp-rs.
 # Agent: MUST stay the exact version eframe resolves to, or two wgpu copies would be built and their types differ.
 wgpu = { version = "=30.0.2", default-features = false, features = ["glsl"] }
+# Human: Plays the welcome film's music and sound effects (an MP3 kept in the app) through the computer's
+# speakers. Only playing and only MP3 are switched on: no recording, no other formats.
+rodio = { version = "=0.23.0", default-features = false, features = ["playback", "mp3"] }
 env_logger = { version = "=0.11.11", default-features = false, features = ["auto-color"] }
 # Human: Puts the icon and the program's name into pencraft.exe when it is built on Windows (build.rs).
 winresource = { version = "=0.1.34", default-features = false }
@@ -121,6 +124,7 @@ image.workspace = true
 png.workspace = true
 flate2.workspace = true
 log.workspace = true
+rodio.workspace = true
 wgpu.workspace = true
 env_logger.workspace = true
 

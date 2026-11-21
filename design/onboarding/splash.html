@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Quill splash prototype</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #050506; overflow: hidden; font: 13px Arial, sans-serif; color: #c8c8c8; }
+  canvas { position: absolute; inset: 0; margin: auto; display: block; }
+  #bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 12px; align-items: center; padding: 8px 14px; background: rgba(5, 5, 6, .8); }
+  #bar input { flex: 1; accent-color: #3b82f6; }
+  #bar button { background: #1b1b1f; color: #ececee; border: 1px solid #3a3a40; border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+  #bar span { font-variant-numeric: tabular-nums; min-width: 44px; }
+</style>
+<canvas id="stage"></canvas>
+<div id="bar"><button id="play">Pause</button><button id="again">Replay with sound</button><input id="scrub" type="range" min="0" max="9.6" step="0.01" value="0" aria-label="Time"><span id="clock">0.00</span></div>
+<audio id="sound" src="assets/splash-audio.mp3" preload="auto"></audio>
+<script src="splash.js"></script>
+<script>
+  const stage = document.getElementById('stage'), c = stage.getContext('2d');
+  const scrub = document.getElementById('scrub'), clock = document.getElementById('clock'), play = document.getElementById('play');
+  const fixed = new URLSearchParams(location.search).get('t');
+  const sound = document.getElementById('sound');
+  let t = fixed ? +fixed : 0, running = !fixed, last = 0;
+  // Human: the sound follows the picture. A browser plays it only after a click or key, so the first Replay starts it.
+  function follow() { if (!running || t >= DUR + 1) { sound.pause(); return; } if (Math.abs(sound.currentTime - t) > 0.12) sound.currentTime = t; sound.play().catch(() => {}); }
+  function fit() {
+    const k = Math.min(innerWidth / W, (innerHeight - (fixed ? 0 : 40)) / H), d = devicePixelRatio || 1;
+    stage.style.width = W * k + 'px'; stage.style.height = H * k + 'px'; stage.style.bottom = fixed ? '0' : '40px';
+    stage.width = W * k * d; stage.height = H * k * d; c.setTransform(k * d, 0, 0, k * d, 0, 0);
+  }
+  function tick(now) {
+    if (running) t = Math.min(DUR, t + Math.min(0.05, (now - last) / 1000));
+    last = now;
+    drawFrame(c, t); scrub.value = t; clock.textContent = t.toFixed(2);
+    requestAnimationFrame(tick);
+  }
+  play.onclick = () => { running = !running; play.textContent = running ? 'Pause' : 'Play'; follow(); };
+  document.getElementById('again').onclick = () => { t = 0; running = true; play.textContent = 'Pause'; follow(); };
+  scrub.oninput = () => { t = +scrub.value; running = false; play.textContent = 'Play'; follow(); };
+  stage.onclick = () => { t = 0; running = true; play.textContent = 'Pause'; follow(); };
+  addEventListener('keydown', e => { if (e.key === 'Escape') { t = 8.95; } });
+  if (fixed) document.getElementById('bar').style.display = 'none';
+  addEventListener('resize', fit); fit(); requestAnimationFrame(now => { last = now; tick(now); });
+</script>
