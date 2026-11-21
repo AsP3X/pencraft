@@ -2884,7 +2884,7 @@ dependencies = [
 
 [[package]]
 name = "pen-doc"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -2892,7 +2892,7 @@ dependencies = [
 
 [[package]]
 name = "pencraft"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "craft-ai-core",
  "craft-atomic",

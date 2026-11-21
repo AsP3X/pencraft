@@ -9,8 +9,20 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-21
+
+Layers inside a layout can be dragged to wherever you want them, and on
+Windows the tab strip is now the window's title bar.
+
 ### Changed
 
+- **On Windows the tab strip is the title bar.** The window no longer has
+  the system's bar above Quill's own: the strip with the open files carries
+  the buttons to minimise, maximise and close, an empty part of it moves
+  the window, a double click there maximises it, and the window's edges
+  and corners resize it. A new tab pours out of the "new file" button and
+  a closed one drains away; with animations turned off they simply appear
+  and go.
 - **A layer inside a layout can be dragged anywhere.** Dragging a layer
   that its frame's layout places used to only put it in another place
   among its neighbours, so it looked as if it couldn't be moved. Now it
@@ -908,7 +920,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/AsP3X/pencraft/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/AsP3X/pencraft/compare/v0.3.28...v0.4.0
 [0.3.28]: https://github.com/AsP3X/pencraft/compare/v0.3.27...v0.3.28
 [0.3.27]: https://github.com/AsP3X/pencraft/compare/v0.3.26...v0.3.27
