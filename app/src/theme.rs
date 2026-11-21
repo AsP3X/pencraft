@@ -4,23 +4,64 @@ use egui::{Color32, CornerRadius, Stroke, Visuals};
 
 /// Height of the top bar: the title island with the space above it and a line's width below (the user's
 /// design; the sidebar starts an [`ISLAND_GAP`] under it).
-pub const TAB_BAR_HEIGHT: f32 = 53.0;
-/// Space between the window's top edge and the title island.
-pub const TITLE_ISLAND_TOP: f32 = 11.0;
-/// Height of the title island.
-pub const TITLE_ISLAND_HEIGHT: f32 = 41.0;
+pub const TAB_BAR_HEIGHT: f32 = 48.0;
 /// Room left for the macOS window buttons at the start of the title island.
 pub const TRAFFIC_LIGHT_SPACE: f32 = 90.0;
 /// Space between the window's left edge and the macOS close button.
 pub const TRAFFIC_LIGHT_LEFT: f32 = 21.0;
-/// Size of the app's name in the title island.
-pub const TITLE_SIZE: f32 = 17.0;
-/// Height of a tab in the title island; its ends are half circles.
-pub const TAB_HEIGHT: f32 = 27.0;
+/// Side of the app's icon before its name in the title bar.
+pub const TITLE_MARK: f32 = 20.0;
+/// Size of the app's name in the title bar, set in bold.
+pub const TITLE_SIZE: f32 = 13.0;
+/// Size of the other words in the title bar (a tab's name, "Share"), set in bold.
+pub const TITLE_TEXT: f32 = 12.0;
+/// Space at the title bar's left and right end.
+pub const TITLE_PADDING: [f32; 2] = [16.0, 12.0];
+/// Space between two things in the title bar.
+pub const TITLE_GAP: f32 = 8.0;
+/// Height of the line between the title bar's buttons and the window's own.
+pub const TITLE_DIVIDER: f32 = 16.0;
+/// Width of one of the window's own buttons in the title bar (minimise, maximise, close); as high as a
+/// [`TITLE_BUTTON`].
+pub const CAPTION_BUTTON: f32 = 40.0;
+/// Side of the maximise button's square, a little smaller than the two icons beside it so it looks their size.
+pub const CAPTION_SQUARE: f32 = 13.0;
+/// Height of a tab in the title bar; its corners are rounded by [`CONTROL_RADIUS`].
+pub const TAB_HEIGHT: f32 = 28.0;
+/// Seconds a new tab takes to pour out of the "new file" button.
+pub const TAB_POUR_TIME: f32 = 0.45;
+/// Seconds a closed tab takes to bead up and burst.
+pub const TAB_DRAIN_TIME: f32 = 0.3;
+/// How large the bead is that a closed tab draws itself together into.
+pub const TAB_DRAIN_BEAD: f32 = 9.0;
+/// How large the two drops are that the bead bursts into, at their largest.
+pub const TAB_DRAIN_SPRAY: f32 = 3.5;
+/// How far apart the pouring tab and the drop at the button still melt into each other, at the start.
+pub const TAB_POUR_MELT: f32 = 18.0;
+/// How large the drop at the button is that a new tab pours from, at the start.
+pub const TAB_POUR_DROP: f32 = 11.0;
+/// How thick the thread of liquid between a pouring tab and the button is, at the start (half its height).
+pub const TAB_POUR_THREAD: f32 = 4.5;
+/// How far to the left of its place a pouring tab's name starts.
+pub const TAB_POUR_SLIDE: f32 = 10.0;
+/// How large the larger of the two beads is that the thread breaks into, at its largest.
+pub const TAB_POUR_BEAD: f32 = 3.6;
+/// Room kept around the pouring tab in its picture, for its swell.
+pub const TAB_POUR_ROOM: f32 = 10.0;
+/// Width of the lit rim of the pouring tab, and how far to each side the light on it reaches.
+pub const TAB_POUR_RIM: [f32; 2] = [1.4, 46.0];
+/// Side of a tab's icon, and of the icon in "Share".
+pub const TAB_ICON: f32 = 14.0;
+/// Space at a tab's two ends, and between its icon and its name.
+pub const TAB_PADDING: [f32; 2] = [10.0, 8.0];
 /// How wide the dot is that a tab shows while its chat's assistant is at work.
 pub const TAB_WORK_DOT: f32 = 7.0;
-/// Side of the icon buttons in the title island.
-pub const TITLE_BUTTON: f32 = 26.0;
+/// Side of the icon buttons in the title bar.
+pub const TITLE_BUTTON: f32 = 28.0;
+/// How far in from the window's edge a press resizes it, where Quill draws the title bar itself (Windows).
+pub const WINDOW_EDGE: f32 = 6.0;
+/// How far along an edge from a corner a press resizes the window both ways.
+pub const WINDOW_CORNER: f32 = 16.0;
 /// Width of the sidebar island on the left (the user's sidebar design: 377 pt).
 pub const SIDEBAR_WIDTH: f32 = 377.0;
 /// Width of the sidebar island after its expand button was pressed.
@@ -547,6 +588,14 @@ pub struct Palette {
     pub outline: Color32,
     /// The cards the settings window groups its rows in, a step lighter than the island they lie on.
     pub card: Color32,
+    /// Text of the redesigned parts, the title bar first (`--rd-text` in `design/pencraft.pen`).
+    pub strong: Color32,
+    /// Their quiet text and icons (`--rd-muted`).
+    pub soft: Color32,
+    /// Their filled controls: the tab in front, a button under the pointer (`--rd-field`).
+    pub field: Color32,
+    /// Their thin lines (`--rd-line`).
+    pub line: Color32,
 }
 
 /// The light palette (`:root`).
@@ -563,6 +612,10 @@ pub const LIGHT: Palette = Palette {
     primary_text: Color32::from_rgb(0xfa, 0xfa, 0xfa),
     outline: Color32::from_rgb(0xe4, 0xe4, 0xe7),
     card: Color32::from_rgb(0xff, 0xff, 0xff),
+    strong: Color32::from_rgb(0x18, 0x18, 0x1b),
+    soft: Color32::from_rgb(0x55, 0x55, 0x5d),
+    field: Color32::from_rgb(0xe9, 0xe9, 0xec),
+    line: Color32::from_rgb(0xe4, 0xe4, 0xe8),
 };
 
 /// The dark palette (`.dark`).
@@ -579,6 +632,10 @@ pub const DARK: Palette = Palette {
     primary_text: Color32::from_rgb(0x18, 0x18, 0x1b),
     outline: Color32::from_rgb(0x3a, 0x3a, 0x3e),
     card: Color32::from_rgb(0x2e, 0x2e, 0x32),
+    strong: Color32::from_rgb(0xec, 0xec, 0xee),
+    soft: Color32::from_rgb(0xb0, 0xb0, 0xb8),
+    field: Color32::from_rgb(0x2c, 0x2c, 0x30),
+    line: Color32::from_rgb(0x31, 0x31, 0x35),
 };
 
 /// The palette for an appearance.

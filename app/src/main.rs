@@ -128,6 +128,12 @@ fn main() -> ExitCode {
         // Human: the tab strip is the title bar, with the window buttons inset at its start.
         viewport = viewport.with_fullsize_content_view(true).with_titlebar_shown(false).with_title_shown(false);
     }
+    if cfg!(windows) {
+        // Human: on Windows too the tab strip is the title bar: the system's own bar is left off, and the strip
+        // has the three window buttons and moves the window (`app::App::tab_bar`); the window's edges resize it
+        // (`app::resize_edges`).
+        viewport = viewport.with_decorations(false);
+    }
     if launch.screenshot.is_some() {
         // Human: a run that only takes a picture keeps its window under every other window, and moves it to
         // where no screen is once it exists (see `screenshot::Job`), so nothing flashes up in front of the person.

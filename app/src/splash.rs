@@ -132,7 +132,11 @@ impl Splash {
         let played = now.saturating_duration_since(self.began).as_secs_f32();
         let mut time = self.posed.unwrap_or(if animations { played } else { SPLASH_LENGTH }).min(SPLASH_LENGTH);
         let window = ui.max_rect();
-        let sense = ui.interact(window, egui::Id::unique("welcome film"), Sense::click());
+        let sense = ui.interact(window, egui::Id::unique("welcome film"), Sense::click_and_drag());
+        // Human: the film covers the title bar, so a drag on it moves the window, as a drag on the bar does.
+        if sense.drag_started() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+        }
         let escape = ctx.input(|input| input.key_pressed(Key::Escape));
         if time < SPLASH_READY && self.posed.is_none() && (sense.clicked() || escape) {
             // Human: a click or Esc during the film goes straight to its end, where the buttons are, and ends

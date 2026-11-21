@@ -13,7 +13,7 @@ use egui::{Color32, ColorImage};
 
 use crate::theme::{
     LIQUID, LIQUID_BLOOM, LIQUID_CORE, LIQUID_CORE_DEPTH, LIQUID_GLOW, LIQUID_HALO, LIQUID_LIGHT_PACE, LIQUID_LIGHT_SHARE, LIQUID_MELT, LIQUID_REACH,
-    LIQUID_RIM, LIQUID_RIM_WIDTH, TASKS_HAND_FALL, TASKS_HAND_MELT, TASKS_HAND_SOAK, TASKS_POOL, TASKS_POUR_BAND, TASKS_POUR_GAP,
+    LIQUID_RIM, LIQUID_RIM_WIDTH, TAB_POUR_RIM, TASKS_HAND_FALL, TASKS_HAND_MELT, TASKS_HAND_SOAK, TASKS_POOL, TASKS_POUR_BAND, TASKS_POUR_GAP,
     TASKS_POUR_GAP_MORE, TASKS_POUR_LAND, TASKS_POUR_SOAK,
 };
 
@@ -120,6 +120,66 @@ pub fn picture(blobs: &[Blob], origin: [f32; 2], size: [usize; 2], scale: f32, l
                 (inside[index] * cover + lights * (1.0 - cover)).round().clamp(0.0, 255.0) as u8
             };
             *pixel = Color32::from_rgba_premultiplied(channel(0), channel(1), channel(2), (alpha * 255.0).round().clamp(0.0, 255.0) as u8);
+        }
+    }
+    ColorImage::new(size, pixels)
+}
+
+/// A rounded box of liquid whose corners are rounded by `corner`; a [`Blob`]'s ends are always fully round.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Slab {
+    /// Its middle.
+    pub centre: [f32; 2],
+    /// Half its width and half its height.
+    pub half: [f32; 2],
+    /// How far its corners are rounded.
+    pub corner: f32,
+}
+
+impl Slab {
+    /// How far the point `at` is from the shape's edge: negative inside it. A slab of no size is nowhere.
+    fn distance(&self, at: [f32; 2]) -> f32 {
+        if self.half[0] <= 0.0 || self.half[1] <= 0.0 {
+            return f32::INFINITY;
+        }
+        let corner = self.corner.clamp(0.0, self.half[0].min(self.half[1]));
+        let (qx, qy) = ((at[0] - self.centre[0]).abs() - (self.half[0] - corner), (at[1] - self.centre[1]).abs() - (self.half[1] - corner));
+        qx.max(0.0).hypot(qy.max(0.0)) + qx.max(qy).min(0.0) - corner
+    }
+}
+
+/// The picture of `slabs` in one colour, `colors[0]`: the part that starts at `origin` and is `size` texels
+/// large, with `scale` texels to a point. Slabs closer than `melt` grow together. A thin rim along the edge is
+/// lit in `colors[1]` near `light`, which is in points from the left like `origin`.
+// Human: the plain cousin of [`picture`], for liquid that is part of the interface and has its colours: no
+// glow and no bloom, only the body and one light on its rim.
+// Agent: PURE; costs one distance for each texel and slab.
+#[must_use]
+#[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "colour channels, kept between 0 and 255")]
+#[expect(clippy::cast_precision_loss, reason = "texel positions, far below where f32 loses whole numbers")]
+pub fn plain(slabs: &[Slab], melt: f32, origin: [f32; 2], size: [usize; 2], scale: f32, colors: [Color32; 2], light: f32) -> ColorImage {
+    let (body, lit) = (rgb(colors[0]), rgb(colors[1]));
+    let [rim, reach] = TAB_POUR_RIM;
+    let mut pixels = vec![Color32::TRANSPARENT; size[0] * size[1]];
+    for (row, line) in pixels.chunks_mut(size[0].max(1)).enumerate() {
+        let y = origin[1] + (row as f32 + 0.5) / scale;
+        for (column, pixel) in line.iter_mut().enumerate() {
+            let at = [origin[0] + (column as f32 + 0.5) / scale, y];
+            let mut distance = f32::INFINITY;
+            for slab in slabs {
+                let other = slab.distance(at);
+                let share = if melt > 0.0 { (melt - (distance - other).abs()).max(0.0) / melt } else { 0.0 };
+                distance = distance.min(other) - share * share * melt * 0.25;
+            }
+            let cover = (0.5 - distance * scale).clamp(0.0, 1.0);
+            if cover <= 0.0 {
+                continue;
+            }
+            let edge = 1.0 - smooth(rim - 1.0, rim, -distance);
+            let glint = edge * (1.0 - smooth(0.0, reach, (at[0] - light).abs())) * 0.4;
+            let color = blend(body, lit, glint);
+            let channel = |index: usize| (color[index] * cover).round().clamp(0.0, 255.0) as u8;
+            *pixel = Color32::from_rgba_premultiplied(channel(0), channel(1), channel(2), (cover * 255.0).round().clamp(0.0, 255.0) as u8);
         }
     }
     ColorImage::new(size, pixels)

@@ -18,14 +18,15 @@ use crate::settings::Settings;
 use crate::sidebar::Ask;
 use crate::sidebar::{Sidebar, icon_button, text_button};
 use crate::theme::{
-    self, AGENT_CURSOR_LARGE, AGENT_CURSOR_MEDIUM, ICON_SIZE, ISLAND_GAP, ISLAND_RADIUS, MESSAGE_BAR_HEIGHT, PROPERTIES_WIDTH, RAIL_WIDTH,
-    SIDEBAR_TEXT_SIZE, TAB_BAR_HEIGHT, TAB_HEIGHT, TAB_WORK_DOT, TITLE_BUTTON, TITLE_ISLAND_HEIGHT, TITLE_ISLAND_TOP, TITLE_SIZE, TRAFFIC_LIGHT_LEFT,
-    TRAFFIC_LIGHT_SPACE, ZOOM_ISLAND,
+    self, AGENT_CURSOR_LARGE, AGENT_CURSOR_MEDIUM, CAPTION_BUTTON, CAPTION_SQUARE, ICON_SIZE, ISLAND_GAP, ISLAND_RADIUS, MESSAGE_BAR_HEIGHT,
+    PROPERTIES_WIDTH, RAIL_WIDTH, TAB_BAR_HEIGHT, TAB_HEIGHT, TAB_ICON, TAB_PADDING, TAB_WORK_DOT, TITLE_BUTTON, TITLE_DIVIDER, TITLE_GAP,
+    TITLE_PADDING, TITLE_SIZE, TITLE_TEXT, TRAFFIC_LIGHT_LEFT, TRAFFIC_LIGHT_SPACE, ZOOM_ISLAND,
 };
 use crate::{bundle, fonts, samples, screenshot};
 
 mod home;
 mod pictures;
+mod pour;
 mod talk;
 mod tools;
 
@@ -225,6 +226,144 @@ pub struct App {
     prices: Arc<std::sync::Mutex<crate::chat::prices::Catalogue>>,
     /// The welcome film, while it shows in the place of everything else.
     film: Option<crate::splash::Splash>,
+    /// The app's icon as the title bar shows it before the name; `None` when it couldn't be read.
+    mark: Option<egui::TextureHandle>,
+    /// The tab that is pouring out of the "new file" button and the one draining away, while they do.
+    pours: pour::Pours,
+}
+
+/// The app's icon, made small for the title bar.
+// Human: the icon file is 256 points a side and the bar shows it at 20. It is made 80 a side here, sharp on a
+// screen that draws up to four pixels a point, since shrinking it while it is drawn would leave it ragged.
+fn title_mark(ctx: &egui::Context) -> Option<egui::TextureHandle> {
+    let picture = image::load_from_memory(crate::ICON).ok()?.resize_exact(80, 80, image::imageops::FilterType::Lanczos3).to_rgba8();
+    let pixels = egui::ColorImage::from_rgba_unmultiplied([80, 80], picture.as_raw());
+    Some(ctx.load_texture("title mark", pixels, egui::TextureOptions::LINEAR))
+}
+
+/// The interface's bold face at `size`.
+fn bold(size: f32) -> egui::FontId {
+    egui::FontId::new(size, egui::FontFamily::Name(crate::render::BOLD_FAMILY.into()))
+}
+
+/// A button of the title bar that is only an icon, drawn in `tint`; it is filled while `active` or under the
+/// pointer.
+fn bar_button(ui: &mut egui::Ui, icon: &'static str, active: bool, tint: Color32, palette: theme::Palette) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::Vec2::splat(TITLE_BUTTON), egui::Sense::click());
+    if active || response.hovered() {
+        ui.painter().rect_filled(rect, f32::from(theme::CONTROL_RADIUS), if active { palette.field } else { palette.field.gamma_multiply(0.6) });
+    }
+    crate::icons::paint(ui.painter(), egui::Rect::from_center_size(rect.center(), egui::Vec2::splat(ICON_SIZE)), icon, tint);
+    response
+}
+
+/// The title bar's "Share": an icon and the word.
+fn share_button(ui: &mut egui::Ui, palette: theme::Palette) -> egui::Response {
+    let word = ui.painter().layout_no_wrap("Share".to_owned(), bold(TITLE_TEXT), palette.strong);
+    let width = TAB_PADDING[1] + TAB_ICON + 6.0 + word.size().x + TAB_PADDING[1];
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, TITLE_BUTTON), egui::Sense::click());
+    if response.hovered() {
+        ui.painter().rect_filled(rect, f32::from(theme::CONTROL_RADIUS), palette.field.gamma_multiply(0.6));
+    }
+    let slot = egui::Rect::from_min_size(egui::pos2(rect.left() + TAB_PADDING[1], rect.center().y - TAB_ICON / 2.0), egui::Vec2::splat(TAB_ICON));
+    crate::icons::paint(ui.painter(), slot, "share", palette.strong);
+    ui.painter().galley(egui::pos2(slot.right() + 6.0, rect.center().y - word.size().y / 2.0), word, palette.strong);
+    response
+}
+
+/// The window's own three buttons at the end of the title bar, where Quill draws it itself (Windows): close,
+/// maximise or restore, minimise, and a line between them and what comes before.
+// Human: laid out right to left, so close comes first and ends up nearest the window's corner. Close goes the
+// same way as the system's own button did, so unsaved documents are asked about.
+fn window_buttons(ui: &mut egui::Ui, palette: theme::Palette) {
+    let maximized = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
+    ui.spacing_mut().item_spacing.x = 0.0;
+    let ctx = ui.ctx().clone();
+    let button = |ui: &mut egui::Ui, icon: &'static str, side: f32, danger: bool, hint: &str| {
+        let (rect, response) = ui.allocate_exact_size(egui::vec2(CAPTION_BUTTON, TITLE_BUTTON), egui::Sense::click());
+        let (fill, mark) = match (response.hovered(), danger) {
+            (true, true) => (theme::PROBLEM, Color32::WHITE),
+            (true, false) => (palette.field, palette.strong),
+            (false, _) => (Color32::TRANSPARENT, palette.strong),
+        };
+        ui.painter().rect_filled(rect, f32::from(theme::CONTROL_RADIUS), fill);
+        crate::icons::paint(ui.painter(), egui::Rect::from_center_size(rect.center(), egui::Vec2::splat(side)), icon, mark);
+        response.on_hover_text(hint).clicked()
+    };
+    if button(ui, "x", ICON_SIZE, true, "Close") {
+        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+    let (icon, hint) = if maximized { ("copy", "Restore") } else { ("square", "Maximise") };
+    if button(ui, icon, CAPTION_SQUARE, false, hint) {
+        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
+    }
+    if button(ui, "minus", ICON_SIZE, false, "Minimise") {
+        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+    }
+    ui.spacing_mut().item_spacing.x = TITLE_GAP;
+    let (line, _) = ui.allocate_exact_size(egui::vec2(1.0, TITLE_DIVIDER), egui::Sense::hover());
+    ui.painter().rect_filled(line, 0.0, palette.line);
+}
+
+/// Which way a press at `at` resizes a window that covers `window`: `None` away from its edges.
+// Human: within `WINDOW_EDGE` of an edge the window is resized that way; within `WINDOW_CORNER` of a corner
+// along that edge, both ways at once.
+fn edge_at(window: egui::Rect, at: egui::Pos2) -> Option<egui::ResizeDirection> {
+    use egui::ResizeDirection as To;
+    if !window.contains(at) {
+        return None;
+    }
+    let (left, right) = (at.x - window.left(), window.right() - at.x);
+    let (top, bottom) = (at.y - window.top(), window.bottom() - at.y);
+    let near = left.min(right).min(top).min(bottom) < theme::WINDOW_EDGE;
+    let reach = |edge: f32| edge < theme::WINDOW_CORNER;
+    match (near, reach(top), reach(bottom), reach(left), reach(right)) {
+        (false, ..) => None,
+        (_, true, _, true, _) => Some(To::NorthWest),
+        (_, true, _, _, true) => Some(To::NorthEast),
+        (_, _, true, true, _) => Some(To::SouthWest),
+        (_, _, true, _, true) => Some(To::SouthEast),
+        _ if top < theme::WINDOW_EDGE => Some(To::North),
+        _ if bottom < theme::WINDOW_EDGE => Some(To::South),
+        _ if left < theme::WINDOW_EDGE => Some(To::West),
+        _ => Some(To::East),
+    }
+}
+
+/// Lets the window's edges and corners resize it, where Quill draws the title bar itself (Windows) and the
+/// system's frame, which did that, is gone. Not while the window is maximised or fills the screen.
+// Agent: while the pointer is at an edge a small unseen area lies under it, above everything else, so the press
+// that starts the resize goes to nothing beneath it.
+fn resize_edges(ctx: &egui::Context) {
+    use egui::{CursorIcon, ResizeDirection as To};
+    let fixed = ctx.input(|i| i.viewport().maximized.unwrap_or(false) || i.viewport().fullscreen.unwrap_or(false));
+    let Some(at) = ctx.input(|i| i.pointer.latest_pos()).filter(|_| cfg!(windows) && !fixed) else { return };
+    let Some(to) = edge_at(ctx.content_rect(), at) else { return };
+    let catch = egui::Rect::from_center_size(at, egui::Vec2::splat(2.0 * theme::WINDOW_CORNER));
+    let caught = egui::Area::new(egui::Id::unique("window-edge"))
+        .order(egui::Order::Tooltip)
+        .fixed_pos(catch.min)
+        .show(ctx, |ui| ui.allocate_exact_size(catch.size(), egui::Sense::click_and_drag()).1)
+        .inner;
+    ctx.set_cursor_icon(match to {
+        To::North | To::South => CursorIcon::ResizeVertical,
+        To::East | To::West => CursorIcon::ResizeHorizontal,
+        To::NorthWest | To::SouthEast => CursorIcon::ResizeNwSe,
+        To::NorthEast | To::SouthWest => CursorIcon::ResizeNeSw,
+    });
+    if caught.is_pointer_button_down_on() && ctx.input(|i| i.pointer.primary_pressed()) {
+        ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(to));
+    }
+}
+
+/// Opens the settings: the user's, or for a picture and a private run ones that are kept in memory only.
+fn open_settings(launch: &Launch) -> SettingsStore<Prefs> {
+    let location = if launch.screenshot.is_some() || launch.private { Location::Memory } else { Location::Auto };
+    let (prefs, report) = SettingsStore::<Prefs>::open(location);
+    if report.has_problems() {
+        log::warn!("settings: some values were reset: {report:?}");
+    }
+    prefs
 }
 
 /// Makes the fonts ready, and the GPU for shader effects.
@@ -269,11 +408,7 @@ impl App {
     pub fn new(cc: &eframe::CreationContext<'_>, launch: Launch) -> App {
         install_drawing(cc);
         sweep_working_folders();
-        let location = if launch.screenshot.is_some() || launch.private { Location::Memory } else { Location::Auto };
-        let (prefs, report) = SettingsStore::<Prefs>::open(location);
-        if report.has_problems() {
-            log::warn!("settings: some values were reset: {report:?}");
-        }
+        let prefs = open_settings(&launch);
         let ctx = cc.egui_ctx.clone();
         let dialogs = Dialogs::new(Arc::new(move || ctx.request_repaint()));
         let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(7, |d| u64::from(d.subsec_nanos()) ^ d.as_secs());
@@ -282,6 +417,8 @@ impl App {
             // Human: the price list goes by the settings, so it is started before the app takes them over.
             prices: crate::chat::prices::start(looks_up_prices(&prefs.get().agents, &launch)),
             film: welcome_film(&launch, prefs.get().welcome.seen),
+            mark: title_mark(&cc.egui_ctx),
+            pours: pour::Pours::default(),
             prefs,
             tabs: Vec::new(),
             recovery: Recovery::start(launch.private || launch.screenshot.is_some()),
@@ -370,6 +507,8 @@ impl App {
             app.sidebar.chat_asks.push(crate::sidebar::ChatAsk::said(text, launch.attach));
         }
         cc.egui_ctx.set_visuals(theme::visuals(app.dark()));
+        // Human: the tabs a run starts with are simply there; only one made while the app is open pours in.
+        app.pours = pour::Pours::default();
         app
     }
 
@@ -591,6 +730,9 @@ impl App {
     fn add_tab(&mut self, editor: Editor) {
         self.tabs.push(editor);
         self.active = Some(self.tabs.len() - 1);
+        if self.prefs.get().appearance.animations {
+            self.pours.made(self.tabs.len() - 1);
+        }
         self.canvas.editing = None;
         self.remember_tabs();
     }
@@ -765,6 +907,9 @@ impl App {
             return;
         }
         let mut closed = self.tabs.remove(tab);
+        if self.prefs.get().appearance.animations {
+            self.pours.closed(tab, closed.tab_name());
+        }
         closed.close();
         if let Some(keeper) = &mut self.recovery.keeper {
             keeper.forget(closed.id);
@@ -1300,11 +1445,14 @@ impl App {
         }
     }
 
-    /// The top bar: the title island with the app's name, home and the open files, and a small island with the
-    /// appearance switch and the menu at the other end.
+    /// The top bar, which is the window's title bar: from the left the app's name, home, the open files and the
+    /// button for a new one; from the right the menu, the settings, Share, Present and Publish, and on Windows the
+    /// window's own three buttons after them (`design/pencraft.pen`, "Redesign: Title bar").
     fn tab_bar(&mut self, ui: &mut egui::Ui) {
         let palette = theme::palette(self.dark());
         let bar = ui.max_rect();
+        // Human: the bar lies on the window's own colour, also over a file, where the canvas ends under it.
+        ui.painter().rect_filled(bar, 0.0, palette.background);
         // Human: the empty part of the bar moves the window, as the title bar it replaces did.
         let drag = ui.interact(bar, ui.scope_id().with("window-drag"), egui::Sense::click_and_drag());
         if drag.drag_started() {
@@ -1314,84 +1462,92 @@ impl App {
             let maximized = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
         }
-        let row = egui::Rect::from_min_size(
-            bar.min + egui::vec2(ISLAND_GAP, TITLE_ISLAND_TOP),
-            egui::vec2(bar.width() - 2.0 * ISLAND_GAP, TITLE_ISLAND_HEIGHT),
-        );
-        let island = egui::Frame::new()
-            .fill(palette.island)
-            .stroke(egui::Stroke::new(1.0, palette.outline))
-            .corner_radius(TITLE_ISLAND_HEIGHT / 2.0)
-            .inner_margin(egui::Margin::symmetric(8, 0));
+        let row = egui::Rect::from_min_max(bar.min + egui::vec2(TITLE_PADDING[0], 0.0), bar.max - egui::vec2(TITLE_PADDING[1], 0.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(row).layout(egui::Layout::left_to_right(egui::Align::Center)), |ui| {
-            island.show(ui, |ui| {
-                ui.set_height(TITLE_ISLAND_HEIGHT - 2.0);
-                ui.spacing_mut().item_spacing.x = 4.0;
-                ui.add_space(if cfg!(target_os = "macos") { TRAFFIC_LIGHT_SPACE - 8.0 } else { 8.0 });
-                ui.add(egui::Label::new(RichText::new("Quill").size(TITLE_SIZE).color(palette.foreground)).selectable(false));
-                ui.add_space(10.0);
-                let home = self.active.is_none();
-                if icon_button(ui, "house", egui::Vec2::splat(TITLE_BUTTON), home, palette).on_hover_text(crate::keys::text("Home (⌘N)")).clicked()
-                {
-                    self.active = None;
-                }
-                let (line, _) = ui.allocate_exact_size(egui::vec2(9.0, 18.0), egui::Sense::hover());
-                ui.painter().vline(line.center().x, line.y_range(), egui::Stroke::new(1.0, palette.outline));
-                let mut close = None;
-                for i in 0..self.tabs.len() {
-                    // Human: a saved file's tab shows its whole name, ending included.
-                    let (title, dirty) = (self.tabs[i].tab_name(), self.tabs[i].dirty);
-                    let look = TabLook { active: self.active == Some(i), dirty, at_work: self.chat_at_work(i) };
-                    let (response, closed) = tab_button(ui, &title, look, palette);
-                    if closed || response.middle_clicked() {
-                        close = Some(i);
-                    } else if response.clicked() {
-                        self.active = Some(i);
-                        self.canvas.editing = None;
-                    }
-                }
-                if icon_button(ui, "plus", egui::Vec2::splat(TITLE_BUTTON), false, palette)
-                    .on_hover_text(crate::keys::text("New file (⇧⌘N)"))
-                    .clicked()
-                {
-                    self.new_file();
-                }
-                if let Some(i) = close {
-                    self.close_tab(i);
-                }
-            });
+            self.bar_files(ui, palette);
         });
         ui.scope_builder(egui::UiBuilder::new().max_rect(row).layout(egui::Layout::right_to_left(egui::Align::Center)), |ui| {
-            island.show(ui, |ui| {
-                ui.set_height(TITLE_ISLAND_HEIGHT - 2.0);
-                ui.spacing_mut().item_spacing.x = 4.0;
-                // Human: right to left, so the menu ends up first and the globe last.
-                for (icon, hint, sentence) in
-                    [("globe", "Publish", "Publishing isn't available yet."), ("play", "Present", "Presenting isn't available yet.")]
-                {
-                    if icon_button(ui, icon, egui::Vec2::splat(TITLE_BUTTON), false, palette).on_hover_text(hint).clicked() {
-                        self.say(sentence);
-                    }
+            ui.spacing_mut().item_spacing.x = TITLE_GAP;
+            if cfg!(windows) {
+                window_buttons(ui, palette);
+            }
+            // Human: right to left, so the menu ends up first and the globe last.
+            for (icon, hint, sentence) in
+                [("globe", "Publish", "Publishing isn't available yet."), ("play", "Present", "Presenting isn't available yet.")]
+            {
+                if bar_button(ui, icon, false, palette.strong, palette).on_hover_text(hint).clicked() {
+                    self.say(sentence);
                 }
-                if text_button(ui, Some("share"), "Share", egui::vec2(68.0, TITLE_BUTTON), false, false, palette).clicked() {
-                    self.say("Sharing isn't available yet.");
-                }
-                let (line, _) = ui.allocate_exact_size(egui::vec2(9.0, 18.0), egui::Sense::hover());
-                ui.painter().vline(line.center().x, line.y_range(), egui::Stroke::new(1.0, palette.outline));
-                if icon_button(ui, "settings", egui::Vec2::splat(TITLE_BUTTON), false, palette)
-                    .on_hover_text(crate::keys::text("Settings (⌘,)"))
-                    .clicked()
-                {
-                    self.settings.open_general();
-                }
-                self.main_menu(ui);
-            });
+            }
+            if share_button(ui, palette).clicked() {
+                self.say("Sharing isn't available yet.");
+            }
+            if bar_button(ui, "settings", false, palette.strong, palette).on_hover_text(crate::keys::text("Settings (⌘,)")).clicked() {
+                self.settings.open_general();
+            }
+            self.main_menu(ui, palette);
         });
     }
 
+    /// The title bar's left part: the app's icon and name, home, the open files and the button for a new one.
+    // Human: a tab made while the app is open pours out of that button (`pour`): the liquid is drawn under the
+    // tab and the button, in a place kept for it before either is drawn.
+    fn bar_files(&mut self, ui: &mut egui::Ui, palette: theme::Palette) {
+        ui.spacing_mut().item_spacing.x = TITLE_GAP;
+        if cfg!(target_os = "macos") {
+            ui.add_space(TRAFFIC_LIGHT_SPACE - TITLE_PADDING[0]);
+        }
+        if let Some(mark) = &self.mark {
+            let (place, _) = ui.allocate_exact_size(egui::Vec2::splat(theme::TITLE_MARK), egui::Sense::hover());
+            let whole = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+            ui.painter().image(mark.id(), place, whole, Color32::WHITE);
+        }
+        ui.add(egui::Label::new(RichText::new("Quill").font(bold(TITLE_SIZE)).color(palette.strong)).selectable(false));
+        let home = self.active.is_none();
+        if bar_button(ui, "house", home, palette.strong, palette).on_hover_text(crate::keys::text("Home (⌘N)")).clicked() {
+            self.active = None;
+        }
+        self.pours.settle();
+        let under = [ui.painter().add(egui::Shape::Noop), ui.painter().add(egui::Shape::Noop)];
+        let (mut close, mut pouring, mut draining) = (None, None, None);
+        for i in 0..=self.tabs.len() {
+            // Human: a tab that was just closed is drawn once more where it was, draining away.
+            if let Some((title, drained)) = self.pours.gone_at(i) {
+                let look = TabLook { active: false, dirty: false, at_work: false, born: Some(drained) };
+                draining = Some(tab_button(ui, &title, look, palette).0.rect);
+            }
+            if i == self.tabs.len() {
+                break;
+            }
+            // Human: a saved file's tab shows its whole name, ending included.
+            let (title, dirty) = (self.tabs[i].tab_name(), self.tabs[i].dirty);
+            let born = self.pours.born_at(i);
+            let look = TabLook { active: self.active == Some(i), dirty, at_work: self.chat_at_work(i), born };
+            let (response, closed) = tab_button(ui, &title, look, palette);
+            if born.is_some() {
+                pouring = Some(response.rect);
+            }
+            if closed || response.middle_clicked() {
+                close = Some(i);
+            } else if response.clicked() {
+                self.active = Some(i);
+                self.canvas.editing = None;
+            }
+        }
+        let plus = bar_button(ui, "plus", false, palette.soft, palette).on_hover_text(crate::keys::text("New file (⇧⌘N)"));
+        self.pours.paint(ui, under, [pouring, draining], plus.rect, self.tabs.len(), palette);
+        if plus.clicked() {
+            self.new_file();
+        }
+        if let Some(i) = close {
+            self.close_tab(i);
+        }
+    }
+
     /// The in-window menu with the File, Edit and View commands.
-    fn main_menu(&mut self, ui: &mut egui::Ui) {
-        ui.menu_button("☰", |ui| {
+    fn main_menu(&mut self, ui: &mut egui::Ui, palette: theme::Palette) {
+        let button = bar_button(ui, "menu", false, palette.strong, palette).on_hover_text("Menu");
+        egui::Popup::menu(&button).show(|ui| {
             ui.menu_button("File", |ui| {
                 if menu_item(ui, "New file          ⇧⌘N") {
                     self.new_file();
@@ -1908,6 +2064,7 @@ impl eframe::App for App {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        resize_edges(&ctx);
         if self.show_film(ui) {
             return;
         }
@@ -1933,7 +2090,7 @@ impl eframe::App for App {
             );
         }
         // Human: the macOS window buttons sit inside the title island, centred on its height.
-        frame.set_traffic_lights_position(&ctx, egui::Rangef::new(TITLE_ISLAND_TOP, TITLE_ISLAND_TOP + TITLE_ISLAND_HEIGHT), TRAFFIC_LIGHT_LEFT);
+        frame.set_traffic_lights_position(&ctx, egui::Rangef::new(0.0, TAB_BAR_HEIGHT), TRAFFIC_LIGHT_LEFT);
         if self.active.is_some() {
             self.bring_chat();
             self.editor_view(ui);
@@ -2097,28 +2254,35 @@ struct TabLook {
     dirty: bool,
     /// Its chat's assistant is at work.
     at_work: bool,
+    /// How it is drawn while it pours in or drains away; `None` for a tab that is simply there.
+    born: Option<pour::Look>,
 }
 
 // Human: each document has its own chat, and one can work while another document is in front. A dot in the
 // assistant's colour in place of the tab's icon says that this document's assistant is at work.
 fn tab_button(ui: &mut egui::Ui, title: &str, look: TabLook, palette: theme::Palette) -> (egui::Response, bool) {
-    let TabLook { active, dirty, at_work } = look;
+    let TabLook { active, dirty, at_work, born } = look;
     let text = if dirty { format!("{title} •") } else { title.to_owned() };
-    let color = if active { palette.foreground } else { palette.muted };
-    let galley = ui.painter().layout_no_wrap(text, egui::FontId::proportional(SIDEBAR_TEXT_SIZE), color);
-    let icon = ICON_SIZE - 2.0;
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(13.0 + icon + 6.0 + galley.size().x + 12.0, TAB_HEIGHT), egui::Sense::click());
+    let color = if active { palette.strong } else { palette.soft };
+    let galley = ui.painter().layout_no_wrap(text, bold(TITLE_TEXT), color);
+    let [end, gap] = TAB_PADDING;
+    let full = end + TAB_ICON + gap + galley.size().x + end;
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(born.map_or(full, |look| full * look.width), TAB_HEIGHT), egui::Sense::click());
     let hovered = response.hovered();
-    if active || hovered {
-        ui.painter().rect_filled(rect, TAB_HEIGHT / 2.0, if active { palette.hover } else { palette.hover.gamma_multiply(0.5) });
+    // Human: while a tab pours in, the liquid is its body, and its icon and name come in inside what is there of it.
+    let mut painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
+    painter.set_opacity(born.map_or(1.0, |look| look.shown));
+    if born.is_none() && (active || hovered) {
+        ui.painter().rect_filled(rect, f32::from(theme::CONTROL_RADIUS), if active { palette.field } else { palette.field.gamma_multiply(0.6) });
     }
-    let slot = egui::Rect::from_min_size(egui::pos2(rect.left() + 13.0, rect.center().y - icon / 2.0), egui::Vec2::splat(icon));
+    let slide = born.map_or(0.0, |look| look.slide);
+    let slot = egui::Rect::from_min_size(egui::pos2(rect.left() + end + slide, rect.center().y - TAB_ICON / 2.0), egui::Vec2::splat(TAB_ICON));
     if at_work && !hovered {
-        ui.painter().circle_filled(slot.center(), TAB_WORK_DOT / 2.0, theme::AGENT);
+        painter.circle_filled(slot.center(), TAB_WORK_DOT / 2.0, theme::AGENT);
     } else {
-        crate::icons::paint(ui.painter(), slot, if hovered { "x" } else { "folder" }, color);
+        crate::icons::paint(&painter, slot, if hovered { "x" } else { "folder" }, color);
     }
-    ui.painter().galley(egui::pos2(slot.right() + 6.0, rect.center().y - galley.size().y / 2.0), galley, color);
+    painter.galley(egui::pos2(slot.right() + gap, rect.center().y - galley.size().y / 2.0), galley, color);
     let on_cross = response.interact_pointer_pos().is_some_and(|p| slot.expand(5.0).contains(p));
     let closed = response.clicked() && on_cross;
     (response.on_hover_text(if at_work { format!("{title}: the assistant is working") } else { title.to_owned() }), closed)
@@ -2194,4 +2358,27 @@ pub type ShotSlot = Arc<Mutex<Option<Arc<egui::ColorImage>>>>;
 /// Locks a mutex even if a panicking thread left it poisoned (the data is a plain picture).
 pub fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_press_at_the_windows_edge_resizes_it_that_way_and_at_a_corner_both_ways() {
+        use egui::ResizeDirection as To;
+        let window = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
+        let at = |x: f32, y: f32| edge_at(window, egui::pos2(x, y));
+        assert_eq!(at(400.0, 300.0), None);
+        assert_eq!(at(400.0, theme::WINDOW_EDGE + 1.0), None, "the tab strip under the top edge is not the edge");
+        assert_eq!(at(400.0, 2.0), Some(To::North));
+        assert_eq!(at(400.0, 598.0), Some(To::South));
+        assert_eq!(at(2.0, 300.0), Some(To::West));
+        assert_eq!(at(798.0, 300.0), Some(To::East));
+        assert_eq!(at(2.0, 2.0), Some(To::NorthWest));
+        assert_eq!(at(790.0, 2.0), Some(To::NorthEast), "along the top edge, near the corner");
+        assert_eq!(at(2.0, 590.0), Some(To::SouthWest));
+        assert_eq!(at(798.0, 598.0), Some(To::SouthEast));
+        assert_eq!(at(900.0, 300.0), None, "outside the window");
+    }
 }
