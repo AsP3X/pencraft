@@ -9,6 +9,16 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Changed
+
+- **A layer inside a layout can be dragged anywhere.** Dragging a layer
+  that its frame's layout places used to only put it in another place
+  among its neighbours, so it looked as if it couldn't be moved. Now it
+  goes with the pointer and stays where you let go: it leaves the layout,
+  and the layers beside it close up. To put it back, or to change the
+  order inside a layout, hold Ctrl (⌘ on a Mac) while you let go: a line
+  shows where it will stand.
+
 ## [0.4.0] - 2026-11-21
 
 Pencraft is now called Quill. A design is saved as one `.quill` file with its

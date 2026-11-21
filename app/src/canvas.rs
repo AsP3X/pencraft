@@ -58,6 +58,15 @@ struct Handle {
     y: i8,
 }
 
+/// What a layer that a drag took out of its parent's layout had stored before: its place and its size.
+struct Lifted {
+    id: String,
+    x: Option<serde_json::Number>,
+    y: Option<serde_json::Number>,
+    width: Option<Num>,
+    height: Option<Num>,
+}
+
 /// What a pointer drag is doing.
 enum Drag {
     Pan,
@@ -68,11 +77,11 @@ enum Drag {
         /// The box around the moved layers as the drag began, in the document, for snapping; `None` when it
         /// isn't known (the copies of a duplicate went elsewhere).
         bounds: Option<Rect>,
-    },
-    Reorder {
-        id: String,
-        parent: String,
-        target: Option<usize>,
+        /// The moved layers this drag took out of their parents' layouts, as they were stored before.
+        lifted: Vec<Lifted>,
+        /// Where the one moved layer would go back into its parent's layout if it were let go now: the
+        /// parent and the place among its children. `None` unless ⌘ is held over a parent with a layout.
+        slot: Option<(String, usize)>,
     },
     /// Pulling a handle: the layer's box as it was, the transform from the document to the layer's own axes
     /// (the pull is measured along them, so a turned layer resizes along its own sides), and the one from those
@@ -440,12 +449,13 @@ impl Canvas {
                     editor.camera.center.x -= delta.x / editor.camera.zoom;
                     editor.camera.center.y -= delta.y / editor.camera.zoom;
                 }
-                Some(Drag::Move { start, origins, moved, bounds }) => {
+                Some(Drag::Move { start, origins, moved, bounds, lifted, slot }) => {
                     if !*moved && (p - screen(&editor.camera, view, *start)).length() < DRAG_THRESHOLD {
                         return;
                     }
                     if !*moved {
                         editor.checkpoint();
+                        *lifted = lift(editor, origins);
                         *moved = true;
                     }
                     let (mut dx, mut dy) = (at.x - start.x, at.y - start.y);
@@ -464,10 +474,14 @@ impl Canvas {
                             set_position(node, x + local.0, y + local.1);
                         }
                     }
+                    // Human: with ⌘ held a line shows where the layer would go back into its parent's layout.
+                    *slot = match origins.as_slice() {
+                        [(id, ..)] if modifiers.command => {
+                            flex_parent(editor, id).and_then(|parent| reorder_target(editor, &parent, id, at).map(|target| (parent, target)))
+                        }
+                        _ => None,
+                    };
                     editor.touched();
-                }
-                Some(Drag::Reorder { id, parent, target }) => {
-                    *target = reorder_target(editor, parent, id, at);
                 }
                 Some(Drag::Resize { id, handle, start, original, to_local, from_local, shown }) => {
                     let (mut dx, mut dy) = (at.x - start.x, at.y - start.y);
@@ -556,18 +570,16 @@ impl Canvas {
                         create(editor, tool, area);
                     }
                 }
-                Some(Drag::Reorder { id, parent, target: Some(target) }) => move_in_flex(editor, &id, &parent, target),
+                // Human: let go with ⌘ held, the layer goes into its parent's layout where the line showed.
+                Some(Drag::Move { origins, lifted, slot: Some((parent, target)), .. }) if modifiers.command => {
+                    if let [(id, ..)] = origins.as_slice() {
+                        drop_in_flex(editor, id, &parent, target, &lifted);
+                    }
+                }
                 // Human: the next scaling starts from the layer as it is now.
                 Some(Drag::Scale { .. }) => editor.scaled = (1.0, Vec::new()),
                 Some(
-                    Drag::Move { .. }
-                    | Drag::Pan
-                    | Drag::Pen
-                    | Drag::Resize { .. }
-                    | Drag::Rotate { .. }
-                    | Drag::Radius { .. }
-                    | Drag::Select { .. }
-                    | Drag::Reorder { .. },
+                    Drag::Move { .. } | Drag::Pan | Drag::Pen | Drag::Resize { .. } | Drag::Rotate { .. } | Drag::Radius { .. } | Drag::Select { .. },
                 )
                 | None => {}
             }
@@ -815,7 +827,7 @@ impl Canvas {
                     painter.rect(r, 0.0, Color32::TRANSPARENT, Stroke::new(1.0, ACCENT), StrokeKind::Inside);
                 }
             }
-            Some(Drag::Reorder { parent, target: Some(target), .. }) => {
+            Some(Drag::Move { slot: Some((parent, target)), .. }) => {
                 if let Some(line) = reorder_line(editor, parent, *target) {
                     painter.line_segment([screen(cam, view, line.0), screen(cam, view, line.1)], Stroke::new(2.0, ACCENT));
                 }
@@ -828,8 +840,7 @@ impl Canvas {
                 | Drag::Resize { .. }
                 | Drag::Rotate { .. }
                 | Drag::Radius { .. }
-                | Drag::Scale { .. }
-                | Drag::Reorder { .. },
+                | Drag::Scale { .. },
             )
             | None => {}
         }
@@ -1525,12 +1536,7 @@ fn start_move(editor: &mut Editor, id: &str, at: Point, alt: bool) -> Drag {
     // its ends are.
     let wire = |id: &str| edit::find(&editor.doc, id).is_some_and(|node| node.kind == Kind::Connector);
     if editor.role(id) == Role::Inside || wire(id) || editor.locked(id) {
-        return Drag::Move { start: at, origins: Vec::new(), moved: false, bounds: None };
-    }
-    let in_flex = !is_free(editor, id);
-    if in_flex && editor.selection.len() == 1 {
-        let parent = edit::slot(&editor.doc, id).and_then(|s| s.parent).unwrap_or_default();
-        return Drag::Reorder { id: id.to_owned(), parent, target: None };
+        return Drag::Move { start: at, origins: Vec::new(), moved: false, bounds: None, lifted: Vec::new(), slot: None };
     }
     // Agent: the scene knows the layers as they are now; a duplicate's copies aren't in it until the next frame.
     // The copies lie on their originals, so the originals' box is theirs; where they don't (a lone board's
@@ -1544,17 +1550,73 @@ fn start_move(editor: &mut Editor, id: &str, at: Point, alt: bool) -> Drag {
     let origins = movable(editor);
     let same = before.len() == origins.len() && before.iter().zip(&origins).all(|(a, b)| (a.1, a.2) == (b.1, b.2));
     let bounds = boxes.filter(|_| same).and_then(|boxes| boxes.into_iter().reduce(|a, b| a.union(&b)));
-    Drag::Move { start: at, origins, moved: alt, bounds }
+    Drag::Move { start: at, origins, moved: alt, bounds, lifted: Vec::new(), slot: None }
 }
 
-/// The selected layers a drag moves, each with its stored place: those not placed by a layout, connectors apart.
+/// The selected layers a drag moves, each with the place it is moved from: its stored place, or for a layer
+/// its parent's layout places, the place that layout gave it. Locked layers and connectors stay.
+// Human: a layer in a layout is moved too: the drag takes it out of the layout (`lift`) and it stays where it is
+// let go. It was only put in another place among its siblings before, which read as "it can't be moved".
+// Agent: the place a layout gave is read from the scene; a layer the scene doesn't have yet (the copy of a
+// duplicate made this frame) is left out, so a copy of a layer in a layout stays where the layout puts it.
 fn movable(editor: &Editor) -> Vec<(String, f32, f32)> {
-    editor
-        .selection
-        .iter()
-        .filter(|s| is_free(editor, s) && !editor.locked(s) && !edit::find(&editor.doc, s).is_some_and(|node| node.kind == Kind::Connector))
-        .filter_map(|s| edit::find(&editor.doc, s).map(|n| (s.clone(), stored_position(n).0, stored_position(n).1)))
-        .collect()
+    let place = |id: &String| {
+        let node = edit::find(&editor.doc, id).filter(|node| node.kind != Kind::Connector && !editor.locked(id))?;
+        let (x, y) = if is_free(editor, id) { stored_position(node) } else { laid_out_position(editor.scene_node(id)?) };
+        Some((id.clone(), x, y))
+    };
+    editor.selection.iter().filter_map(place).collect()
+}
+
+/// The place to store for a layer so that it lies, placed by its own x and y, where its parent's layout put it.
+// Agent: a group's box starts at its top-left child, not at its stored place; the difference is taken off.
+fn laid_out_position(scene: &SceneNode) -> (f32, f32) {
+    fn group_origin(scene: &SceneNode) -> (f32, f32) {
+        match scene.children.first().filter(|_| scene.node.kind == Kind::Group) {
+            Some(child) => {
+                let ((x, y), inner) = (stored_position(&child.node), group_origin(child));
+                (x + inner.0 - child.local.x, y + inner.1 - child.local.y)
+            }
+            None => (0.0, 0.0),
+        }
+    }
+    let origin = group_origin(scene);
+    (scene.local.x - origin.0, scene.local.y - origin.1)
+}
+
+/// Takes the layers of `origins` that a layout places out of that layout, each to the place given there, and
+/// returns what they had stored before.
+// Human: such a layer becomes one placed by its own x and y (`layoutPosition: absolute`), so its siblings close
+// up. One that was as wide or as high as the layout made it (`fill_container`) keeps that size as a number.
+// Agent: WRITES editor.doc; the caller makes the undo step.
+fn lift(editor: &mut Editor, origins: &[(String, f32, f32)]) -> Vec<Lifted> {
+    let mut lifted = Vec::new();
+    for (id, x, y) in origins {
+        if is_free(editor, id) {
+            continue;
+        }
+        let size = editor.scene_node(id).map(|scene| (scene.local.w, scene.local.h));
+        let Some(node) = edit::find_mut(&mut editor.doc, id) else { continue };
+        lifted.push(Lifted { id: id.clone(), x: node.x.clone(), y: node.y.clone(), width: node.width.clone(), height: node.height.clone() });
+        node.layout_position = Some("absolute".to_owned());
+        set_position(node, *x, *y);
+        let fills = |n: &Option<Num>| matches!(n, Some(Num::Text(text)) if text.starts_with("fill_container"));
+        if let Some((w, h)) = size {
+            if fills(&node.width) {
+                node.width = Some(Num::new(w));
+            }
+            if fills(&node.height) {
+                node.height = Some(Num::new(h));
+            }
+        }
+    }
+    lifted
+}
+
+/// The parent of the layer with `id`, when it has a layout.
+fn flex_parent(editor: &Editor, id: &str) -> Option<String> {
+    let parent = edit::slot(&editor.doc, id)?.parent?;
+    edit::find(&editor.doc, &parent).is_some_and(|node| node.layout_mode() != LayoutMode::None).then_some(parent)
 }
 
 /// What a dragged layer may line up with, as boxes in the document: the layers beside the selected ones that
@@ -1627,17 +1689,26 @@ fn reorder_line(editor: &Editor, parent: &str, target: usize) -> Option<(Point, 
     Some((scene.to_doc.apply(a), scene.to_doc.apply(b)))
 }
 
-fn move_in_flex(editor: &mut Editor, id: &str, parent: &str, target: usize) {
+/// Puts the layer with `id` into the layout of `parent`, as the child at `target`; `lifted` is what this drag
+/// took out of layouts, whose place and size as stored before come back.
+// Agent: WRITES editor.doc; the drag has made the undo step.
+fn drop_in_flex(editor: &mut Editor, id: &str, parent: &str, target: usize, lifted: &[Lifted]) {
     let Some(slot) = edit::slot(&editor.doc, id) else { return };
+    if let Some(node) = edit::find_mut(&mut editor.doc, id) {
+        node.layout_position = None;
+        if let Some(was) = lifted.iter().find(|was| was.id == id) {
+            (node.x, node.y) = (was.x.clone(), was.y.clone());
+            (node.width, node.height) = (was.width.clone(), was.height.clone());
+        }
+    }
     // `target` counts the scene's children, which are the document's children in the same order.
     let index = if target > slot.index { target - 1 } else { target };
-    if index == slot.index {
-        return;
-    }
-    editor.checkpoint();
-    if let Some((node, _)) = edit::remove(&mut editor.doc, id) {
+    if index != slot.index
+        && let Some((node, _)) = edit::remove(&mut editor.doc, id)
+    {
         edit::insert(&mut editor.doc, Some(parent), index, node);
     }
+    editor.touched();
 }
 
 /// Resizes a node from its original box by a pointer movement (parent coordinates).
@@ -1943,6 +2014,12 @@ mod tests {
 
     /// Draws the canvas for one frame with `events`.
     fn frame(canvas: &mut Canvas, ctx: &egui::Context, editor: &mut Editor, events: Vec<egui::Event>) {
+        held(canvas, ctx, editor, events, egui::Modifiers::NONE);
+    }
+
+    /// A frame of the canvas with `modifiers` held down.
+    fn held(canvas: &mut Canvas, ctx: &egui::Context, editor: &mut Editor, mut events: Vec<egui::Event>, modifiers: egui::Modifiers) {
+        events.insert(0, egui::Event::ModifiersChanged(modifiers));
         let input = egui::RawInput { screen_rect: Some(ScreenRect::from_min_size(Pos2::ZERO, WINDOW)), events, focused: true, ..Default::default() };
         editor.refresh(&|_| (0.0, 0.0));
         let mut drawn = ctx.run_ui(input, |ui| canvas.show(ui, editor, false));
@@ -2091,23 +2168,71 @@ mod tests {
 
     /// Presses at the first of `points` (in the document), moves through the others and lets go at the last.
     fn drag(canvas: &mut Canvas, ctx: &egui::Context, editor: &mut Editor, points: &[Point]) {
+        drag_holding(canvas, ctx, editor, points, egui::Modifiers::NONE);
+    }
+
+    /// [`drag`], with `modifiers` held from the first move after the press until the button is let go.
+    fn drag_holding(canvas: &mut Canvas, ctx: &egui::Context, editor: &mut Editor, points: &[Point], modifiers: egui::Modifiers) {
         let view = ScreenRect::from_min_size(Pos2::ZERO, WINDOW);
         let at = |editor: &Editor, p: Point| screen(&editor.camera, view, p);
-        let button = |pos: Pos2, pressed: bool| egui::Event::PointerButton {
+        let button = |pos: Pos2, pressed: bool, modifiers: egui::Modifiers| egui::Event::PointerButton {
             pos,
             button: egui::PointerButton::Primary,
             pressed,
-            modifiers: egui::Modifiers::NONE,
+            modifiers,
         };
         let first = at(editor, points[0]);
         frame(canvas, ctx, editor, vec![egui::Event::PointerMoved(first)]);
-        frame(canvas, ctx, editor, vec![button(first, true)]);
+        frame(canvas, ctx, editor, vec![button(first, true, egui::Modifiers::NONE)]);
         for point in &points[1..] {
             let here = at(editor, *point);
-            frame(canvas, ctx, editor, vec![egui::Event::PointerMoved(here)]);
+            held(canvas, ctx, editor, vec![egui::Event::PointerMoved(here)], modifiers);
         }
         let last = at(editor, points[points.len() - 1]);
-        frame(canvas, ctx, editor, vec![button(last, false)]);
+        held(canvas, ctx, editor, vec![button(last, false, modifiers)], modifiers);
+    }
+
+    #[test]
+    fn a_drag_takes_a_layer_out_of_its_parents_layout_and_ctrl_drops_it_back_in() {
+        let json = r##"{"version":"2.22","children":[{"type":"frame","id":"board","x":0,"y":0,"width":600,"height":520,"layout":"vertical","gap":20,"padding":20,"fill":"#ffffff","children":[
+            {"type":"rectangle","id":"red","width":200,"height":100,"fill":"#ff0000"},
+            {"type":"rectangle","id":"wide","width":"fill_container","height":100,"fill":"#00aa00"},
+            {"type":"rectangle","id":"blue","width":200,"height":100,"fill":"#0000ff"}]}]}"##;
+        let mut editor = Editor::new(serde_json::from_str::<pen_doc::Document>(json).unwrap(), None, 7);
+        let (mut canvas, ctx) = (Canvas::default(), egui::Context::default());
+        let view = ScreenRect::from_min_size(Pos2::ZERO, WINDOW);
+        editor.refresh(&|_| (0.0, 0.0));
+        fit(&mut editor, view, Some(Rect::new(0.0, 0.0, 600.0, 520.0)), 1.0);
+        let node = |editor: &Editor, id: &str| edit::find(&editor.doc, id).cloned().unwrap();
+        let shown = |editor: &Editor, id: &str| editor.scene_node(id).map(|scene| scene.local).unwrap();
+        let order = |editor: &Editor| editor.doc.children[0].kids().iter().map(|n| n.id.clone()).collect::<Vec<_>>();
+        // A press alone changes nothing: the layer stays in the layout.
+        drag(&mut canvas, &ctx, &mut editor, &[Point::new(120.0, 70.0)]);
+        assert!(!node(&editor, "red").is_absolute() && !editor.dirty);
+        // Dragged, it goes with the pointer and stays where it is let go, out of the layout; the others close up.
+        drag(&mut canvas, &ctx, &mut editor, &[Point::new(120.0, 70.0), Point::new(130.0, 80.0), Point::new(420.0, 270.0)]);
+        editor.refresh(&|_| (0.0, 0.0));
+        let red = node(&editor, "red");
+        assert!(red.is_absolute() && stored_position(&red) == (310.0, 210.0), "{:?} {:?}", red.layout_position, stored_position(&red));
+        assert_eq!((shown(&editor, "red").x, shown(&editor, "red").y, shown(&editor, "wide").y), (310.0, 210.0, 20.0));
+        assert_eq!(order(&editor), ["red", "wide", "blue"]);
+        // A layer as wide as its parent's layout made it keeps that width as a number.
+        drag(&mut canvas, &ctx, &mut editor, &[Point::new(300.0, 70.0), Point::new(300.0, 80.0), Point::new(300.0, 400.0)]);
+        editor.refresh(&|_| (0.0, 0.0));
+        let wide = node(&editor, "wide");
+        assert!(wide.is_absolute() && wide.width == Some(Num::new(560.0)) && stored_position(&wide) == (20.0, 340.0), "{wide:?}");
+        // One step back and it is in the layout again, as wide as the layout makes it.
+        editor.undo();
+        editor.refresh(&|_| (0.0, 0.0));
+        let wide = node(&editor, "wide");
+        assert!(!wide.is_absolute() && wide.width == Some(Num::Text("fill_container".to_owned())));
+        // With ctrl held as it is let go, the layer goes back into the layout, where the line shows: after "blue".
+        let ctrl = egui::Modifiers { ctrl: true, command: true, ..egui::Modifiers::NONE };
+        drag_holding(&mut canvas, &ctx, &mut editor, &[Point::new(420.0, 270.0), Point::new(410.0, 280.0), Point::new(120.0, 400.0)], ctrl);
+        editor.refresh(&|_| (0.0, 0.0));
+        let red = node(&editor, "red");
+        assert!(!red.is_absolute() && order(&editor) == ["wide", "blue", "red"], "{:?} {:?}", red.layout_position, order(&editor));
+        assert_eq!((shown(&editor, "red").x, shown(&editor, "red").y), (20.0, 260.0));
     }
 
     #[test]
