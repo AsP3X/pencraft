@@ -1,9 +1,9 @@
-//! Pencraft's own mark in a document: the `pencraft` key.
+//! Quill's own mark in a document: the `pencraft` key.
 //!
 //! A `.pen` file carries the schema version of the program the format comes from, which says nothing about
-//! what Pencraft added to it. The stamp says that: `format`, the number of Pencraft's own format, and
-//! `features`, the names of what the document uses that only Pencraft draws. A reader that doesn't know the key
-//! keeps or drops it; a Pencraft that reads a higher number or a name it doesn't know can say so.
+//! what Quill added to it. The stamp says that: `format`, the number of Quill's own format, and
+//! `features`, the names of what the document uses that only Quill draws. A reader that doesn't know the key
+//! keeps or drops it; a Quill that reads a higher number or a name it doesn't know can say so.
 
 use std::collections::BTreeSet;
 
@@ -11,11 +11,11 @@ use serde_json::{Map, Value};
 
 use crate::model::Document;
 
-/// The number of Pencraft's own format this version writes. It goes up when a document can hold something an
-/// older Pencraft would draw wrongly or not at all.
+/// The number of Quill's own format this version writes. It goes up when a document can hold something an
+/// older Quill would draw wrongly or not at all.
 pub const FORMAT: u64 = 1;
 
-/// Something a document can hold that only Pencraft draws.
+/// Something a document can hold that only Quill draws.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Feature {
     /// Component states (`states` on a component, `state` on an instance).
@@ -196,7 +196,7 @@ mod tests {
     }
 
     #[test]
-    fn what_a_newer_pencraft_wrote_is_told_and_kept() {
+    fn what_a_newer_quill_wrote_is_told_and_kept() {
         let text = r#"{"version":"2.30","pencraft":{"format":3,"features":["hologram","mask"],"by":"9.0"},"children":[]}"#;
         let mut doc = read(text).unwrap();
         assert_eq!(newer(&doc), Some(Newer { format: Some(3), features: vec!["hologram".to_owned()] }));

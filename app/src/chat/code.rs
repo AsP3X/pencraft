@@ -67,7 +67,7 @@ pub struct Job<'a> {
 }
 
 /// The folder the chat's programs run in.
-// Human: the programs keep their sessions by the folder they run in; one folder of its own keeps Pencraft's
+// Human: the programs keep their sessions by the folder they run in; one folder of its own keeps Quill's
 // chats together and away from the instructions of whatever project the app was started in.
 pub(super) fn folder() -> Option<std::path::PathBuf> {
     let folder = std::env::temp_dir().join("pencraft-chat");
@@ -94,7 +94,7 @@ pub(super) fn collect_errors(running: &mut Child) -> Option<std::thread::JoinHan
 
 /// Keeps a terminal program from opening a terminal window of its own on Windows.
 // Human: these are terminal programs; on Windows each would otherwise open a black terminal window every
-// time, since Pencraft has none to lend it.
+// time, since Quill has none to lend it.
 #[cfg_attr(not(windows), expect(clippy::needless_pass_by_ref_mut, reason = "only Windows has a window to keep away"))]
 pub(super) fn windowless(command: &mut Command) {
     #[cfg(windows)]
@@ -107,7 +107,7 @@ pub(super) fn windowless(command: &mut Command) {
 }
 
 /// The command that answers `job` with Claude Code.
-// Human: the program gets no tools but Pencraft's (no shell, no files, no web): in the chat panel it is a
+// Human: the program gets no tools but Quill's (no shell, no files, no web): in the chat panel it is a
 // designer, not a coding agent, and nothing it does needs asking the user for permission.
 fn claude(job: &Job<'_>, port: u16, secret: &str) -> Command {
     let servers = json!({ "mcpServers": { SERVER: { "type": "http", "url": crate::link::address(port, job.chat), "headers": { "Authorization": format!("Bearer {secret}") } } } });
@@ -336,7 +336,7 @@ pub fn run(job: &Job<'_>, stop: &AtomicBool, child: &Mutex<Option<Child>>, tell:
         (Flavor::Claude, Some((port, secret))) => claude(job, *port, secret),
         (Flavor::Claude, None) => {
             tell(Event::Problem(
-                "Claude Code reaches the document through Pencraft's local server, which didn't start. Restart Pencraft, or pick an API assistant."
+                "Claude Code reaches the document through Quill's local server, which didn't start. Restart Quill, or pick an API assistant."
                     .to_owned(),
             ));
             return;
@@ -405,7 +405,7 @@ pub fn run(job: &Job<'_>, stop: &AtomicBool, child: &Mutex<Option<Child>>, tell:
     let hint = match (said.is_empty(), job.flavor) {
         (false, _) => said,
         (true, Flavor::Claude) => "Run `claude` in a terminal once to check that it is signed in.",
-        (true, Flavor::Grok) => "Run `grok login` in a terminal once, and add Pencraft's tools to Grok in Settings → Agents.",
+        (true, Flavor::Grok) => "Run `grok login` in a terminal once, and add Quill's tools to Grok in Settings → Agents.",
     };
     tell(Event::Problem(format!("{} ended without an answer. {hint}", job.flavor.name())));
 }
@@ -491,7 +491,7 @@ mod tests {
     }
 
     #[test]
-    fn the_program_gets_only_pencrafts_tools_and_continues_its_session() {
+    fn the_program_gets_only_quills_tools_and_continues_its_session() {
         let job = Job {
             flavor: Flavor::Claude,
             program: Path::new("/bin/claude"),
@@ -528,7 +528,7 @@ mod tests {
     }
 
     #[test]
-    fn grok_reads_the_message_from_a_file_and_may_use_only_pencrafts_tools() {
+    fn grok_reads_the_message_from_a_file_and_may_use_only_quills_tools() {
         let job = Job {
             flavor: Flavor::Grok,
             program: Path::new("/bin/grok"),

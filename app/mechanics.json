@@ -7,7 +7,7 @@
    "value": "2.22"
   },
   {
-   "name": "Pencraft format number in the stamp",
+   "name": "Quill format number in the stamp",
    "group": "file",
    "value": 1
   },
@@ -390,7 +390,7 @@
    "name": "undo steps kept",
    "group": "editing",
    "value": 100,
-   "source": "Pencraft's own limit"
+   "source": "Quill's own limit"
   },
   {
    "name": "shadow sigma",
@@ -446,7 +446,7 @@
    "name": "effect picture pixel budget",
    "group": "render",
    "value": 1000000,
-   "source": "Pencraft's own limit (src/render/bake.rs MAX_PIXELS)"
+   "source": "Quill's own limit (src/render/bake.rs MAX_PIXELS)"
   },
   {
    "name": "shader effect order",
@@ -499,7 +499,7 @@
    "name": "components offered for a slot",
    "group": "components",
    "value": 12,
-   "source": "Pencraft's own limit (src/panels.rs slot_info)"
+   "source": "Quill's own limit (src/panels.rs slot_info)"
   },
   {
    "name": "new polygon corners",
@@ -535,7 +535,7 @@
    "name": "imported picture room",
    "group": "tools",
    "value": "80 % of the view",
-   "source": "Pencraft's own rule (src/ops.rs IMPORT_ROOM)"
+   "source": "Quill's own rule (src/ops.rs IMPORT_ROOM)"
   },
   {
    "name": "polygon corner radius limit",
@@ -563,7 +563,7 @@
    "name": "rotate zone reach",
    "group": "editing",
    "value": 22,
-   "source": "Pencraft's own rule (theme ROTATE_REACH)"
+   "source": "Quill's own rule (theme ROTATE_REACH)"
   },
   {
    "name": "snap to objects",
@@ -580,7 +580,7 @@
    "group": "editing",
    "value": 5,
    "unit": "pt",
-   "source": "Pencraft's own rule (theme SNAP_REACH), estimated"
+   "source": "Quill's own rule (theme SNAP_REACH), estimated"
   },
   {
    "name": "export formats",
@@ -601,13 +601,13 @@
    "name": "PDF page picture scale",
    "group": "export",
    "value": 2,
-   "source": "Pencraft's own rule (src/export.rs PDF_SCALE)"
+   "source": "Quill's own rule (src/export.rs PDF_SCALE)"
   },
   {
    "name": "most pixels of an exported picture",
    "group": "export",
    "value": 64000000,
-   "source": "Pencraft's own limit (src/render/bake.rs)"
+   "source": "Quill's own limit (src/render/bake.rs)"
   },
   {
    "name": "AI flash colour",
@@ -636,7 +636,7 @@
    "name": "AI staging of one call, longest layout time, ms",
    "group": "ai",
    "value": 250,
-   "source": "Pencraft's own limit (src/app/tools.rs STAGING_MOST)"
+   "source": "Quill's own limit (src/app/tools.rs STAGING_MOST)"
   },
   {
    "name": "AI flash outline start distance, points",
@@ -681,31 +681,31 @@
    "name": "longest side of a screenshot given to a model, px",
    "group": "ai",
    "value": 2000,
-   "source": "Pencraft's own limit (src/app/tools.rs)"
+   "source": "Quill's own limit (src/app/tools.rs)"
   },
   {
    "name": "wait for the user's drag before a change is refused, s",
    "group": "ai",
    "value": 10,
-   "source": "Pencraft's own rule (src/app/tools.rs)"
+   "source": "Quill's own rule (src/app/tools.rs)"
   },
   {
    "name": "wait for the app to answer a tool call, s",
    "group": "ai",
    "value": 120,
-   "source": "Pencraft's own rule (src/link.rs)"
+   "source": "Quill's own rule (src/link.rs)"
   },
   {
    "name": "wait for the app to start from pencraft mcp, s",
    "group": "ai",
    "value": 20,
-   "source": "Pencraft's own rule (src/link.rs)"
+   "source": "Quill's own rule (src/link.rs)"
   },
   {
    "name": "largest message the local server takes, bytes",
    "group": "ai",
    "value": 33554432,
-   "source": "Pencraft's own limit (src/link.rs)"
+   "source": "Quill's own limit (src/link.rs)"
   },
   {
    "name": "chat: most output tokens of one answer",
@@ -717,7 +717,7 @@
    "name": "chat: effort sent to Anthropic's API",
    "group": "chat",
    "value": "medium",
-   "source": "Pencraft's own rule"
+   "source": "Quill's own rule"
   },
   {
    "name": "chat: API version",
@@ -729,97 +729,97 @@
    "name": "chat: most requests one message may take",
    "group": "chat",
    "value": 80,
-   "source": "Pencraft's own limit"
+   "source": "Quill's own limit"
   },
   {
    "name": "chat: retries of a request the provider couldn't take",
    "group": "chat",
    "value": 2,
-   "source": "Pencraft's own rule"
+   "source": "Quill's own rule"
   },
   {
    "name": "chat: wait for a tool's answer, s",
    "group": "chat",
    "value": 130,
-   "source": "Pencraft's own rule"
+   "source": "Quill's own rule"
   },
   {
    "name": "chat: earlier messages retold to a new assistant",
    "group": "chat",
    "value": 24,
-   "source": "Pencraft's own rule"
+   "source": "Quill's own rule"
   },
   {
    "name": "chat: widest share of the panel for the user's bubble",
    "group": "chat",
    "value": 0.86,
-   "source": "Pencraft's own rule (src/theme.rs)"
+   "source": "Quill's own rule (src/theme.rs)"
   },
   {
    "name": "chat: seconds before a wait says how long it has lasted",
    "group": "chat",
    "value": 3,
-   "source": "Pencraft's own rule (src/theme.rs)"
+   "source": "Quill's own rule (src/theme.rs)"
   },
   {
    "name": "chat: lines of the model's thought shown under a wait",
    "group": "chat",
    "value": 2,
-   "source": "Pencraft's own rule (src/theme.rs)"
+   "source": "Quill's own rule (src/theme.rs)"
   },
   {
    "name": "chat: rate the thought's lines glide up at, per second",
    "group": "chat",
    "value": 14,
-   "source": "Pencraft's own rule (src/theme.rs)"
+   "source": "Quill's own rule (src/theme.rs)"
   },
   {
    "name": "chat: seconds of thinking that leave a note",
    "group": "chat",
    "value": 3,
-   "source": "Pencraft's own rule (src/chat.rs)"
+   "source": "Quill's own rule (src/chat.rs)"
   },
   {
    "name": "chat: seconds the copy button of a problem says Copied",
    "group": "chat",
    "value": 1.6,
-   "source": "Pencraft's own rule (src/theme.rs)"
+   "source": "Quill's own rule (src/theme.rs)"
   },
   {
    "name": "chat: assistant menu row height",
    "group": "chat",
    "value": 28,
-   "source": "Pencraft's own rule (src/theme.rs)"
+   "source": "Quill's own rule (src/theme.rs)"
   },
   {
    "name": "chat: most rows of the assistant menu before it scrolls",
    "group": "chat",
    "value": 10,
-   "source": "Pencraft's own rule (src/theme.rs)"
+   "source": "Quill's own rule (src/theme.rs)"
   },
   {
    "name": "chat question: tick box size",
    "group": "chat",
    "value": 15,
-   "source": "Pencraft's own rule (src/theme.rs)"
+   "source": "Quill's own rule (src/theme.rs)"
   },
   {
    "name": "chat question: send button height",
    "group": "chat",
    "value": 28,
-   "source": "Pencraft's own rule (src/theme.rs)"
+   "source": "Quill's own rule (src/theme.rs)"
   },
   {
    "name": "chat: assistant menu width",
    "group": "chat",
    "value": 300,
-   "source": "Pencraft's own rule (src/theme.rs)"
+   "source": "Quill's own rule (src/theme.rs)"
   },
   {
    "name": "chat: problem colour",
    "group": "chat",
    "value": "#dc2626",
-   "source": "Pencraft's own rule (src/theme.rs)"
+   "source": "Quill's own rule (src/theme.rs)"
   },
   {
    "name": "chat chip: corner radius",
@@ -1051,46 +1051,46 @@
    "group": "render",
    "value": 256,
    "unit": "px",
-   "source": "Pencraft's own rule"
+   "source": "Quill's own rule"
   },
   {
    "name": "mask tiles at most before they grow",
    "group": "render",
    "value": 4096,
-   "source": "Pencraft's own rule"
+   "source": "Quill's own rule"
   },
   {
    "name": "text outline copies apart on the canvas",
    "group": "render",
    "value": 1,
    "unit": "px",
-   "source": "Pencraft's own rule"
+   "source": "Quill's own rule"
   },
   {
    "name": "text outline copies per ring at most",
    "group": "render",
    "value": 256,
-   "source": "Pencraft's own rule"
+   "source": "Quill's own rule"
   },
   {
    "name": "text line followed within",
    "group": "render",
    "value": 0.02,
    "unit": "units",
-   "source": "Pencraft's own rule"
+   "source": "Quill's own rule"
   },
   {
    "name": "letters box laid out at letter height",
    "group": "ai",
    "value": 192,
    "unit": "px",
-   "source": "Pencraft's own rule"
+   "source": "Quill's own rule"
   },
   {
    "name": "letters boxes per call",
    "group": "ai",
    "value": 24,
-   "source": "Pencraft's own rule"
+   "source": "Quill's own rule"
   },
   {
    "name": "logo small proof shorter side",
@@ -1104,7 +1104,7 @@
    "group": "ai",
    "value": 6,
    "unit": "times",
-   "source": "Pencraft's own rule"
+   "source": "Quill's own rule"
   },
   {
    "name": "logo simple mark shapes at most",
@@ -1116,7 +1116,7 @@
    "name": "logo line weights at most",
    "group": "ai",
    "value": 3,
-   "source": "Pencraft's own rule"
+   "source": "Quill's own rule"
   },
   {
    "name": "logo colours at most",
@@ -1128,7 +1128,7 @@
    "name": "logo font families at most",
    "group": "ai",
    "value": 2,
-   "source": "Pencraft's own rule"
+   "source": "Quill's own rule"
   }
  ]
 }

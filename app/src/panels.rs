@@ -906,7 +906,7 @@ fn frame_layout(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
 
 /// Appearance: opacity, corner radius, and whether the layer shows at all.
 /// The Connector section: how the line runs, what sits at its ends, and its measures.
-// Human: Pencraft's own section. Where the ends are and where the waypoints lie is set on the canvas, with the
+// Human: Quill's own section. Where the ends are and where the waypoints lie is set on the canvas, with the
 // connector's handles; here is everything about the line's look. A value at its default is left out of the file.
 fn connector(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
     /// The routes, as the section names them and as the file does.
@@ -1075,7 +1075,7 @@ fn appearance(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
 
 /// The Material section: what the layer is made of. None, frosted (a blur with a tint, in four thicknesses) or
 /// liquid glass (regular or clear), then the few choices a material has, and under "Advanced" its numbers.
-// Human: Pencraft's own section. A layer says only what differs from its
+// Human: Quill's own section. A layer says only what differs from its
 // material's preset, so the numbers under Advanced show the preset's until one is changed, and the reset
 // button takes the layer's own numbers out again.
 fn material(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {

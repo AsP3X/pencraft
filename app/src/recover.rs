@@ -200,7 +200,7 @@ impl Left {
 }
 
 /// The documents the runs that didn't end properly left behind, oldest run first.
-// Human: a run's folder is a crashed run's when no running Pencraft holds the lock in it. A folder with nothing
+// Human: a run's folder is a crashed run's when no running Quill holds the lock in it. A folder with nothing
 // to offer in it is cleared away on the way.
 // Agent: READS and WRITES under the recovery root; BLOCKS on small files only (the documents are not read).
 #[must_use]

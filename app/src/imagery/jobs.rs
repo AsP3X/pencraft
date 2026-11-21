@@ -252,7 +252,7 @@ impl Job {
     // The whole rule: the time limit passing before the work's `may_save` keeps nothing; passing during the
     // save, it is waited for and the picture is handed back. A dropped `Job` keeps nothing whenever it is
     // dropped: before the save `may_save` says no, during it `keep` takes it back, after it the handover in
-    // `start_with` or `Drop for Job` does. Not guaranteed: a picture whose save is cut off by Pencraft quitting,
+    // `start_with` or `Drop for Job` does. Not guaranteed: a picture whose save is cut off by Quill quitting,
     // or whose removal fails (logged); and the service may have charged for a picture that isn't kept.
     #[must_use]
     pub fn poll(&self) -> Option<Result<Done, String>> {

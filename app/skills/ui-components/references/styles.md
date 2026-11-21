@@ -26,7 +26,7 @@ says only "shadcn", build Classic, say that Compact is the current default, and 
 | Tab list height | 36 | 32 | 36, pill | 32 | 32 | 36, pill | 40 | 32 |
 | Usual face and icons | Inter, Lucide | Geist, Lucide | Figtree, Hugeicons | JetBrains Mono | Inter, Hugeicons | Inter, Lucide | Noto Sans with Playfair Display titles | Inter, Lucide |
 
-Pencraft bundles only Lucide: use it for every style and say so when another icon set was named.
+Quill bundles only Lucide: use it for every style and say so when another icon set was named.
 
 shadcn's exact neutral values, for when exact fidelity is asked for (this skill's tokens differ in three
 places, named in `references/tokens.md`). The hex values are conversions of its OKLCH values:
@@ -42,7 +42,7 @@ places, named in `references/tokens.md`). The hex values are conversions of its 
 | border, input | `#e5e5e5` | white at 10%; input white at 15% |
 | ring | `#a1a1a1` | `#737373` |
 
-With `#737373`, 12 px labels reach 4.7:1 on white, and Pencraft's review will say so: that remark can stand
+With `#737373`, 12 px labels reach 4.7:1 on white, and Quill's review will say so: that remark can stand
 when the user asked for shadcn's exact colours.
 
 Other base colours (stone, zinc, mauve, olive, mist, taupe) keep these lightnesses and tint every grey very
@@ -70,7 +70,7 @@ exactly.
 
 Vega also puts the faintest shadow on inputs, select triggers, checkboxes, switches and outline buttons. This
 skill leaves it off (as Nova does): an outline with a shadow on every control reads heavy in a still, and
-Pencraft's review remarks on it.
+Quill's review remarks on it.
 
 ## Radix Themes
 
@@ -117,7 +117,7 @@ solid step; every other hue takes white.
 Base UI is unstyled; "like Base UI" means its documentation's look: black and white, 1 wide near-black
 borders, square corners, 32 high controls, a hard shadow of 4 right and 4 down without blur in black at 12%
 on popups. Build Classic with every radius 0, `border` and `input` as `$foreground`, height 32, and that
-shadow (Pencraft's review will remark on block shadows; that remark can stand). What Base UI really gives is
+shadow (Quill's review will remark on block shadows; that remark can stand). What Base UI really gives is
 part names and states, which this skill already follows.
 
 ## Sonner, Vaul, cmdk

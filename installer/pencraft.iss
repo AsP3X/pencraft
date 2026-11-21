@@ -1,4 +1,4 @@
-; Setup wizard for Pencraft. Built with Inno Setup 6.3 or newer:
+; Setup wizard for Quill. Built with Inno Setup 6.3 or newer:
 ;
 ;   ISCC /DAppVersion=0.2.0 /DExePath=..\app\target\release\pencraft.exe installer\pencraft.iss
 ;
@@ -6,13 +6,20 @@
 ;
 ; The wizard asks whether to install for this user only (no administrator
 ; rights needed) or for everyone. It adds a Start menu entry, optionally a
-; desktop icon, optionally opens .quill and .pen files with Pencraft, and optionally
+; desktop icon, optionally opens .quill and .pen files with Quill, and optionally
 ; puts the folder on PATH so AI clients can run `pencraft mcp`.
 ; The AppId must never change: it is how an update finds the old install.
+; The app was called Pencraft before: the program, the folder it is installed
+; in and the registry names keep that name, so an update lands on the old
+; install; only what people read says Quill.
 
-#define AppName "Pencraft"
+#define AppName "Quill"
+; The folder under Program Files. Not the app's name: see above.
+#define AppFolder "Pencraft"
+; The name the shortcuts had before the app was renamed; an update removes them.
+#define OldName "Pencraft"
 #define AppExe "pencraft.exe"
-#define Publisher "Pencraft"
+#define Publisher "Quill"
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
@@ -26,7 +33,9 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
 AppPublisher={#Publisher}
-DefaultDirName={autopf}\{#AppName}
+DefaultDirName={autopf}\{#AppFolder}
+; An update installs where the app already is, whatever the default says.
+UsePreviousAppDir=yes
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
@@ -42,7 +51,7 @@ WizardStyle=modern
 SetupIconFile=pencraft.ico
 ChangesEnvironment=yes
 ChangesAssociations=yes
-; A running Pencraft is closed before its file is replaced, and started again.
+; A running Quill is closed before its file is replaced, and started again.
 CloseApplications=yes
 UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\{#AppExe}
@@ -54,6 +63,12 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "associate"; Description: "Open .quill, .pen and .pencraft files with {#AppName}"
 Name: "addtopath"; Description: "Add to PATH, so AI clients can run pencraft mcp"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
+
+[InstallDelete]
+; The shortcuts an install made while the app was called Pencraft; the ones
+; under [Icons] take their place, so only "Quill" is left after an update.
+Type: files; Name: "{autoprograms}\{#OldName}.lnk"
+Type: files; Name: "{autodesktop}\{#OldName}.lnk"
 
 [Files]
 Source: "{#ExePath}"; DestDir: "{app}"; DestName: "{#AppExe}"; Flags: ignoreversion
@@ -67,14 +82,14 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 Root: HKA; Subkey: "Software\Classes\.pen\OpenWithProgids"; ValueType: string; ValueName: "Pencraft.Design"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
 Root: HKA; Subkey: "Software\Classes\.pencraft\OpenWithProgids"; ValueType: string; ValueName: "Pencraft.Design"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
 Root: HKA; Subkey: "Software\Classes\.quill\OpenWithProgids"; ValueType: string; ValueName: "Pencraft.Design"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
-Root: HKA; Subkey: "Software\Classes\Pencraft.Design"; ValueType: string; ValueName: ""; ValueData: "Pencraft design"; Flags: uninsdeletekey; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\Pencraft.Design"; ValueType: string; ValueName: ""; ValueData: "Quill design"; Flags: uninsdeletekey; Tasks: associate
 Root: HKA; Subkey: "Software\Classes\Pencraft.Design\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#AppExe},0"; Tasks: associate
 Root: HKA; Subkey: "Software\Classes\Pencraft.Design\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""; Tasks: associate
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Start {#AppName}"; Flags: nowait postinstall skipifsilent
-; An update Pencraft started itself (app\src\update\install.rs) runs without
-; pages. /WAITPID=<process> has it wait for that Pencraft to quit first, and
+; An update Quill started itself (app\src\update\install.rs) runs without
+; pages. /WAITPID=<process> has it wait for that Quill to quit first, and
 ; /RELAUNCH asks for the app to come back, as the user who started the setup
 ; and not as the administrator an install for everyone runs as.
 Filename: "{app}\{#AppExe}"; Flags: nowait runasoriginaluser; Check: RelaunchAsked
@@ -113,7 +128,7 @@ begin
   end;
 end;
 
-// The Pencraft that started an update is quitting while Setup starts. Its
+// The Quill that started an update is quitting while Setup starts. Its
 // file cannot be replaced before it is gone, and a silent Setup that finds
 // it running gives up, so wait for it: half a minute at most.
 function InitializeSetup: Boolean;

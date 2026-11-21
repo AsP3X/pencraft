@@ -1,4 +1,4 @@
-//! Puts a newer Pencraft in the place of the running one.
+//! Puts a newer Quill in the place of the running one.
 //!
 //! The installer of a release is downloaded into the temporary folder and compared with the checksum the
 //! release gives for it. On Windows it is the setup wizard, which is then run without its pages; on a Mac it
@@ -20,8 +20,8 @@ const BUNDLE: &str = "Pencraft.app";
 /// The largest installer the app is willing to download.
 const MOST: u64 = 1024 * 1024 * 1024;
 /// How the setup wizard is run: a small progress window instead of its pages, no questions, no restart of
-/// Windows, and Pencraft started again at the end. `/RELAUNCH` is read by `installer/pencraft.iss`, and so is
-/// the `/WAITPID=<process>` that follows these: the wizard waits for this Pencraft to be gone, because a
+/// Windows, and Quill started again at the end. `/RELAUNCH` is read by `installer/pencraft.iss`, and so is
+/// the `/WAITPID=<process>` that follows these: the wizard waits for this Quill to be gone, because a
 /// silent one that finds it still running gives up.
 const SETUP_ARGS: [&str; 4] = ["/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/RELAUNCH"];
 /// Waits until the app (`$1`) has quit, puts the new bundle (`$3`) in the place of the old one (`$2`), and

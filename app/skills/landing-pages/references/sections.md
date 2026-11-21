@@ -4,7 +4,7 @@ Each block is one section, 1440 wide, to insert with `edit_layers` (`{"op":"inse
 the page's frame: a vertical frame 1440 wide with `"fill":"$paper"`, no gap and no padding, the sections
 one under the other. A section on the page's ground has no fill of its own; only the bands (the quote, the
 closing, the footer) do. The blocks keep to one scale of space (steps of 4) and seven type sizes (14, 16,
-18, 24, 32, 44, 68), as Pencraft's review expects: keep to a scale of your own when you change them.
+18, 24, 32, 44, 68), as Quill's review expects: keep to a scale of your own when you change them.
 Ids start with `lp-`. Change every word and picture: the content here is one made-up product (shift
 planning for harbour crews), and a section copied with its content is the template this skill warns
 against. The same goes for the look: this palette, these faces, these proportions and the split of each

@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Draws every icon file of Pencraft from design/icon/pencraft.svg. Run it after changing the SVG and commit
-# what it writes:
+# Draws every icon file of Quill from design/icon/quill.svg with a Mac's own renderer. build.py describes the
+# drawing, writes quill.svg and draws the same files on any computer: change the icon there, not in the SVG.
+# Commit what either writes:
 #
 #   app/assets/icon.png          the window's icon on Windows and Linux (256 px)
-#   app/assets/icon-macos.png    the Dock icon of a Pencraft that runs outside its .app (512 px, Apple's grid)
-#   installer/Pencraft.icns      the icon of Pencraft.app
-#   installer/pencraft.ico       the icon of pencraft.exe, its shortcuts, .pen files and the installers
+#   app/assets/icon-macos.png    the Dock icon of an app that runs outside its .app (512 px, Apple's grid)
+#   installer/Pencraft.icns      the icon of the Mac app
+#   installer/pencraft.ico       the icon of pencraft.exe, its shortcuts, design files and the installers
 #
 # Needs a Mac (swift and iconutil, both part of Xcode's command line tools) and python3 with Pillow.
 set -euo pipefail
@@ -17,22 +18,22 @@ trap 'rm -rf "$work"' EXIT
 # One compiled renderer instead of starting the Swift interpreter for every size.
 swiftc -O -o "$work/render" render.swift
 mkdir -p "$root/app/assets"
-"$work/render" pencraft.svg "$root/app/assets/icon.png" 256
-"$work/render" pencraft.svg "$root/app/assets/icon-macos.png" 512 mac
+"$work/render" quill.svg "$root/app/assets/icon.png" 256
+"$work/render" quill.svg "$root/app/assets/icon-macos.png" 512 mac
 
 # macOS: the plate on Apple's grid with its shadow, at every size the Finder and the Dock ask for.
 set_dir="$work/Pencraft.iconset"
 mkdir "$set_dir"
 for size in 16 32 128 256 512; do
-  "$work/render" pencraft.svg "$set_dir/icon_${size}x${size}.png" "$size" mac
-  "$work/render" pencraft.svg "$set_dir/icon_${size}x${size}@2x.png" "$((size * 2))" mac
+  "$work/render" quill.svg "$set_dir/icon_${size}x${size}.png" "$size" mac
+  "$work/render" quill.svg "$set_dir/icon_${size}x${size}@2x.png" "$((size * 2))" mac
 done
 iconutil --convert icns --output "$root/installer/Pencraft.icns" "$set_dir"
 
 # Windows: the plate fills the square. Each size is drawn from the SVG, not scaled down from a big one.
 sizes="16 20 24 32 40 48 64 96 128 256"
 for size in $sizes; do
-  "$work/render" pencraft.svg "$work/win-$size.png" "$size"
+  "$work/render" quill.svg "$work/win-$size.png" "$size"
 done
 python3 - "$work" "$root/installer/pencraft.ico" $sizes <<'PY'
 import sys

@@ -8,7 +8,7 @@
 //! - [`path`]: SVG path data.
 //! - [`connector`]: lines between layers that follow them.
 //! - [`edit`]: finding and moving nodes by id.
-//! - [`stamp`]: Pencraft's own mark in a document, and the features only Pencraft draws.
+//! - [`stamp`]: Quill's own mark in a document, and the features only Quill draws.
 
 pub mod binary;
 pub mod color;

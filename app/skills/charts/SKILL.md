@@ -1,20 +1,20 @@
 ---
 name: charts
-description: Draw charts and data graphics in Pencraft that are true to their numbers - bar, grouped and stacked bar, line, area, sparkline, donut, gauge, progress ring, ranked bar list, uptime strip and candlestick (a price chart as in trading apps), with axes, gridlines, legend, tooltip and the card around them - built from values, not by eye. Use when the user asks for a chart, graph, plot, diagram of data, data visualisation, analytics, statistics, a report or a dashboard that shows figures over time or by category, a KPI with a trend, a share, crypto or currency price, or names a chart type. Also for how figures are written: separators, decimals, units, currency, percentages, changes and dates. Do not use for a flow chart, an org chart or any diagram of boxes and arrows (those are connectors), nor for a table (the ui-components skill).
-license: Apache-2.0 with Commons Clause (see LICENSE in the Pencraft repository)
+description: Draw charts and data graphics in Quill that are true to their numbers - bar, grouped and stacked bar, line, area, sparkline, donut, gauge, progress ring, ranked bar list, uptime strip and candlestick (a price chart as in trading apps), with axes, gridlines, legend, tooltip and the card around them - built from values, not by eye. Use when the user asks for a chart, graph, plot, diagram of data, data visualisation, analytics, statistics, a report or a dashboard that shows figures over time or by category, a KPI with a trend, a share, crypto or currency price, or names a chart type. Also for how figures are written: separators, decimals, units, currency, percentages, changes and dates. Do not use for a flow chart, an org chart or any diagram of boxes and arrows (those are connectors), nor for a table (the ui-components skill).
+license: Apache-2.0 with Commons Clause (see LICENSE in the Quill repository)
 metadata:
   product: pencraft
   version: "1"
 ---
 
-# Charts in Pencraft
+# Charts in Quill
 
 A chart is a claim about numbers. In a design it is drawn by hand, so nothing stops a bar from being the
 wrong height or a total from disagreeing with its parts, and a reader sees that at once: it is what makes a
 mock-up chart look fake. This skill makes the chart from its values: decide what it says, write the data
 down, work out every size from it, then draw.
 
-Work with Pencraft's tools (`get_state`, `read_layers`, `edit_layers`, `screenshot`). The reference files
+Work with Quill's tools (`get_state`, `read_layers`, `edit_layers`, `screenshot`). The reference files
 named below are read with `read_skill` (name `charts`, `file` as given).
 
 Part of this skill is firm and part is a starting point. It says which, and the difference matters:
@@ -28,7 +28,7 @@ Part of this skill is firm and part is a starting point. It says which, and the 
   two plans, not three; the face has no such weight) and needs nobody's leave.
 - A design that already has a look, a brand or a system keeps it. Take from this skill what the design
   lacks, and nothing that would replace what it has.
-- The examples in the reference files show how a thing is built in Pencraft and at what size. Their colours,
+- The examples in the reference files show how a thing is built in Quill and at what size. Their colours,
   faces, words and arrangement are one answer among many, not the look to reproduce.
 - The checklist and "When it looks wrong" at the end are there to be gone through every time, as a check
   of your own work. A line in them that speaks of a starting point is a starting point still.
@@ -127,7 +127,7 @@ and `H` the plot's height:
   `y = H * (1 - (value - low) / (top - low))` down from the top tick.
 - A candle in band `i` of `n` has its middle at `(i - 0.5) * W / n`. Its wick runs from `y(high)` to
   `y(low)` and its body from `y` of the higher of open and close to `y` of the lower, with `y` as for a line.
-- A slice of a donut sweeps `value / total * 360` degrees. Pencraft measures angles counter-clockwise from
+- A slice of a donut sweeps `value / total * 360` degrees. Quill measures angles counter-clockwise from
   the right, so a slice that begins `turned` degrees clockwise from the top has
   `"startAngle": 90 - turned - sweep` and `"sweepAngle": sweep`; take 1 off each end for the gap.
 - A gauge that is `share` full: the track has `"startAngle": -45, "sweepAngle": 270`, the value
@@ -229,7 +229,7 @@ How figures are written (separators, decimals, units, changes, dates): `referenc
    picture.
 7. Tell the user in two sentences what the chart shows and, if you made the data up, that you did.
 
-## 9. What Pencraft cannot draw, and what to do instead
+## 9. What Quill cannot draw, and what to do instead
 
 | Missing | Instead |
 |---|---|

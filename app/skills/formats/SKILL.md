@@ -1,13 +1,13 @@
 ---
 name: formats
 description: Make a design at the exact size its destination needs, with what matters inside the area that stays visible - social posts, stories and carousels (Instagram, TikTok, LinkedIn, X, Facebook, Pinterest, YouTube thumbnails and banners), link preview and Open Graph images, display ads, app store screenshots and listing graphics (App Store, Google Play, Steam, Chrome Web Store, GitHub), favicons, podcast covers, print (business cards, flyers, posters, postcards, paper sizes with bleed and safe margins) and a picture of an email. Use when the user names one of these, a platform, a paper size or a pixel size, or asks for a post, story, banner, cover, thumbnail, ad, flyer, poster, card or newsletter. Do not use for the screens of an app or site (the ui-components and devices skills), a logo (the logos skill), a chart, or presentation slides.
-license: Apache-2.0 with Commons Clause (see LICENSE in the Pencraft repository)
+license: Apache-2.0 with Commons Clause (see LICENSE in the Quill repository)
 metadata:
   product: pencraft
   version: "1"
 ---
 
-# Formats in Pencraft
+# Formats in Quill
 
 A design made for a place is judged in that place: in a feed between other posts, under a platform's
 buttons, cut by a printer's knife, an inch wide in a search result. Most of what goes wrong is not taste. It
@@ -15,7 +15,7 @@ is a wrong size, a headline under the like button, text that is too small where 
 circle cut. This skill is the sizes, the areas that stay visible, and the few rules every one of these
 shares. The look is still yours to design, by the guide's "Designing well".
 
-Work with Pencraft's tools (`get_state`, `read_layers`, `edit_layers`, `screenshot`, `export_layers`). The
+Work with Quill's tools (`get_state`, `read_layers`, `edit_layers`, `screenshot`, `export_layers`). The
 reference files named below are read with `read_skill` (name `formats`, `file` as given).
 
 Part of this skill is firm and part is a starting point. It says which, and the difference matters:
@@ -29,7 +29,7 @@ Part of this skill is firm and part is a starting point. It says which, and the 
   the face has no such weight) and needs nobody's leave.
 - A design that already has a look, a brand or a system keeps it. Take from this skill what the design
   lacks, and nothing that would replace what it has.
-- The examples in the reference files show how a thing is built in Pencraft and at what size. Their colours,
+- The examples in the reference files show how a thing is built in Quill and at what size. Their colours,
   faces, words and arrangement are one answer among many, not the look to reproduce.
 - The checklist and "When it looks wrong" at the end are there to be gone through every time, as a check
   of your own work. A line in them that speaks of a starting point is a starting point still.
@@ -139,7 +139,7 @@ the last one says what to do.
 
 Export one frame per file. Tell the user the file's size in pixels (or millimetres) and where it is.
 
-## 6. What Pencraft cannot do, and what to do instead
+## 6. What Quill cannot do, and what to do instead
 
 | Missing | Instead |
 |---|---|

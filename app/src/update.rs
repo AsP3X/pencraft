@@ -1,4 +1,4 @@
-//! Looks for a newer Pencraft among the releases on GitHub and asks the user whether they want it.
+//! Looks for a newer Quill among the releases on GitHub and asks the user whether they want it.
 //!
 //! The look runs on a thread of its own when the app starts and then as often as the settings say, also while
 //! the window is left alone. It never holds the window up, and when GitHub can't be reached nothing is shown:
@@ -502,7 +502,7 @@ impl Updates {
                 }
                 None
             }
-            Ok(None) => asked.then(|| format!("Pencraft {VERSION} is the latest version.")),
+            Ok(None) => asked.then(|| format!("Quill {VERSION} is the latest version.")),
             Err(error) => {
                 log::info!("update check: {error}");
                 asked.then(|| format!("Couldn't look for a new version. {error}"))
@@ -722,7 +722,7 @@ impl Updates {
     /// What the folded card says in a few words: the offer, how far the download is, or that it is ready.
     fn in_short(&self, release: &Release) -> String {
         match &self.stage {
-            Stage::Offered => format!("Pencraft {} is available", release.version),
+            Stage::Offered => format!("Quill {} is available", release.version),
             Stage::Fetching { progress, .. } => {
                 let (done, total) = progress.sizes();
                 let arrived = progress.fraction();
@@ -788,7 +788,7 @@ impl Updates {
                         if required {
                             // Human: a required update is taken or the app is left. Only when its download
                             // failed may the user go on, so a network that is down locks nobody out.
-                            click = quiet_button(ui, "Quit Pencraft", palette).then_some(Click::Quit).or(click);
+                            click = quiet_button(ui, "Quit Quill", palette).then_some(Click::Quit).or(click);
                             if self.failed {
                                 click = quiet_button(ui, "Not now", palette).then_some(Click::Later).or(click);
                             }
@@ -826,12 +826,12 @@ impl Updates {
                 }
             }
             Stage::Arrived(_) | Stage::Ready(_) => {
-                ui.label(RichText::new("Downloaded and checked. Pencraft restarts to install it.").size(SIDEBAR_TEXT_SIZE).color(palette.muted));
+                ui.label(RichText::new("Downloaded and checked. Quill restarts to install it.").size(SIDEBAR_TEXT_SIZE).color(palette.muted));
                 ui.add_space(UPDATE_NOTE_GAP);
                 ui.horizontal(|ui| {
                     click = primary(ui, "Restart to update", palette).then_some(Click::Take);
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let (other, does) = if required { ("Quit Pencraft", Click::Quit) } else { ("Later", Click::Later) };
+                        let (other, does) = if required { ("Quit Quill", Click::Quit) } else { ("Later", Click::Later) };
                         click = quiet_button(ui, other, palette).then_some(does).or(click);
                     });
                 });
@@ -852,9 +852,9 @@ fn head(ui: &mut Ui, release: &Release, palette: Palette) -> bool {
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
             let (title, under) = if release.required {
-                (format!("Pencraft {} is required", release.version), format!("You have {VERSION}. This update has to be installed to go on."))
+                (format!("Quill {} is required", release.version), format!("You have {VERSION}. This update has to be installed to go on."))
             } else {
-                (format!("Pencraft {} is available", release.version), format!("You have {VERSION}"))
+                (format!("Quill {} is available", release.version), format!("You have {VERSION}"))
             };
             ui.label(RichText::new(title).size(UPDATE_TITLE_SIZE).color(palette.foreground).strong());
             ui.label(RichText::new(under).size(SIDEBAR_TEXT_SIZE).color(palette.muted));
@@ -1439,7 +1439,7 @@ mod tests {
         assert!(updates.collapsed && updates.offered.is_some());
         // Folded, it says in a few words what there is.
         let shown = updates.offered.clone().unwrap();
-        assert_eq!(updates.in_short(&shown), "Pencraft 9.1.0 is available");
+        assert_eq!(updates.in_short(&shown), "Quill 9.1.0 is available");
         // The next look finds the same release: the card stays folded.
         assert_eq!(updates.take(Ok(Some(release("9.1.0"))), ""), None);
         assert!(updates.collapsed);
@@ -1495,7 +1495,7 @@ mod tests {
         // Asking counts once.
         assert!(!updates.asked);
         updates.asked = true;
-        assert_eq!(updates.take(Ok(None), "").unwrap(), format!("Pencraft {VERSION} is the latest version."));
+        assert_eq!(updates.take(Ok(None), "").unwrap(), format!("Quill {VERSION} is the latest version."));
         // Asking shows a version that was skipped before.
         updates.asked = true;
         assert_eq!(updates.take(Ok(Some(release("9.1.0"))), "9.1.0"), None);

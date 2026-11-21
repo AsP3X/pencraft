@@ -52,9 +52,9 @@ pub(super) fn home(talks: &[Talk], chat: Option<u64>) -> Home {
 }
 
 /// What the user is told when there is nobody to answer.
-const NO_ASSISTANT: &str = "No assistant is set up. Install Claude Code or Grok and sign in (run `claude` or `grok` in a terminal once), or connect a provider with its API key in Settings → Agents, or start Pencraft with ANTHROPIC_API_KEY set.";
+const NO_ASSISTANT: &str = "No assistant is set up. Install Claude Code or Grok and sign in (run `claude` or `grok` in a terminal once), or connect a provider with its API key in Settings → Agents, or start Quill with ANTHROPIC_API_KEY set.";
 /// What the user is told when the tools are turned off.
-const TOOLS_OFF: &str = "The assistant works on the document through Pencraft's AI tools, which are turned off. Turn on \"Let AI models work on documents\" in Settings → Agents.";
+const TOOLS_OFF: &str = "The assistant works on the document through Quill's AI tools, which are turned off. Turn on \"Let AI models work on documents\" in Settings → Agents.";
 
 /// How the sidebar shows the chat `talk`: as the settings `prefs` want it, with the `assistants` to pick from
 /// and the one `asked` for when the app was started.

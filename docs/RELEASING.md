@@ -1,7 +1,7 @@
 # Releasing
 
 A release is made by pushing a version tag. GitHub Actions builds everything
-and publishes it; installed copies of Pencraft then find it on their own.
+and publishes it; installed copies of Quill then find it on their own.
 
 ## Steps
 
@@ -111,12 +111,12 @@ install in `app/src/update/install.rs`.
 7. **Install.** As the app exits it starts the install, which outlives it:
    - **Windows:** `pencraft-setup.exe /SILENT /SUPPRESSMSGBOXES /NORESTART
      /RELAUNCH /WAITPID=<process>`. The setup wizard first waits for that
-     Pencraft to be gone (`InitializeSetup` in `installer/pencraft.iss`): a
+     Quill to be gone (`InitializeSetup` in `installer/pencraft.iss`): a
      silent setup that finds the app running cannot close it and gives up.
      Then it shows only a progress window, installs into the folder and with
      the options of the install it finds, and because of `/RELAUNCH` starts
-     Pencraft again (the `[Run]` entry with `Check: RelaunchAsked`). An install for
-     everyone asks for administrator rights; Pencraft is still started as
+     Quill again (the `[Run]` entry with `Check: RelaunchAsked`). An install for
+     everyone asks for administrator rights; Quill is still started as
      the user.
    - **macOS:** before quitting, the app in the disk image was copied to
      `.Pencraft-update.app` beside the running bundle (`hdiutil`, `ditto`)
@@ -165,7 +165,7 @@ Things that follow from this design:
 ### While the repository is private
 
 GitHub answers "not found" to anyone who asks about a private repository
-without a sign-in. Pencraft then asks once more with a sign-in from this
+without a sign-in. Quill then asks once more with a sign-in from this
 computer: `GH_TOKEN`, `GITHUB_TOKEN`, or the GitHub CLI (`gh auth token`).
 So today the check works for people who are signed in to GitHub with access
 to this repository, and for nobody else: everyone else simply never sees a
@@ -191,7 +191,7 @@ the repository has the secrets for it.
   disk image and staples the ticket to it, and a downloaded copy starts
   without a warning. Without them the app is signed ad hoc, which Apple
   Silicon requires to run anything, and a downloaded copy is stopped at its
-  first start ("Apple could not verify Pencraft is free of malware") until
+  first start ("Apple could not verify Quill is free of malware") until
   the user allows it under **System Settings → Privacy & Security → Open
   Anyway**. The release build says which of the two it did.
 

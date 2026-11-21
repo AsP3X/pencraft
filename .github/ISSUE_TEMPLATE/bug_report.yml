@@ -31,7 +31,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Pencraft version
+      label: Quill version
       description: Settings → General → Updates names it.
     validations:
       required: true

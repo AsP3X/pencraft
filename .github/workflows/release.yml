@@ -1,7 +1,7 @@
 name: Release
 
-# Pushing a tag like v1.2.3 builds Pencraft for Windows and macOS and
-# publishes the files as a GitHub release. Installed copies of Pencraft find
+# Pushing a tag like v1.2.3 builds Quill for Windows and macOS and
+# publishes the files as a GitHub release. Installed copies of Quill find
 # the release on their own. See docs/RELEASING.md.
 
 on:
@@ -187,6 +187,6 @@ jobs:
         run: |
           gh release create "$TAG" release/* \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Pencraft $VERSION" \
+            --title "Quill $VERSION" \
             --notes-file artifacts/release-notes/release-notes.md \
             --verify-tag

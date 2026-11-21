@@ -284,7 +284,7 @@ fn download(url: &str, name: Option<&str>, credit: Option<&str>, document: Optio
         _ => fetch(url, MOST_PICTURE)?,
     };
     if !matches!(image::guess_format(&page.bytes), Ok(image::ImageFormat::Png | image::ImageFormat::Jpeg | image::ImageFormat::WebP)) {
-        return Err("That isn't a picture Pencraft can show (PNG, JPEG or WebP). Pick the address of the picture file itself.".to_owned());
+        return Err("That isn't a picture Quill can show (PNG, JPEG or WebP). Pick the address of the picture file itself.".to_owned());
     }
     // The file is named after `name`, or after the last part of the address without its ending.
     let last = page.url.split(['?', '#']).next().unwrap_or_default().rsplit('/').next().unwrap_or_default();
@@ -297,7 +297,7 @@ fn download(url: &str, name: Option<&str>, credit: Option<&str>, document: Optio
     });
     if document.is_none() {
         answer["note"] = json!(
-            "The document has no file yet, so the picture waits in Pencraft's own folder and is named by its full path. It moves beside the document when that is saved."
+            "The document has no file yet, so the picture waits in Quill's own folder and is named by its full path. It moves beside the document when that is saved."
         );
     }
     Ok(answer)

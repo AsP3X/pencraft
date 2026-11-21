@@ -119,7 +119,7 @@ pub enum Page {
     Images,
     /// What AI models may do.
     Permissions,
-    /// The tool server other AI apps reach Pencraft through.
+    /// The tool server other AI apps reach Quill through.
     Mcp,
 }
 
@@ -128,7 +128,7 @@ type Entry = (Page, &'static str, &'static str);
 
 /// The pages in the order of the list, in their groups: the group's name, then its pages.
 const PAGES: [(&str, &[Entry]); 3] = [
-    ("Pencraft", &[(Page::General, "settings", "General"), (Page::Canvas, "frame", "Canvas")]),
+    ("Quill", &[(Page::General, "settings", "General"), (Page::Canvas, "frame", "Canvas")]),
     ("AI", &[(Page::Agents, "sparkles", "Assistants"), (Page::Chat, "message-square", "Chat"), (Page::Images, "image", "Images")]),
     ("Access", &[(Page::Permissions, "shield-check", "Permissions"), (Page::Mcp, "terminal", "MCP")]),
 ];
@@ -173,7 +173,7 @@ const INDEX: &[(Page, &str, &str)] = &[
     (Page::Permissions, "Permissions", "Let AI work on my documents"),
     (Page::Permissions, "AI may also", "Use the web"),
     (Page::Permissions, "AI may also", "Generate and edit pictures"),
-    (Page::Mcp, "Server", "Pencraft MCP server"),
+    (Page::Mcp, "Server", "Quill MCP server"),
     (Page::Mcp, "Server", "Address"),
     (Page::Mcp, "Connect an AI app", "Claude Code"),
     (Page::Mcp, "Connect an AI app", "Codex"),
@@ -470,7 +470,7 @@ impl ImageForm {
             && (saved.kind != self.kind || saved.base_url.trim() != self.base_url.trim())
     }
 
-    /// The service the form describes, when it has a kind Pencraft knows and a name no other saved service has.
+    /// The service the form describes, when it has a kind Quill knows and a name no other saved service has.
     fn service(&self, images: &Images) -> Option<ImageService> {
         let name = self.name.trim();
         // Human: names are compared without regard to case, as the generate_image tool picks a service by name.
@@ -629,9 +629,9 @@ fn ago(time: Duration) -> String {
 fn update_line(seen: &crate::update::Seen) -> String {
     match (seen.looking, &seen.offered, seen.ago) {
         (true, ..) => "Looking for a newer version…".to_owned(),
-        (false, Some(version), _) => format!("Pencraft {version} is available."),
+        (false, Some(version), _) => format!("Quill {version} is available."),
         (false, None, Some(time)) => format!("Last checked {}.", ago(time)),
-        (false, None, None) => "Not checked yet since Pencraft started.".to_owned(),
+        (false, None, None) => "Not checked yet since Quill started.".to_owned(),
     }
 }
 
@@ -670,7 +670,7 @@ pub struct Settings {
     search: Option<mpsc::Receiver<Vec<(String, bool)>>>,
     /// Which commands are installed; `None` until the search has finished.
     installed: Option<Vec<(String, bool)>>,
-    /// Adding Pencraft to an agent program's MCP servers, while that runs; it answers with what to tell the user.
+    /// Adding Quill to an agent program's MCP servers, while that runs; it answers with what to tell the user.
     hooking: Option<mpsc::Receiver<String>>,
     /// What is typed into the stock photo sites' key fields, in the order of [`crate::web::KEYED`].
     picture_drafts: [String; 2],
@@ -991,7 +991,7 @@ impl Settings {
             self.leave_forms();
         }
         let foot = pos2(inner.left() + 10.0, inner.bottom() - 8.0);
-        let version = format!("Pencraft {}", crate::update::VERSION);
+        let version = format!("Quill {}", crate::update::VERSION);
         ui.painter().text(foot, Align2::LEFT_CENTER, version, FontId::proportional(11.5), palette.muted);
         if facts.update.offered.is_some() {
             let right = pos2(inner.right() - 10.0, foot.y);
@@ -1244,8 +1244,7 @@ impl Settings {
             }
         }
         ui.add_space(10.0);
-        let footnote =
-            "*Not all models from each provider are supported by Pencraft, we are working on validating and adding more models as they fit.";
+        let footnote = "*Not all models from each provider are supported by Quill, we are working on validating and adding more models as they fit.";
         ui.add(egui::Label::new(RichText::new(footnote).size(11.0).color(palette.muted)).wrap());
         if let Some(name) = picked {
             *notice = self.open_known(name, prefs);
@@ -1293,7 +1292,7 @@ impl Settings {
                     open = Some(Some(index));
                 }
             }
-            // Human: a service from the environment can't be opened: it is set where Pencraft was started, not here.
+            // Human: a service from the environment can't be opened: it is set where Quill was started, not here.
             for (name, line) in ready.iter().filter_map(environment_line) {
                 rows.row(name, Some(&line), Lead::Letter(name), |ui| pill(ui, Link::Ready.words(), Tone::Good, palette));
             }
@@ -1438,13 +1437,12 @@ fn general(ui: &mut Ui, prefs: &mut Prefs, facts: &Facts<'_>, palette: Palette, 
     heading(ui, "Updates", palette);
     card(ui, palette, |rows| {
         let icon = if facts.update.offered.is_some() { "circle-arrow-up" } else { "circle-check" };
-        rows.row(&format!("Pencraft {}", crate::update::VERSION), Some(&update_line(&facts.update)), Lead::Icon(icon), |ui| {
+        rows.row(&format!("Quill {}", crate::update::VERSION), Some(&update_line(&facts.update)), Lead::Icon(icon), |ui| {
             if button(ui, "Check now", None, Kind::Outline, !facts.update.looking, palette).clicked() {
                 *check_now = true;
             }
         });
-        let automatic =
-            "Asks GitHub when Pencraft starts and while it stays open. A version you answered with Later is offered again at the next look.";
+        let automatic = "Asks GitHub when Quill starts and while it stays open. A version you answered with Later is offered again at the next look.";
         rows.row("Look for new versions automatically", Some(automatic), Lead::Nothing, |ui| switch(ui, &mut prefs.updates.check, palette));
         let choices: Vec<&str> = crate::update::EVERY.iter().map(|(name, _)| *name).collect();
         // Human: a choice saved by an earlier version that is no longer offered counts as the default
@@ -1542,7 +1540,7 @@ fn names_card(ui: &mut Ui, owner: Option<&str>, agents: &mut Agents, facts: &Fac
     if own.is_empty() {
         return;
     }
-    heading(ui, "Names in Pencraft", palette);
+    heading(ui, "Names in Quill", palette);
     let why = "Call the models what you like. A name shows in the chat's assistant menu, and beside the cursor on the canvas when the cursor label is the model's name.";
     hint(ui, why, palette);
     card(ui, palette, |rows| {
@@ -1615,7 +1613,7 @@ fn chat_page(ui: &mut Ui, agents: &mut Agents, facts: &Facts<'_>, palette: Palet
     });
 }
 
-/// How an AI app is told to start Pencraft's tool server at `program`: the app, where the lines go, and what
+/// How an AI app is told to start Quill's tool server at `program`: the app, where the lines go, and what
 /// to paste.
 // Human: the same three ways AI.md describes, with this copy of the app's own path filled in.
 fn client_setups(program: &str) -> [(&'static str, &'static str, String); 3] {
@@ -1650,20 +1648,20 @@ fn allowed_line(prefs: &Prefs) -> String {
     }
 }
 
-/// The MCP page: the tool server other AI apps reach Pencraft through, and how to connect one. Returns whether
+/// The MCP page: the tool server other AI apps reach Quill through, and how to connect one. Returns whether
 /// the row that leads to the Permissions page was clicked.
 fn mcp_page(ui: &mut Ui, prefs: &Prefs, facts: &Facts<'_>, client: &mut String, palette: Palette, notice: &mut Option<String>) -> bool {
     title(ui, "MCP", palette);
-    let what = "Pencraft is an MCP server: other AI apps on this computer can work on your open documents with the same tools the chat uses.";
+    let what = "Quill is an MCP server: other AI apps on this computer can work on your open documents with the same tools the chat uses.";
     about(ui, what, palette);
     heading(ui, "Server", palette);
     let (link, said) = match facts.port {
         Some(_) if prefs.agents.tools => (Link::Running, "On this computer only."),
         Some(_) => (Link::Stopped, "Listening, but every tool call is refused while AI may not work on your documents."),
-        None => (Link::Stopped, "It didn't start; restart Pencraft."),
+        None => (Link::Stopped, "It didn't start; restart Quill."),
     };
     card(ui, palette, |rows| {
-        rows.row("Pencraft MCP server", Some(said), Lead::Icon("terminal"), |ui| pill(ui, link.words(), link.tone(), palette));
+        rows.row("Quill MCP server", Some(said), Lead::Icon("terminal"), |ui| pill(ui, link.words(), link.tone(), palette));
         let Some(port) = facts.port else { return };
         let mut copied = |rows: &mut parts::Rows<'_>, name: &str, more: Option<&str>, value: String| {
             rows.row(name, more, Lead::Nothing, |ui| {
@@ -1702,7 +1700,7 @@ fn mcp_page(ui: &mut Ui, prefs: &Prefs, facts: &Facts<'_>, client: &mut String, 
                 ui.add(egui::Label::new(RichText::new(setup).monospace().size(12.0)).wrap());
             });
             ui.add_space(12.0);
-            let starts = "The app starts `pencraft mcp` and talks to it. If Pencraft isn't running, that starts it in the background.";
+            let starts = "The app starts `pencraft mcp` and talks to it. If Quill isn't running, that starts it in the background.";
             ui.add(egui::Label::new(RichText::new(starts).size(12.0).color(palette.muted)).wrap());
         });
     });
@@ -1876,10 +1874,10 @@ fn image_form(ui: &mut Ui, form: &mut ImageForm, prefs: &Prefs, palette: Palette
                 let kinds: Vec<&str> = crate::imagery::Kind::ALL.iter().map(|kind| kind.name()).collect();
                 wide_choice(&mut columns[1], &mut form.kind, &kinds, palette);
             });
-            // Human: a kind from a newer Pencraft, or typed into the settings file; the service can't be saved until
-            // one Pencraft knows is picked (`ImageForm::service`).
+            // Human: a kind from a newer Quill, or typed into the settings file; the service can't be saved until
+            // one Quill knows is picked (`ImageForm::service`).
             if kind.is_none() {
-                warning(ui, "Pencraft doesn't know this kind of service; pick one.");
+                warning(ui, "Quill doesn't know this kind of service; pick one.");
             }
             ui.add_space(14.0);
             caption(ui, "Model", palette);
@@ -1912,12 +1910,12 @@ fn image_form(ui: &mut Ui, form: &mut ImageForm, prefs: &Prefs, palette: Palette
     left
 }
 
-/// The line that adds Pencraft's tool server to an agent program's MCP servers, for the user to read.
+/// The line that adds Quill's tool server to an agent program's MCP servers, for the user to read.
 fn hook_line(command: &str, pencraft: &str) -> String {
     format!("{command} mcp add pencraft -- {} mcp", serde_json::to_string(pencraft).unwrap_or_else(|_| pencraft.to_owned()))
 }
 
-/// Adds Pencraft's tool server to the MCP servers of the agent program at `program` (`<program> mcp add`).
+/// Adds Quill's tool server to the MCP servers of the agent program at `program` (`<program> mcp add`).
 // Agent: SPAWNS one short-lived thread, which runs the program and WAKES the UI with what to tell the user;
 // WRITES the program's own settings file, on the user's click only.
 fn hook(program: PathBuf, ctx: &egui::Context) -> Option<mpsc::Receiver<String>> {
@@ -1927,7 +1925,7 @@ fn hook(program: PathBuf, ctx: &egui::Context) -> Option<mpsc::Receiver<String>>
     let started = std::thread::Builder::new().name("hook-agent".to_owned()).spawn(move || {
         let ran = std::process::Command::new(&program).args(["mcp", "add", "pencraft", "--"]).arg(&pencraft).arg("mcp").output();
         let said = match ran {
-            Ok(output) if output.status.success() => "Pencraft's tools were added to the program's MCP servers.".to_owned(),
+            Ok(output) if output.status.success() => "Quill's tools were added to the program's MCP servers.".to_owned(),
             Ok(output) => {
                 format!("The program didn't take it: {}", String::from_utf8_lossy(&output.stderr).trim().chars().take(300).collect::<String>())
             }
@@ -1940,7 +1938,7 @@ fn hook(program: PathBuf, ctx: &egui::Context) -> Option<mpsc::Receiver<String>>
     started.ok().map(|_| receive)
 }
 
-/// What the command-line agent form says about how the program gets Pencraft's tools, and for Grok the button
+/// What the command-line agent form says about how the program gets Quill's tools, and for Grok the button
 /// that adds them.
 fn cli_tools(
     ui: &mut Ui,
@@ -1952,9 +1950,9 @@ fn cli_tools(
     notice: &mut Option<String>,
 ) {
     let tools = match form.kind.as_str() {
-        KIND_CLAUDE => "Claude Code is handed Pencraft's tools each time it answers. There is nothing to set up.",
+        KIND_CLAUDE => "Claude Code is handed Quill's tools each time it answers. There is nothing to set up.",
         KIND_GROK => {
-            "Grok works on your documents through its own MCP servers: Pencraft has to be added there once, under the name \"pencraft\". Only that server's tools are approved for the chat."
+            "Grok works on your documents through its own MCP servers: Quill has to be added there once, under the name \"pencraft\". Only that server's tools are approved for the chat."
         }
         _ => {
             "The program works on your documents through its own MCP servers: add `pencraft mcp` there once (the MCP page has the lines to copy), and let it use that server's tools without asking."
@@ -1971,7 +1969,7 @@ fn cli_tools(
         ui.add(egui::Label::new(RichText::new(hook_line(command.unwrap_or("grok"), &pencraft)).monospace().size(12.0)).wrap());
     });
     ui.add_space(10.0);
-    let add = if hooking.is_some() { "Adding…" } else { "Add Pencraft to Grok" };
+    let add = if hooking.is_some() { "Adding…" } else { "Add Quill to Grok" };
     if button(ui, add, None, Kind::Outline, hooking.is_none() && program.is_some(), palette).on_hover_text("Runs the line above").clicked()
         && let Some(program) = program
     {
@@ -2048,7 +2046,7 @@ fn cli_form(
             }
         });
     });
-    heading(ui, "Pencraft's tools", palette);
+    heading(ui, "Quill's tools", palette);
     card(ui, palette, |rows| rows.block(|ui| cli_tools(ui, form, command.as_deref(), program.as_ref(), hooking, palette, notice)));
     heading(ui, "Chat", palette);
     card(ui, palette, |rows| {
@@ -2162,7 +2160,7 @@ fn remove_image_service(index: usize, prefs: &mut Prefs, vault: &dyn Vault) -> R
 }
 
 /// What a saved image service's card says under its name: its kind, its model, and when it has no key yet.
-// Human: parts that are empty (the model of a kind Pencraft doesn't know) are left out with their dot.
+// Human: parts that are empty (the model of a kind Quill doesn't know) are left out with their dot.
 fn service_about(service: &ImageService) -> String {
     let kind = crate::imagery::Kind::named(&service.kind);
     let model = if service.model.trim().is_empty() { kind.map_or("", crate::imagery::Kind::model) } else { service.model.trim() };
@@ -2584,7 +2582,7 @@ mod tests {
     }
 
     #[test]
-    fn a_service_of_a_kind_pencraft_doesnt_know_can_be_saved_once_a_known_kind_is_picked() {
+    fn a_service_of_a_kind_quill_doesnt_know_can_be_saved_once_a_known_kind_is_picked() {
         let mut images = Images::default();
         images.services.push(service("Odd", "Something else", Some("k")));
         let mut form = ImageForm::of(0, &images.services[0]);
@@ -2924,7 +2922,7 @@ mod tests {
         assert_eq!(ago(Duration::from_secs(3 * 3600 + 5)), "3 hours ago");
         let seen = |looking, offered: Option<&str>, ago| crate::update::Seen { looking, offered: offered.map(str::to_owned), ago };
         assert_eq!(update_line(&seen(true, Some("9.0.0"), None)), "Looking for a newer version…");
-        assert_eq!(update_line(&seen(false, Some("9.0.0"), None)), "Pencraft 9.0.0 is available.");
+        assert_eq!(update_line(&seen(false, Some("9.0.0"), None)), "Quill 9.0.0 is available.");
         assert_eq!(update_line(&seen(false, None, Some(Duration::from_secs(600)))), "Last checked 10 minutes ago.");
         assert!(update_line(&seen(false, None, None)).starts_with("Not checked yet"));
     }

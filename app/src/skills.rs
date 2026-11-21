@@ -1,4 +1,4 @@
-//! Skills: what Pencraft teaches an AI model about one kind of design work, beyond the general guide.
+//! Skills: what Quill teaches an AI model about one kind of design work, beyond the general guide.
 //!
 //! A skill is a folder in the open Agent Skills layout (`app/skills/<name>/SKILL.md` with `name` and
 //! `description` up front, and reference files beside it). The folders are built into the program, so every
@@ -27,7 +27,7 @@ pub struct Skill {
     files: &'static [(&'static str, &'static str)],
 }
 
-/// Every skill Pencraft has.
+/// Every skill Quill has.
 pub const ALL: &[Skill] = &[
     Skill {
         name: "liquid-glass",
@@ -142,7 +142,7 @@ pub fn find(name: &str) -> Option<&'static Skill> {
 #[must_use]
 pub fn index() -> String {
     let mut out = String::from(
-        "## Skills\nFor some kinds of design Pencraft has a skill: what to decide, how to build it here, and how to check it. When a request fits one, read it with `read_skill` before you design. A skill is part firm and part a starting point, and says which: what it lists to do every time, do without being asked (only the user's own words overrule it); what it gives as a default, begin from and change when the design has a reason. Its examples show how a thing is built, not how yours must look, and a look a design already has stays.\n",
+        "## Skills\nFor some kinds of design Quill has a skill: what to decide, how to build it here, and how to check it. When a request fits one, read it with `read_skill` before you design. A skill is part firm and part a starting point, and says which: what it lists to do every time, do without being asked (only the user's own words overrule it); what it gives as a default, begin from and change when the design has a reason. Its examples show how a thing is built, not how yours must look, and a look a design already has stays.\n",
     );
     for skill in ALL {
         out.push_str("- `");
@@ -324,7 +324,7 @@ mod tests {
     }
 
     #[test]
-    fn the_layers_a_skill_shows_are_layers_pencraft_takes() {
+    fn the_layers_a_skill_shows_are_layers_quill_takes() {
         let mut layers = 0;
         for skill in ALL {
             for (path, text) in skill.files {
@@ -532,7 +532,7 @@ mod tests {
     fn a_skill_is_listed_read_and_written_out_whole() {
         assert_eq!(list()["skills"][0]["name"], "liquid-glass");
         assert!(index().contains("- `liquid-glass`: Design Liquid Glass interfaces"));
-        assert!(read(&json!({ "name": "liquid-glass" })).unwrap().contains("# Liquid glass in Pencraft"));
+        assert!(read(&json!({ "name": "liquid-glass" })).unwrap().contains("# Liquid glass in Quill"));
         assert!(read(&json!({ "name": "liquid-glass", "file": "references/tokens.md" })).unwrap().starts_with("# Tokens"));
         assert!(read(&json!({ "name": "glass" })).unwrap_err().contains("The skills are: \"liquid-glass\""));
         assert!(read(&json!({ "name": "liquid-glass", "file": "x.md" })).unwrap_err().contains("\"references/components.md\""));

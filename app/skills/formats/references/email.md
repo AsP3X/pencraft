@@ -1,6 +1,6 @@
 # A picture of an email
 
-Pencraft draws what an email should look like; someone still builds it for mail programs. So this is about
+Quill draws what an email should look like; someone still builds it for mail programs. So this is about
 the layout that survives them. The width is the one firm figure (Mailchimp's templates and most guides);
 button and type sizes are vendors' advice and differ, and are given here as this kit's choice.
 

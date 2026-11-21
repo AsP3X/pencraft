@@ -37,12 +37,12 @@ A text layer's box is taller than its letters. For most faces the baseline lies 
 without ascenders about 0.5. So:
 - the middle of the capitals is about 0.63 × `fontSize` below the top of the box;
 - the middle of the lowercase x-height is about 0.72 × `fontSize` below it.
-Pencraft tells you where the letters really are: `edit_layers` answers with `inkBoxes` for the texts it
+Quill tells you where the letters really are: `edit_layers` answers with `inkBoxes` for the texts it
 touched and `read_layers` gives each text an `inkBox`, the box round its letters as drawn. Set the name by
 that, not by its `layoutBox`: for capitals centred on a mark, move the text until the middle of its
 `inkBox` (y + height / 2) is the mark's middle; for a gap, measure from the `inkBox`'s left edge. For a
 mixed-case name the `inkBox` includes ascenders and descenders, so centre the x-height by the rule below.
-Without an `inkBox` (an older Pencraft), these rules of thumb are the start, and faces differ widely (the capitals' middle lies anywhere from 0.55 to 0.8 ×
+Without an `inkBox` (an older Quill), these rules of thumb are the start, and faces differ widely (the capitals' middle lies anywhere from 0.55 to 0.8 ×
 `fontSize` below the top of the box; Futura sits low in its box and has capitals about 0.76 tall). Look at
 `scale: 2`, measure in the picture where the letters really are, and nudge `y` until the letters, not the
 box, sit where they should. A name in a stand-in face (the review says when a family is not installed) is

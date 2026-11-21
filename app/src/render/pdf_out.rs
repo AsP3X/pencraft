@@ -282,7 +282,7 @@ impl Builder<'_> {
             .filter(|area| area.w > 0.0 && area.h > 0.0)
             .ok_or_else(|| Failed("The layers have no size to export.".to_owned()))?;
         let page = PageSettings::from_wh(area.w, area.h).ok_or_else(|| Failed("The layers have no size to export.".to_owned()))?;
-        let about = Metadata { creator: "Pencraft".to_owned(), producer: format!("Pencraft {}", env!("CARGO_PKG_VERSION")), ..Metadata::default() };
+        let about = Metadata { creator: "Quill".to_owned(), producer: format!("Quill {}", env!("CARGO_PKG_VERSION")), ..Metadata::default() };
         // Human: colours are written as sRGB with its profile in the file, not as "whatever this device shows":
         // a viewer then shows the colours the canvas shows.
         let settings = write::backend::SerializeSettings { no_device_cs: true, ..write::backend::SerializeSettings::default() };

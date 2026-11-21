@@ -27,13 +27,13 @@ const MOST_BYTES: usize = 32 * 1024 * 1024;
 const PATIENCE: Duration = Duration::from_secs(120);
 /// How long the bridge waits for the app to start.
 const START_PATIENCE: Duration = Duration::from_secs(20);
-/// How often a running app looks whether the address file still leads to a running Pencraft.
+/// How often a running app looks whether the address file still leads to a running Quill.
 const NOTE_CHECK: Duration = Duration::from_secs(2);
 /// The message that asks a server whether it is there.
 const PING: &str = r#"{"jsonrpc":"2.0","id":0,"method":"ping"}"#;
 /// The name clients are shown.
 const SERVER_NAME: &str = "pencraft";
-/// The message a second Pencraft sends the running one to have it open files ([`hand_over`]), and the name
+/// The message a second Quill sends the running one to have it open files ([`hand_over`]), and the name
 /// its [`Call`] has in the app. No tool of this name is offered to models.
 pub const OPEN: &str = "pencraft/open";
 
@@ -45,7 +45,7 @@ pub struct Call {
     pub arguments: Value,
     /// The client's name, as it introduced itself ("Claude Code", "Cursor"), for the cursor on the canvas.
     pub client: String,
-    /// The chat inside Pencraft the call comes from, which decides the document it works on; `None` for a
+    /// The chat inside Quill the call comes from, which decides the document it works on; `None` for a
     /// client outside the app, which works on the document in front.
     pub chat: Option<u64>,
     /// Where the answer goes: the content of the tool's result, or what went wrong.
@@ -102,7 +102,7 @@ pub fn start(send: Sender<Call>, wake: impl Fn() + Send + Sync + 'static) -> std
     let port = listener.local_addr()?.port();
     let token = secret();
     write_info(port, &token)?;
-    // Human: the note can go stale under a running app: a second Pencraft writes its own and is then closed, or
+    // Human: the note can go stale under a running app: a second Quill writes its own and is then closed, or
     // is ended without tidying up. The app that is still there puts its own note back, so an AI client finds
     // it instead of starting yet another window.
     let again = token.clone();
@@ -151,15 +151,15 @@ fn write_info(port: u16, token: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Whether a Pencraft is running whose server the address file leads to.
+/// Whether a Quill is running whose server the address file leads to.
 #[must_use]
 pub fn serving() -> bool {
     running().is_some_and(|(port, token)| post(port, &token, PING).is_ok())
 }
 
-/// Hands `files` to the Pencraft that is running, which opens them in tabs and comes to the front; whether
+/// Hands `files` to the Quill that is running, which opens them in tabs and comes to the front; whether
 /// one took them.
-// Human: a design double-clicked in the Explorer, or named on the command line, starts a second Pencraft. With
+// Human: a design double-clicked in the Explorer, or named on the command line, starts a second Quill. With
 // one running already the file belongs in that one's window, beside the designs that are open; the second
 // passes it on and ends without opening a window.
 // Agent: BLOCKS on the running app's answer (it opens the files first); `false` when none answers.
@@ -176,7 +176,7 @@ pub fn hand_over(files: &[PathBuf]) -> bool {
 
 /// Removes the address file when the app ends, so a bridge doesn't try a server that is gone.
 pub fn forget() {
-    // Human: only this app's own note is removed: a second Pencraft started later has written its own.
+    // Human: only this app's own note is removed: a second Quill started later has written its own.
     let ours = |info: Value| info.get("pid").and_then(Value::as_u64) == Some(u64::from(std::process::id()));
     if let Some(path) = info_file()
         && std::fs::read(&path).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()).is_some_and(ours)
@@ -283,7 +283,7 @@ fn failure(id: &Value, code: i32, message: &str) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
 }
 
-/// The address the chat `chat` inside Pencraft reaches the server at.
+/// The address the chat `chat` inside Quill reaches the server at.
 #[must_use]
 pub fn address(port: u16, chat: u64) -> String {
     format!("http://127.0.0.1:{port}/mcp?chat={chat}")
@@ -311,7 +311,7 @@ fn answer(message: &Value, chat: Option<u64>, shared: &Shared) -> Option<Value> 
                 "protocolVersion": version,
                 "capabilities": { "tools": {} },
                 "serverInfo": { "name": SERVER_NAME, "version": env!("CARGO_PKG_VERSION") },
-                "instructions": "Pencraft is a canvas design editor. Call get_state first, read get_guide before writing layers (it also says how to design well here, which fonts are installed and which skills there are; read a skill with read_skill before the kind of design it is for), change the design with edit_layers and check it with screenshot; act on the review that comes with the picture."
+                "instructions": "Quill is a canvas design editor. Call get_state first, read get_guide before writing layers (it also says how to design well here, which fonts are installed and which skills there are; read a skill with read_skill before the kind of design it is for), change the design with edit_layers and check it with screenshot; act on the review that comes with the picture."
             })
         }
         Some("ping") => json!({}),
@@ -319,13 +319,13 @@ fn answer(message: &Value, chat: Option<u64>, shared: &Shared) -> Option<Value> 
             let (reply, answered) = channel();
             let call = Call { tool: OPEN.to_owned(), arguments: params, client: String::new(), chat: None, reply };
             if lock(&shared.send).send(call).is_err() {
-                return Some(failure(id, -32000, "Pencraft is closing"));
+                return Some(failure(id, -32000, "Quill is closing"));
             }
             (shared.wake)();
             match answered.recv_timeout(PATIENCE) {
                 Ok(Ok(_)) => json!({ "opened": true }),
                 Ok(Err(error)) => return Some(failure(id, -32000, &error)),
-                Err(_) => return Some(failure(id, -32000, "Pencraft didn't answer in time.")),
+                Err(_) => return Some(failure(id, -32000, "Quill didn't answer in time.")),
             }
         }
         Some("tools/list") => {
@@ -351,7 +351,7 @@ fn answer(message: &Value, chat: Option<u64>, shared: &Shared) -> Option<Value> 
                 reply,
             };
             if lock(&shared.send).send(call).is_err() {
-                return Some(failure(id, -32000, "Pencraft is closing"));
+                return Some(failure(id, -32000, "Quill is closing"));
             }
             (shared.wake)();
             // Human: a tool that fails is still an answer (the model reads the error and tries again), marked
@@ -359,7 +359,7 @@ fn answer(message: &Value, chat: Option<u64>, shared: &Shared) -> Option<Value> 
             match answered.recv_timeout(PATIENCE) {
                 Ok(Ok(content)) => json!({ "content": content, "isError": false }),
                 Ok(Err(error)) => json!({ "content": [{ "type": "text", "text": error }], "isError": true }),
-                Err(_) => json!({ "content": [{ "type": "text", "text": "Pencraft didn't answer in time." }], "isError": true }),
+                Err(_) => json!({ "content": [{ "type": "text", "text": "Quill didn't answer in time." }], "isError": true }),
             }
         }
         Some(other) => return Some(failure(id, -32601, &format!("unknown method {other}"))),
@@ -491,7 +491,7 @@ pub fn bridge() -> ExitCode {
         let out = match (sent, id) {
             (Some(body), _) if !body.is_empty() => String::from_utf8_lossy(&body).into_owned(),
             (Some(_), _) | (None, None) => continue,
-            (None, Some(id)) => failure(&id, -32000, "Pencraft isn't running and couldn't be started").to_string(),
+            (None, Some(id)) => failure(&id, -32000, "Quill isn't running and couldn't be started").to_string(),
         };
         println!("{out}");
         // A closed output means the client has gone.
@@ -569,11 +569,11 @@ mod tests {
             let call = calls.recv().unwrap();
             assert_eq!((call.tool.as_str(), &call.arguments["paths"], call.chat), (OPEN, &json!(["/designs/shop.pen"]), None));
             call.reply.send(Ok(Vec::new())).unwrap();
-            calls.recv().unwrap().reply.send(Err("Pencraft is busy".to_owned())).unwrap();
+            calls.recv().unwrap().reply.send(Err("Quill is busy".to_owned())).unwrap();
         });
         let open = json!({ "jsonrpc": "2.0", "id": 1, "method": OPEN, "params": { "paths": ["/designs/shop.pen"] } });
         assert_eq!(answer(&open, None, &shared).unwrap()["result"], json!({ "opened": true }));
-        // An app that can't take them says so, and the second Pencraft opens them itself.
+        // An app that can't take them says so, and the second Quill opens them itself.
         assert!(answer(&open, None, &shared).unwrap().get("result").is_none());
         app.join().unwrap();
     }

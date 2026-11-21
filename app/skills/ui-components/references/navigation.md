@@ -130,7 +130,7 @@ row, holding links of 14 with 8 around each.
 A centred row, 4 apart: "Previous" and "Next" with a chevron (8 on the chevron's side, 10 on the other), page
 numbers as 36 squares (32 in Compact) without a skin, the current page as an outline, an `ellipsis` where
 pages are left out. Show the first, the last, and the pages around the current one. On the first page
-"Previous" has `"opacity":0.5`. (Looked at alone it is text of one size, and Pencraft's review says so:
+"Previous" has `"opacity":0.5`. (Looked at alone it is text of one size, and Quill's review says so:
 that remark can stand for a control.)
 
 ```json

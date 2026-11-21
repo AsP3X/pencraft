@@ -1,4 +1,4 @@
-//! Pencraft: a canvas design editor for `.quill` and `.pen` files, written in Rust as a Craft app.
+//! Quill: a canvas design editor for `.quill` and `.pen` files, written in Rust as a Craft app.
 //!
 //! `pencraft [FILE.quill|FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--update-required] [--update-collapsed] [--update-download [PERCENT]] [--home] [--export FILE]]`
 //! `pencraft [--background] [--private] [--no-update-check] [--update-download [PERCENT]] [--assistant ID] [--ask MESSAGE] [FILE.quill|FILE.pen]...` opens the window behind what the user is doing.
@@ -78,7 +78,7 @@ const MIN_WINDOW_SIZE: [f32; 2] = [560.0, 400.0];
 const SAMPLES: u16 = 4;
 /// The icon of the window and, on a Mac, of the app in the Dock (`design/icon/build.sh` draws both files).
 // Human: a Mac icon is a plate with room and a shadow round it, as the Dock expects; elsewhere the plate fills
-// the square. Pencraft.app has the same picture as its own icon; this one is for a Pencraft started without it.
+// the square. Pencraft.app has the same picture as its own icon; this one is for a Quill started without it.
 const ICON: &[u8] = if cfg!(target_os = "macos") { include_bytes!("../assets/icon-macos.png") } else { include_bytes!("../assets/icon.png") };
 const USAGE: &str = "usage: pencraft [FILE.quill|FILE.pen]... [--screenshot OUT.png [--dark] [--sidebar VIEW] [--settings PAGE] [--select LAYER] [--points] [--find TEXT] [--attach FILE]... [--actions] [--generate-image] [--activity] [--update-prompt] [--update-required] [--update-collapsed] [--update-download [PERCENT]] [--home] [--export FILE]]\n       pencraft [--background] [--private] [--no-update-check] [--update-download [PERCENT]] [--assistant ID] [--ask MESSAGE] [FILE.quill|FILE.pen]...\n       pencraft mcp
        pencraft skills [show NAME [FILE] | install [--project DIR | --dir DIR]]";
@@ -102,19 +102,19 @@ fn main() -> ExitCode {
         }
     };
     // A check, or an app an AI client started, must never take focus from what the person is doing.
-    // Human: an AI client asks for the app in the background; when a Pencraft is already running there is
+    // Human: an AI client asks for the app in the background; when a Quill is already running there is
     // nothing to start, and no second window opens.
     if launch.background && launch.ask.is_none() && link::serving() {
         return ExitCode::SUCCESS;
     }
-    // Human: files opened from the Explorer or the command line go to the Pencraft that is already running.
+    // Human: files opened from the Explorer or the command line go to the Quill that is already running.
     let own_window = launch.screenshot.is_some() || launch.private || launch.background || launch.ask.is_some();
     if !launch.files.is_empty() && !own_window && link::hand_over(&launch.files) {
         return ExitCode::SUCCESS;
     }
     let shooting = launch.screenshot.is_some() || launch.background;
     let mut viewport = egui::ViewportBuilder::default()
-        .with_title("Pencraft")
+        .with_title("Quill")
         .with_app_id("dev.pencraft.desktop")
         .with_inner_size(WINDOW_SIZE)
         .with_min_inner_size(MIN_WINDOW_SIZE)
@@ -155,12 +155,12 @@ fn main() -> ExitCode {
         options
     };
     let result = eframe::run_native(
-        "Pencraft",
+        "Quill",
         options,
         Box::new(move |cc| {
             // winit's own Quit (⌘Q) ends the app without asking about unsaved work; this menu's Quit asks first.
             #[cfg(target_os = "macos")]
-            if let Err(e) = craft_menu::mac::install_app_menu(&cc.egui_ctx, "Pencraft") {
+            if let Err(e) = craft_menu::mac::install_app_menu(&cc.egui_ctx, "Quill") {
                 log::warn!("app menu: kept winit's Quit, which ends the app without asking: {e}");
             }
             Ok(Box::new(app::App::new(cc, launch)))
@@ -169,7 +169,7 @@ fn main() -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            complain(&format!("Pencraft couldn't open its window: {e}"));
+            complain(&format!("Quill couldn't open its window: {e}"));
             ExitCode::FAILURE
         }
     }
@@ -238,7 +238,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<app::Launch, String>
             "--assistant" => launch.assistant = Some(args.next().ok_or("--assistant needs an id, like code/claude-opus-5-5")?),
             "--export" => launch.export = Some(PathBuf::from(args.next().ok_or("--export needs a file name")?)),
             "--select" => launch.select = Some(args.next().ok_or("--select needs a layer's id")?),
-            "--help" | "-h" => return Err("Pencraft".to_owned()),
+            "--help" | "-h" => return Err("Quill".to_owned()),
             flag if flag.starts_with("--") => return Err(format!("unknown option {flag}")),
             file => launch.files.push(PathBuf::from(file)),
         }

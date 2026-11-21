@@ -1,4 +1,4 @@
-# Human: Pencraft, a canvas design editor for `.pen` files written in Rust, as a Craft app. The root package is the
+# Human: Quill, a canvas design editor for `.pen` files written in Rust, as a Craft app. The root package is the
 # desktop app (egui window); `crates/pen-doc` is the window-free document library it builds on.
 # Agent: workspace root AND the binary package `pencraft`; members inherit [workspace.package], [workspace.dependencies]
 # and [workspace.lints] (docs/agent-rules/rust-quality.md in the user's other projects).
@@ -27,7 +27,7 @@ craft-menu = { git = "https://github.com/storytold/craft-libs", rev = "915fc5445
 # Human: Writes PDF exports as vectors with their fonts inside (craft-pdf's writer over the Krilla library, with
 # its own shaping of a line of text). Krilla is the copy craft-libs carries, patched in below, which craft-pdf needs.
 craft-pdf = { git = "https://github.com/storytold/craft-libs", rev = "915fc544587fb9ce7c3d0110f4be7159bca0ff16", features = ["write-simple-text"] }
-# Human: The shared AI data model; Pencraft uses its secret type, which can't be printed or saved by accident.
+# Human: The shared AI data model; Quill uses its secret type, which can't be printed or saved by accident.
 craft-ai-core = { git = "https://github.com/storytold/craft-libs", rev = "915fc544587fb9ce7c3d0110f4be7159bca0ff16" }
 
 # Human: The window and UI, on the storytold egui fork (patched below) like every Craft app.

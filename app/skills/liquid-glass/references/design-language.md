@@ -2,7 +2,7 @@
 
 Background for cases the main skill file does not list. The rules follow Apple's published guidance for its
 2025 design language (Human Interface Guidelines: Materials, Color; "Adopting Liquid Glass"; WWDC25 sessions
-219, 356, 323). Where Apple publishes behaviour but no numbers, Pencraft's numbers are its own.
+219, 356, 323). Where Apple publishes behaviour but no numbers, Quill's numbers are its own.
 
 ## Two layers
 
@@ -64,7 +64,7 @@ icons. Alerts are bolder and left-aligned.
 Where pinned controls overlap scrolling content, the content fades (and on a device, blurs) toward that edge
 instead of meeting a divider. Soft (a gradual fade) is the default and suits glass buttons; hard (a more
 uniform, more opaque band) suits dense desktop layouts and pinned headers. One per edge, never stacked,
-never as decoration. Pencraft has no blur that varies along its length, so the soft style is a gradient fade.
+never as decoration. Quill has no blur that varies along its length, so the soft style is a gradient fade.
 
 ## Colour and type
 
@@ -72,7 +72,7 @@ System colours are tokens, not fixed values; define variables with light and dar
 glass are monochrome. Type is bolder and left-aligned in key moments (alerts, onboarding); section headers
 use title case, not capitals.
 
-## What Pencraft does not do
+## What Quill does not do
 
 No motion, no touch glow, no device-motion highlights, no corner smoothing (continuous corners), no blur
 that changes along its length, and liquid glass only on frames, rectangles and whole ellipses (any other

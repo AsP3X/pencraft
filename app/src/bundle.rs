@@ -62,7 +62,7 @@ pub fn is_old(path: &Path) -> bool {
     ends(path, OLD)
 }
 
-/// Whether `path` names a file Pencraft opens as a design: a `.pen` document or a bundle.
+/// Whether `path` names a file Quill opens as a design: a `.pen` document or a bundle.
 #[must_use]
 pub fn is_design(path: &Path) -> bool {
     is_bundle(path) || ends(path, PLAIN)
@@ -131,7 +131,7 @@ pub fn looks_packed(bytes: &[u8]) -> bool {
 }
 
 /// The folder an open bundle lies unpacked in, held for as long as this lives.
-// Human: the lock on the file inside says "in use" to every Pencraft on this computer, so the folders of
+// Human: the lock on the file inside says "in use" to every Quill on this computer, so the folders of
 // documents that are open are never cleared away ([`sweep`]), and those a crash left behind are.
 #[derive(Debug)]
 pub struct Work {
@@ -194,7 +194,7 @@ fn root() -> PathBuf {
     crate::imagery::store::home().map_or_else(|| std::env::temp_dir().join("pencraft-open"), |home| home.join(".pencraft").join("open"))
 }
 
-/// Removes the working folders no running Pencraft holds.
+/// Removes the working folders no running Quill holds.
 // Human: a folder is in use while its lock file is locked. One made a moment ago may not be locked yet and is
 // left alone; one without a lock file is rubbish, and goes after a day.
 // Agent: READS and WRITES under the working folders' root; BLOCKS on removing files: call it off the main thread.
@@ -256,7 +256,7 @@ pub fn open(path: &Path) -> Result<Opened, String> {
     } else if bytes.starts_with(b"PK") {
         from_zip(&bytes)?
     } else {
-        return Err("it is not a design Pencraft packed".to_owned());
+        return Err("it is not a design Quill packed".to_owned());
     };
     drop(bytes);
     let Parts { doc, files, newer, later, kept, told } = parts;
@@ -624,7 +624,7 @@ mod tests {
         std::fs::write(&file, quill::write(&[entry(quill::FILE, "readme.txt", b"x".to_vec())]).unwrap()).unwrap();
         assert_eq!(open(&file).unwrap_err(), "it holds no document");
         std::fs::write(&file, b"{}").unwrap();
-        assert_eq!(open(&file).unwrap_err(), "it is not a design Pencraft packed");
+        assert_eq!(open(&file).unwrap_err(), "it is not a design Quill packed");
         std::fs::remove_dir_all(&from).unwrap();
     }
 

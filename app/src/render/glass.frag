@@ -1,5 +1,5 @@
 #version 100
-// Human: Pencraft's liquid glass material. A slab of glass with a curved rim lies on what is behind the
+// Human: Quill's liquid glass material. A slab of glass with a curved rim lies on what is behind the
 // layer: the rim bends that picture inward (Snell's law on a squircle-profiled bevel), light catches the rim
 // from one side and, weaker, from the opposite one, and a tint lies over it all. Written from the optics, as
 // an original material; it follows the published look of such glass, not anyone's code.

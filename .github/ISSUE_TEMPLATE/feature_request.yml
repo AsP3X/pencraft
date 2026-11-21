@@ -1,5 +1,5 @@
 name: Feature request
-description: An idea for something Pencraft should do
+description: An idea for something Quill should do
 labels: [enhancement]
 body:
   - type: textarea

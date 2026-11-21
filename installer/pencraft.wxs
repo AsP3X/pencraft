@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  MSI installer for Pencraft. Built with the WiX Toolset (v4 or v5):
+  MSI installer for Quill. Built with the WiX Toolset (v4 or v5):
 
     wix build installer\pencraft.wxs -arch x64 -b installer ^
       -d Version=0.2.0 -d ExePath=app\target\release\pencraft.exe ^
@@ -16,8 +16,8 @@
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package
-      Name="Pencraft"
-      Manufacturer="Pencraft"
+      Name="Quill"
+      Manufacturer="Quill"
       Version="$(var.Version)"
       UpgradeCode="8F4CDB5D-7FC3-4DF3-8A5D-7F5815112903"
       Scope="perMachine"
@@ -25,7 +25,7 @@
       InstallerVersion="500">
 
     <SummaryInformation Description="Canvas design editor for .pen files" />
-    <MajorUpgrade DowngradeErrorMessage="A newer version of Pencraft is already installed." />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Quill is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
     <!-- The app has no repair or change options: Programs and Features only
@@ -60,7 +60,7 @@
       <Component Id="StartMenuShortcut" Guid="*">
         <Shortcut
             Id="AppShortcut"
-            Name="Pencraft"
+            Name="Quill"
             Description="Canvas design editor for .pen files"
             Target="[INSTALLFOLDER]pencraft.exe" />
         <RegistryValue
@@ -73,7 +73,7 @@
       </Component>
     </StandardDirectory>
 
-    <Feature Id="Main" Title="Pencraft" Level="1">
+    <Feature Id="Main" Title="Quill" Level="1">
       <ComponentRef Id="MainExecutable" />
       <ComponentRef Id="StartMenuShortcut" />
     </Feature>

@@ -44,7 +44,7 @@ jobs:
             query-filters:
               # egui tells widgets apart by an "id salt", and every label or
               # id string given to one is reported as a hard-coded
-              # cryptographic salt. Pencraft has no salts or keys of its own
+              # cryptographic salt. Quill has no salts or keys of its own
               # to hard-code: API keys are kept in the system's keychain and
               # a download's checksum is worked out by the system's own tool.
               - exclude:

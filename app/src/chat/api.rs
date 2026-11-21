@@ -437,9 +437,9 @@ pub(super) fn call_tool(job: &Job<'_>, name: &str, input: &Value) -> Result<Vec<
     let call = Call { tool: name.to_owned(), arguments: input.clone(), client: CURSOR_NAME.to_owned(), chat: Some(job.chat), reply };
     if job.tools.send(call).is_ok() {
         (job.wake)();
-        answered.recv_timeout(TOOL_PATIENCE).unwrap_or_else(|_| Err("Pencraft didn't answer in time.".to_owned()))
+        answered.recv_timeout(TOOL_PATIENCE).unwrap_or_else(|_| Err("Quill didn't answer in time.".to_owned()))
     } else {
-        Err("Pencraft is closing.".to_owned())
+        Err("Quill is closing.".to_owned())
     }
 }
 
@@ -649,9 +649,7 @@ mod tests {
                 .is_some_and(|tools| tools.len() >= 9 && tools.iter().all(|t| t["eager_input_streaming"] == true && t["input_schema"].is_object()))
         );
         assert!(
-            own["system"]
-                .as_str()
-                .is_some_and(|system| system.starts_with(super::super::BRIEF) && system.contains("# Working on a Pencraft document"))
+            own["system"].as_str().is_some_and(|system| system.starts_with(super::super::BRIEF) && system.contains("# Working on a Quill document"))
         );
         // No sampling settings, no thinking setting: the current models decide both themselves.
         assert!(own.get("temperature").is_none() && own.get("thinking").is_none());

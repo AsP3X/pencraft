@@ -1,4 +1,4 @@
-# Contributing to Pencraft
+# Contributing to Quill
 
 Thank you for wanting to help. This page covers reporting problems, proposing
 changes, and what a pull request needs.
@@ -11,7 +11,7 @@ Open a [bug report](https://github.com/AsP3X/pencraft/issues/new/choose).
 It helps a lot if you include:
 
 - what you did, what you expected, and what happened instead
-- the Pencraft version (Settings → General → Updates names it) and your system
+- the Quill version (Settings → General → Updates names it) and your system
 - the `.pen` file, or a small one that shows the problem, if you can share it
 - a picture of the window; `pencraft your.pen --screenshot shot.png` takes one
 
@@ -60,7 +60,7 @@ first attempts:
 - **No panics in shipped code.** No `unwrap`, `expect` or `panic!` outside
   tests; return a `Result`. A bad file never crashes the app.
 - **Files round-trip.** Read, write, read gives identical bytes, and keys
-  Pencraft does not know survive.
+  Quill does not know survive.
 - **Colours and sizes of the interface live in `src/theme.rs`**, nowhere
   else. Numbers of the mechanics live in `MECHANICS.md` and `mechanics.json`.
 - **Dependencies are asked for first** and pinned exactly.
@@ -106,7 +106,7 @@ a few rounds.
 
 ## License of contributions
 
-Pencraft is licensed under the Apache License 2.0 with the Commons Clause
+Quill is licensed under the Apache License 2.0 with the Commons Clause
 ([LICENSE](LICENSE)). Unless you
 say otherwise, a contribution you submit is licensed under those same terms,
 without any additional conditions, and you confirm that you have the right to

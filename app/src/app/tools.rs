@@ -21,7 +21,7 @@ use crate::link::Call;
 /// A finished picture waits as long to be put on its layer (`App::finish_pictures`).
 pub(super) const BUSY_PATIENCE: Duration = Duration::from_secs(10);
 /// What `get_state` says when the assistant may not make pictures.
-const SERVICES_OFF: &str = "Generating and editing pictures is turned off for AI models in Pencraft's settings.";
+const SERVICES_OFF: &str = "Generating and editing pictures is turned off for AI models in Quill's settings.";
 /// The longest side of a picture given to a model, pixels: larger ones are drawn at a smaller scale.
 const MOST_PICTURE_SIDE: f32 = 2000.0;
 /// What the model's cursor is labelled with when the settings name nothing else.
@@ -251,7 +251,7 @@ impl App {
         }
         self.settle_fonts(ctx);
         for (call, since) in calls {
-            // Human: files a second Pencraft passes on are the user's own doing, whatever the settings say
+            // Human: files a second Quill passes on are the user's own doing, whatever the settings say
             // about AI models: they open in tabs and the window comes to the front.
             if call.tool == crate::link::OPEN {
                 for path in call.arguments.get("paths").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
@@ -260,14 +260,14 @@ impl App {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                 ctx.request_repaint();
-                // A second Pencraft that stopped waiting opens the files itself; there is no one to tell.
+                // A second Quill that stopped waiting opens the files itself; there is no one to tell.
                 let _ = call.reply.send(Ok(Vec::new()));
                 continue;
             }
             let on = self.prefs.get().agents.tools;
             // Human: a tool the user turned off in the settings is neither offered nor run.
             if on && self.prefs.get().agents.tools_off().contains(&call.tool) {
-                let refused = format!("The tool `{}` is turned off in Pencraft's settings (MCP). Go on without it.", call.tool);
+                let refused = format!("The tool `{}` is turned off in Quill's settings (MCP). Go on without it.", call.tool);
                 // A client that stopped waiting has gone; there is no one to tell.
                 let _ = call.reply.send(Err(refused));
                 continue;
@@ -306,7 +306,7 @@ impl App {
                 continue;
             }
             let result = if !self.prefs.get().agents.tools {
-                Err("AI tools are turned off in Pencraft's settings (Agents: \"Let AI models work on documents\").".to_owned())
+                Err("AI tools are turned off in Quill's settings (Agents: \"Let AI models work on documents\").".to_owned())
             } else if self.canvas.dragging() && CHANGING.contains(&call.tool.as_str()) {
                 if since.elapsed() < BUSY_PATIENCE {
                     self.waiting.push((call, since));
@@ -968,6 +968,6 @@ mod tests {
         let mut off = json!({ "documents": [] });
         tell_services(&mut off, false, listed);
         assert_eq!(off, json!({ "documents": [], "imageServices": [], "imageServicesNote": SERVICES_OFF }));
-        assert_eq!(SERVICES_OFF, "Generating and editing pictures is turned off for AI models in Pencraft's settings.");
+        assert_eq!(SERVICES_OFF, "Generating and editing pictures is turned off for AI models in Quill's settings.");
     }
 }

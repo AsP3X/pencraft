@@ -1,13 +1,13 @@
 ---
 name: slides
-description: Design presentation slides and decks in Pencraft that carry an argument - a title, statement, big number, one chart, comparison, quote, plan and closing ask, on 16:9 frames with type large enough for a room, or denser slides for a deck that is read. Use when the user asks for slides, a deck, a presentation, a pitch deck, a keynote, a talk, a board or investor presentation, a one-pager in slide form, or names PowerPoint, Keynote or Google Slides. Covers the order of a pitch deck, titles as conclusions, type sizes for presenting and for reading, slide kinds, rhythm and export. Do not use for social carousels (the formats skill), a landing page, a printed poster, or a chart by itself (the charts skill).
-license: Apache-2.0 with Commons Clause (see LICENSE in the Pencraft repository)
+description: Design presentation slides and decks in Quill that carry an argument - a title, statement, big number, one chart, comparison, quote, plan and closing ask, on 16:9 frames with type large enough for a room, or denser slides for a deck that is read. Use when the user asks for slides, a deck, a presentation, a pitch deck, a keynote, a talk, a board or investor presentation, a one-pager in slide form, or names PowerPoint, Keynote or Google Slides. Covers the order of a pitch deck, titles as conclusions, type sizes for presenting and for reading, slide kinds, rhythm and export. Do not use for social carousels (the formats skill), a landing page, a printed poster, or a chart by itself (the charts skill).
+license: Apache-2.0 with Commons Clause (see LICENSE in the Quill repository)
 metadata:
   product: pencraft
   version: "1"
 ---
 
-# Slides in Pencraft
+# Slides in Quill
 
 A deck is an argument cut into steps. Each slide makes one point, says it in its title, and shows the
 evidence for it; the titles read in order are the whole case. A generated deck is recognised by the
@@ -15,7 +15,7 @@ opposite: topic titles ("Overview", "Key insights"), three bullets with an icon 
 twelve times, text too small for anyone past the second row. This skill is how to build the case. The look
 is designed by the guide's "Designing well".
 
-Work with Pencraft's tools (`get_state`, `read_layers`, `edit_layers`, `screenshot`, `export_layers`). The
+Work with Quill's tools (`get_state`, `read_layers`, `edit_layers`, `screenshot`, `export_layers`). The
 reference file named below is read with `read_skill` (name `slides`, `file` as given).
 
 Part of this skill is firm and part is a starting point. It says which, and the difference matters:
@@ -28,7 +28,7 @@ Part of this skill is firm and part is a starting point. It says which, and the 
   are still the expected way: leave one only with a reason, which can be short and needs nobody's leave.
 - A design that already has a look, a brand or a system keeps it. Take from this skill what the design
   lacks, and nothing that would replace what it has.
-- The examples in the reference files show how a thing is built in Pencraft and at what size. Their colours,
+- The examples in the reference files show how a thing is built in Quill and at what size. Their colours,
   faces, words and arrangement are one answer among many, not the look to reproduce.
 - The checklist and "When it looks wrong" at the end are there to be gone through every time, as a check
   of your own work. A line in them that speaks of a starting point is a starting point still.
@@ -136,7 +136,7 @@ way each slide's title is a claim, not the name of its row in this table.
 - What the speaker says is not on the slide. If the user wants notes, put them as a text 28 under each
   slide, outside its frame.
 - `export_layers` writes one file per slide: `.pdf` (text stays text) or `.png` at `scale` 1 for 1920 by
-  1080, 2 for a sharper projector. Pencraft makes no PowerPoint, Keynote or Google Slides file and no PDF
+  1080, 2 for a sharper projector. Quill makes no PowerPoint, Keynote or Google Slides file and no PDF
   of several pages: say so, and that the slides can be placed into any of them as pictures or joined as
   pages.
 
@@ -161,7 +161,7 @@ way each slide's title is a claim, not the name of its row in this table.
 - Figures, dates and names agree across slides; dates are real (the weekday fits the date).
 - The last slide asks for something.
 
-## 9. What Pencraft cannot do, and what to do instead
+## 9. What Quill cannot do, and what to do instead
 
 | Missing | Instead |
 |---|---|

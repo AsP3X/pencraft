@@ -92,7 +92,7 @@ struct Caps {
     sent: u64,
 }
 
-/// The limits Pencraft reads and sends pictures with.
+/// The limits Quill reads and sends pictures with.
 const CAPS: Caps = Caps { file: MOST_FILE, side: MOST_READ_SIDE, sent: MOST_SENT };
 
 /// `takes` in the order they are sent: the picture to change first, the others as given.
@@ -193,7 +193,7 @@ pub enum Unopened {
 ///
 /// # Errors
 /// Why it couldn't be opened; nothing of what the file holds is in it.
-// Human: the one way Pencraft opens a picture file it is given (to send it, or to show it small in the dialog),
+// Human: the one way Quill opens a picture file it is given (to send it, or to show it small in the dialog),
 // so the checks can't drift apart.
 // Agent: READS `path`; BLOCKS on decoding: worker thread only.
 pub fn open(path: &Path) -> Result<DynamicImage, Unopened> {
@@ -241,7 +241,7 @@ fn read(path: &Path, take: &Take, caps: &Caps) -> Result<DynamicImage, String> {
         Unopened::NotAPicture => not_a_picture(take),
         Unopened::Unreadable(error) => format!("{} couldn't be read: {error}.", called(take)),
         Unopened::LargeFile(size) => {
-            format!("{} is too large to read ({} MB); Pencraft sends picture files up to {} MB.", called(take), megabytes(size), megabytes(caps.file))
+            format!("{} is too large to read ({} MB); Quill sends picture files up to {} MB.", called(take), megabytes(size), megabytes(caps.file))
         }
         Unopened::LargePicture(pixels) => too_large(take, pixels, caps.side),
     })
@@ -258,12 +258,12 @@ fn opened(path: &Path) -> std::io::Result<ImageReader<std::io::BufReader<std::fs
 fn too_large(take: &Take, pixels: Option<(u32, u32)>, side: u32) -> String {
     match pixels {
         Some((width, height)) if width.max(height) <= side => {
-            format!("{} is too large to read ({width} × {height} pixels): it needs more memory than Pencraft gives one picture.", called(take))
+            format!("{} is too large to read ({width} × {height} pixels): it needs more memory than Quill gives one picture.", called(take))
         }
         Some((width, height)) => {
-            format!("{} is too large to read ({width} × {height} pixels); Pencraft sends pictures up to {side} pixels a side.", called(take))
+            format!("{} is too large to read ({width} × {height} pixels); Quill sends pictures up to {side} pixels a side.", called(take))
         }
-        None => format!("{} is too large to read; Pencraft sends pictures up to {side} pixels a side.", called(take)),
+        None => format!("{} is too large to read; Quill sends pictures up to {side} pixels a side.", called(take)),
     }
 }
 
@@ -438,7 +438,7 @@ mod tests {
         let folder = folder("too-large");
         let small = Caps { file: MOST_FILE, side: 32, sent: MOST_SENT };
         let why = prepare_within(&[file(&folder, "a.png", &png(64, 16, 255), true)], &small).unwrap_err();
-        assert_eq!(why, "\"a.png\" is too large to read (64 × 16 pixels); Pencraft sends pictures up to 32 pixels a side.");
+        assert_eq!(why, "\"a.png\" is too large to read (64 × 16 pixels); Quill sends pictures up to 32 pixels a side.");
         assert!(prepare_within(&[file(&folder, "b.png", &png(32, 16, 255), true)], &small).is_ok());
         let tiny = Caps { file: 10, ..small };
         let why = prepare_within(&[file(&folder, "c.png", &png(8, 8, 255), true)], &tiny).unwrap_err();

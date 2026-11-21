@@ -2,7 +2,7 @@
 
 A logo has a kind (wordmark, monogram, mark with a name, emblem, mascot, app icon) and a rendering style. Each
 style below is a set of rules; a logo keeps to the rules of one. For each: when it fits, its palette, its
-lines, how it shades, its type, its layout with numbers, how it is built in Pencraft, what its small version
+lines, how it shades, its type, its layout with numbers, how it is built in Quill, what its small version
 is, and what gives a poor one away. Numbers are in parts of the logo's width (W) unless they say otherwise.
 
 Styles marked *detailed* are built in the order `references/detail.md` gives and are delivered with a small
@@ -68,7 +68,7 @@ small version first and the detailed one as its dress uniform.
   ("20 | 11" either side of its foot) instead of going on the rim.
 - Type: two families at most: wide or condensed capitals for the rim, and a script, a slab or a serif for
   one large word. Spaced capitals on the arcs (10% to 20% of the size).
-- In Pencraft: rings as `evenodd` paths; rim text as `text` layers with `onCircle`; rays, stars and ribbons
+- In Quill: rings as `evenodd` paths; rim text as `text` layers with `onCircle`; rays, stars and ribbons
   from `references/detail.md`. Small version: the centre picture or a monogram in the outer ring, no text.
 - Tells: bottom text upside down; arc text that does not end symmetrically; three or more faces; parts
   that share no centre line; ring and picture in the same line weight; texture baked in.

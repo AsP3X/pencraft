@@ -205,7 +205,7 @@ centred, 8 above and below, naming the query.
 
 For choosing several, and for tags. The field is the input's skin with 6 inside; a chip is 22 high with
 radius `$radius-sm`, `$muted`, 12 at weight 500, and an `x` of 12 that removes it. What is typed next follows
-the last chip. Pencraft's layouts do not wrap: when the chips need a second line, make the field a vertical
+the last chip. Quill's layouts do not wrap: when the chips need a second line, make the field a vertical
 frame of rows, each 22 high and 6 apart, with 6 above and below.
 
 ```json
@@ -292,7 +292,7 @@ segmented control with labels is the tab list of `references/controls.md` with e
 ## File drop
 
 Convention, built from this kit's tokens. A panel with a 1 wide `$input` border (the web
-draws it dashed; Pencraft's shapes have solid strokes only), radius `$radius-lg`, 32 inside: a 40 tile with
+draws it dashed; Quill's shapes have solid strokes only), radius `$radius-lg`, 32 inside: a 40 tile with
 an `upload` icon, one line of 14 at weight 500 saying what to drop, one of 12 with the limits. Files that
 were added are listed under it as rows (name, size, a progress bar while one uploads, an `x` to remove it).
 

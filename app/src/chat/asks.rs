@@ -59,7 +59,7 @@ pub fn all_told(steps: &[String]) -> String {
     }
 }
 /// What a caller outside the app's own chat is told.
-pub const NO_CHAT: &str = "Only the assistant in Pencraft's own chat can ask the user this way. Ask in your reply instead.";
+pub const NO_CHAT: &str = "Only the assistant in Quill's own chat can ask the user this way. Ask in your reply instead.";
 
 /// One question, with the answers offered for it.
 #[derive(Clone, Debug, PartialEq, Eq)]

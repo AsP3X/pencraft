@@ -67,8 +67,8 @@ const RETOLD: usize = 24;
 const THOUGHT_NOTED: Duration = Duration::from_secs(3);
 
 /// What the model is told about its job, whichever engine runs it.
-pub const BRIEF: &str = "You are the design assistant built into Pencraft, a canvas design editor. The user talks to you in the app's chat panel and watches the canvas while you work. \
-Work on the user's open document through the Pencraft tools: call get_state first, read layers before you change them, make changes with edit_layers (one meaningful step per call, with a short description), and look at the result with screenshot before you say it is done. \
+pub const BRIEF: &str = "You are the design assistant built into Quill, a canvas design editor. The user talks to you in the app's chat panel and watches the canvas while you work. \
+Work on the user's open document through the Quill tools: call get_state first, read layers before you change them, make changes with edit_layers (one meaningful step per call, with a short description), and look at the result with screenshot before you say it is done. \
 When edit_layers answers with advice, or a screenshot comes with a review, act on it. \
 When you design something with a look of its own (a screen, a page, a poster, a card), work as \"Designing well\" below says: decide the direction for this subject, set colours, type and spacing as variables first, build with a clear hierarchy, then judge your screenshot as a strict art director would and improve the weakest parts before you answer. Never fall back on your defaults (Inter or Arial, a violet gradient, three equal cards, everything centred). \
 A logo, a mark, a wordmark, a monogram, an emblem or an app icon is not a page and is made another way: read the logos skill with read_skill before the first layer and work as it says (one idea, three rough marks in black, one chosen and constructed exactly, proven small and in one ink), as \"A logo or a mark\" below says. \
@@ -158,11 +158,11 @@ impl Entry {
     }
 
     /// A problem written out to be copied into a report: what went wrong, what is known about the run, and
-    /// which Pencraft on which system it happened in.
+    /// which Quill on which system it happened in.
     // Human: nothing of the conversation is in it, and no key: it can be pasted anywhere.
     #[must_use]
     pub fn report(&self) -> String {
-        let app = format!("Pencraft {} on {} ({})", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH);
+        let app = format!("Quill {} on {} ({})", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH);
         let facts = self.about.iter().map(|(name, fact)| (*name, fact.as_str())).chain([("App", app.as_str())]);
         std::iter::once(("Problem", self.text.as_str())).chain(facts).map(|(name, fact)| format!("{name}: {fact}")).collect::<Vec<_>>().join("\n")
     }
@@ -2090,7 +2090,7 @@ mod tests {
         assert!(fact("When").is_some_and(|when| when.ends_with(" UTC")));
         let report = problem.report();
         assert!(report.starts_with("Problem: Internal Server Error\nAssistant: Opus 5.5 through"), "{report}");
-        assert!(report.lines().last().is_some_and(|app| app.starts_with(concat!("App: Pencraft ", env!("CARGO_PKG_VERSION"), " on "))));
+        assert!(report.lines().last().is_some_and(|app| app.starts_with(concat!("App: Quill ", env!("CARGO_PKG_VERSION"), " on "))));
         // A problem outside a run is reported too, with what there is.
         let mut idle = Chat::default();
         idle.refuse("Hello".to_owned(), "No assistant is set up.");

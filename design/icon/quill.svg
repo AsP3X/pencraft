@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- The Quill icon: a quill drawing a line. Written by build.py, which also draws every icon file. -->
+  <defs>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34343a"/>
+      <stop offset="1" stop-color="#111113"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.08"/>
+    </linearGradient>
+    <linearGradient id="feather" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e4e4e7"/>
+    </linearGradient>
+    <mask id="vane" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <path d="M 300 772 C 318 520 540 250 836 188 C 836 470 600 716 300 772 Z" fill="#ffffff"/>
+      <path d="M 182 880 L 288 759 L 312 785 Z" fill="#ffffff"/>
+      <path d="M 676 660 L 500 604 M 808 484 L 634 440" stroke="#000000" stroke-width="18" stroke-linecap="round"/>
+      <path d="M 338 736 L 716 316" stroke="#000000" stroke-width="18" stroke-linecap="round"/>
+    </mask>
+  </defs>
+  <rect width="1024" height="1024" rx="230" fill="url(#plate)"/>
+  <rect x="5" y="5" width="1014" height="1014" rx="225" fill="none" stroke="url(#rim)" stroke-width="10"/>
+  <!-- The line the quill is drawing. -->
+  <path d="M 182 880 C 380 968 650 936 856 772" fill="none" stroke="#3b82f6" stroke-width="46" stroke-linecap="round"/>
+  <!-- The quill: its vane with two splits, the shaft through it, and the nib at the start of the line. -->
+  <rect width="1024" height="1024" fill="url(#feather)" mask="url(#vane)"/>
+</svg>

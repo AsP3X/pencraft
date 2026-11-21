@@ -147,7 +147,7 @@ Steps of 4, each with a job:
 ## Where these numbers come from
 
 shadcn/ui's neutral theme and its classic style, read from its source in November 2026, with three changes
-for Pencraft: `muted-foreground` is one step darker than shadcn's `#737373`, so that 12 px labels hold 6:1 on
+for Quill: `muted-foreground` is one step darker than shadcn's `#737373`, so that 12 px labels hold 6:1 on
 white and on the muted grey; `input` in the light theme is one step darker than `border`, so a field's edge can be seen;
 `destructive` is deepened so its text holds 4.5:1 on its own tint. The hex values are conversions of
 shadcn's OKLCH values and are approximate. `references/styles.md` has the exact shadcn values for when exact

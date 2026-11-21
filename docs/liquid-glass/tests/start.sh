@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # usage: start.sh NAME [FILE.pen]
-# Starts this checkout's Pencraft as a private instance for one test. Its address file goes to out/NAME/home, so
-# it neither sees nor disturbs a Pencraft you have open. Then: PENCRAFT_HOME=out/NAME/home python pc.py tools
+# Starts this checkout's Quill as a private instance for one test. Its address file goes to out/NAME/home, so
+# it neither sees nor disturbs a Quill you have open. Then: PENCRAFT_HOME=out/NAME/home python pc.py tools
 set -eu
 HERE="$(cd "$(dirname "$0")" && pwd)"
 APP="$HERE/../../../app/target/debug/pencraft"

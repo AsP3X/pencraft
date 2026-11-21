@@ -1,6 +1,6 @@
 # Fresh-agent tests of the liquid-glass skill
 
-Each test gives an agent that has never seen this work only a user's request, Pencraft's public tools and
+Each test gives an agent that has never seen this work only a user's request, Quill's public tools and
 whatever those tools tell it (the guide, which lists the skill; `read_skill`). The agent builds the design,
 checks it, and reports every place it had to guess or retry. Those reports are what the tests are for.
 
@@ -10,10 +10,10 @@ checks it, and reports every place it had to guess or retry. Those reports are w
   checkout moves).
 - `photos/`: five photo-like pictures made by a script from gradients, shapes and noise (no third-party
   material), used as content and backdrops.
-- `pc.py`: calls one of Pencraft's tools from a shell, the way an MCP client would
+- `pc.py`: calls one of Quill's tools from a shell, the way an MCP client would
   (`python pc.py tools` lists them).
-- `start.sh N`, `stop.sh N`: start and stop a private Pencraft for one test. Its address file is written to
-  `out/N/home`, so it neither sees nor disturbs a Pencraft you have open; `stop.sh` ends only that process.
+- `start.sh N`, `stop.sh N`: start and stop a private Quill for one test. Its address file is written to
+  `out/N/home`, so it neither sees nor disturbs a Quill you have open; `stop.sh` ends only that process.
 - `out/N/design.pen`, `out/N/final.png`: what the agent of test N left. `renders/` holds the final pictures
   kept with the repository.
 

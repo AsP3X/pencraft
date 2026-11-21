@@ -1,21 +1,21 @@
 ---
 name: material
-description: Design Android and Material Design interfaces in Pencraft to Google's Material 3 Expressive specification - colour roles, the type scale, shape, elevation and state layers, and components at their real sizes (buttons and button groups, FAB, icon buttons, chips, cards, text fields, switches, checkboxes, sliders, lists, top app bar, navigation bar and rail, search bar, tabs, dialogs, bottom sheets, snackbars), with a ready Android phone screen. Use when the user asks for an Android app or screen, names Material, Material Design, Material 3, Material You, M3 Expressive, Jetpack Compose, Pixel or Google's design system, or wants a FAB, a navigation bar, chips or a snackbar. Do not use for iPhone or Apple designs (the liquid-glass and devices skills), nor for web components in the manner of shadcn or Radix (the ui-components skill).
-license: Apache-2.0 with Commons Clause (see LICENSE in the Pencraft repository)
+description: Design Android and Material Design interfaces in Quill to Google's Material 3 Expressive specification - colour roles, the type scale, shape, elevation and state layers, and components at their real sizes (buttons and button groups, FAB, icon buttons, chips, cards, text fields, switches, checkboxes, sliders, lists, top app bar, navigation bar and rail, search bar, tabs, dialogs, bottom sheets, snackbars), with a ready Android phone screen. Use when the user asks for an Android app or screen, names Material, Material Design, Material 3, Material You, M3 Expressive, Jetpack Compose, Pixel or Google's design system, or wants a FAB, a navigation bar, chips or a snackbar. Do not use for iPhone or Apple designs (the liquid-glass and devices skills), nor for web components in the manner of shadcn or Radix (the ui-components skill).
+license: Apache-2.0 with Commons Clause (see LICENSE in the Quill repository)
 metadata:
   product: pencraft
   version: "1"
 ---
 
-# Material 3 in Pencraft
+# Material 3 in Quill
 
 Material is a specification: a screen is right when its sizes, roles and shapes are the published ones.
 People who use Android every day see a 48 high button or a square FAB at once. This skill is the numbers
-of Material 3 Expressive, the current version, as Pencraft layers. Where the user asks for Material, they
+of Material 3 Expressive, the current version, as Quill layers. Where the user asks for Material, they
 are what make a screen read as Material; the colour (from one seed), the content, the composition and the
 emphasis are yours to design.
 
-Work with Pencraft's tools (`get_state`, `read_layers`, `edit_layers`, `screenshot`). The reference files
+Work with Quill's tools (`get_state`, `read_layers`, `edit_layers`, `screenshot`). The reference files
 named below are read with `read_skill` (name `material`, `file` as given).
 
 Part of this skill is firm and part is a starting point. It says which, and the difference matters:
@@ -31,7 +31,7 @@ Part of this skill is firm and part is a starting point. It says which, and the 
   short and needs nobody's leave.
 - A design that already has a look, a brand or a system keeps it. Take from this skill what the design
   lacks, and nothing that would replace what it has.
-- The examples in the reference files show how a thing is built in Pencraft and at what size. Their colours,
+- The examples in the reference files show how a thing is built in Quill and at what size. Their colours,
   faces, words and arrangement are one answer among many, not the look to reproduce.
 - The checklist and "When it looks wrong" at the end are there to be gone through every time, as a check
   of your own work. A line in them that speaks of a starting point is a starting point still.
@@ -76,7 +76,7 @@ Flex when one is installed (`get_guide` lists the families); otherwise the syste
 - For a brand colour, build the scheme by that table: the brand's hue for the primary palette, the same hue
   at a third of its strength for secondary, a neighbouring hue for tertiary, and the same hue at almost no
   strength for the neutrals. Say that this is worked out by eye: Google's tool does it by an algorithm
-  Pencraft does not have.
+  Quill does not have.
 - Three accents with jobs: primary for the main action and what is active, secondary for quieter parts
   (a selected chip, the active navigation item's pill), tertiary for a contrasting touch. Most screens need
   only primary, the secondary container and the surfaces.
@@ -187,7 +187,7 @@ up. Say so when a user asks where they come from.
 
 ## 7. Icons
 
-Material's own icons (Material Symbols) are not in Pencraft; the Lucide set stands in. Use one size per
+Material's own icons (Material Symbols) are not in Quill; the Lucide set stands in. Use one size per
 role (24 in bars, lists and buttons of 56; 20 in buttons of 32 and 40; 18 in chips) and tell the user in
 one line that the icons are stand-ins. Material fills the icon of the active destination; Lucide has
 outlines only, so the indicator pill and the label carry the active state.
@@ -202,7 +202,7 @@ outlines only, so the indicator pill and the label carry the active state.
 4. Compose the work with instances and overrides. Pick states with `"state"`.
 5. `screenshot` with the work's `id`, put right what the review counted, then go through the checklist.
 6. Tell the user in two sentences what is there, that the icons are Lucide, and anything they asked for
-   that Pencraft cannot draw.
+   that Quill cannot draw.
 
 ## 9. Checklist
 
@@ -214,7 +214,7 @@ outlines only, so the indicator pill and the label carry the active state.
 - The ground runs under the status bar and the gesture handle.
 - In dark: the dark values of the roles, surfaces lighter as they rise, no pure black page.
 
-## 10. What Pencraft cannot draw, and what to do instead
+## 10. What Quill cannot draw, and what to do instead
 
 | Missing | Instead |
 |---|---|

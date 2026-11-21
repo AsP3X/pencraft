@@ -144,7 +144,7 @@ Small once there is a value; in an empty field it is the placeholder in Body Lar
 
 The filled kind has `$surface-container-highest`, top corners of 4 and only a line under it (1, or 2
 focused). The label's box takes the colour of what is behind the field: change `m3-text-field-label-box`
-when the field stands on a card. (Pencraft's advice about a layer with the fill of what is behind it can
+when the field stands on a card. (Quill's advice about a layer with the fill of what is behind it can
 stand for this one box: it is what breaks the line behind the label.)
 
 ## Switch, checkbox
@@ -222,7 +222,7 @@ view: 112 with the title in Headline Medium under the icons, or 120 with Display
 64 high on `$surface-container`, three to five destinations of equal width. Each is a 24 icon in an
 indicator of 56 by 32 and a label in Label Medium 4 under it. The active one has the indicator filled with
 `$secondary-container`, its icon in `$on-secondary-container` and its label emphasized in `$on-surface` (Material's `$secondary`
-falls short of the 6:1 Pencraft asks of text this small).
+falls short of the 6:1 Quill asks of text this small).
 
 ```json
 {"type":"frame","id":"m3-nav-bar","name":"Navigation bar","reusable":true,"width":412,"height":64,"padding":[0,8],"alignItems":"center","fill":"$surface-container","children":[

@@ -1,4 +1,4 @@
-//! Puts Pencraft's icon and name into `pencraft.exe` when it is built on Windows; does nothing elsewhere.
+//! Puts Quill's icon and name into `pencraft.exe` when it is built on Windows; does nothing elsewhere.
 
 // Human: the icon inside the program is what the Explorer, the Start menu, shortcuts and `.pen` files show, and
 // the name is what the Task Manager calls it. `design/icon/build.sh` draws the icon file.
@@ -17,7 +17,7 @@ fn main() -> std::io::Result<()> {
     #[cfg(windows)]
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         let mut resource = winresource::WindowsResource::new();
-        resource.set_icon(ICON).set("ProductName", "Pencraft").set("FileDescription", "Pencraft");
+        resource.set_icon(ICON).set("ProductName", "Quill").set("FileDescription", "Quill");
         resource.compile()?;
     }
     Ok(())

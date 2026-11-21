@@ -57,7 +57,7 @@ struct ClosePrompt {
 }
 
 /// Clears away the folders that bundles open in an earlier run lay unpacked in, off this thread; those a running
-/// Pencraft holds stay.
+/// Quill holds stay.
 fn sweep_working_folders() {
     if let Err(error) = std::thread::Builder::new().name("working-folders".to_owned()).spawn(bundle::sweep) {
         log::warn!("working folders: {error}");
@@ -88,8 +88,8 @@ impl Recovery {
     }
 }
 
-/// The app's name in the menu bar ("Quit Pencraft").
-const APP_NAME: &str = "Pencraft";
+/// The app's name in the menu bar ("Quit Quill").
+const APP_NAME: &str = "Quill";
 
 /// How the app was started.
 #[expect(clippy::struct_excessive_bools, reason = "each is one independent switch of the command line")]
@@ -697,7 +697,7 @@ impl App {
     fn ask_save(&mut self, title: &str, tab: usize, close: bool) {
         let Some(editor) = self.tabs.get(tab) else { return };
         let name = format!("{}.{}", editor.title(), bundle::ENDING);
-        self.dialogs.ask(FileDialog::save().title(title).filter("Pencraft designs", &[bundle::ENDING]).file_name(name), Then::SaveAs { tab, close });
+        self.dialogs.ask(FileDialog::save().title(title).filter("Quill designs", &[bundle::ENDING]).file_name(name), Then::SaveAs { tab, close });
     }
 
     /// Asks where to write the document in front as a `.pen` file.
@@ -1303,7 +1303,7 @@ impl App {
                 ui.set_height(TITLE_ISLAND_HEIGHT - 2.0);
                 ui.spacing_mut().item_spacing.x = 4.0;
                 ui.add_space(if cfg!(target_os = "macos") { TRAFFIC_LIGHT_SPACE - 8.0 } else { 8.0 });
-                ui.add(egui::Label::new(RichText::new("Pencraft").size(TITLE_SIZE).color(palette.foreground)).selectable(false));
+                ui.add(egui::Label::new(RichText::new("Quill").size(TITLE_SIZE).color(palette.foreground)).selectable(false));
                 ui.add_space(10.0);
                 let home = self.active.is_none();
                 if icon_button(ui, "house", egui::Vec2::splat(TITLE_BUTTON), home, palette).on_hover_text(crate::keys::text("Home (⌘N)")).clicked()
@@ -1719,7 +1719,7 @@ impl App {
         let mut choice = None;
         egui::Modal::new(egui::Id::unique("recovery")).show(ctx, |ui| {
             ui.set_width(380.0);
-            ui.label(RichText::new("Pencraft didn't close properly last time").strong());
+            ui.label(RichText::new("Quill didn't close properly last time").strong());
             ui.label(if self.recovery.left.len() == 1 {
                 "This design had changes that weren't saved:"
             } else {
@@ -1902,7 +1902,7 @@ impl eframe::App for App {
         self.close_prompt(&ctx);
         self.recovery_prompt(&ctx);
         self.toasts.show(&ctx, self.dark());
-        let title = self.active.and_then(|i| self.tabs.get(i)).map_or_else(|| "Pencraft".to_owned(), |t| format!("{} — Pencraft", t.title()));
+        let title = self.active.and_then(|i| self.tabs.get(i)).map_or_else(|| "Quill".to_owned(), |t| format!("{} — Quill", t.title()));
         let current = ctx.input(|i| i.viewport().title.clone());
         if current.as_deref() != Some(title.as_str()) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));

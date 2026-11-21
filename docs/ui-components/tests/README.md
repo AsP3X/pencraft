@@ -1,7 +1,7 @@
 # Fresh-agent tests of the ui-components skill
 
 The same method as `docs/liquid-glass/tests` and with its scripts: an agent that has never seen this work
-gets a user's request, Pencraft's public tools and whatever those tell it, builds the design, and reports
+gets a user's request, Quill's public tools and whatever those tell it, builds the design, and reports
 every place it had to guess or retry.
 
 ## Running one
@@ -33,7 +33,7 @@ The paths inside the prompts are absolute; adjust them when the checkout moves.
 
 All four built what was asked without a tool error. What the reports named was then fixed:
 
-- In Pencraft's checks: the advice on a layer with the fill of its frame did not see a scrim lying between
+- In Quill's checks: the advice on a layer with the fill of its frame did not see a scrim lying between
   them (a dialog over a dimmed page); the review measured text against only the last fill of a frame and took
   a half see-through fill for a solid one; a picture with nothing counted came without a line saying so; the
   questions that come with a picture asked for "a mood of its own" of standard components.

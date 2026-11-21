@@ -6,7 +6,7 @@ from the values named beside it, by the rules of section 4 of the skill: change 
 sizes out again. Their look (colours, corners, weights, spacing) is a plain default: restyle them to the
 design they go into. What should survive a restyling is the arithmetic. Ids start with `chart-`; give a second chart of the same kind ids of its own.
 
-A chart looked at by itself is labels of one size, and several series are several colours. Pencraft's
+A chart looked at by itself is labels of one size, and several series are several colours. Quill's
 review remarks on both (type without a hierarchy, more than three accent hues). In a card or a screen the
 title gives the hierarchy, and the colours of a categorical chart are its meaning: those two remarks can
 stand for a chart.

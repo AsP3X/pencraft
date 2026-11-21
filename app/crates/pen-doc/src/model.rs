@@ -17,7 +17,7 @@ pub const SCHEMA_VERSION: &str = "2.22";
 pub struct Document {
     /// Schema version the file was written with.
     pub version: String,
-    /// Pencraft's own mark: its format number and the features only it draws ([`crate::stamp`]), kept whole.
+    /// Quill's own mark: its format number and the features only it draws ([`crate::stamp`]), kept whole.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pencraft: Option<Value>,
     /// Top-level nodes, back to front.

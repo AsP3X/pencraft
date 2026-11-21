@@ -7,7 +7,7 @@
 pub const SHOWN: usize = 6;
 
 /// Every idea there is.
-// Human: they are spread over what Pencraft is asked for: landing pages and sites, phone and tablet apps,
+// Human: they are spread over what Quill is asked for: landing pages and sites, phone and tablet apps,
 // dashboards and tools, components and kits, posters and print, logos, slides, charts, and plans and
 // comparisons. Each names a look or a mood as well as a thing, since "a booking app" alone gives the
 // assistant nothing to make it particular.

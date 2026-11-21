@@ -1,4 +1,4 @@
-# Agent rules for Pencraft
+# Agent rules for Quill
 
 These follow the user's Rust projects (orbit, terravant, indeep: `docs/agent-rules/`) and the storytold Craft apps.
 

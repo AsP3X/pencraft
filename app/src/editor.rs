@@ -218,7 +218,7 @@ impl Editor {
     }
 
     /// An editor for the design file at `path`: a `.pen` document, or a bundle, which is unpacked. With it, a
-    /// sentence for what the user should know about the file: a newer Pencraft wrote it and this one doesn't
+    /// sentence for what the user should know about the file: a newer Quill wrote it and this one doesn't
     /// know all of it, or a file in it was damaged and left out.
     ///
     /// # Errors
@@ -291,7 +291,7 @@ impl Editor {
         Ok(was)
     }
 
-    /// A sentence naming what the document uses that only Pencraft draws, for a document saved as a `.pen`
+    /// A sentence naming what the document uses that only Quill draws, for a document saved as a `.pen`
     /// file other programs open too; `None` when it uses nothing of the kind.
     #[must_use]
     pub fn only_here(&self) -> Option<String> {
@@ -301,7 +301,7 @@ impl Editor {
             [one] => (*one).to_owned(),
             [first @ .., last] => format!("{} and {last}", first.join(", ")),
         };
-        Some(format!("Only Pencraft draws its {list}; other programs that open .pen files leave them out."))
+        Some(format!("Only Quill draws its {list}; other programs that open .pen files leave them out."))
     }
 
     /// Lets go of the working folder, when the document is closed.
@@ -608,7 +608,7 @@ impl Editor {
         self.needs_layout = true;
     }
 
-    /// Writes the document to its file, crash-safely: a `.quill` file with the files the document names. Stamps it as Pencraft's first ([`pen_doc::stamp`]). Gives a sentence for what the user
+    /// Writes the document to its file, crash-safely: a `.quill` file with the files the document names. Stamps it as Quill's first ([`pen_doc::stamp`]). Gives a sentence for what the user
     /// should know about the file that was written.
     ///
     /// # Errors
@@ -697,7 +697,7 @@ pub struct Place {
     doc: Document,
 }
 
-/// A sentence for a file a newer Pencraft wrote: its stamp says a higher format number or features this
+/// A sentence for a file a newer Quill wrote: its stamp says a higher format number or features this
 /// version has no name for, or its bundle a higher layout number or a kind of part this version doesn't know
 /// (`layout`). `None` for a file this version knows all of.
 // Human: what this version doesn't know is kept: unknown keys in the document, unknown parts of a `.quill` file.
@@ -714,7 +714,7 @@ fn newer_than_this(doc: &Document, layout: Option<u64>, later: bool) -> Option<S
     } else {
         "; what it doesn't know is kept when you save."
     };
-    Some(format!("A newer Pencraft wrote this file. This version may not draw all of it{what}{saved}"))
+    Some(format!("A newer Quill wrote this file. This version may not draw all of it{what}{saved}"))
 }
 
 /// Shows `visit` the `url` of every image paint in `doc`: in fills and strokes, and in what instances override.

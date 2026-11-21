@@ -1,6 +1,6 @@
 # Changelog
 
-What changed in each version of Pencraft. The format follows
+What changed in each version of Quill (called Pencraft up to 0.3.28). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [semantic versioning](https://semver.org/).
 
@@ -20,12 +20,21 @@ in the app before they download the update. Write it for them.
 
 ### Changed
 
+- **Pencraft is now called Quill.** The window, the menus, the settings
+  and the installers say Quill, and the app has a new icon. Nothing else
+  moved: your settings, chats and designs are where they were, and the
+  update installs over the copy you have, in the same folder; on Windows
+  the Start menu and desktop shortcuts are renamed to Quill. Updates
+  arrive as before. The program is still started as `pencraft`, so AI
+  clients set up with `pencraft mcp` keep working with nothing to change.
+  On a Mac the app in the Applications folder keeps the file name
+  Pencraft, which is what lets it update itself.
 - **`.pencraft` bundles become `.quill` files.** Your bundles still open.
-  The first time you save one, Pencraft writes a `.quill` file of the same
+  The first time you save one, Quill writes a `.quill` file of the same
   name beside it and continues there; the `.pencraft` file is left as it
   is.
 - **`.pen` files are opened and exported, no longer saved to.** A `.pen`
-  file opens as before. The first time you save it, Pencraft writes a
+  file opens as before. The first time you save it, Quill writes a
   `.quill` file of the same name beside it, with the pictures the design
   uses, and continues there; the `.pen` file is left as it is. To make a
   `.pen` file, use File › Export .pen File…: it writes the plain document

@@ -451,7 +451,7 @@ Before you call this done"
         )));
         let said = with_picture(&["Text too faint.".to_owned()], 3, false).unwrap();
         assert!(said.starts_with("review") && said.contains("- Text too faint.\n") && said.contains("art director"));
-        assert!(guide().starts_with("# Working on a Pencraft document") && guide().contains("# Designing well"));
+        assert!(guide().starts_with("# Working on a Quill document") && guide().contains("# Designing well"));
         // Three different worlds each time, and other ones for another conversation.
         let dealt = directions(5);
         assert!(dealt.contains(WORLDS[5]) && dealt.contains(WORLDS[12]) && dealt.contains(WORLDS[19]));

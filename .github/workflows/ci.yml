@@ -1,6 +1,6 @@
 name: CI
 
-# The quality gate from app/AGENTS.md, on the two systems Pencraft is released
+# The quality gate from app/AGENTS.md, on the two systems Quill is released
 # for. It is what app/scripts/check.sh and check.ps1 run by hand.
 
 on:

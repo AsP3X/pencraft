@@ -1,9 +1,9 @@
-# Letting an AI model work in Pencraft
+# Letting an AI model work in Quill
 
-Pencraft speaks the Model Context Protocol (MCP), so any AI client that can use MCP tools can read and change
-the documents open in Pencraft: Claude Code, Claude Desktop, Cursor, Codex, Gemini CLI, and others.
+Quill speaks the Model Context Protocol (MCP), so any AI client that can use MCP tools can read and change
+the documents open in Quill: Claude Code, Claude Desktop, Cursor, Codex, Gemini CLI, and others.
 
-## The chat inside Pencraft
+## The chat inside Quill
 
 Type in the message box and press Return. The assistant answers in the chat panel and works on the document
 its chat belongs to (the one in front when you send); what you have selected is what "this" means. The menu beside the send button picks who answers:
@@ -11,16 +11,16 @@ its chat belongs to (the one in front when you send); what you have selected is 
 - **Claude Code** (when the `claude` program is installed): uses your Claude sign-in, no key needed. If it
   fails to answer, run `claude` once in a terminal to check that it is signed in.
 - **Grok** (when xAI's `grok` program is installed): uses your Grok sign-in (`grok login`). Grok takes its tool
-  servers from its own settings, so add Pencraft there once: Settings → Agents → Grok → "Add Pencraft to
+  servers from its own settings, so add Quill there once: Settings → Agents → Grok → "Add Quill to
   Grok" (it runs `grok mcp add pencraft -- <pencraft> mcp`). Only that server's tools are approved for the
-  chat. Grok reaches Pencraft the way an outside client does, so it works on the design in front, and pictures
+  chat. Grok reaches Quill the way an outside client does, so it works on the design in front, and pictures
   attached to a message are not passed on to it.
 - **Any other command-line agent** (Codex, Gemini CLI, OpenCode and the like): Settings → Agents → "Add
   command-line agent". Give its program and the arguments that make it answer one prompt and exit, with
   `{prompt}` where the message goes (for example `exec {prompt}`); what it prints is shown as its answer. Add
   `pencraft mcp` to that program's own MCP servers (Settings → MCP has the lines) and allow it to use them
   without asking. Such a program keeps no session here, so each message retells the conversation so far.
-- **Anthropic API**: start Pencraft with `ANTHROPIC_API_KEY` set, or click the Anthropic card in Settings →
+- **Anthropic API**: start Quill with `ANTHROPIC_API_KEY` set, or click the Anthropic card in Settings →
   Agents and enter your key (kept in the keychain).
 - **Another known provider** (OpenAI, xAI, Google Gemini, OpenRouter, DeepSeek, Moonshot, Kimi For Coding,
   Together, Fireworks, Z.AI, Meta, OpenCode Zen and Go): click its card in Settings → Agents. Its address and
@@ -29,7 +29,7 @@ its chat belongs to (the one in front when you send); what you have selected is 
 - **Ollama** (models that run on your own computer): click the Ollama card in Settings → Agents. Its address
   (`http://localhost:11434`) and the API type "Ollama" are filled in and no key is needed; with Ollama
   running, press "Choose models…", tick the models you have pulled, and save. Change the address if
-  Ollama runs on another machine. Pick a model that can call tools. Pencraft asks Ollama to read up to
+  Ollama runs on another machine. Pick a model that can call tools. Quill asks Ollama to read up to
   32 768 tokens of the conversation (its brief and tools alone are about 17 000), which takes more memory
   than Ollama's own default; a model that can read less than that will lose the start of the conversation.
   Ollama's cloud models work here too once you are signed in (`ollama signin`) and have pulled one.
@@ -122,11 +122,11 @@ waits there. The chats work side by side. An assistant at work in one design kee
 look at another and talk to its chat, and it doesn't bring its design to the front; its tab shows a dot while
 it works. A chat that opens or starts another design goes on in that design. Closing a design ends its chat.
 
-The rest of this page is about AI clients outside Pencraft.
+The rest of this page is about AI clients outside Quill.
 
 ## Connect a client
 
-The client starts `pencraft mcp` and talks to it. Use the full path of the Pencraft program:
+The client starts `pencraft mcp` and talks to it. Use the full path of the Quill program:
 
 ```
 /path/to/Pencraft/app/target/release/pencraft
@@ -153,12 +153,12 @@ Cursor, Claude Desktop and most others (their MCP settings file):
 ```
 
 A client that speaks MCP over HTTP can skip `pencraft mcp`: the address and the secret to send as
-`Authorization: Bearer <token>` are in `~/.pencraft/agent.json` while Pencraft runs (both change with every start).
+`Authorization: Bearer <token>` are in `~/.pencraft/agent.json` while Quill runs (both change with every start).
 
 ## What happens
 
-- If Pencraft isn't running, `pencraft mcp` starts it behind your other windows, without taking the keyboard.
-- Pencraft doesn't need to be in front. It answers while it is behind other windows, minimised or hidden.
+- If Quill isn't running, `pencraft mcp` starts it behind your other windows, without taking the keyboard.
+- Quill doesn't need to be in front. It answers while it is behind other windows, minimised or hidden.
 - When you look at it, you see the model work: what a call changes is shown a step at a time (a new layer
   appears, a change is made, a deleted layer goes), every layer it touches flashes at its turn, and a cursor moves to where it is working. The cursor is labelled "Agent"; Settings → General → Agents → "Agent cursor label" changes that
   to the model's name (the chat's model, or the name an outside client gave) or to nothing, and "Agent cursor
@@ -172,10 +172,10 @@ A client that speaks MCP over HTTP can skip `pencraft mcp`: the address and the 
 |---|---|
 | `get_state` | The open documents; for the one in front its top-level layers, selection, components, variables |
 | `get_guide` | How a document is built (layer types, layout, fills, effects, components), how to design well in it, and the installed fonts |
-| `list_skills`, `read_skill` | The skills Pencraft has for one kind of design each (see below), and a skill's text or one of its reference files |
+| `list_skills`, `read_skill` | The skills Quill has for one kind of design each (see below), and a skill's text or one of its reference files |
 | `read_layers` | Layers with their properties and their boxes on the canvas; or a search by name, text or type |
 | `edit_layers` | Insert, update, delete, move, copy and replace layers, set variables; all or none |
-| `screenshot` | A picture of layers as Pencraft draws them, with a review of what makes them read as generated or broken, so the model can check and improve its work |
+| `screenshot` | A picture of layers as Quill draws them, with a review of what makes them read as generated or broken, so the model can check and improve its work |
 | `check_glass` | Measures a design that uses glass materials: which appearance each material came to, the contrast of every label on glass against the worst of what is under it, and how the glass is built |
 | `select_layers` | Selects layers for you and brings them into view |
 | `open_document` | Opens a design file (`.quill`, `.pen` or an old `.pencraft`), or starts an empty document |
@@ -188,17 +188,17 @@ A client that speaks MCP over HTTP can skip `pencraft mcp`: the address and the 
 | `search_images` | Photos and illustrations that may be reused, each with its maker, licence and credit line |
 | `download_image` | Fetches a picture into the `images` folder beside the document, for an image fill |
 | `edit_image` | Has an image model change a picture by an instruction (a layer's picture, layers as they look, or a picture file), or make one that goes by up to four reference pictures; puts the result in place of the layer's picture or beside the layers drawn. Needs a Google Gemini service (see Pictures) |
-| `ask_user` | Asks you one to three questions, each with answers to tick, or offers next steps. Only the chat inside Pencraft has it |
-| `plan_tasks` | Splits a job of many steps into a task list (2 to 12 tasks) that stands above the chat; the first task is at work at once. Called again while the list is at work, it replaces the tasks that have not started. Only the chat inside Pencraft has it |
-| `add_tasks` | Adds tasks right after the task at work, when a task turns up more to do (a check finds something to fix). Only the chat inside Pencraft has it |
-| `finish_task` | Finishes the task at work, and the next one is at work. When the last task is finished the list moves from the top of the panel into the conversation, as a note that opens to show its tasks. Tasks are finished in their order, one at a time: the app refuses a task whose turn has not come. Only the chat inside Pencraft has it |
+| `ask_user` | Asks you one to three questions, each with answers to tick, or offers next steps. Only the chat inside Quill has it |
+| `plan_tasks` | Splits a job of many steps into a task list (2 to 12 tasks) that stands above the chat; the first task is at work at once. Called again while the list is at work, it replaces the tasks that have not started. Only the chat inside Quill has it |
+| `add_tasks` | Adds tasks right after the task at work, when a task turns up more to do (a check finds something to fix). Only the chat inside Quill has it |
+| `finish_task` | Finishes the task at work, and the next one is at work. When the last task is finished the list moves from the top of the panel into the conversation, as a note that opens to show its tasks. Tasks are finished in their order, one at a time: the app refuses a task whose turn has not come. Only the chat inside Quill has it |
 
 ## The web
 
 Ask the assistant for real content or a real photo ("use a real picture of the Elbphilharmonie here") and it
 searches, fetches the picture into the `images` folder of your design, and fills the layer with it.
 The picture is filed in `images/credits.json` like a generated one, with the address it came from and its
-credit line. A document that has no file yet keeps the picture in Pencraft's own folder until it is saved.
+credit line. A document that has no file yet keeps the picture in Quill's own folder until it is saved.
 
 - Nothing needs a key. Web results come from DuckDuckGo's plain page, pictures from Openverse and Wikimedia
   Commons. Your queries go to those services, and a fetched page or picture to its own site.
@@ -206,10 +206,10 @@ credit line. A document that has no file yet keeps the picture in Pencraft's own
   API key (kept in the keychain). Their stock photos then appear in every picture search beside the others.
 - Pictures found this way may be reused under the licence each result names, and each result says how to
   credit it. Check the licence before you publish: some forbid commercial use or changes.
-- A site may limit how often it is asked ("429"). Pencraft waits a few seconds and asks again, twice; after
+- A site may limit how often it is asked ("429"). Quill waits a few seconds and asks again, twice; after
   that the assistant is told to take a picture from another site. Every search mixes pictures from all
   sources for that reason. Wikimedia's pictures are fetched as its standard 1920-wide copies, not as the
-  originals, as Wikimedia asks of apps. Pencraft never pretends to be a browser to get more.
+  originals, as Wikimedia asks of apps. Quill never pretends to be a browser to get more.
 - A layer never loads a web address itself; only pictures fetched through `download_image` are shown.
 - Addresses on this computer or its local network are never fetched, also not when a site sends the request
   on to one. What a page says is given to the assistant as information; it is told not to take instructions
@@ -218,10 +218,10 @@ credit line. A document that has no file yet keeps the picture in Pencraft's own
 
 ## Pictures
 
-Pencraft can have an image model make a picture: File → Generate Image… (also in the action search), or ask
+Quill can have an image model make a picture: File → Generate Image… (also in the action search), or ask
 the assistant ("put a photo of a red fox on this card"). It needs an image service: add one with its API key in
 Settings → Images (Google Gemini, OpenAI Images, or another service that speaks the OpenAI Images API), or start
-Pencraft with `GEMINI_API_KEY` or `OPENAI_API_KEY` set. The model and the address can be changed there. A
+Quill with `GEMINI_API_KEY` or `OPENAI_API_KEY` set. The model and the address can be changed there. A
 service saved without a key is not used; asking for it by name says it has no key yet.
 
 A Gemini key must belong to a project with billing set up in Google AI Studio: the free tier makes no
@@ -234,9 +234,9 @@ saying which service and model made it from which description. A document that h
 pictures in `~/.pencraft/images` until then; when it is saved, they are copied into its `images` folder with
 their credits, and the document names them from there. Saving a document under a new name in another folder
 copies the pictures it names from its own folder along. If `credits.json` can't be read (it is not valid JSON), the picture
-is not saved and the message says so; fix or remove the file and ask again. Pencraft never replaces it.
+is not saved and the message says so; fix or remove the file and ask again. Quill never replaces it.
 
-A picture can take a minute or two. After 100 seconds Pencraft gives up and keeps nothing; the service may still
+A picture can take a minute or two. After 100 seconds Quill gives up and keeps nothing; the service may still
 have charged for it. A picture is also not kept when you cancel the dialog or stop the chat that asked for it.
 At most 3 pictures are made at once for assistants; a fourth is turned away until one is done.
 
@@ -251,7 +251,7 @@ can change pictures. It is empty, with a note, when "Let the assistant generate 
 
 ### Changing a picture
 
-Pencraft can also have a picture changed by description ("make it dusk", "take the people out"), or have a new
+Quill can also have a picture changed by description ("make it dusk", "take the people out"), or have a new
 one made that goes by pictures you give it. There are three ways:
 
 - **Ask the assistant.** It uses the `edit_image` tool, and sends only the pictures you name.
@@ -303,7 +303,7 @@ same 100 second limit.
 
 ## Skills
 
-A skill teaches a model one kind of design in Pencraft: what to decide, how to build it with Pencraft's
+A skill teaches a model one kind of design in Quill: what to decide, how to build it with Quill's
 layers, and how to check the result. A skill is part firm and part a starting point, and says which: what it
 lists to do every time is done without being asked, its defaults are where a design begins, and its
 examples show how a thing is built, not how a design must look. Skills are folders in the open Agent Skills format, in
@@ -324,10 +324,10 @@ examples show how a thing is built, not how a design must look. Skills are folde
 
 A model gets a skill in one of two ways, with the same text either way:
 
-- **Through Pencraft's tools** (every MCP client, and the chat inside Pencraft): the guide lists the skills,
+- **Through Quill's tools** (every MCP client, and the chat inside Quill): the guide lists the skills,
   and `read_skill` gives a skill or one of its files. Nothing to install.
 - **As a skill of the client itself**, so the client offers it whenever a request fits, even before
-  Pencraft's tools are called:
+  Quill's tools are called:
 
   ```bash
   pencraft skills install
@@ -336,10 +336,10 @@ A model gets a skill in one of two ways, with the same text either way:
   writes the skills to `~/.agents/skills/` (read by Codex, Cursor, Gemini CLI, OpenCode and GitHub Copilot)
   and `~/.claude/skills/` (read by Claude Code). `pencraft skills install --project DIR` writes them into a
   project's `.agents/skills/` and `.claude/skills/` instead; `--dir DIR` into any one folder (for example
-  `~/.cursor/skills`). Run it again after updating Pencraft. `pencraft skills` lists the skills;
+  `~/.cursor/skills`). Run it again after updating Quill. `pencraft skills` lists the skills;
   `pencraft skills show liquid-glass` prints one.
 
-The skill still needs Pencraft's tools to do anything: connect the client as described above.
+The skill still needs Quill's tools to do anything: connect the client as described above.
 
 ## Settings for assistants
 

@@ -111,6 +111,6 @@ controls are three neutral dots (`#ffffff47` in a dark window, `#0000002e` in a 
 platform's own artwork. Choose insets so that nested radii land on few values (for example 24, 16, 8).
 
 Phone screen 393 x 852. Margins 16; floating bars 16-21 from the edges. Bar buttons 44 x 44 (round) or 44
-high (capsule). Tab bar 62 high, tab label 11 px (never smaller: Pencraft's review flags text under 11).
+high (capsule). Tab bar 62 high, tab label 11 px (never smaller: Quill's review flags text under 11).
 Titles 34 bold (large) or 17 semibold (inline); body 17; secondary 15; captions 13. Sheet radius 34-40, alert
 radius 30, menu radius 22, cards in content 20-28. Icons 22-24 from the `lucide` library.

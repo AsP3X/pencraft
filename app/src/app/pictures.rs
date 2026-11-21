@@ -46,7 +46,7 @@ const BESIDE_NAME: &str = "Edited picture";
 const NOTHING_DRAWN: &str = "The layers are empty or too large to draw, so there is nothing to send.";
 /// Told when the settings' switch for the assistant is off.
 const ASSISTANT_OFF: &str =
-    "Generating and editing pictures is turned off for AI models in Pencraft's settings (Images: \"Let the assistant generate and edit pictures\").";
+    "Generating and editing pictures is turned off for AI models in Quill's settings (Images: \"Let the assistant generate and edit pictures\").";
 /// Told the person when the picture they had changed was replaced on its layer, taken off it, or its layer
 /// removed, while the change was made.
 const PICTURE_CHANGED: &str = "The layer's picture was changed or removed meanwhile, so the result was added as a new layer.";
@@ -301,7 +301,7 @@ fn hold(dragging: bool, since: Instant, now: Instant) -> Hold {
 /// Whether another picture can be started for a model while `making` are being made for models; the dialog's
 /// own picture is not among them (see [`MOST_AT_ONCE`]).
 fn room(making: usize) -> Result<(), String> {
-    if making < MOST_AT_ONCE { Ok(()) } else { Err(format!("Pencraft is already making {MOST_AT_ONCE} pictures. Wait for one to finish.")) }
+    if making < MOST_AT_ONCE { Ok(()) } else { Err(format!("Quill is already making {MOST_AT_ONCE} pictures. Wait for one to finish.")) }
 }
 
 /// Whether anybody still waits for the answer to a call from the chat `chat`: a call from outside the app
@@ -516,8 +516,8 @@ pub(super) fn settle(editor: &mut Editor, was: Option<&Path>, home: Option<&Path
 
 /// Writes the document of `editor` as a `.pen` file at `target`, with the files it names beside it, and gives a
 /// sentence for each thing the user should know about the file: a file that couldn't be copied or was there
-/// already as another one, a picture named from outside the folder, what in it only Pencraft draws, parts a
-/// newer Pencraft added that a `.pen` file has no place for.
+/// already as another one, a picture named from outside the folder, what in it only Quill draws, parts a
+/// newer Quill added that a `.pen` file has no place for.
 ///
 /// # Errors
 /// A sentence when the document or the file can't be written.
@@ -542,7 +542,7 @@ pub(super) fn export_pen(editor: &Editor, target: &Path, home: Option<&Path>) ->
     craft_atomic::atomic_write(target, text.as_bytes()).map_err(|error| format!("{}: {error}", target.display()))?;
     told.extend(copy.only_here());
     if editor.keeps_parts() {
-        told.push("Parts a newer Pencraft added to the .quill file are not in the .pen file.".to_owned());
+        told.push("Parts a newer Quill added to the .quill file are not in the .pen file.".to_owned());
     }
     Ok(told)
 }
@@ -1056,10 +1056,10 @@ impl App {
             _ => ("the layer was left alone", "Put the `url` in a fill with edit_layers.".to_owned()),
         };
         if !prefs.agents.tools {
-            Some(format!("AI tools were turned off in Pencraft's settings while the picture was being made, so {left}."))
+            Some(format!("AI tools were turned off in Quill's settings while the picture was being made, so {left}."))
         } else if !prefs.images.assistant {
             Some(format!(
-                "Generating and editing pictures was turned off for AI models in Pencraft's settings while the picture was being made, so {left}."
+                "Generating and editing pictures was turned off for AI models in Quill's settings while the picture was being made, so {left}."
             ))
         } else if dragged {
             Some(format!("The user was moving something on the canvas, so {left}. {yourself}"))
@@ -1313,7 +1313,7 @@ impl App {
             Did::Cancel => {
                 // Human: a picture the dialog asked for is given up on (only the Cancel button does that while
                 // one is being made). Dropping its job means no file and no credit of it stay in `images/`: one
-                // not saved yet is never saved, one saved already is removed again (`jobs::Job`), unless Pencraft
+                // not saved yet is never saved, one saved already is removed again (`jobs::Job`), unless Quill
                 // quits during the save. The service may still make it, and charge for it. The quick field's
                 // picture is not the dialog's to give up, and one that is there already, waiting for the canvas,
                 // is placed when it is free.
@@ -1725,7 +1725,7 @@ mod tests {
         editor.dirty = true;
         let before = pen_doc::write(&editor.doc).unwrap();
         let told = export_pen(&editor, &back.join("back.pen"), None).unwrap();
-        assert_eq!(told, ["Only Pencraft draws its masks; other programs that open .pen files leave them out."]);
+        assert_eq!(told, ["Only Quill draws its masks; other programs that open .pen files leave them out."]);
         assert_eq!((editor.path.as_ref(), editor.folder(), editor.dirty), (Some(&bundle), Some(unpacked.as_path()), true));
         assert_eq!(pen_doc::write(&editor.doc).unwrap(), before);
         assert_eq!(std::fs::read(back.join("images/far.png")).unwrap(), b"far");
@@ -1762,12 +1762,12 @@ mod tests {
     }
 
     #[test]
-    fn a_file_a_newer_pencraft_wrote_opens_with_a_sentence() {
+    fn a_file_a_newer_quill_wrote_opens_with_a_sentence() {
         let folder = empty("newer");
         let file = folder.join("new.pen");
         std::fs::write(&file, r#"{"version":"2.40","pencraft":{"format":4,"features":["hologram","mask"]},"children":[]}"#).unwrap();
         let (editor, newer) = Editor::open(&file, 7).unwrap();
-        assert!(newer.is_some_and(|said| said.contains("A newer Pencraft") && said.contains("(hologram)")));
+        assert!(newer.is_some_and(|said| said.contains("A newer Quill") && said.contains("(hologram)")));
         assert!(!editor.bundled() && editor.folder() == Some(folder.as_path()));
         std::fs::write(&file, r#"{"version":"2.22","children":[]}"#).unwrap();
         assert_eq!(Editor::open(&file, 7).unwrap().1, None);
@@ -1795,7 +1795,7 @@ mod tests {
     }
 
     #[test]
-    fn a_part_a_later_pencraft_put_in_a_quill_file_is_still_in_it_after_saving() {
+    fn a_part_a_later_quill_put_in_a_quill_file_is_still_in_it_after_saving() {
         use crate::bundle::quill;
         let folder = empty("later-part");
         let file = folder.join("later.quill");
@@ -1808,7 +1808,7 @@ mod tests {
         let (mut editor, said) = Editor::open(&file, 7).unwrap();
         assert_eq!(
             said.as_deref(),
-            Some("A newer Pencraft wrote this file. This version may not draw all of it; what it doesn't know is kept when you save.")
+            Some("A newer Quill wrote this file. This version may not draw all of it; what it doesn't know is kept when you save.")
         );
         editor.save().unwrap();
         editor.save().unwrap();
@@ -1816,7 +1816,7 @@ mod tests {
         assert_eq!((saved.unknown, saved.entries.len()), (vec![chat], 1));
         // Exported as a `.pen` file, which has no place for it: that is said, and the document still holds it.
         let told = export_pen(&editor, &folder.join("plain.pen"), None).unwrap();
-        assert_eq!(told, ["Parts a newer Pencraft added to the .quill file are not in the .pen file."]);
+        assert_eq!(told, ["Parts a newer Quill added to the .quill file are not in the .pen file."]);
         editor.save().unwrap();
         assert_eq!(quill::read(&std::fs::read(&file).unwrap(), 1 << 20).unwrap().unknown.len(), 1);
         editor.close();
@@ -1828,7 +1828,7 @@ mod tests {
         assert_eq!(
             said.as_deref(),
             Some(
-                "A newer Pencraft wrote this file. This version may not draw all of it. Saving it here writes this version's layout, so parts this version doesn't know may be left out."
+                "A newer Quill wrote this file. This version may not draw all of it. Saving it here writes this version's layout, so parts this version doesn't know may be left out."
             )
         );
         editor.close();
@@ -2236,7 +2236,7 @@ mod tests {
     fn only_so_many_pictures_are_made_at_once() {
         assert_eq!(room(0), Ok(()));
         assert_eq!(room(MOST_AT_ONCE - 1), Ok(()));
-        assert_eq!(room(MOST_AT_ONCE), Err("Pencraft is already making 3 pictures. Wait for one to finish.".to_owned()));
+        assert_eq!(room(MOST_AT_ONCE), Err("Quill is already making 3 pictures. Wait for one to finish.".to_owned()));
     }
 
     #[test]

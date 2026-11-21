@@ -1,13 +1,13 @@
 ---
 name: landing-pages
-description: Design a landing page, home page or marketing site in Pencraft that makes an argument for one product to one buyer - the hero, proof, feature sections, customer quote, pricing table, questions, closing call to action and footer, in an order that follows the argument, at web widths with a phone version. Use when the user asks for a landing page, a home page, a marketing or product website, a hero section, a pricing page or pricing table, a waitlist or launch page, a features, testimonial, FAQ or footer section, or "a website for" something. Do not use for the screens of an app or dashboard (the ui-components skill), social posts, ads or emails (the formats skill), a logo, or slides.
-license: Apache-2.0 with Commons Clause (see LICENSE in the Pencraft repository)
+description: Design a landing page, home page or marketing site in Quill that makes an argument for one product to one buyer - the hero, proof, feature sections, customer quote, pricing table, questions, closing call to action and footer, in an order that follows the argument, at web widths with a phone version. Use when the user asks for a landing page, a home page, a marketing or product website, a hero section, a pricing page or pricing table, a waitlist or launch page, a features, testimonial, FAQ or footer section, or "a website for" something. Do not use for the screens of an app or dashboard (the ui-components skill), social posts, ads or emails (the formats skill), a logo, or slides.
+license: Apache-2.0 with Commons Clause (see LICENSE in the Quill repository)
 metadata:
   product: pencraft
   version: "1"
 ---
 
-# Landing pages in Pencraft
+# Landing pages in Quill
 
 A landing page is an argument: who this is for, what it does for them, why they should believe it, what it
 costs, what to do now. A generated page is recognised by its skeleton before its colours: a centred
@@ -15,7 +15,7 @@ headline about nothing in particular, two buttons, three equal cards, a row of g
 all in the order every other page has. This skill is how to build the argument instead. The look itself is
 designed by the guide's "Designing well"; read this for what goes on the page and where.
 
-Work with Pencraft's tools (`get_state`, `read_layers`, `edit_layers`, `screenshot`). The reference file
+Work with Quill's tools (`get_state`, `read_layers`, `edit_layers`, `screenshot`). The reference file
 named below is read with `read_skill` (name `landing-pages`, `file` as given).
 
 Part of this skill is firm and part is a starting point. It says which, and the difference matters:
@@ -29,7 +29,7 @@ Part of this skill is firm and part is a starting point. It says which, and the 
   the face has no such weight) and needs nobody's leave.
 - A design that already has a look, a brand or a system keeps it. Take from this skill what the design
   lacks, and nothing that would replace what it has.
-- The examples in the reference files show how a thing is built in Pencraft and at what size. Their colours,
+- The examples in the reference files show how a thing is built in Quill and at what size. Their colours,
   faces, words and arrangement are one answer among many, not the look to reproduce.
 - The checklist and "When it looks wrong" at the end are there to be gone through every time, as a check
   of your own work. A line in them that speaks of a starting point is a starting point still.
@@ -107,7 +107,7 @@ Four to seven sections between navigation and footer. More is a site map, not a 
 | Smallest text | 14 (legal lines, labels in a product picture 12) | |
 | Button | 48 high (40 in the navigation), 24 beside the label, 16 at weight 600 | This kit's |
 | Between a heading and its text | 16 to 24; between text and buttons 24 to 32 | This kit's |
-| Spacing and type | Gaps and paddings in steps of 4 (4, 8, 12, 16, 24, 32, 48, 64, 80, 96); seven type sizes at most on a page | Pencraft's review counts both |
+| Spacing and type | Gaps and paddings in steps of 4 (4, 8, 12, 16, 24, 32, 48, 64, 80, 96); seven type sizes at most on a page | Quill's review counts both |
 | First screen | The top 800 to 900: offer, action, the product, and the start of what follows | NN/g: no false floor |
 
 Only the container widths are a published scale. The rest is what well-made pages have in common; no

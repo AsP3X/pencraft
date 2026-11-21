@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Call one of Pencraft's agent tools from a shell, the way an MCP client would.
+"""Call one of Quill's agent tools from a shell, the way an MCP client would.
 
     python pc.py TOOL ['{"json": "arguments"}' | @arguments.json]  [--out picture.png]
 
 The tool's text answers are printed; a picture it returns is saved to --out (default: pc-picture.png in the
 current folder) and its path printed. `python pc.py tools` lists the tools with their descriptions.
 
-Pencraft must be running. Its address and secret are read from $PENCRAFT_HOME/.pencraft/agent.json
-(PENCRAFT_HOME defaults to the home folder), which Pencraft writes at start. See README.md beside this file.
+Quill must be running. Its address and secret are read from $PENCRAFT_HOME/.pencraft/agent.json
+(PENCRAFT_HOME defaults to the home folder), which Quill writes at start. See README.md beside this file.
 """
 import json
 import os
@@ -27,7 +27,7 @@ def call(method, params):
         with urllib.request.urlopen(request, timeout=180) as answer:
             reply = json.load(answer)
     except OSError as error:
-        sys.exit("error: Pencraft can't be reached (%s). Is it running?" % error)
+        sys.exit("error: Quill can't be reached (%s). Is it running?" % error)
     if "error" in reply:
         sys.exit("error: " + reply["error"]["message"])
     return reply["result"]

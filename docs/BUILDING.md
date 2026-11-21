@@ -95,7 +95,7 @@ how Windows recognises a newer version of the same program: the `UpgradeCode`
 in `pencraft.wxs` and the `AppId` in `pencraft.iss`.
 
 The setup wizard can install for one user without administrator rights. It
-offers to open `.pen` files with Pencraft and to put the folder on `PATH`,
+offers to open `.pen` files with Quill and to put the folder on `PATH`,
 which is what lets an AI client run `pencraft mcp`.
 
 ### macOS
@@ -117,14 +117,15 @@ Finder.
 
 ### The icon
 
-`design/icon/pencraft.svg` is the icon, and `design/icon/build.sh` draws every
-icon file from it. Run it on a Mac after changing the SVG, and commit what it
-writes:
+`design/icon/build.py` describes the icon. Run it after changing the drawing
+(`python3 design/icon/build.py`, with Pillow, on any computer): it writes
+`design/icon/quill.svg` and every icon file. `design/icon/build.sh` draws the
+same files from the SVG with a Mac's own renderer. Commit what they write:
 
 | File | Used for |
 | --- | --- |
 | `app/assets/icon.png` | the window on Windows and Linux (`app/src/main.rs`) |
-| `app/assets/icon-macos.png` | the Dock while Pencraft runs outside its `.app`, as with `cargo run` |
+| `app/assets/icon-macos.png` | the Dock while Quill runs outside its `.app`, as with `cargo run` |
 | `installer/Pencraft.icns` | `Pencraft.app` (`installer/Info.plist`, `installer/build-macos.sh`) |
 | `installer/pencraft.ico` | `pencraft.exe`, and with it the shortcuts and `.pen` files (`app/build.rs`); the setup wizard and the MSI |
 
@@ -146,5 +147,5 @@ there is no Linux download and CI does not cover it.
 | `installer/` | The installer definitions and their build scripts |
 | `.github/workflows/` | CI and the release build |
 | `docs/` | This page and [Releasing](RELEASING.md) |
-| `design/` | Pencraft's own design, as a `.pen` file |
+| `design/` | Quill's own design, as a `.pen` file |
 | `checks/` | Pictures from design reviews |

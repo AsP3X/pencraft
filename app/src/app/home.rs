@@ -621,7 +621,7 @@ fn last_line(ui: &mut egui::Ui, palette: Palette) {
             ui.painter().galley(cap.center() - keys.size() / 2.0, keys, palette.muted);
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            let version = concat!("Pencraft ", env!("CARGO_PKG_VERSION"));
+            let version = concat!("Quill ", env!("CARGO_PKG_VERSION"), " · formerly Pencraft");
             words(ui, version, FontId::proportional(HOME_SMALL_TEXT), palette.muted.gamma_multiply(0.7));
         });
     });

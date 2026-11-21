@@ -16,9 +16,9 @@ use crate::app::lock;
 /// Where the list is.
 pub const SOURCE: &str = "https://models.dev/api.json";
 
-/// The list's name for each provider the settings window knows, by the address Pencraft reaches it at.
+/// The list's name for each provider the settings window knows, by the address Quill reaches it at.
 // Human: the list gives an address for some providers only, and for Meta and Kimi a different one than the
-// one Pencraft uses; so the known providers are named here. Looked up on 2026-11-20.
+// one Quill uses; so the known providers are named here. Looked up on 2026-11-20.
 const KNOWN: [(&str, &str); 15] = [
     ("https://api.openai.com/v1", "openai"),
     ("https://api.anthropic.com", "anthropic"),
@@ -111,7 +111,7 @@ fn rates(cost: &Value) -> Option<Rates> {
 }
 
 impl Catalogue {
-    /// The list written in `text`: the whole one from models.dev, or the cut of it Pencraft keeps.
+    /// The list written in `text`: the whole one from models.dev, or the cut of it Quill keeps.
     #[must_use]
     pub fn parse(text: &str) -> Option<Catalogue> {
         let list = serde_json::from_str::<Value>(text).ok()?;
@@ -145,7 +145,7 @@ impl Catalogue {
     }
 }
 
-/// The list in `text` cut down to what Pencraft reads: each provider's address and its models' costs.
+/// The list in `text` cut down to what Quill reads: each provider's address and its models' costs.
 // Human: the whole list is nearly seven megabytes, most of it descriptions.
 #[must_use]
 pub fn cut(text: &str) -> Option<String> {
@@ -236,7 +236,7 @@ pub fn start(look: bool) -> Arc<Mutex<Catalogue>> {
 mod tests {
     use super::*;
 
-    /// A cut of what models.dev answered on 2026-11-20, with the fields Pencraft doesn't read left in.
+    /// A cut of what models.dev answered on 2026-11-20, with the fields Quill doesn't read left in.
     const LIST: &str = r#"{
       "anthropic": { "id": "anthropic", "name": "Anthropic", "doc": "https://docs", "models": {
         "claude-fable-5-2": { "id": "claude-fable-5-2", "name": "Claude Fable 5.2", "limit": { "context": 1000000, "output": 128000 },

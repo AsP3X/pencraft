@@ -6,9 +6,9 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleName</key>
-  <string>Pencraft</string>
+  <string>Quill</string>
   <key>CFBundleDisplayName</key>
-  <string>Pencraft</string>
+  <string>Quill</string>
   <key>CFBundleIdentifier</key>
   <string>dev.pencraft.desktop</string>
   <key>CFBundleExecutable</key>

@@ -44,7 +44,7 @@ pub const WENT_ON: &str = "Went on with the task list";
 pub const GAVE_UP: &str = "The assistant stopped before the task list was finished";
 
 /// What a caller outside the app's own chat is told.
-pub const NO_CHAT: &str = "Only the assistant in Pencraft's own chat keeps a task list. Work without one.";
+pub const NO_CHAT: &str = "Only the assistant in Quill's own chat keeps a task list. Work without one.";
 /// What a run that changes the design many times without a list is told, once.
 pub const ADVICE: &str = "This has become a long job. Split what is left into tasks with plan_tasks now (a few words each, in the order you will do them), then work on one task at a time and call finish_task after each: the user follows the list above the chat.";
 

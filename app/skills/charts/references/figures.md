@@ -21,7 +21,7 @@ this kit's own; where the product or its country writes figures another way, tha
 - Decimals: one count of them per column and per axis. 6.0, 7.5, 10.0, not 6, 7.5, 10.
 - Rounding in a tile; the exact figure in the table or the tooltip under it. Both come from one value.
 - Negative numbers take a minus sign, not brackets and not red alone.
-- Figures in a column end on one edge. Pencraft has no figures of one width: give the column one fixed
+- Figures in a column end on one edge. Quill has no figures of one width: give the column one fixed
   width with `"textAlign":"right"`, and avoid faces whose figures dip below the line (Georgia, Constantia).
 - Never shorten a figure or a date with an ellipsis. Shorten the label beside it.
 

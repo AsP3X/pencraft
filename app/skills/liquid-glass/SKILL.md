@@ -1,19 +1,19 @@
 ---
 name: liquid-glass
-description: Design Liquid Glass interfaces in Pencraft - the translucent, refractive material of iOS 26, macOS 26 and visionOS for bars and controls that float above content - and frosted panels for structure inside content. Use when the user asks for liquid glass, glass UI, glassmorphism, frosted or translucent panels, an iOS 26 / macOS 26 / visionOS look, a floating glass tab bar, toolbar, sidebar, sheet or menu, or says "make this look like glass". Covers which surfaces get glass, the `material` property, glass groups, legibility, tokens, components and the check_glass tool.
-license: Apache-2.0 with Commons Clause (see LICENSE in the Pencraft repository)
+description: Design Liquid Glass interfaces in Quill - the translucent, refractive material of iOS 26, macOS 26 and visionOS for bars and controls that float above content - and frosted panels for structure inside content. Use when the user asks for liquid glass, glass UI, glassmorphism, frosted or translucent panels, an iOS 26 / macOS 26 / visionOS look, a floating glass tab bar, toolbar, sidebar, sheet or menu, or says "make this look like glass". Covers which surfaces get glass, the `material` property, glass groups, legibility, tokens, components and the check_glass tool.
+license: Apache-2.0 with Commons Clause (see LICENSE in the Quill repository)
 metadata:
   product: pencraft
   version: "1"
 ---
 
-# Liquid glass in Pencraft
+# Liquid glass in Quill
 
 Glass is a material, not a colour: a layer made of it shows what is **behind** it, blurred, and bends it at
 the rim like a thick lens. It has no look of its own. Over a flat background it is a grey box; over a photo,
 a coloured header or a scrolling feed it reads as glass. So every decision here starts from what is behind.
 
-This is Pencraft's own glass material in the style Apple introduced in 2025. It is not Apple's system
+This is Quill's own glass material in the style Apple introduced in 2025. It is not Apple's system
 material and does not match it pixel for pixel; never say it does, and never use Apple's icons or wallpapers.
 
 Part of this skill is firm and part is a starting point. Firm, on every design: which surfaces get glass
@@ -22,7 +22,7 @@ Part of this skill is firm and part is a starting point. Firm, on every design: 
 components and tokens in the reference files, which are one well-tried way to build with the material
 and not the look every glass design must have. A design that already has a look keeps it.
 
-Work with Pencraft's tools (`get_state`, `get_guide`, `read_layers`, `edit_layers`, `screenshot`,
+Work with Quill's tools (`get_state`, `get_guide`, `read_layers`, `edit_layers`, `screenshot`,
 `check_glass`). The reference files named below are read with `read_skill` (name `liquid-glass`, `file` as
 given), or from this folder when you have it on disk.
 
@@ -62,7 +62,7 @@ ordinary fill, or `frosted` at most, and tell the user which layers you made pla
 gradient, a colour field, a blob or a picture behind a bar or sidebar only so that the glass has something to
 show; a backdrop is the user's choice, so ask before adding one they did not ask for. Glass stays right on a
 flat screen only where real content passes under it: a toolbar floating over a canvas with nodes and wires,
-a bar over a scrolling list. Pencraft's general guide tells you to end a list above a bar and not to let a bar
+a bar over a scrolling list. Quill's general guide tells you to end a list above a bar and not to let a bar
 cut a row; under glass bars that rule is reversed on purpose, and the review's remark about it can stand.
 Over a plain text feed, glass has little to bend and reads mostly by its rim and shadow; that is correct,
 but let a picture, a coloured header or a card pass under at least one bar when the content has one.
@@ -119,7 +119,7 @@ Three shapes build everything; pick one per layer and compute it, do not eyeball
 - **Fixed**: one radius for free-standing rectangles (cards 20-28, sheets 34-40).
 
 Glass floats: keep it off the screen's edges. On a phone a bar is a capsule 16-21 from the left, right and
-bottom edge, not an edge-to-edge strip. Touch targets are at least 44 x 44. Pencraft has no corner smoothing;
+bottom edge, not an edge-to-edge strip. Touch targets are at least 44 x 44. Quill has no corner smoothing;
 plain rounded corners are what you get.
 
 ## 6. Build bars the way this design language does
@@ -176,7 +176,7 @@ with a gradient from the content's background colour to clear:
 Make the band about twice as tall as the distance from the screen edge to the bar's far side, so the bar
 sits where the fade is still half clear: a fade that is opaque under the bar leaves the glass nothing to
 bend (`check_glass` then reports a flat backdrop). Colours can be variables (`"$bg"` cannot take an alpha,
-so define `bg-clear` and `bg-fade`). Pencraft's review counts these gradients; that remark can stand.
+so define `bg-clear` and `bg-fade`). Quill's review counts these gradients; that remark can stand.
 Leave the fade out over full-bleed photos, where it would grey the picture. For dense desktop layouts use a
 `{"type":"frosted","thickness":"thin"}` band instead (the "hard" style).
 

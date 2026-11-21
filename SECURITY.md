@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes go into the latest release. Pencraft tells you when a newer
+Security fixes go into the latest release. Quill tells you when a newer
 version is out, so the fix for an older version is to update.
 
 ## Reporting a vulnerability
@@ -19,7 +19,7 @@ You can expect a first answer within a week. Once a fix is released, the
 report is published as a security advisory, with credit to you unless you
 prefer otherwise.
 
-## What Pencraft does with your data
+## What Quill does with your data
 
 Knowing this helps to judge a report.
 
@@ -34,7 +34,7 @@ Knowing this helps to judge a report.
   your computer or to the provider's API. Nothing is sent until you write to
   the assistant.
 - **It runs a local door for AI clients.** While "Let AI models work on
-  documents" is on, Pencraft listens on `127.0.0.1` on a random port, and
+  documents" is on, Quill listens on `127.0.0.1` on a random port, and
   `pencraft mcp` connects clients to it with a token that is made anew at
   every start. It is not reachable from other computers.
 - **It runs programs you installed.** The `claude` program for the chat, and
@@ -60,6 +60,6 @@ Knowing this helps to judge a report.
   `SHA256SUMS.txt` in each release lets you check a download.
 
 Problems in any of these areas are in scope. So is anything that makes
-Pencraft run a command, write a file or send data that the user did not ask
+Quill run a command, write a file or send data that the user did not ask
 for, for example through a crafted `.pen` file, shader, picture, release
 answer or MCP message.

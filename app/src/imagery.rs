@@ -24,14 +24,14 @@ use service::{ASPECTS, Aspect, Failure, Made, Request};
 
 /// What a model or a person is told when no service is set up.
 pub const NO_SERVICE: &str =
-    "No image service is set up. Add one with its API key in Settings → Images, or start Pencraft with GEMINI_API_KEY or OPENAI_API_KEY set.";
+    "No image service is set up. Add one with its API key in Settings → Images, or start Quill with GEMINI_API_KEY or OPENAI_API_KEY set.";
 /// What a model is told when a picture it names is on a network share.
 pub const ON_A_SHARE: &str = "Pictures on a network share can't be sent; copy it to this computer first.";
 /// What a model or a person is told when there are services but none can edit a picture.
 pub const NO_EDITING: &str =
-    "None of the image services can edit pictures. Add a Google Gemini service in Settings → Images, or start Pencraft with GEMINI_API_KEY set.";
+    "None of the image services can edit pictures. Add a Google Gemini service in Settings → Images, or start Quill with GEMINI_API_KEY set.";
 
-/// The kinds of service Pencraft can talk to.
+/// The kinds of service Quill can talk to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     /// Google's Gemini image models.
@@ -108,7 +108,7 @@ pub enum KeyFrom {
     Keychain(String),
 }
 
-/// A service that can be asked: it has a kind Pencraft knows and a key.
+/// A service that can be asked: it has a kind Quill knows and a key.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Ready {
     /// What the user calls it.
@@ -367,7 +367,7 @@ pub fn pick_editing<'a>(ready: &'a [Ready], saved: &[ImageService], asked: Optio
 ///
 /// # Errors
 /// [`Failure::NoKey`] when it is no longer where it was.
-// Human: a key from the environment is set where Pencraft was started, so the sentence names the variable and
+// Human: a key from the environment is set where Quill was started, so the sentence names the variable and
 // nothing about Settings; a key from the keychain was added in Settings, so that is where to add it again.
 pub fn key(ready: &Ready, vault: &dyn Vault) -> Result<SecretString, Failure> {
     match &ready.key {
@@ -460,7 +460,7 @@ mod tests {
         let ready = ready(&images(), &|_| None);
         assert_eq!(pick(&ready, &saved, Some("no KEY"), ""), Err("\"No key\" has no API key yet. Add it in Settings → Images.".to_owned()));
         assert_eq!(pick(&[], &saved, Some("No key"), ""), Err("\"No key\" has no API key yet. Add it in Settings → Images.".to_owned()));
-        // A kind Pencraft doesn't know is not a service at all, key or none.
+        // A kind Quill doesn't know is not a service at all, key or none.
         assert_eq!(pick(&ready, &saved, Some("Odd"), ""), Err("There is no image service called \"Odd\". The ones there are: Studio.".to_owned()));
         assert!(listed(&ready, "").as_array().is_some_and(|listed| listed.iter().all(|service| service["name"] != "No key")));
     }
@@ -639,7 +639,7 @@ mod tests {
         assert_eq!(picked(&[], None, ""), Err(NO_SERVICE.to_owned()));
         assert_eq!(
             NO_EDITING,
-            "None of the image services can edit pictures. Add a Google Gemini service in Settings → Images, or start Pencraft with GEMINI_API_KEY set."
+            "None of the image services can edit pictures. Add a Google Gemini service in Settings → Images, or start Quill with GEMINI_API_KEY set."
         );
     }
 

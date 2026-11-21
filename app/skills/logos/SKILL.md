@@ -1,13 +1,13 @@
 ---
 name: logos
-description: Design a logo in Pencraft the way an identity designer does, in any kind and rendering style - flat geometric, monoline, negative space, vintage badge and roundel, heraldic crest and coat of arms, seal with text round its rim, engraved, mascot and sports, hand-lettered, luxury monogram, gradient and dimensional, app icon, retro, art deco, mon, pixel and more - from one idea, constructed exactly, with detail built in order and a small version that holds at 24 pixels. Use whenever the user asks for a logo, a mark, a brand mark, a symbol, a wordmark, a logotype, a monogram, a lettermark, an emblem, a crest, a coat of arms, a badge, a seal, a signet, a mascot, a favicon or an app icon, or asks to improve, enrich or redraw one. Do not use for an illustration, a poster, an interface icon set, or a screen that merely shows a logo.
-license: Apache-2.0 with Commons Clause (see LICENSE in the Pencraft repository)
+description: Design a logo in Quill the way an identity designer does, in any kind and rendering style - flat geometric, monoline, negative space, vintage badge and roundel, heraldic crest and coat of arms, seal with text round its rim, engraved, mascot and sports, hand-lettered, luxury monogram, gradient and dimensional, app icon, retro, art deco, mon, pixel and more - from one idea, constructed exactly, with detail built in order and a small version that holds at 24 pixels. Use whenever the user asks for a logo, a mark, a brand mark, a symbol, a wordmark, a logotype, a monogram, a lettermark, an emblem, a crest, a coat of arms, a badge, a seal, a signet, a mascot, a favicon or an app icon, or asks to improve, enrich or redraw one. Do not use for an illustration, a poster, an interface icon set, or a screen that merely shows a logo.
+license: Apache-2.0 with Commons Clause (see LICENSE in the Quill repository)
 metadata:
   product: pencraft
   version: "2"
 ---
 
-# Logos in Pencraft
+# Logos in Quill
 
 A logo stands for one name. It may be three shapes or a full coat of arms with a motto; what makes it a logo
 is that it carries one idea, keeps to the rules of one style, is built exactly, and has a form that still
@@ -105,7 +105,7 @@ Draw the three candidates side by side in a group named "Logo roughs": each with
 may be taller), 80 of empty space between the boxes, black (`#111111`), no colour, no type, one to three
 `path` layers each. For a detailed style the rough is the skeleton and the silhouette: the outline, its
 zones, and the main picture as a solid shape, drawn small here and built anew at 480 once chosen. Take one `screenshot` of the group at `scale: 1`; with it
-Pencraft sends a small proof, the row 24 pixels high and enlarged pixel by pixel (without one, look again at
+Quill sends a small proof, the row 24 pixels high and enlarged pixel by pixel (without one, look again at
 `scale: 0.1`). Choose in this order:
 1. Which says its idea without a caption, and is the idea this client's?
 2. In the small proof, which is still one clear shape, and which is a blot?
@@ -229,7 +229,7 @@ that disagree, lines too thin for the small sizes when no small version is there
 
 ## 12. What is delivered
 One group, or one frame without a fill, named for the brand and what it is ("Holm logo", "Vorberg crest":
-Pencraft's review reads a logo by that name), holding the mark (a path or a group "Mark") and the text layers.
+Quill's review reads a logo by that name), holding the mark (a path or a group "Mark") and the text layers.
 For a detailed logo also its small version beside it. Nothing behind them, no board, no caption, no mock-up;
 only an app icon has a filled tile. Do not add one-colour or reversed versions unless asked; offer them. In
 your reply: the idea in one sentence, the style and why, the face and the colours, in plain words.

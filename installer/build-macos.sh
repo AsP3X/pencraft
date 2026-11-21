@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds Pencraft for macOS: one app for Apple Silicon and Intel Macs, in a
+# Builds Quill for macOS: one app for Apple Silicon and Intel Macs, in a
 # disk image.
 #
 # Writes to app/target/installer:
@@ -66,7 +66,7 @@ codesign --verify --strict "$work/Pencraft.app"
 # The name must end in .dmg: app/src/update.rs looks for that.
 image="$out/pencraft-$version-macos-universal.dmg"
 ln -s /Applications "$work/Applications"
-hdiutil create -volname "Pencraft $version" -srcfolder "$work" -ov -format UDZO "$image"
+hdiutil create -volname "Quill $version" -srcfolder "$work" -ov -format UDZO "$image"
 
 if [ -n "$identity" ]; then
   codesign --force --timestamp --sign "$identity" "$image"

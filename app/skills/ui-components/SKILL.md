@@ -1,22 +1,22 @@
 ---
 name: ui-components
-description: Design standard interface components in Pencraft the way the common component libraries build them - buttons, inputs, selects, checkboxes, switches, tabs, cards, tables, dialogs, menus, popovers, tooltips, toasts, drawers and command palettes, a sidebar and top bar, calendars and date fields, data tables, the parts of an AI chat, and whole screens such as a dashboard, a sign-in page or an inbox, with their sizes, tokens, states and placement. Use when the user asks for a component, a component set, a design system or UI kit, a form, a settings screen or dialog, a dashboard, an admin or app screen, a chat with an assistant, names shadcn/ui, Radix, Base UI, Sonner, Vaul or cmdk, or asks for standard, default or plain controls, or for the states of a control. Do not use for glass or translucent surfaces (the liquid-glass skill), nor for posters, landing pages and other designs with a look of their own.
-license: Apache-2.0 with Commons Clause (see LICENSE in the Pencraft repository)
+description: Design standard interface components in Quill the way the common component libraries build them - buttons, inputs, selects, checkboxes, switches, tabs, cards, tables, dialogs, menus, popovers, tooltips, toasts, drawers and command palettes, a sidebar and top bar, calendars and date fields, data tables, the parts of an AI chat, and whole screens such as a dashboard, a sign-in page or an inbox, with their sizes, tokens, states and placement. Use when the user asks for a component, a component set, a design system or UI kit, a form, a settings screen or dialog, a dashboard, an admin or app screen, a chat with an assistant, names shadcn/ui, Radix, Base UI, Sonner, Vaul or cmdk, or asks for standard, default or plain controls, or for the states of a control. Do not use for glass or translucent surfaces (the liquid-glass skill), nor for posters, landing pages and other designs with a look of their own.
+license: Apache-2.0 with Commons Clause (see LICENSE in the Quill repository)
 metadata:
   product: pencraft
   version: "1"
 ---
 
-# Standard components in Pencraft
+# Standard components in Quill
 
 A standard component is not designed, it is built to a specification people already know by hand: where the
 label sits, how tall the control is, what a menu does at its edge. The libraries that most interfaces are
-built from agree on nearly all of it. This skill is that agreement, as Pencraft layers. Where the user
+built from agree on nearly all of it. This skill is that agreement, as Quill layers. Where the user
 asks for standard or names a library, follow it closely: that is what the request means. Where the design
 has a look of its own, keep the anatomy (heights, spacing, states, where things sit) and change the skin
 through the tokens.
 
-Work with Pencraft's tools (`get_state`, `read_layers`, `edit_layers`, `screenshot`). The reference files
+Work with Quill's tools (`get_state`, `read_layers`, `edit_layers`, `screenshot`). The reference files
 named below are read with `read_skill` (name `ui-components`, `file` as given).
 
 Part of this skill is firm and part is a starting point. It says which, and the difference matters:
@@ -32,7 +32,7 @@ Part of this skill is firm and part is a starting point. It says which, and the 
   leave one only with a reason, which can be short and needs nobody's leave.
 - A design that already has a look, a brand or a system keeps it. Take from this skill what the design
   lacks, and nothing that would replace what it has.
-- The examples in the reference files show how a thing is built in Pencraft and at what size. Their colours,
+- The examples in the reference files show how a thing is built in Quill and at what size. Their colours,
   faces, words and arrangement are one answer among many, not the look to reproduce.
 - The checklist and "When it looks wrong" at the end are there to be gone through every time, as a check
   of your own work. A line in them that speaks of a starting point is a starting point still.
@@ -121,7 +121,7 @@ in a component, no capitals with spacing (except a shortcut hint).
 - In the dark theme a surface gets lighter as it rises (page, then card and popover, then muted), lines are
   white at 10% (inputs 15%), and shadows nearly vanish: the lighter fill and the hairline carry the depth.
   Never invert a light design.
-- Pencraft's review remarks on an outline with a shadow; a hairline at 20% or less is not counted. Its remark
+- Quill's review remarks on an outline with a shadow; a hairline at 20% or less is not counted. Its remark
   on Inter as a default face is silent when the face comes from the `font` variable.
 
 ## 5. States
@@ -203,7 +203,7 @@ state (the hover fill).
    Change sizes only along the ladder.
 5. `screenshot` with the `ids` of the work (not the whole canvas), put right what the review counted, then
    go through the checklist.
-6. Tell the user in two sentences what is there, and name anything they asked for that Pencraft cannot draw
+6. Tell the user in two sentences what is there, and name anything they asked for that Quill cannot draw
    (section 9).
 
 ## 8. Checklist
@@ -216,7 +216,7 @@ state (the hover fill).
 - Figures in a column end on one edge, with the same decimals.
 - Copy is real: "Send invite", not "Submit"; a real name, an uneven number.
 
-## 9. What Pencraft cannot draw, and what to do instead
+## 9. What Quill cannot draw, and what to do instead
 
 | Missing | Instead |
 |---|---|

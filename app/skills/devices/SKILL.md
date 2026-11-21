@@ -1,18 +1,18 @@
 ---
 name: devices
-description: Show an app's screen inside the phone or tablet it is for - an iPhone with its real status bar, Dynamic Island, home indicator and side buttons, an Android phone or an iPad - built from a ready template of Pencraft layers. Use whenever the user asks for a mock, mockup, prototype or screen of a phone or tablet app, or names an iPhone, iPad or Android phone, even when the request does not say device or frame. Do not use for an app icon, a logo, one component on its own, or when the user asks for the screen alone.
-license: Apache-2.0 with Commons Clause (see LICENSE in the Pencraft repository)
+description: Show an app's screen inside the phone or tablet it is for - an iPhone with its real status bar, Dynamic Island, home indicator and side buttons, an Android phone or an iPad - built from a ready template of Quill layers. Use whenever the user asks for a mock, mockup, prototype or screen of a phone or tablet app, or names an iPhone, iPad or Android phone, even when the request does not say device or frame. Do not use for an app icon, a logo, one component on its own, or when the user asks for the screen alone.
+license: Apache-2.0 with Commons Clause (see LICENSE in the Quill repository)
 metadata:
   product: pencraft
   version: "1"
 ---
 
-# Screens on devices in Pencraft
+# Screens on devices in Quill
 
 A mock of a phone app is judged by people who hold that phone every day. A screen standing bare on the canvas
 looks half done, and a status bar drawn from memory (line icons, the time pushed against the island) gives the
 mock away at a glance. So the device is not drawn, it is inserted: the template below is measured from the
-iPhone's own status bar and checked in Pencraft. Insert it as it is and change only what this file says.
+iPhone's own status bar and checked in Quill. Insert it as it is and change only what this file says.
 
 That exactness is firm, and it is for the device alone, because a phone has one true shape: insert the
 template every time a phone screen is asked for, unchanged. The app on its screen is the design and is
@@ -101,7 +101,7 @@ The iPhone 17 (402 × 874) is the current standard model; the newest are the iPh
 2026), whose island Apple made smaller without giving its size: keep 126 × 37 unless the user gives one. The
 foldable iPhone Duo has no measured size here yet; tell the user so rather than guessing one.
 
-With the row's numbers, set (halves are fine, Pencraft keeps them):
+With the row's numbers, set (halves are fine, Quill keeps them):
 - "Body": `width` W + 24, `height` H + 24, `cornerRadius` R + 12. "Screen": W × H at 12, 12, `cornerRadius` R.
   "App": W × H. "Status bar": W × S. "Side button": `x` W + 26.
 - "Dynamic Island" (island rows): `x` (W − 126) / 2; `y` 11, or 14 on the 402, 420 and 440 wide models. Its

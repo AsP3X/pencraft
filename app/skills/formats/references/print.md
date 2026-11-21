@@ -1,6 +1,6 @@
 # Print
 
-Draw print in points: Pencraft's PDF has one unit to the point (1/72 inch; 1 mm is 2.835 points), keeps text
+Draw print in points: Quill's PDF has one unit to the point (1/72 inch; 1 mm is 2.835 points), keeps text
 as text and shapes as shapes, and so prints sharp at any size. Paper sizes are standards; the working rules
 on bleed, margins and minimums are common to printers' own pages but differ a little from one to the next,
 so the printer's template, when the user has one, wins.
@@ -48,7 +48,7 @@ with clear paper around it. Two sides are two frames.
   1.5 mm, packaging for 5.)
 - Safe margin: nothing that is read lies within 3 to 5 mm (8.5 to 14 points) of the trim. So the frame's
   `padding` is the bleed plus the margin: 22.5 for a card, 40 to 60 for a flyer or poster.
-- Tell the user the trim size and the bleed with the file: Pencraft's PDF carries no crop marks.
+- Tell the user the trim size and the bleed with the file: Quill's PDF carries no crop marks.
 
 ## Minimums
 
@@ -66,7 +66,7 @@ small sizes.
 ## A business card
 
 85 x 55 mm with 3 mm of bleed: a frame of 258 x 173 with 22.5 of padding (the bleed and a 5 mm margin).
-Pencraft's review counts text under 11 as too small, because it takes a unit for a pixel. On a print piece
+Quill's review counts text under 11 as too small, because it takes a unit for a pixel. On a print piece
 a unit is a point and 8 is right: that remark can stand.
 
 ```json

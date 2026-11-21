@@ -54,7 +54,7 @@ angle (a rotated group of ruled lines after the mask), a highlight. Build it as 
 then what it cuts. What must stay whole comes after that group: the contour or keyline drawn over the
 edge, text. A second mask layer in the same group ends the first and cuts what follows it, so several
 masked parts can lie in one group, each mask followed by what it holds.
-Without a mask (an older Pencraft answers that the property is unknown), a shadow is drawn as a shape of
+Without a mask (an older Quill answers that the property is unknown), a shadow is drawn as a shape of
 its own that shares the edge of what it shades. A `viewBox` may start
 anywhere (`[60, 0, 120, 240]`), and `path` layers take `strokeLinecap` and `strokeLinejoin`.
 

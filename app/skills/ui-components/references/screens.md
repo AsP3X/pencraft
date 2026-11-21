@@ -131,7 +131,7 @@ content needs no second heading. On `$ground` the table's head row has no fill o
 - The chart here is plain bars made of rectangles on one baseline, one per week, each as high as its value,
   with a label of 12 under it. For axes, gridlines, lines, areas, donuts and the rules that keep a chart
   true to its numbers, read the `charts` skill; a decorative curve is worse than no chart.
-- Pencraft's review takes a row of equal tiles for the stock grid of feature cards. Four stat tiles over
+- Quill's review takes a row of equal tiles for the stock grid of feature cards. Four stat tiles over
   the chart and table they sum up are the form of a dashboard: that remark can stand here, and only here.
 - On a screen 1024 wide the sidebar is the rail of 48 and the tiles stand two by two. On a phone the
   sidebar is a sheet, the top bar holds a menu button, and tiles, chart and table stack in one column with

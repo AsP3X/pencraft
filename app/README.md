@@ -1,4 +1,4 @@
-# Pencraft
+# Quill
 
 A canvas design editor for `.pen` files, written in Rust as a Craft app (egui on the storytold fork, with the
 storytold craft-libs for saving, settings, dialogs and quitting). Runs on macOS and Windows; Linux next.
@@ -31,7 +31,7 @@ frosted materials, with the `material` layer property and the `check_glass` tool
 |---|---|
 | `crates/pen-doc` | The document without a window: model and JSON round-trip, variables and themes, component instances, flex layout, SVG paths, editing by id. `examples/pen_check.rs` checks files. |
 | `src/` | The app: `app` (tabs, home, files, shortcuts), `editor` (one open document, undo), `canvas` (pointer tools), `render` (drawing), `sidebar` (the left sidebar's islands and the tool rail), `conversation` (the chat's lines, tool notes and their motion), `pen` and `path_edit` (drawing paths and editing their points), `settings` (the settings window), `panels` (layers list, properties), `ops` (editing commands), `palette` (the action search and the list of commands), `find` (find layers), `menus` (the macOS menu bar), `keys` (shortcuts written the way each system does: ⌘S or Ctrl+S), `export` and `render/svg_out` (exporting layers to PNG, JPEG, WebP, PDF and SVG), `effects` (a layer's effects as the file stores them), `raster` and `render/bake` (shadows and blurs, painted on the CPU), `shader` and `gpu` (shader effects: reading WebGL shader files and running them on the GPU), `chat` (the chat's engines; `chat/critic` has a second model review a finished design), `craft` (what a model is told about designing well) and `review` (what the app counts in a design when the model looks at it), `update` (asking GitHub for a newer release and the card that offers it; `update/install` downloads, checks and installs it), `theme`, `prefs`, `fonts` and `faces` (the installed font families a design's text is drawn in), `screenshot`, `samples`. |
-| `MECHANICS.md`, `mechanics.json` | Every rule and number Pencraft uses. |
+| `MECHANICS.md`, `mechanics.json` | Every rule and number Quill uses. |
 
 Installing, building installers and releasing: the [repository's README](../README.md), [docs/BUILDING.md](../docs/BUILDING.md)
 and [docs/RELEASING.md](../docs/RELEASING.md).
