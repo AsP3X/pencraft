@@ -183,6 +183,9 @@ pub enum Event {
     /// The model thinks before it writes or uses a tool: more of what it thinks, or nothing when its engine
     /// only says that it does.
     Thought(String),
+    /// These words, the last ones told as the model's, were its thinking after all: they are no part of
+    /// the answer.
+    Unsaid(String),
     /// The model's next words start a new paragraph of the conversation.
     Break,
     /// The answer broke off before it was whole and the same request is sent once more: what the chat says
@@ -394,6 +397,8 @@ pub enum Engine {
         official: bool,
         /// The model.
         model: String,
+        /// How many tokens the model reads at most, as the settings have it; 0 when that isn't known.
+        window: u32,
         /// Where the key is.
         key: KeySource,
     },
@@ -556,6 +561,7 @@ pub fn choices(agents: &Agents, find: &dyn Fn(&str) -> Option<PathBuf>, key_in_e
                 endpoint: endpoint(&base),
                 official: is_anthropic(&base),
                 model: model.to_owned(),
+                window: 0,
                 key: KeySource::Environment,
             },
         }));
@@ -573,7 +579,14 @@ pub fn choices(agents: &Agents, find: &dyn Fn(&str) -> Option<PathBuf>, key_in_e
                 id: format!("api/{}/{}", provider.name, model.id),
                 label: plain.clone(),
                 plain,
-                engine: Engine::Api { wire, endpoint: endpoint.clone(), official, model: model.id.clone(), key: key.clone() },
+                engine: Engine::Api {
+                    wire,
+                    endpoint: endpoint.clone(),
+                    official,
+                    model: model.id.clone(),
+                    window: model.context_window,
+                    key: key.clone(),
+                },
             }
         }));
     }
@@ -781,7 +794,7 @@ fn answer(ask: &Ask, said: Said<'_>, flag: &AtomicBool, held: &Mutex<Option<Chil
                 tell,
             );
         }
-        Engine::Api { wire, endpoint, official, model, key } => {
+        Engine::Api { wire, endpoint, official, model, window, key } => {
             let run = match wire {
                 Wire::Messages => api::run,
                 Wire::Completions => openai::run,
@@ -792,6 +805,7 @@ fn answer(ask: &Ask, said: Said<'_>, flag: &AtomicBool, held: &Mutex<Option<Chil
                     endpoint,
                     official: *official,
                     model,
+                    window: u64::from(*window),
                     key,
                     instructions: &ask.instructions,
                     off: &ask.off,
@@ -1501,6 +1515,19 @@ impl Chat {
                 self.thinking.get_or_insert(now);
                 self.thought.push_str(&more);
             }
+            // Human: thinking that arrived as the answer's words (see `openai::Turn::say`) leaves the
+            // conversation again; an entry that held nothing else goes with it.
+            Event::Unsaid(said) => {
+                if let Some(last) = self.entries.last_mut().filter(|last| last.role == Role::Assistant && !self.fresh) {
+                    if let Some(kept) = last.text.strip_suffix(said.as_str()).or_else(|| last.text.strip_suffix(said.trim_start())).map(str::len) {
+                        last.text.truncate(kept);
+                    }
+                    if last.text.trim().is_empty() {
+                        self.entries.pop();
+                        self.fresh = true;
+                    }
+                }
+            }
             Event::Break => self.fresh = true,
             Event::Again(text) => {
                 // Human: a call the broken answer was still writing was never made; its note would turn for ever.
@@ -2034,6 +2061,28 @@ mod tests {
     }
 
     #[test]
+    fn words_that_were_thinking_leave_the_conversation_again() {
+        let mut chat = with_events(Vec::new());
+        let now = Instant::now();
+        let texts =
+            |chat: &Chat| chat.entries.iter().filter(|entry| entry.role == Role::Assistant).map(|entry| entry.text.clone()).collect::<Vec<_>>();
+        let before = texts(&chat).len();
+        // An answer that was thinking all along goes whole, and the real one takes its place.
+        chat.hear(Event::Text("\nSo I call ".to_owned()), now);
+        chat.hear(Event::Text("get_state.".to_owned()), now);
+        chat.hear(Event::Unsaid("\nSo I call get_state.".to_owned()), now);
+        assert_eq!(texts(&chat).len(), before);
+        chat.hear(Event::Text("Done.".to_owned()), now);
+        // Words that follow an earlier answer without a break lose only what is taken back.
+        chat.hear(Event::Text(" Hm, more".to_owned()), now);
+        chat.hear(Event::Unsaid(" Hm, more".to_owned()), now);
+        assert_eq!(texts(&chat).last().map(String::as_str), Some("Done."));
+        // What was never said takes nothing away.
+        chat.hear(Event::Unsaid("something else".to_owned()), now);
+        assert_eq!(texts(&chat).last().map(String::as_str), Some("Done."));
+    }
+
+    #[test]
     fn a_wait_says_what_the_model_is_doing_and_a_long_thought_leaves_a_note() {
         let mut chat = with_events(Vec::new());
         let start = Instant::now();
@@ -2104,6 +2153,7 @@ mod tests {
             endpoint: "https://openrouter.ai/api/v1/chat/completions?x=1".to_owned(),
             official: false,
             model: "m".to_owned(),
+            window: 0,
             key: KeySource::None,
         };
         assert_eq!(via(&api), "OpenAI Completions at openrouter.ai");
@@ -2346,6 +2396,7 @@ mod tests {
                 endpoint: "http://localhost:11434/v1/chat/completions".to_owned(),
                 official: false,
                 model: "llama".to_owned(),
+                window: 0,
                 key: KeySource::None
             }
         );
@@ -2360,6 +2411,7 @@ mod tests {
                 endpoint: "https://llm.example.com/v1/messages".to_owned(),
                 official: false,
                 model: "claude-opus-5-5".to_owned(),
+                window: 0,
                 key: KeySource::Keychain("k".to_owned())
             }
         );

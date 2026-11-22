@@ -20,6 +20,20 @@ pub(super) const MOST_CALLS: usize = 64;
 /// What stands in for a picture the provider's model can't take.
 const NO_PICTURES: &str = "(A picture belongs here, but this model doesn't take pictures. Check your work with read_layers instead.)";
 
+/// What a tool's picture is told with in the conversation.
+const TOOL_PICTURE: &str = "The picture the tool made:";
+/// How many of the model's latest answers are kept whole, with what their tools gave, when a conversation is
+/// shortened.
+const KEPT_ANSWERS: usize = 2;
+/// A tool's result of up to this many bytes is kept whole however old it is.
+const SHORT: usize = 600;
+/// How many bytes of an older, longer result stay.
+const HEAD: usize = 240;
+/// What stands behind the start of a result that was shortened.
+const DROPPED: &str = "…\n(The rest of this result was dropped to save room. Call the tool again if you need it.)";
+/// What stands in for a tool's picture that was dropped.
+const PICTURE_DROPPED: &str = "(The picture a tool made here was dropped to save room. Take a screenshot again if you need to see it.)";
+
 /// The address chat requests are posted to for a provider reached at `base`.
 // Human: the base address is the one the provider's own documentation gives for OpenAI-compatible clients; it
 // already ends in the API's version where there is one.
@@ -134,6 +148,38 @@ fn without_pictures(history: &mut [Value]) -> bool {
     found
 }
 
+/// Whether a conversation that fills `filled` tokens of a context of `room` is due for shortening: from two
+/// thirds on. Never when the room isn't known.
+fn crowded(filled: u64, room: u64) -> bool {
+    room > 0 && filled.saturating_mul(3) >= room.saturating_mul(2)
+}
+
+/// Makes `history` smaller: of everything before the model's latest answers, a long tool result keeps its
+/// start and a tool's picture is dropped, each with a note saying so. Returns whether anything changed.
+// Human: the brief and the tools can't be made smaller and the model's own words are short; what fills a
+// context over a long piece of work is what tools gave: screenshots, layers read, skills. The model has used
+// the old ones already and can call a tool again. What the user wrote and attached is never touched. A
+// message is changed once and stays as it is then, so the start of the conversation a provider has cached
+// stays the same from one request to the next.
+fn shorten(history: &mut [Value]) -> bool {
+    let answers = history.iter().enumerate().filter(|(_, message)| message["role"] == "assistant").map(|(at, _)| at);
+    let Some(kept) = answers.rev().nth(KEPT_ANSWERS - 1) else { return false };
+    let mut changed = false;
+    for message in history.iter_mut().take(kept) {
+        if message["role"] == "tool" {
+            let Some(said) = message["content"].as_str().filter(|said| said.len() > SHORT) else { continue };
+            let end = said.char_indices().map(|(at, _)| at).take_while(|at| *at <= HEAD).last().unwrap_or(0);
+            let start = said.get(..end).unwrap_or_default();
+            message["content"] = json!(format!("{start}{DROPPED}"));
+            changed = true;
+        } else if message["role"] == "user" && message.pointer("/content/0/text").and_then(Value::as_str) == Some(TOOL_PICTURE) {
+            message["content"] = json!(PICTURE_DROPPED);
+            changed = true;
+        }
+    }
+    changed
+}
+
 /// One tool call of an answer, as the stream builds it.
 #[derive(Default)]
 pub(super) struct ToolCall {
@@ -141,6 +187,25 @@ pub(super) struct ToolCall {
     pub(super) name: String,
     /// The JSON of its input, as written so far.
     pub(super) arguments: String,
+}
+
+/// What opens a model's thinking where it is written among its words.
+const THINKS: &str = "<think>";
+/// What closes it.
+const THOUGHT: &str = "</think>";
+
+/// Where an answer's words stand to thinking written among them.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum Aside {
+    /// Nothing but the start of a possible [`THINKS`] has come.
+    #[default]
+    Open,
+    /// The answer began with [`THINKS`]: its words are thoughts until [`THOUGHT`].
+    Thinking,
+    /// The answer's words are the answer, unless a [`THOUGHT`] still shows that they were thoughts.
+    Said,
+    /// The thinking is over: everything from here on is the answer.
+    Closed,
 }
 
 /// One answer of the model as it comes in.
@@ -151,9 +216,76 @@ pub(super) struct Turn {
     pub(super) finish: Option<String>,
     /// What the answer took, when the provider said.
     pub(super) used: Option<Report>,
+    /// How many tokens of the model's context the conversation fills with this answer; 0 when nobody said.
+    pub(super) filled: u64,
+    /// Whether the words coming in are the answer or thinking written among them.
+    aside: Aside,
 }
 
 impl Turn {
+    /// Takes `more` of the answer's words and adds to `told` what the chat hears of them.
+    // Human: a model's thinking should come beside its words, but not every model server tells the two apart.
+    // Some write it among the words between <think> and </think>; and a small model in Ollama now and then
+    // has its thinking arrive as words, with only the closing </think> to show it. Left alone, the chat shows
+    // pages of thinking as the answer and the conversation carries them along in every later request. So:
+    // words from a <think> on are thoughts, and when a </think> comes with nothing before it to open it,
+    // what was said until then is taken back (`Event::Unsaid`). Only the answer after it is kept.
+    pub(super) fn say(&mut self, more: &str, told: &mut Vec<Event>) {
+        let said = self.text.len();
+        self.text.push_str(more);
+        if self.aside == Aside::Open {
+            let begun = self.text.trim_start();
+            if THINKS.starts_with(begun) {
+                return;
+            }
+            // Everything held back so far is told now, as a thought or as words.
+            if let Some(thought) = begun.strip_prefix(THINKS) {
+                (self.aside, self.text) = (Aside::Thinking, thought.to_owned());
+                return self.aside(0, told);
+            }
+            self.aside = Aside::Said;
+            return self.aside(0, told);
+        }
+        self.aside(said, told);
+    }
+
+    /// Tells the chat about the words from byte `said` of the text on, which it hasn't heard of yet.
+    fn aside(&mut self, said: usize, told: &mut Vec<Event>) {
+        let new = self.text.get(said..).unwrap_or_default().to_owned();
+        if self.aside == Aside::Closed {
+            told.push(Event::Text(new));
+            return;
+        }
+        // The closing may have come in pieces: it is looked for from a little before the new words.
+        let from = (0..=said.saturating_sub(THOUGHT.len())).rev().find(|at| self.text.is_char_boundary(*at)).unwrap_or(0);
+        let closed = self.text.get(from..).and_then(|tail| tail.find(THOUGHT)).map(|at| from + at);
+        let Some(closed) = closed else {
+            told.push(if self.aside == Aside::Thinking { Event::Thought(new) } else { Event::Text(new) });
+            return;
+        };
+        let heard = self.text.get(..said).unwrap_or_default();
+        if self.aside == Aside::Said && !heard.is_empty() {
+            told.push(Event::Unsaid(heard.to_owned()));
+        }
+        let answer = self.text.get(closed + THOUGHT.len()..).unwrap_or_default().trim_start().to_owned();
+        (self.aside, self.text) = (Aside::Closed, answer.clone());
+        if !answer.is_empty() {
+            told.push(Event::Text(answer));
+        }
+    }
+
+    /// Tells the chat what the answer took, and keeps how full the model's context is with it. Thinking that
+    /// was never closed is no answer and is dropped.
+    pub(super) fn report(&mut self, tell: &dyn Fn(Event) -> bool) {
+        if self.aside == Aside::Thinking {
+            self.text.clear();
+        }
+        if let Some(report) = self.used.take() {
+            self.filled = report.used.read().saturating_add(report.used.output);
+            tell(Event::Used(report));
+        }
+    }
+
     /// Takes one event of the stream. Returns what the chat is told, or what went wrong.
     // Human: a tool call comes in pieces, each naming its place in the answer; a provider that leaves the
     // place out starts a new call with every piece that has an id.
@@ -175,8 +307,7 @@ impl Turn {
             told.push(Event::Thought(more));
         }
         if let Some(more) = choice.get("delta").and_then(|delta| text(delta, "content")) {
-            self.text.push_str(&more);
-            told.push(Event::Text(more));
+            self.say(&more, &mut told);
         }
         for piece in choice.pointer("/delta/tool_calls").and_then(Value::as_array).into_iter().flatten() {
             let id = text(piece, "id");
@@ -263,9 +394,7 @@ fn ask(
             }
         }
     }
-    if let Some(report) = turn.used.take() {
-        tell(Event::Used(report));
-    }
+    turn.report(tell);
     Ok(turn)
 }
 
@@ -306,7 +435,7 @@ fn use_tools(job: &Job<'_>, turn: &Turn, history: &mut Vec<Value>, blind: bool, 
         history.push(json!({ "role": "tool", "tool_call_id": call.id, "content": said }));
     }
     if !blind && !pictures.is_empty() {
-        history.push(user("The picture the tool made:", &pictures));
+        history.push(user(TOOL_PICTURE, &pictures));
     }
     true
 }
@@ -344,7 +473,7 @@ pub fn run(job: &Job<'_>, stop: &AtomicBool, tell: &dyn Fn(Event) -> bool) {
         }
     };
     let agent = api::agent();
-    converse(job, stop, tell, &|history| {
+    converse(job, job.window, stop, tell, &|history| {
         asked(job.endpoint, &|counted| ask(&agent, job, bearer.as_deref(), &request(job, history, counted), stop, tell))
     });
 }
@@ -354,10 +483,13 @@ pub fn run(job: &Job<'_>, stop: &AtomicBool, tell: &dyn Fn(Event) -> bool) {
 pub(super) type Ask<'a> = dyn Fn(&[Value]) -> Result<Turn, (u16, String)> + 'a;
 
 /// Leads the conversation of `job`: `ask` sends it as it stands and gives the model's answer, the tools the
-/// answer calls are run, and so on until the model has nothing more to do.
+/// answer calls are run, and so on until the model has nothing more to do. `room` is how many tokens the
+/// model reads at most (0 when that isn't known): a conversation that gets near it is shortened.
+// Human: a model on one's own computer reads a few ten thousand tokens, and a long piece of work fills that
+// with screenshots and tool results; the run then ended in the middle. See `shorten` for what goes.
 // Human: a request the provider declines while pictures are in the conversation is sent once more without
 // them: many models read no pictures, and the run would otherwise end at the first screenshot.
-pub(super) fn converse(job: &Job<'_>, stop: &AtomicBool, tell: &dyn Fn(Event) -> bool, ask: &Ask<'_>) {
+pub(super) fn converse(job: &Job<'_>, room: u64, stop: &AtomicBool, tell: &dyn Fn(Event) -> bool, ask: &Ask<'_>) {
     let mut history = job.history.clone();
     history.push(user(job.prompt, job.pictures));
     let mut blind = false;
@@ -388,11 +520,26 @@ pub(super) fn converse(job: &Job<'_>, stop: &AtomicBool, tell: &dyn Fn(Event) ->
             if !use_tools(job, &turn, &mut history, blind, stop, tell) {
                 return;
             }
+            if crowded(turn.filled, room) && shorten(&mut history) {
+                log::info!("the conversation filled {} of {room} tokens: older tool results were shortened", turn.filled);
+            }
             tell(Event::Break);
             heard(job, &mut history, tell);
             continue;
         }
         match turn.finish.as_deref() {
+            // Human: an answer that ends for its length ended because the context was full, where that is
+            // nearly so. Then the conversation is shortened and the model asked again; only when there is
+            // nothing left to shorten does the run end, and the user is told what was full.
+            Some("length") if crowded(turn.filled, room) => {
+                if shorten(&mut history) {
+                    continue;
+                }
+                tell(Event::Problem(format!(
+                    "The model ran out of room: the conversation fills all {room} tokens it can read here. Start a new chat, or ask for smaller steps."
+                )));
+                break;
+            }
             Some("length") => {
                 tell(Event::Problem("The answer was cut off at its length limit. Ask for the rest, or for smaller steps.".to_owned()));
                 break;
@@ -539,6 +686,7 @@ mod tests {
             endpoint: "",
             official: false,
             model: "some-model",
+            window: 0,
             key: &KeySource::None,
             instructions: "",
             off: &["export_layers".to_owned()],
@@ -576,5 +724,187 @@ mod tests {
         assert!(heard(&job, &mut history, &|_| true) && !heard(&job, &mut history, &|_| true));
         assert_eq!(history[2], json!({ "role": "user", "content": "note\n\nWider" }));
         assert_eq!(endpoint(" https://api.example.com/v1/ "), "https://api.example.com/v1/chat/completions");
+    }
+
+    /// Has a model in Ollama's cloud use a tool that makes a picture and say what is in it: the whole way a
+    /// message goes, with the key Quill keeps in the keychain. Run by hand, naming that key and a model that
+    /// reads pictures:
+    /// `OLLAMA_CLOUD_KEY_NAME=provider-… OLLAMA_CLOUD_MODEL=… cargo test -- --ignored a_model_in_ollamas_cloud`.
+    #[test]
+    #[ignore = "talks to ollama.com on the key of the person running it"]
+    fn a_model_in_ollamas_cloud_calls_tools_and_reads_their_pictures() {
+        let key = KeySource::Keychain(std::env::var("OLLAMA_CLOUD_KEY_NAME").unwrap());
+        let model = std::env::var("OLLAMA_CLOUD_MODEL").unwrap();
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::RgbaImage::from_pixel(96, 96, image::Rgba([220, 30, 30, 255])).write_to(&mut png, image::ImageFormat::Png).unwrap();
+        let picture = crate::agent::base64(&png.into_inner());
+        let (tools, calls) = channel::<crate::link::Call>();
+        // The app's part: every tool call is answered with a line of text and a red square.
+        let app = std::thread::spawn(move || {
+            for call in calls {
+                let made = json!({ "type": "image", "mimeType": "image/png", "data": picture });
+                let _gone = call.reply.send(Ok(vec![json!({ "type": "text", "text": "A picture of the document, 96 by 96." }), made]));
+            }
+        });
+        let inbox = api::Inbox::default();
+        let told = std::sync::Mutex::new(Vec::new());
+        let job = Job {
+            endpoint: &endpoint("https://ollama.com/v1"),
+            official: false,
+            model: &model,
+            window: 0,
+            key: &key,
+            instructions: "",
+            off: &[],
+            prompt: "Call the screenshot tool once. Then tell me in one sentence which one colour fills the picture it made.",
+            pictures: &[],
+            history: Vec::new(),
+            tools: &tools,
+            wake: &|| {},
+            chat: 1,
+            steering: &inbox,
+        };
+        run(&job, &AtomicBool::new(false), &|event| {
+            lock(&told).push(format!("{event:?}"));
+            true
+        });
+        drop(tools);
+        app.join().unwrap();
+        let told = told.into_inner().unwrap();
+        let words: String = told.iter().filter_map(|event| event.strip_prefix("Text(\"")).map(|word| word.trim_end_matches("\")")).collect();
+        let kinds: Vec<&str> = told.iter().map(|event| event.split(['(', ' ']).next().unwrap_or_default()).collect();
+        println!("{model}: {words}\n{kinds:?}");
+        assert!(told.iter().all(|event| !event.starts_with("Problem")), "{told:?}");
+        assert!(kinds.contains(&"Tool") && kinds.contains(&"Used") && kinds.last() == Some(&"History"), "{kinds:?}");
+        // The model saw the picture itself, and its thinking is no part of what it said.
+        assert!(words.to_lowercase().contains("red") && !words.contains("think>"), "{words}");
+        assert!(told.last().is_some_and(|event| event.contains("image_url")), "the picture is in the conversation");
+    }
+
+    /// What the chat hears, and what is kept as the answer, when the model's words come in these pieces.
+    fn said(pieces: &[&str]) -> (Vec<String>, String) {
+        let mut turn = Turn::default();
+        let mut told = Vec::new();
+        for piece in pieces {
+            turn.say(piece, &mut told);
+        }
+        turn.report(&|_| true);
+        (told.iter().map(|event| format!("{event:?}")).collect(), turn.text)
+    }
+
+    #[test]
+    fn thinking_among_the_words_is_no_part_of_the_answer() {
+        let heard = |pieces: &[&str]| said(pieces).0.join(" ");
+        // Plain words are the answer, also when they begin like a tag or hold one that opens nothing.
+        assert_eq!(said(&["A ", "card."]), (vec![r#"Text("A ")"#.to_owned(), r#"Text("card.")"#.to_owned()], "A card.".to_owned()));
+        assert_eq!(said(&["<", "b> is bold"]), (vec![r#"Text("<b> is bold")"#.to_owned()], "<b> is bold".to_owned()));
+        // From <think> to </think> the words are thoughts, however the tags are cut; the answer follows.
+        let (told, kept) = said(&["\n<thi", "nk>Hm, a ", "card.</th", "ink>\n\nA card", "."]);
+        assert_eq!(kept, "A card.");
+        assert_eq!(told.join(" "), r#"Thought("Hm, a ") Thought("card.</th") Text("A card") Text(".")"#);
+        // Thinking that never closes leaves no answer.
+        assert_eq!(said(&["<think>", "Hm"]).1, "");
+        // A closing with nothing to open it: what was said until then is taken back, tag in pieces or not.
+        let (told, kept) = said(&["So I call ", "get_state.\n</thi", "nk>", "Done."]);
+        assert_eq!(kept, "Done.");
+        assert_eq!(told.join(" "), r#"Text("So I call ") Text("get_state.\n</thi") Unsaid("So I call get_state.\n</thi") Text("Done.")"#);
+        assert_eq!(heard(&["Hm.</think>"]), "");
+        assert_eq!(heard(&["Hm.", "</think>The answer"]), r#"Text("Hm.") Unsaid("Hm.") Text("The answer")"#);
+        // Only the first closing counts: a later one is the answer's own.
+        assert_eq!(said(&["a</think>b", "</think>c"]).1, "b</think>c");
+    }
+
+    /// A conversation with three answers of the model: a long result and a picture after the first, a short
+    /// result after the second.
+    fn worked() -> Vec<Value> {
+        let call = |id: &str| json!({ "role": "assistant", "content": "", "tool_calls": [{ "id": id, "type": "function", "function": { "name": "t", "arguments": "{}" } }] });
+        let seen = json!({ "source": { "media_type": "image/png", "data": "Zm9v" } });
+        vec![
+            user("Make a card", std::slice::from_ref(&seen)),
+            call("a"),
+            json!({ "role": "tool", "tool_call_id": "a", "content": "ä".repeat(400) }),
+            user(TOOL_PICTURE, std::slice::from_ref(&seen)),
+            call("b"),
+            json!({ "role": "tool", "tool_call_id": "b", "content": "ok" }),
+            call("c"),
+            json!({ "role": "tool", "tool_call_id": "c", "content": "x".repeat(900) }),
+            user(TOOL_PICTURE, std::slice::from_ref(&seen)),
+        ]
+    }
+
+    #[test]
+    fn an_old_tool_result_is_shortened_and_the_latest_kept() {
+        // Two thirds of the room is where shortening starts; an unknown room never is crowded.
+        assert!(crowded(20, 30) && !crowded(19, 30) && !crowded(1_000_000, 0));
+        let mut history = worked();
+        let before = history.clone();
+        assert!(shorten(&mut history));
+        // The first answer's long result keeps its start, cut between letters, and its picture goes.
+        let said = history[2]["content"].as_str().unwrap();
+        assert!(said.starts_with(&"ä".repeat(120)) && said.ends_with(DROPPED) && said.len() < 400);
+        assert_eq!(history[3], json!({ "role": "user", "content": PICTURE_DROPPED }));
+        // What the user sent, the model's own words and everything from the last two answers on are as they were.
+        for at in [0, 1, 4, 5, 6, 7, 8] {
+            assert_eq!(history[at], before[at], "{at}");
+        }
+        // Once shortened there is nothing more to take; nor is there with fewer answers than are kept.
+        assert!(!shorten(&mut history));
+        assert!(!shorten(&mut before.into_iter().skip(5).collect::<Vec<_>>()));
+    }
+
+    #[test]
+    fn a_full_context_is_shortened_and_the_model_asked_again() {
+        let (tools, _calls) = channel::<crate::link::Call>();
+        let inbox = api::Inbox::default();
+        let job = Job {
+            endpoint: "",
+            official: false,
+            model: "some-model",
+            window: 0,
+            key: &KeySource::None,
+            instructions: "",
+            off: &[],
+            prompt: "Go on",
+            pictures: &[],
+            history: worked(),
+            tools: &tools,
+            wake: &|| {},
+            chat: 1,
+            steering: &inbox,
+        };
+        let run = |room: u64| {
+            let asked = std::cell::Cell::new(0);
+            let told = std::sync::Mutex::new(Vec::new());
+            // The model's context is full every time it is asked.
+            let ask = |_: &[Value]| {
+                asked.set(asked.get() + 1);
+                Ok(Turn { finish: Some("length".to_owned()), filled: 1000, ..Turn::default() })
+            };
+            converse(
+                &job,
+                room,
+                &AtomicBool::new(false),
+                &|event| {
+                    lock(&told).push(format!("{event:?}"));
+                    true
+                },
+                &ask,
+            );
+            (asked.get(), told.into_inner().unwrap())
+        };
+        // With a known room the conversation is shortened once and the model asked again; then the user is told.
+        let (asked, told) = run(1000);
+        assert_eq!(asked, 2);
+        assert!(
+            told.iter().any(|event| event.starts_with("Problem(\"The model ran out of room: the conversation fills all 1000 tokens")),
+            "{told:?}"
+        );
+        assert!(told.last().is_some_and(|event| event.starts_with("History") && event.contains("dropped to save room")));
+        // Without one, or far from full, a cut-off answer ends the run as before.
+        for room in [0, 100_000] {
+            let (asked, told) = run(room);
+            assert_eq!(asked, 1);
+            assert!(told.iter().any(|event| event.starts_with("Problem(\"The answer was cut off")), "{told:?}");
+        }
     }
 }

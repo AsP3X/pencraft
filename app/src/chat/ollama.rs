@@ -15,10 +15,16 @@ use super::Event;
 use super::api::{self, Job};
 use super::openai::{self, MOST_CALLS, ToolCall, Turn};
 
-/// How many tokens of a conversation the model is asked to read, where the model can read that many.
-// Human: the brief and the tools are about 17 000 tokens; this leaves room for the work after them without
-// asking a home computer for the memory a model's whole context would take.
+/// How many tokens of a conversation the model is asked to read at least, where the model can read that many.
+// Human: the brief and the tools are about 20 000 tokens; this leaves some room for the work after them on
+// any computer. Where more is known to fit (see `fitting`), more is asked for.
 const CONTEXT: u64 = 32_768;
+/// The most tokens asked for however much memory there is: beyond this the memory is better left to the user.
+const MOST_CONTEXT: u64 = 131_072;
+/// Contexts are asked for in steps of this many tokens.
+const STEP: u64 = 4_096;
+/// The memory left to everything else on the computer when a context is sized to it, in bytes.
+const SPARE: u64 = 2 << 30;
 /// Said when the model server doesn't answer at all.
 pub(super) const NOT_RUNNING: &str = "Ollama isn't running. Open the Ollama app or run `ollama serve`, then try again.";
 
@@ -119,8 +125,7 @@ fn take(turn: &mut Turn, event: &Value) -> Result<Vec<Event>, String> {
         told.push(Event::Thought(more.to_owned()));
     }
     if let Some(more) = event.pointer("/message/content").and_then(Value::as_str).filter(|more| !more.is_empty()) {
-        turn.text.push_str(more);
-        told.push(Event::Text(more.to_owned()));
+        turn.say(more, &mut told);
     }
     for call in event.pointer("/message/tool_calls").and_then(Value::as_array).into_iter().flatten() {
         if turn.calls.len() >= MOST_CALLS {
@@ -146,13 +151,84 @@ fn take(turn: &mut Turn, event: &Value) -> Result<Vec<Event>, String> {
     Ok(told)
 }
 
-/// How many tokens `model` is asked to read: [`CONTEXT`], or all the model can where that is less.
-// Agent: BLOCKS on one short question to Ollama; any failure gives the usual number.
+/// How many tokens `model` is asked to read: the number the user set for it in the settings, or as many as
+/// suit this computer ([`suggested`]) where they set none.
+// Agent: BLOCKS on two short questions to Ollama and on `sysctl`; any failure gives the usual number.
 fn context(agent: &ureq::Agent, job: &Job<'_>, headers: &[(&str, &str)], stop: &AtomicBool) -> u64 {
-    let url = format!("{}/api/show", job.endpoint.trim_end_matches("/api/chat"));
-    let Ok(mut response) = api::post(agent, &url, headers, &json!({ "model": job.model }).to_string(), stop) else { return CONTEXT };
+    let base = job.endpoint.trim_end_matches("/api/chat");
+    let Ok(mut response) = api::post(agent, &format!("{base}/api/show"), headers, &json!({ "model": job.model }).to_string(), stop) else {
+        return CONTEXT;
+    };
     let said = response.body_mut().read_to_string().unwrap_or_default();
-    most(&said).map_or(CONTEXT, |most| most.min(CONTEXT))
+    asked(job.window, most(&said), suggested(agent, base, job.model, &said))
+}
+
+/// What is asked for a model that reads `most` tokens at most, with `window` set in the settings and
+/// `suggested` for this computer.
+// Human: the settings' "Context window" is the user's to set, and what they typed is what Ollama is asked
+// for. But the form used to fill in all a model can read (262 144 tokens, say), and a row added by hand
+// starts with a number larger still; asking for that would take tens of gigabytes. So a number that is all
+// the model can read, or more, counts as not set.
+fn asked(window: u64, most: Option<u64>, suggested: u64) -> u64 {
+    match most {
+        Some(most) if window > 0 && window < most => window,
+        _ => suggested,
+    }
+}
+
+/// How many tokens suit a conversation with `model`, which the Ollama at `base` shows as `shown`: as many as
+/// fit beside the model in this computer's memory, [`CONTEXT`] at least, and never more than the model can.
+/// The settings' form fills this in for a model, and it is asked for where the user set nothing else.
+// Human: 32 768 tokens was the same on every computer, and a third of it was left for the work; a model that
+// thinks at length ran out in the middle of a thought. A Mac with more memory holds a larger context, so the
+// number follows the memory. Only an Ollama on this computer is sized: of another machine nothing is known.
+// Agent: BLOCKS on one short question to Ollama and on `sysctl`.
+pub(super) fn suggested(agent: &ureq::Agent, base: &str, model: &str, shown: &str) -> u64 {
+    let fits = super::catalog::is_local_ollama(base)
+        .then(|| fitting(memory()?, weights(agent, base, model)?, per_token(shown)?))
+        .flatten()
+        .unwrap_or(CONTEXT);
+    most(shown).map_or(fits, |most| most.min(fits))
+}
+
+/// How many tokens fit in a computer with `memory` bytes beside a model of `weights` bytes whose context
+/// takes `per_token` bytes a token: between [`CONTEXT`] and [`MOST_CONTEXT`], in whole [`STEP`]s.
+// Human: on a Mac the graphics chip may use about two thirds of the memory; a model that needs more is run
+// partly on the processor and gets much slower. So two thirds, less what the rest of the computer needs.
+fn fitting(memory: u64, weights: u64, per_token: u64) -> Option<u64> {
+    let room = (memory / 3 * 2).saturating_sub(SPARE).saturating_sub(weights);
+    let tokens = room.checked_div(per_token)? / STEP * STEP;
+    Some(tokens.clamp(CONTEXT, MOST_CONTEXT))
+}
+
+/// The bytes one token of context takes in memory, from what Ollama says about a model: a key and a value
+/// (two bytes a number) for each of its attention heads that keep them, in each of its layers.
+fn per_token(shown: &str) -> Option<u64> {
+    let shown = serde_json::from_str::<Value>(shown).ok()?;
+    let facts = shown.get("model_info")?.as_object()?;
+    let fact = |name: &str| facts.iter().find(|(key, _)| key.ends_with(name)).and_then(|(_, value)| value.as_u64()).filter(|count| *count > 0);
+    let numbers = fact(".attention.key_length")?.checked_add(fact(".attention.value_length")?)?;
+    fact(".block_count")?.checked_mul(fact(".attention.head_count_kv")?)?.checked_mul(numbers)?.checked_mul(2)
+}
+
+/// The size of `model`'s file in bytes, from Ollama's list of its models.
+// Agent: BLOCKS on one short question to Ollama.
+fn weights(agent: &ureq::Agent, base: &str, model: &str) -> Option<u64> {
+    let mut response = agent.get(format!("{base}/api/tags")).call().ok()?;
+    let listed = serde_json::from_str::<Value>(&response.body_mut().read_to_string().ok()?).ok()?;
+    let found = listed["models"].as_array()?.iter().find(|known| known["name"] == model || known["model"] == model)?;
+    found["size"].as_u64().filter(|size| *size > 0)
+}
+
+/// The memory of this computer in bytes, where a model's context shares it with everything else: a Mac with
+/// Apple's own chip. `None` elsewhere, where a graphics card's own memory decides and isn't known here.
+// Agent: RUNS `sysctl -n hw.memsize`, which answers at once.
+fn memory() -> Option<u64> {
+    if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        return None;
+    }
+    let told = std::process::Command::new("/usr/sbin/sysctl").args(["-n", "hw.memsize"]).output().ok()?;
+    String::from_utf8_lossy(&told.stdout).trim().parse().ok().filter(|bytes| *bytes > 0)
 }
 
 /// The longest conversation a model can read, from what Ollama says about it.
@@ -195,9 +271,7 @@ fn ask(
             break;
         }
     }
-    if let Some(report) = turn.used.take() {
-        tell(Event::Used(report));
-    }
+    turn.report(tell);
     Ok(turn)
 }
 
@@ -213,7 +287,7 @@ pub fn run(job: &Job<'_>, stop: &AtomicBool, tell: &dyn Fn(Event) -> bool) {
     let headers: Vec<(&str, &str)> = bearer.iter().map(|bearer| ("authorization", bearer.as_str())).collect();
     let agent = api::agent();
     let context = context(&agent, job, &headers, stop);
-    openai::converse(job, stop, tell, &|history| ask(&agent, job, &headers, &request(job, history, context), stop, tell));
+    openai::converse(job, context, stop, tell, &|history| ask(&agent, job, &headers, &request(job, history, context), stop, tell));
 }
 
 #[cfg(test)]
@@ -269,6 +343,7 @@ mod tests {
             endpoint: "",
             official: false,
             model: "some-model",
+            window: 0,
             key: &KeySource::None,
             instructions: "",
             off: &[],
@@ -328,16 +403,48 @@ mod tests {
         assert_eq!((most(r#"{"model_info":{}}"#), most("no")), (None, None));
     }
 
+    #[test]
+    fn the_context_follows_the_memory() {
+        // A model of 36 layers with 8 heads that keep a key and a value of 128 numbers each, two bytes a number.
+        let shown =
+            r#"{"model_info":{"m.block_count":36,"m.attention.head_count_kv":8,"m.attention.key_length":128,"m.attention.value_length":128}}"#;
+        assert_eq!(per_token(shown), Some(147_456));
+        assert_eq!((per_token(r#"{"model_info":{"m.block_count":36}}"#), per_token("no")), (None, None));
+        let gib = |count: u64| count << 30;
+        // 18 GB hold a 3.3 GB model with 49 152 tokens, 16 GB with 36 864, 36 GB with as many as are ever asked for.
+        assert_eq!(fitting(gib(18), 3_300_000_000, 147_456), Some(49_152));
+        assert_eq!(fitting(gib(16), 3_300_000_000, 147_456), Some(36_864));
+        assert_eq!(fitting(gib(36), 3_300_000_000, 147_456), Some(MOST_CONTEXT));
+        // Too little memory, or a model larger than it, still gets the usual context; a model that says nothing gets none.
+        assert_eq!((fitting(gib(8), 3_300_000_000, 147_456), fitting(gib(8), gib(20), 147_456)), (Some(CONTEXT), Some(CONTEXT)));
+        assert_eq!(fitting(gib(18), 3_300_000_000, 0), None);
+        // What the user set in the settings is asked for; all the model can read, more than that or nothing
+        // counts as not set, and then it is what suits the computer.
+        assert_eq!((asked(65_536, Some(262_144), 49_152), asked(8_192, Some(262_144), 49_152)), (65_536, 8_192));
+        assert_eq!(
+            (asked(262_144, Some(262_144), 49_152), asked(512_000, Some(262_144), 49_152), asked(0, Some(262_144), 49_152)),
+            (49_152, 49_152, 49_152)
+        );
+        assert_eq!(asked(65_536, None, 32_768), 32_768);
+    }
+
     /// Runs one message through an Ollama on this computer, with its first model, and gives what the chat was told.
     fn told_by_ollama(prompt: &str) -> Vec<String> {
         let base = "http://localhost:11434";
         let models = crate::chat::catalog::list_models(crate::chat::OLLAMA_API, base, None).unwrap();
         let (tools, calls) = channel::<crate::link::Call>();
-        // The app's part: every tool call is answered with a line of text.
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::RgbaImage::from_pixel(96, 96, image::Rgba([220, 30, 30, 255])).write_to(&mut png, image::ImageFormat::Png).unwrap();
+        let picture = crate::agent::base64(&png.into_inner());
+        // The app's part: every tool call is answered with a line of text, and the screenshot tool with a red
+        // square as well.
         let app = std::thread::spawn(move || {
             for call in calls {
-                let _gone =
-                    call.reply.send(Ok(vec![json!({ "type": "text", "text": "One document is open: Untitled, 1 frame, nothing selected." })]));
+                let mut made = vec![json!({ "type": "text", "text": "One document is open: Untitled, 1 frame, nothing selected." })];
+                if call.tool == "screenshot" {
+                    made.push(json!({ "type": "image", "mimeType": "image/png", "data": picture }));
+                }
+                let _gone = call.reply.send(Ok(made));
             }
         });
         let inbox = api::Inbox::default();
@@ -346,6 +453,7 @@ mod tests {
             endpoint: &endpoint(base),
             official: false,
             model: &models[0].id,
+            window: 0,
             key: &KeySource::None,
             instructions: "",
             off: &[],
@@ -375,5 +483,19 @@ mod tests {
         assert!(told.iter().all(|event| !event.starts_with("Problem")), "{told:?}");
         assert!(told.iter().any(|event| event.starts_with("Tool {")) && !words.is_empty());
         assert!(told.last().is_some_and(|event| event.starts_with("History")));
+    }
+
+    /// A tool's picture reaches a model that reads pictures, and a model that doesn't works on without it.
+    #[test]
+    #[ignore = "talks to an Ollama on this computer that has a model with tool calling"]
+    fn a_model_in_ollama_is_given_a_tools_picture() {
+        let told = told_by_ollama("Call the screenshot tool once. Then tell me in one sentence which one colour fills the picture it made.");
+        let words: String = told.iter().filter_map(|event| event.strip_prefix("Text(\"")).map(|word| word.trim_end_matches("\")")).collect();
+        println!("{words}");
+        assert!(told.iter().all(|event| !event.starts_with("Problem")), "{told:?}");
+        assert!(told.iter().any(|event| event.starts_with("Tool {")) && !words.is_empty() && !words.contains("think>"));
+        let history = told.last().filter(|event| event.starts_with("History")).unwrap();
+        // The picture is in the conversation and the model named its colour, or a note stands in its place.
+        assert!(history.contains("image_url") && words.to_lowercase().contains("red") || history.contains("doesn't take pictures"), "{words}");
     }
 }

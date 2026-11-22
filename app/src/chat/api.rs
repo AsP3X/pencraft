@@ -63,6 +63,8 @@ pub struct Job<'a> {
     pub official: bool,
     /// The model.
     pub model: &'a str,
+    /// How many tokens the model reads at most, as the settings have it; 0 when that isn't known.
+    pub window: u64,
     /// Where the key is.
     pub key: &'a KeySource,
     /// What the user wants kept to in every conversation (the settings' custom instructions).
@@ -625,6 +627,7 @@ mod tests {
             endpoint: "",
             official,
             model,
+            window: 0,
             key: &KeySource::Environment,
             instructions: "",
             off: &[],

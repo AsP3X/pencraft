@@ -201,7 +201,12 @@ pub fn limits(base: &str, key: Option<&SecretString>, id: &str) -> Limits {
     if response.status().as_u16() != 200 {
         return Limits::default();
     }
-    Limits { context: ollama::most(&response.body_mut().read_to_string().unwrap_or_default()), output: None }
+    // Human: of an Ollama on this computer the form is told how much suits the computer, not all the model can
+    // read: that number is what the model is then asked for, and all of it would take far too much memory.
+    let shown = response.body_mut().read_to_string().unwrap_or_default();
+    let most = ollama::most(&shown);
+    let context = if is_local_ollama(base) { most.map(|_| ollama::suggested(&api::agent(), ollama::root(base), id, &shown)) } else { most };
+    Limits { context, output: None }
 }
 
 /// Asks the provider which models it has.
@@ -304,7 +309,13 @@ mod tests {
         assert!(limits("https://ollama.com/v1", None, &cloud[0].id).context.is_some_and(|context| context > 1000));
         // On this computer Ollama lists what is pulled, or the form says what is missing.
         match list_models(OLLAMA_API, OLLAMA_LOCAL, None) {
-            Ok(models) => assert_ne!(models, [] as [Offered; 0]),
+            // Asked about one of them, it says how many tokens suit this computer: never more than are ever asked for.
+            Ok(models) => {
+                assert_ne!(models, [] as [Offered; 0]);
+                let suits = limits(OLLAMA_LOCAL, None, &models[0].id).context;
+                println!("{}: {suits:?}", models[0].id);
+                assert!(suits.is_some_and(|context| (1000..=131_072).contains(&context)), "{suits:?}");
+            }
             Err(why) => assert!(why == NO_LOCAL_MODELS || why.starts_with(ollama::NOT_RUNNING), "{why}"),
         }
     }

@@ -9,6 +9,35 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Changed
+
+- **A model in Ollama gets as much room as the Mac has.** Quill asked
+  every Ollama model to read 32 768 tokens, of which its own brief and
+  tools take about 20 000; a model that thinks at length ran out in the
+  middle of a thought and the run ended. On a Mac with Apple's own chip
+  Quill now asks for as many tokens as fit in the memory beside the
+  model without slowing it down: 49 152 for a 3 GB model in 18 GB, and
+  up to 131 072 with more memory. The number is filled into the
+  model's "Context window" in Settings → Assistants, and what you type
+  there instead is what the model is asked to read.
+- **A long piece of work no longer fills the model's context.** When a
+  conversation with a model in Ollama or at an "OpenAI Completions"
+  provider fills two thirds of what the model can read, the results of
+  older tool calls are cut to their first lines and older screenshots
+  are dropped; the model is told so and can call the tool again. What
+  you wrote and attached stays whole. If the context still fills up,
+  Quill says that this is what happened, with the number of tokens.
+
+### Fixed
+
+- **A model's thinking no longer shows up as its answer.** A small model
+  in Ollama sometimes sent pages of thinking as the words of its answer,
+  ending in `</think>`, and other model servers write the thinking
+  between `<think>` and `</think>`. Quill showed all of it in the chat
+  and sent it along with every later request, where it used up the
+  model's room. Such thinking is now shown as thinking and left out of
+  the conversation.
+
 ## [0.4.1] - 2026-11-21
 
 Layers inside a layout can be dragged to wherever you want them, and on

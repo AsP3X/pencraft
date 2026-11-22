@@ -29,9 +29,20 @@ its chat belongs to (the one in front when you send); what you have selected is 
 - **Ollama** (models that run on your own computer): click the Ollama card in Settings → Agents. Its address
   (`http://localhost:11434`) and the API type "Ollama" are filled in and no key is needed; with Ollama
   running, press "Choose models…", tick the models you have pulled, and save. Change the address if
-  Ollama runs on another machine. Pick a model that can call tools. Quill asks Ollama to read up to
-  32 768 tokens of the conversation (its brief and tools alone are about 17 000), which takes more memory
+  Ollama runs on another machine. Pick a model that can call tools. Quill asks Ollama to read at least
+  32 768 tokens of the conversation (its brief and tools alone are about 20 000), which takes more memory
   than Ollama's own default; a model that can read less than that will lose the start of the conversation.
+  How many tokens a model is asked to read is the "Context window" in its row of the provider's form, and
+  it is yours to change: more gives a model that thinks at length more room and takes more memory. The form
+  fills in what suits the computer. On a Mac with Apple's own chip and Ollama on the same computer that is
+  as many tokens as fit in the memory beside the model without slowing it down (49 152 for a 3 GB model in
+  18 GB, never more than 131 072); elsewhere the form shows all the model can read and 32 768 are asked for.
+  A number that is all the model can read, or more, counts as not set, and what suits the computer is asked
+  for: all of a large model's context would take tens of gigabytes.
+  When a conversation with a provider's model fills two thirds of what the model can read, the results of
+  older tool calls are cut to their first lines and older screenshots are dropped, each with a note that
+  tells the model to call the tool again if it needs them; your own messages and pictures are never cut.
+  This goes for Ollama and for every provider with the API type "OpenAI Completions".
   Ollama's cloud models work here too once you are signed in (`ollama signin`) and have pulled one.
 - **Ollama Cloud** (Ollama's hosted models, without Ollama on your computer): click the Ollama Cloud card,
   enter an API key from ollama.com (Settings → Keys there), load the models and save. Both cards can be
