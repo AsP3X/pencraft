@@ -87,7 +87,10 @@ black, keeps the best and builds it exactly; a detailed logo is built in passes,
 fine lines, and comes with a small version redrawn for favicon sizes. Each picture it takes of a logo comes
 with a second one, the logo drawn 24 pixels small and enlarged, and with what the app counted in it (lights
 that disagree, more than three line weights, a detailed logo without its small version). A logo is reviewed
-by the second model like a larger design, as a logo of its style.
+by the second model like a larger design, as a logo of its style. The reviewer is told what you wrote in the
+conversation, the pictures you attached and what the assistant says its idea is; it says what is weak, and
+the next idea stays the assistant's: it does not hand over a mark of its own, and the name's initials joined
+together count as the stock answer unless you asked for a monogram.
 
 A shape can cut what follows it: a path, rectangle, ellipse or polygon with `"mask": true` is drawn as it is
 and cuts every layer after it in the same group or frame to its outline (water inside a shield, shading
@@ -188,6 +191,8 @@ A client that speaks MCP over HTTP can skip `pencraft mcp`: the address and the 
 | `edit_layers` | Insert, update, delete, move, copy and replace layers, set variables; all or none |
 | `screenshot` | A picture of layers as Quill draws them, with a review of what makes them read as generated or broken, so the model can check and improve its work |
 | `check_glass` | Measures a design that uses glass materials: which appearance each material came to, the contrast of every label on glass against the worst of what is under it, and how the glass is built |
+| `build_path` | Calculates exact path data: circles, rings, arcs, stars, rays and leaves, any path turned, mirrored or repeated round a centre, shapes combined into one outline (union, subtract, intersect), and a text's letters as outlines, so the model works no coordinates out by hand |
+| `measure_layers` | Measures what was drawn: the box and area of each shape, the narrowest gaps between shapes, and whether the whole is symmetric |
 | `select_layers` | Selects layers for you and brings them into view |
 | `open_document` | Opens a design file (`.quill`, `.pen` or an old `.pencraft`), or starts an empty document |
 | `save_document` | Saves the document as a `.quill` file, one file with its pictures and shader files in it, or saves it under a new path ending in `.quill`; a document opened from a `.pen` or `.pencraft` file is saved as the `.quill` file of the same name beside it |

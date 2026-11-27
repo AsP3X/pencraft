@@ -1,12 +1,30 @@
 # Constructing a mark
 
 A mark is one `path` layer, sometimes two or three. Its `geometry` is SVG path data in the coordinates of its
-`viewBox`; `width` and `height` scale it. Draw in a `viewBox` of `[0, 0, 240, 240]` with a module of 20 and
-give the layer the same `width` and `height`, so one unit is one unit while you work. Resize the group at the
-end, never the numbers.
+`viewBox`; `width` and `height` scale it. Draw in a `viewBox` of `[0, 0, 240, 240]` and give the layer the
+same `width` and `height`, so one unit is one unit while you work. Resize the group at the end, never the
+numbers.
 
-Work the coordinates out on paper first, as a list of points, then write the path. Every number is either on
-the grid or calculated by one of the rules below. Round calculated numbers to two decimals.
+`build_path` does the arithmetic of this file for you: give it shapes (`circle`, `ring`, `arc`, `polygon`,
+`star`, `rect`, `wedge`, `leaf`, `points`), path data of your own or a `text`, with a `transform`, a `mirror`
+and a `repeat`, and a `combine` that joins a part to the ones before it or cuts it out of them, and it answers with the path data and the box it fills. The numbers below say what it calculates
+and let you check it; use them by hand only for a single point. `measure_layers` then tells you what you
+drew: boxes, gaps and symmetry.
+
+```json
+{"parts":[
+  {"shape":"ring","cx":240,"cy":240,"r":240,"inner":200},
+  {"shape":"wedge","cx":240,"cy":240,"from":110,"to":190,"angle":-90,"spread":5,"innerSpread":9,"repeat":{"count":24,"about":[240,240]}},
+  {"path":"M240 150 C290 150 330 190 330 240 H240 Z","mirror":{"axis":"vertical","at":240}}
+]}
+```
+is a ring 40 thick, twenty-four rays turned in equal steps, and a half shape with its mirror image, in one
+path for a `viewBox` of `[0, 0, 480, 480]`.
+
+Exact does not mean square. Decide the mark's own measures first (a unit, one or two angles of any size, one
+or two radii, the weights), work the coordinates out on paper as a list of points, then write the path.
+Every number comes from those measures or is calculated by one of the rules below; a grid of 20 is a help
+for marks made of bars. Round calculated numbers to two decimals.
 
 ## The numbers
 
@@ -71,6 +89,22 @@ with a spine of 3.4641 r (a longer, steeper spine). The line touches each circle
 the horizontal: (cx ± r·cos a, cy ± r·sin a). Choose the angle first and calculate the centres, not the
 other way round.
 
+**Any angle.** For an angle the table lacks, calculate: a line of the length L at the angle a ends L·cos a
+to the right and L·sin a down. Useful values: 10 degrees cos 0.9848 sin 0.1736; 20 degrees 0.9397 and 0.3420;
+36 degrees 0.8090 and 0.5878; 72 degrees 0.3090 and 0.9511. Use one such angle throughout, and its mirror.
+
+**A free curve** is a cubic curve, `C x1 y1 x2 y2 x y`: from where the pen is to (x, y), leaving toward
+(x1, y1) and arriving from (x2, y2). It is exact when it is disciplined: a point at each extreme of the
+shape (leftmost, topmost and so on) with its handles level or upright there; at a smooth point both handles
+on one straight line; handles about a third as long as the stretch they shape; and as few points as carry
+the shape, usually two to four. A quarter circle of the radius r is one `C` with handles 0.5523 r long. A
+curve that should feel fast has a long handle at one end and a short one at the other. Look at `scale: 3`
+and remove every bump; a bump is a point too many or a handle off its line.
+
+**A stroke that tapers** is a filled shape between two free curves that start apart and meet in a point:
+draw the outer edge from the blunt end to the tip, then the inner edge back. Give both edges the same kind
+of handles so the width shrinks evenly. The blunt end is as wide as the mark's heavy weight.
+
 **A slanted bar** of the thickness t, at the angle a to the horizontal, is t / sin a wide measured along a
 horizontal line: 1.1547 t at 60 degrees, 1.4142 t at 45. Use that width so it looks as heavy as an upright
 stem of t.
@@ -120,6 +154,14 @@ the ground shows through. The tower is 80 of the shield's 200 wide here only bec
 {"type":"path","name":"Mark","x":0,"y":0,"width":240,"height":300,"fill":"#111111","fillRule":"evenodd","viewBox":[0,0,240,300],"geometry":"M20 20 H220 V100 A200 200 0 0 1 120 273.2 A200 200 0 0 1 20 100 Z M90 200 V110 H80 V70 H100 V90 H110 V70 H130 V90 H140 V70 H160 V110 H150 V200 Z"}
 ```
 
+**A sweep that tapers.** One blade, 50 wide at its foot and running out in a point at the top right: the
+outer edge leaves (40, 200) straight up and arrives at the tip level; the inner edge returns and arrives at
+the foot straight down. Two points, four handles.
+
+```json
+{"type":"path","name":"Mark","x":0,"y":0,"width":240,"height":240,"fill":"#111111","viewBox":[0,0,240,240],"geometry":"M40 200 C40 100 120 30 220 30 C150 60 90 120 90 200 Z"}
+```
+
 **A ring with a part taken out.** Two circles, radii 100 and 60, about (120, 120): a ring 40 thick.
 
 ```json
@@ -129,6 +171,9 @@ the ground shows through. The tower is 80 of the shield's 200 wide here only bec
 ## Checking the construction
 - Read the path back as a list of points: is every x mirrored by 240 - x where the mark is symmetric?
 - For each arc: are both ends r from the centre? Is the centre square to the edge it joins?
-- Measure every bar and every gap: one value for bars (or two), one for gaps.
+- Measure every bar and every gap: one value for bars, or two that differ plainly (one to three or more),
+  and one for gaps. Two values that are nearly alike are a mistake.
+- Cover the mark's inside and look at the silhouette alone: is it this mark's, and is one part clearly the
+  largest?
 - Look at `scale: 3`. A kink where a curve meets an edge is a wrong centre; a part that looks heavier than
   the rest is a wrong width; a gap that closes at `scale: 0.1` is too narrow.

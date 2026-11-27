@@ -37,7 +37,13 @@ Types:
 - `rectangle` (`cornerRadius`), `ellipse` (`innerRadius` 0 to 1 makes it a ring; `startAngle` and
   `sweepAngle` in degrees, counter-clockwise from the right, make it an arc: a spinner, a progress ring),
   `polygon` (`polygonCount`, `cornerRadius`), `line`.
-- `path`: `geometry` (SVG path data), `viewBox` [x, y, width, height], `fillRule`.
+- `path`: `geometry` (SVG path data), `viewBox` [x, y, width, height], `fillRule`. A stroked path takes
+  `strokeLinecap` ("butt" by default, "round", "square") and `strokeLinejoin` ("miter" by default, "round",
+  "bevel"). Do not work out rotated, mirrored or repeated coordinates by hand: `build_path` calculates path
+  data (circles, rings, arcs and bands, stars, rays, leaves, your own path turned about a point, mirrored or
+  repeated round a centre, shapes combined into one outline by union, subtraction or intersection, and a
+  text's letters as outlines to cut, join or reshape), and `measure_layers` tells what was drawn: boxes, the gaps between shapes and
+  whether the whole is symmetric.
 - `connector`: a line between two layers that follows them when they move: a wire in a node editor, an arrow
   in a flow chart. Never draw those as a `path` with coordinates you worked out. `from` and `to` are each a
   layer's id, or `{"id":"..","side":"left"|"right"|"top"|"bottom"|"center","at":0..1}` (`side` left out picks
@@ -116,7 +122,10 @@ grid of a canvas or editor, graph paper, a ruled sheet (`size` is a dot's diamet
 `"direction":"vertical"` turns `lines`; `"offset":{"x":..,"y":..}` moves the first mark, which otherwise sits
 half a spacing in). List it after the ground's colour: `"fill":["$canvas",{"type":"pattern",..}]`; two grids
 of different spacing make major and minor lines. Never draw a grid as a layer per dot or line. A linear gradient with `rotation` 0 runs upward (position 0 at the bottom, 1 at the
-top); 180 runs downward. `strokeWidth` is a number or `{"top":..,"right":..,"bottom":..,"left":..}`;
+top); 180 runs downward. A gradient also takes `"center":{"x":0..1,"y":0..1}` (where its middle lies in the
+layer's box, 0.5 and 0.5 by default) and `"size":{"width":..,"height":..}` (how far it reaches, as parts of
+the box): a radial gradient with its centre at x 0.3, y 0.25 is a light from the upper left, and a small
+`size` makes a highlight. `strokeWidth` is a number or `{"top":..,"right":..,"bottom":..,"left":..}`;
 `strokeAlignment` is "inner" | "center" | "outer".
 
 ## Effects
@@ -291,6 +300,19 @@ pub fn tools() -> Value {
             "name": "check_glass",
             "description": "Checks layers that use a `material` (frosted, liquid glass) by measuring a picture of them: which appearance each material came to (light or dark), the contrast of every text and icon on a material against the lightest and darkest of what is under it (at least 4.5:1), and how the layers are built (no glass on glass, nested corner radii, one glass variant per screen, something behind the glass to bend). Returns `problems`, each saying how to put it right; call it after `screenshot` on any design that has materials, and again after fixing.",
             "inputSchema": { "type": "object", "properties": { "document": document, "ids": ids("The layers to check, usually the screen's top-level frame; every top-level layer without it.") } }
+        },
+        {
+            "name": "build_path",
+            "description": "Calculates SVG path data for a `path` layer's `geometry`, so nothing is worked out by hand: shapes on exact numbers, turned, mirrored and repeated. Changes nothing in the document. Each part is a `shape` (circle: cx, cy, r; ring: cx, cy, r, inner; arc: cx, cy, r, from, to, and with `inner` a band to fill; polygon: cx, cy, r, sides; star: cx, cy, r, points, inner; rect: x, y, width, height, radius; wedge, one ray: cx, cy, from, to (radii), angle, spread and innerSpread (degrees wide at the outer and inner end); leaf, two arcs meeting in points: from, to (points), width; points: a list of [x, y], closed unless `closed` is false) or a `path` (path data of your own, to turn, mirror or repeat), or a `text` (one line as the outlines of its letters, shaped as Quill draws it: `fontFamily` (installed), `fontSize`, `fontWeight`, `fontStyle`, `letterSpacing`, and `x`, `y` where its baseline starts; for a wordmark whose letters are cut, joined or reshaped, or a name cut out of a band). Angles are degrees, 0 to the right, growing clockwise; polygon and star start at the top. A part may then take `transform` (steps in order: {\"rotate\": degrees, \"about\": [x, y]}, {\"move\": [dx, dy]}, {\"scale\": n or [sx, sy], \"about\": [x, y]}, {\"mirror\": \"vertical\" | \"horizontal\", \"at\": n}), `mirror` ({\"axis\": \"vertical\", \"at\": 120} adds the mirror image about x = 120 beside the part) and `repeat` ({\"count\": 12, \"about\": [cx, cy]} adds copies turned about a point in equal steps, or by `angle` each; {\"count\": 5, \"move\": [dx, dy]} adds copies in a row). A part with `combine` is not added beside the parts before it but combined with them into one outline: \"union\" (both as one shape, no edge inside), \"subtract\" (the part cut out of them), \"intersect\" (only where both are) or \"exclude\" (only where one is); curves stay curves. Parts are taken in order, so a ring with a notch is a circle, a smaller circle with \"subtract\", a wedge with \"subtract\". Top-level `fillRule` \"evenodd\" says the parts' own holes are meant that way. Answers with `geometry`, the `bounds` it fills and the number of subpaths; put the geometry into a path layer whose `viewBox` is the box you worked in.",
+            "inputSchema": { "type": "object", "required": ["parts"], "properties": {
+                "parts": { "type": "array", "minItems": 1, "items": { "type": "object" }, "description": "The parts, each a shape, a path or a text with what is done to it; all go into one path, in this order." },
+                "fillRule": { "type": "string", "enum": ["nonzero", "evenodd"], "description": "How the parts are filled when they are combined (nonzero by default)." }
+            } }
+        },
+        {
+            "name": "measure_layers",
+            "description": "Measures layers as they are drawn, in canvas units: each shape layer's box and the box and area of every shape in a path, the narrowest gaps between outlines with where they are (0 means two outlines touch or cross; the gap between a shape and a hole in it is the wall between them), and how far the whole is from being its own mirror image about its upright middle line. Use it instead of judging gaps, weights, alignment or symmetry from a screenshot: before you call a logo, an icon or a diagram exact, and whenever a review says two things do not agree.",
+            "inputSchema": { "type": "object", "properties": { "document": document, "ids": ids("The layers to measure, usually the logo's group; every top-level layer without it.") } }
         },
         {
             "name": "select_layers",
@@ -993,6 +1015,8 @@ mod tests {
                 "edit_layers",
                 "screenshot",
                 "check_glass",
+                "build_path",
+                "measure_layers",
                 "select_layers",
                 "open_document",
                 "save_document",
@@ -1018,7 +1042,7 @@ mod tests {
         off.extend(crate::web::TOOLS.map(str::to_owned));
         let left = tools_without(&off);
         let left: Vec<&str> = left.as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-        assert_eq!(left.len(), 17);
+        assert_eq!(left.len(), 19);
         assert!(!left.contains(&"export_layers") && !left.contains(&"search_web") && left.contains(&"edit_layers") && left.contains(&"edit_image"));
         assert_eq!(tools_without(&[]), tools);
     }

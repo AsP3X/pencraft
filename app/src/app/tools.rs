@@ -491,6 +491,16 @@ impl App {
             "edit_layers" => self.edit_tool(call, ctx),
             "screenshot" => self.picture_tool(call, ctx),
             "check_glass" => self.glass_tool(call, ctx),
+            "build_path" => Ok(text(&crate::construct::build(args)?)),
+            "measure_layers" => {
+                let (tab, editor, label) = self.laid_out(call, ctx)?;
+                let layers = scenes(editor, &agent::ids(args, "ids"))?;
+                let (bounds, measured) = (around(&layers), crate::construct::measure(&layers));
+                if let Some(editor) = self.tabs.get_mut(tab) {
+                    editor.activity.point(bounds, &label, Instant::now());
+                }
+                Ok(text(&measured))
+            }
             crate::chat::critic::TOOL => self.review_tool(call, ctx),
             "select_layers" => self.select_tool(call, ctx),
             crate::chat::asks::TOOL => self.ask_tool(call),

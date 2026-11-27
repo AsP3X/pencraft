@@ -52,7 +52,7 @@ struct Words {
 }
 
 /// The tools the app gives a model, as the chat names them.
-const TOOLS: [Words; 24] = [
+const TOOLS: [Words; 26] = [
     Words {
         tool: "get_state",
         icon: "eye",
@@ -79,6 +79,14 @@ const TOOLS: [Words; 24] = [
         failed: "Couldn't take a picture",
     },
     Words { tool: "check_glass", icon: "glasses", doing: "Checking the glass", did: "Checked the glass", failed: "Couldn't check the glass" },
+    Words {
+        tool: "build_path",
+        icon: "drafting-compass",
+        doing: "Calculating a shape",
+        did: "Calculated a shape",
+        failed: "Couldn't calculate the shape",
+    },
+    Words { tool: "measure_layers", icon: "ruler", doing: "Measuring the design", did: "Measured the design", failed: "Couldn't measure the design" },
     Words { tool: "select_layers", icon: "mouse-pointer-2", doing: "Selecting layers", did: "Selected layers", failed: "Couldn't select the layers" },
     Words { tool: "open_document", icon: "folder-open", doing: "Opening a document", did: "Opened a document", failed: "Couldn't open the document" },
     Words { tool: "save_document", icon: "save", doing: "Saving the document", did: "Saved the document", failed: "Couldn't save the document" },
@@ -215,7 +223,7 @@ pub fn detail(tool: &str, input: &Value) -> String {
             Some(find) if !find.is_empty() => format!("“{find}”"),
             _ => layers(),
         },
-        "screenshot" | "select_layers" | "check_glass" => layers(),
+        "screenshot" | "select_layers" | "check_glass" | "measure_layers" => layers(),
         "edit_layers" => match input.get("operations").and_then(Value::as_array).map_or(0, Vec::len) {
             0 | 1 => String::new(),
             changes => counted(changes, "change", "changes"),

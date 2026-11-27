@@ -19,6 +19,7 @@ mod bundle;
 mod canvas;
 mod chat;
 mod chips;
+mod construct;
 mod conversation;
 mod craft;
 mod editor;

@@ -1254,6 +1254,10 @@ impl Chat {
         }
         let prompt = self.prompt_for(&ask);
         let pictures = files::pictures(&ask.files);
+        // Human: a reviewer is told what the user wrote before this message, so "this is even worse" has
+        // something to be worse than, and whether a logo was asked for anywhere in the conversation.
+        let earlier: Vec<String> = self.entries.iter().filter(|entry| entry.role == Role::User).map(|entry| files::flat(&entry.text)).collect();
+        let logo = crate::craft::names_a_logo(&ask.text) || earlier.iter().any(|text| crate::craft::names_a_logo(text));
         // Human: a message of the user's is their answer; a question still open then is closed by it.
         self.dismiss();
         self.tasks.resume();
@@ -1273,6 +1277,9 @@ impl Chat {
         // Human: the ids of the run's `ask_user` calls, and whether one of them asked a question: the run then
         // waits for the user's answer, and nothing is reviewed or sent back to the assistant meanwhile.
         let asking: Mutex<(Vec<String>, bool)> = Mutex::new((Vec::new(), false));
+        // Human: what the assistant says of its design when it is done (the idea, the style, why) is what a
+        // reviewer needs to judge the idea by; the words of the answer under way are kept for it.
+        let account = Mutex::new(String::new());
         let (model, via) = (ask.model.clone(), via(&ask.engine));
         let pricing = ask.pricing.clone();
         // Human: an API run asks the model again after every tool it used, and can hand it a new message of
@@ -1281,9 +1288,21 @@ impl Chat {
         let inbox = steering.clone().unwrap_or_default();
         let started = std::thread::Builder::new().name("chat".to_owned()).spawn(move || {
             let tell = |event: Event| {
+                // Human: what was said before a tool call is the work, not the account of the design.
+                if matches!(event, Event::Tool { .. }) {
+                    lock(&account).clear();
+                }
                 // Human: the run remembers where the conversation is, so a review's follow-up continues it.
                 match &event {
                     Event::Session(session) => lock(&kept).0 = Some(session.clone()),
+                    Event::Text(words) => lock(&account).push_str(words),
+                    Event::Unsaid(words) => {
+                        let mut account = lock(&account);
+                        if account.ends_with(words.as_str()) {
+                            let kept = account.len() - words.len();
+                            account.truncate(kept);
+                        }
+                    }
                     Event::History(history) => lock(&kept).1.clone_from(history),
                     Event::Tool { id, name } if steps::short(name) == asks::TOOL => lock(&asking).0.push(id.clone()),
                     Event::ToolInput { id, input } => {
@@ -1298,6 +1317,7 @@ impl Chat {
                 heard
             };
             let answer = |prompt: &str, pictures: &[Value]| {
+                lock(&account).clear();
                 let (session, history) = lock(&kept).clone();
                 answer(&ask, Said { prompt, pictures, session, history, inbox: &inbox }, &flag, &held, &tell);
             };
@@ -1307,15 +1327,19 @@ impl Chat {
             // After the reviews of the design comes one proofreading of its execution, when the last review
             // still asked for changes.
             // An engine the reviewer can't speak through gets no review.
+            let mut reviews: Vec<String> = Vec::new();
             for round in 0..if ask.review && critic::can_judge(&ask.engine) { critic::ROUNDS + 1 } else { 0 } {
                 if flag.load(Ordering::Relaxed) || lock(&asking).1 {
                     break;
                 }
                 let Some(picture) = critic::picture(&ask.tools, &*ask.wake, ask.chat, round > 0) else { break };
                 let id = format!("review-{round}");
+                // The account is read before the review's own note, which starts like a tool call, clears it.
+                let said = lock(&account).clone();
                 tell(Event::Break);
                 tell(Event::Tool { id: id.clone(), name: critic::TOOL.to_owned() });
-                let verdict = critic::judge(&ask.engine, &files::flat(&ask.text), picture, round == critic::ROUNDS, &held, &|report| {
+                let about = critic::About { asked: &files::flat(&ask.text), attached: &pictures, earlier: &earlier, said: &said, reviews: &reviews };
+                let verdict = critic::judge(&ask.engine, &about, picture, round == critic::ROUNDS, &held, &|report| {
                     tell(Event::Used(report));
                 });
                 if let Err(error) = &verdict {
@@ -1328,7 +1352,8 @@ impl Chat {
                 }
                 tell(Event::Break);
                 tell(Event::Revising);
-                answer(&critic::follow_up(&changes), &[]);
+                answer(&critic::follow_up(&changes, logo, round == critic::ROUNDS), &[]);
+                reviews.push(changes);
             }
             tell(Event::Done);
         });

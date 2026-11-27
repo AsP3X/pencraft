@@ -41,6 +41,13 @@ serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = { version = "=1.0.154", features = ["preserve_order", "float_roundtrip"] }
 # Human: Filling SVG paths with holes (icons, arrows) correctly; egui only fills convex shapes.
 lyon_tessellation = "=1.0.23"
+# Human: `build_path` for the AI tools: shapes combined into one outline (union, subtract, intersect) with their
+# curves kept, and a text's letters as outlines. kurbo is linesweeper's path type; skrifa and harfrust are the
+# versions egui already draws and shapes text with, so letters come out as they are drawn.
+linesweeper = "=0.5.0"
+kurbo = "=0.13.1"
+skrifa = { version = "=0.44.0", default-features = false, features = ["std"] }
+harfrust = "=0.12.0"
 # Human: The Lucide icon set (ISC licence) as SVG text, for `icon` and `icon_font` nodes.
 lucide-static-svg = { version = "=1.72.0", default-features = false, features = ["svg"] }
 # Human: Reads the pictures of image fills (PNG, JPEG, WebP, GIF) from the user's disk.
@@ -119,6 +126,10 @@ eframe.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 lyon_tessellation.workspace = true
+linesweeper.workspace = true
+kurbo.workspace = true
+skrifa.workspace = true
+harfrust.workspace = true
 lucide-static-svg.workspace = true
 image.workspace = true
 png.workspace = true

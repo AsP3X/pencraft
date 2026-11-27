@@ -11,6 +11,20 @@ in the app before they download the update. Write it for them.
 
 ### Changed
 
+- **A logo is no longer the initials pushed together.** Every logo came
+  out as the name's letters joined into one figure, and a logo that
+  started from another idea ended there after the review: the reviewer
+  saw only the picture and your last message, found every idea
+  "anyone's", and described a mark of its own (the letters in one
+  stroke), which the assistant then drew. The reviewer is now told
+  what you wrote in the conversation, the pictures you attached, what
+  the assistant says its idea is, and its own earlier review. It says
+  what is weak and leaves the next idea to the assistant, and it asks
+  for a new idea once, not twice. The assistant takes its ideas from
+  what the company does, how and where; joined initials are struck
+  like any stock symbol unless you ask for a monogram, and "too plain"
+  or "boring" brings a new idea in a richer style, not the old mark
+  with lines cut into it.
 - **A model in Ollama gets as much room as the Mac has.** Quill asked
   every Ollama model to read 32 768 tokens, of which its own brief and
   tools take about 20 000; a model that thinks at length ran out in the

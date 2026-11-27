@@ -85,6 +85,11 @@ the same curve at two heights and give the text that curve again. Leave the firs
 line free of text. A name on an arch that is part of a circle is simpler with `onCircle`.
 
 ## Constructions
+`build_path` makes every repeated or mirrored part below from one unit: rays as one `wedge` with a `repeat`
+about the centre, a ring of beads or teeth as one shape repeated, a wreath as one `leaf` repeated with an
+`angle` per step and mirrored, a star as `star`, mantling and supporters as one half with a `mirror`. Write
+one unit and let it calculate the rest; the recipes say what the unit is.
+
 **Rays of a sunburst.** n rays between the angles a0 and a1 about a centre, from the radius r1 to r2: each
 ray is a wedge whose two sides lie on angles half a ray-width either side of its middle, closed by arcs of
 r1 and r2. Give the rays 40% to 50% of each step (the rest is gap). All four corners are points on circles

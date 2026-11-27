@@ -14,7 +14,7 @@ go by tone first (formal or playful, old or new, loud or quiet), then by where i
 
 | The brief | Styles to consider |
 |---|---|
-| Software, a tool, a service for business | flat geometric, monoline, negative space, gradient and dimensional |
+| Software, a tool, a service for business | negative space, gradient and dimensional, monoline, flat geometric; a service done by people (support, advice, repair) also a seal, a badge or a mascot |
 | An app that needs its icon | dimensional app icon, or flat geometric on a tile |
 | Food, drink, a workshop, outdoors, a shop with a history | vintage badge, engraved, hand-lettered, monoline |
 | A university, a law firm, a club, a town, a family | heraldic crest, seal, luxury serif |
@@ -25,16 +25,25 @@ go by tone first (formal or playful, old or new, loud or quiet), then by where i
 | Building, freight, tools, security | stencil, heavy geometric, flat |
 | Quiet, crafted, Japanese or Nordic restraint | mon, monoline, negative space |
 
+A row is a list to choose from, not an order. Flat geometric is what every brief gets by habit: take it
+when the idea is strong enough to stand bare, not because the client is technical or modern. "Striking",
+"bold", "dynamic", "original" and "not boring" ask for the style with more contrast in it: a figure-ground
+flip, a gradient with depth, a sweeping curve, a rich badge.
+
 If the logo will mostly be seen under 64 pixels (a favicon, an app, a tab), choose a simple style, or plan the
 small version first and the detailed one as its dress uniform.
 
 ## Flat geometric
-- When: the default of modern identity; anything that must work everywhere.
-- Palette: one or two flat colours. Lines: none; filled shapes from circles, squares and a few fixed angles.
+- When: a mark that must work everywhere, with an idea strong enough to stand bare. Chosen for that reason,
+  never by habit.
+- Palette: one or two flat colours. Lines: none; filled shapes from arcs, straight edges and free curves,
+  in a few measures of the mark's own. It lives on contrast: a large mass against a small one, a curve
+  against a straight edge, a cut.
 - Sub-kinds worth knowing: pure geometry; optical effect (overlap, rotation, a field of lines); built from a
   letter.
 - Type: a grotesque or geometric sans, one weight. Small version: the same mark.
-- Tells: gaps that are nearly equal, radii chosen by feel, two ideas in one mark, one heavy spot (squint).
+- Tells: gaps that are nearly equal, radii chosen by feel, two ideas in one mark, one heavy spot (squint);
+  bars of one width on one slant and nothing else, which is a diagram and not a mark.
 
 ## Monoline
 - When: craft, cafes, software, anything light and friendly. Works as a simple mark or as a *detailed*
