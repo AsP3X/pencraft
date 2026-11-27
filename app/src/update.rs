@@ -1183,6 +1183,13 @@ mod tests {
         ]
     }"#;
 
+    /// [`NEWER`] as GitHub gives it once published: every file with a number, the signature too.
+    // Human: a copy that knows a release key passes over a release without a signature, so the tests that ask
+    // GitHub for news need one that has it.
+    fn published() -> String {
+        NEWER.replace(r#"{"name": "#, r#"{"id": 7, "size": 9, "name": "#)
+    }
+
     fn release(version: &str) -> Release {
         Release {
             version: version.to_owned(),
@@ -1374,7 +1381,7 @@ mod tests {
         // Human: before the move the new repository is not there, and the release comes from the old one.
         let before = |address: &str, _: Option<&str>| {
             asked.borrow_mut().push(address.to_owned());
-            Ok(if address.contains(NEW) { (404, String::new()) } else { (200, NEWER.to_owned()) })
+            Ok(if address.contains(NEW) { (404, String::new()) } else { (200, published()) })
         };
         let release = newest("9.0.9", "https://api", &before, &|| None).unwrap().unwrap();
         assert_eq!((release.version.as_str(), release.repository), ("9.1.0", OLD));
@@ -1411,7 +1418,7 @@ mod tests {
 
     #[test]
     fn only_a_higher_version_is_news() {
-        let ok = |_: Option<&str>| Ok((200, NEWER.to_owned()));
+        let ok = |_: Option<&str>| Ok((200, published()));
         assert_eq!(latest("9.0.9", OLD, &ok, || None).unwrap().unwrap().version, "9.1.0");
         assert_eq!(latest("9.1.0", OLD, &ok, || None).unwrap(), None);
         assert_eq!(latest("10.0.0", OLD, &ok, || None).unwrap(), None);
@@ -1427,7 +1434,7 @@ mod tests {
         let asked = RefCell::new(Vec::new());
         let open = |token: Option<&str>| {
             asked.borrow_mut().push(token.map(str::to_owned));
-            Ok((200, NEWER.to_owned()))
+            Ok((200, published()))
         };
         let never = || -> Option<String> { panic!("no sign-in is needed") };
         assert!(latest("0.1.0", OLD, &open, never).unwrap().is_some());
@@ -1437,7 +1444,7 @@ mod tests {
         let asked = RefCell::new(Vec::new());
         let private = |token: Option<&str>| {
             asked.borrow_mut().push(token.map(str::to_owned));
-            Ok(if token == Some("secret") { (200, NEWER.to_owned()) } else { (404, String::new()) })
+            Ok(if token == Some("secret") { (200, published()) } else { (404, String::new()) })
         };
         assert!(latest("0.1.0", OLD, &private, || Some("secret".to_owned())).unwrap().is_some());
         assert_eq!(*asked.borrow(), vec![None, Some("secret".to_owned())]);

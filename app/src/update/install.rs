@@ -23,7 +23,12 @@ use super::{API, PATIENCE, ReleaseFile, quiet};
 // one that is lost or stolen can be left out of the next version while the other still signs it.
 // Agent: while this is EMPTY nothing is checked and updates work as they did before; with a key in it, a
 // release without a valid `SHA256SUMS.txt.minisig` is not offered and never installed.
-pub(super) const KEYS: &[&str] = &[];
+pub(super) const KEYS: &[&str] = &[
+    // Key A, the one releases are signed with.
+    "RWSXDJ4GfBjrvwBeP+AmEXevdOay7P1rz11JWbiI7WRZf/pDYVwJFdeh",
+    // Key B, the spare, kept offline.
+    "RWRcDDrEA19gMIF9Lo0hOTe1uBHV1GFih+jXVwWEHElRa5T1huRNMBCh",
+];
 
 /// The file the setup wizard leaves beside the program it installed.
 const UNINSTALLER: &str = "unins000.exe";
@@ -699,6 +704,29 @@ mod tests {
         // Human: a key that was pasted in wrong would refuse every release.
         for key in KEYS {
             assert!(PublicKey::from_base64(key).is_ok(), "{key} is not a minisign public key");
+        }
+    }
+
+    // Human: signatures minisign itself made with the two release keys, over a line that is not a release, for
+    // a version that never existed. The other tests use a signature built by hand; these show that what the
+    // real tool writes is taken, with either key.
+    // Agent: keep these in step with KEYS: a replaced key needs a new signature made with it here.
+    const KEY_TEST_TEXT: &str = "test of Quill release keys, not a release\n";
+    const KEY_A_SIGNATURE: &str = "untrusted comment: signature from minisign secret key\n\
+        RUSXDJ4GfBjrv9kR2EyoMkPN8ODFNqwXPid6keTaB27NDDABcwHdC1SRB5H45jM3+obEIxIFgjgs/0tGoNvSLxVCN25hUCoIngA=\n\
+        trusted comment: Quill 0.0.0\n\
+        ZNBOjjPpgf1WFGzqsZm8jN42ioMqaPJfvn2pxZVXjoKPU9MasY5x6OrYndGXGGZHm5zi23ATyuTeRFMrQjTjDw==\n";
+    const KEY_B_SIGNATURE: &str = "untrusted comment: signature from minisign secret key\n\
+        RURcDDrEA19gMIqqIzqS7zSjm45UbwBj3so4D6tuxqwVTKBhcghSEqGDAv4NjrKlgR3tn0nrrbxJ3oYr3TUa/7c+itsRmlQZ3QU=\n\
+        trusted comment: Quill 0.0.0\n\
+        h0p/PO6VrjVZ2XDkNENZeRP0zDF7rDqEpS4qNPHF6l3IFt5FcGzD33QqCeXXQfafkdn3A6Xo4XD1C4m83PMyAQ==\n";
+
+    #[test]
+    fn what_minisign_signs_with_either_release_key_is_taken() {
+        for signature in [KEY_A_SIGNATURE, KEY_B_SIGNATURE] {
+            assert_eq!(signed(KEY_TEST_TEXT.as_bytes(), signature, KEYS, "0.0.0"), Ok(()));
+            assert!(signed(b"something else\n", signature, KEYS, "0.0.0").is_err());
+            assert!(signed(KEY_TEST_TEXT.as_bytes(), signature, KEYS, "0.0.1").is_err());
         }
     }
 

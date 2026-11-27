@@ -217,11 +217,13 @@ release says it is. That holds on Windows and on the Mac. It is checked with
 [minisign](https://jedisct1.github.io/minisign/) signatures and the
 `minisign-verify` crate.
 
-**It is switched off until the app knows a key.** `KEYS` in
-`app/src/update/install.rs` is empty; while it is, nothing is checked and
-updates work as before.
+**It is switched on.** `KEYS` in `app/src/update/install.rs` holds two
+keys: key A (`RWSXDJ4G…`), which signs releases and is kept on the signing
+Mac as `~/.minisign/minisign.key` (the script's default), and key B
+(`RWRcDDrE…`), the spare, kept offline. A test checks a signature that
+minisign made with each.
 
-### Once: make the keys
+### Once: make the keys (done; for a replacement key)
 
 1. Install minisign (`brew install minisign`).
 2. Make two key pairs, each with its own password:
