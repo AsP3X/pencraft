@@ -590,9 +590,9 @@ fn header(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
     // Human: the component button says what the layer can become: a plain layer a component, a
     // component a plain layer again, an instance a detached copy. An instance also leads back to its component.
     match shown.role {
-        Role::Plain if wide_button(ui, Some("component"), "Create Component", palette).clicked() => edits.command = Some(Editor::create_component),
-        Role::Component if wide_button(ui, Some("component"), "Detach Component", palette).clicked() => edits.set(|n| n.reusable = None),
-        Role::Instance if wide_button(ui, Some("component"), "Detach Instance", palette).clicked() => edits.command = Some(Editor::detach_instances),
+        Role::Plain if wide_button(ui, Some("component"), "Create component", palette).clicked() => edits.command = Some(Editor::create_component),
+        Role::Component if wide_button(ui, Some("component"), "Detach component", palette).clicked() => edits.set(|n| n.reusable = None),
+        Role::Instance if wide_button(ui, Some("component"), "Detach instance", palette).clicked() => edits.command = Some(Editor::detach_instances),
         Role::Plain | Role::Component | Role::Instance => {}
         Role::Inside => small(ui, "Inside an instance: changes here apply to this instance only.", palette),
     }

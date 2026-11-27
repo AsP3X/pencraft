@@ -31,8 +31,6 @@ const PICTURE_NOT_TAKEN: &str = "Couldn't paste the picture into the message.";
 const TOO_MANY_FILES: &str = "A message can carry 10 files.";
 /// What the user is told when pasted layers are from another document.
 const NOT_IN_DOCUMENT: &str = "Those layers aren't in this document, so the assistant can't be pointed at them.";
-/// What the mode button says.
-const NO_MODES: &str = "Modes aren't available yet.";
 /// The grey text in the empty message box.
 const HINT: &str = "Create, plan or research... @ to attach, / for skills";
 /// The assistant named in the message box.
@@ -240,8 +238,6 @@ enum Does {
     Tool(Tool),
     /// Asks for a picture or SVG file to add.
     Import,
-    /// Not in this version; says so.
-    Later(&'static str),
 }
 
 /// One line of a tool menu: icon, name, shortcut key, and what it does.
@@ -253,21 +249,18 @@ const POINTER_MENU: [Entry; 3] = [
     ("scaling", "Scale", "K", Does::Tool(Tool::Scale)),
     ("pipette", "Eyedropper", "I", Does::Tool(Tool::Eyedropper)),
 ];
-/// The shapes' menu. (The design's "Import Figma" stays out until importing from Figma exists.)
-const SHAPE_MENU: [Entry; 6] = [
+/// The shapes' menu. (The design's "Import Figma" and "Script" stay out until they can be done.)
+const SHAPE_MENU: [Entry; 5] = [
     ("square", "Rectangle", "R", Does::Tool(Tool::Rectangle)),
     ("circle", "Ellipse", "O", Does::Tool(Tool::Ellipse)),
     ("triangle", "Polygon", "", Does::Tool(Tool::Polygon)),
     ("sparkle", "Icon", "", Does::Tool(Tool::Icon)),
-    ("code-xml", "Script", "", Does::Later("Script layers can't be made yet.")),
     ("image", "Import Image or SVG…", "", Does::Import),
 ];
 
 /// What the rail asks the app to do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Ask {
-    /// Tell the user this sentence.
-    Say(&'static str),
     /// Ask for a picture or SVG file and add it to the document.
     Import,
     /// Open the action search.
@@ -291,12 +284,11 @@ enum Act {
     Component,
     /// Opens find layers.
     Find,
-    /// Not in this version; says so.
-    Later(&'static str),
 }
 
-/// The tool rail's entries from top to bottom: icon, hint, what it does.
-const RAIL: [(&str, &str, Act); 14] = [
+/// The tool rail's entries from top to bottom: icon, hint, what it does. (The design's Browser and Comment
+/// stay out until they can be done.)
+const RAIL: [(&str, &str, Act); 12] = [
     ("mouse-pointer-2", "Move (V), Scale (K), Eyedropper (I)", Act::Pointer),
     ("chevron-down", "Move tools", Act::Menu(&POINTER_MENU)),
     ("square", "Shapes", Act::Shape),
@@ -306,9 +298,7 @@ const RAIL: [(&str, &str, Act); 14] = [
     ("type", "Text (T)", Act::Pick(Tool::Text)),
     ("frame", "Frame (F)", Act::Pick(Tool::Frame)),
     ("sticky-note", "Sticky note (N)", Act::Pick(Tool::Note)),
-    ("globe", "Browser", Act::Later("Browser frames can't be placed yet.")),
     ("hand", "Hand (H)", Act::Pick(Tool::Hand)),
-    ("message-circle", "Comment", Act::Later("Comments aren't available yet.")),
     ("component", "Create component (⌥⌘K)", Act::Component),
     ("search", "Find layers (⌘F)", Act::Find),
 ];
@@ -551,7 +541,6 @@ impl Sidebar {
                 View::History => {
                     if text_button(ui, Some("plus"), "New", vec2(68.0, SIDEBAR_ROW - 1.0), false, true, palette).on_hover_text("New chat").clicked() {
                         self.view = View::Chat;
-                        self.draft.clear();
                         self.chat_asks.push(ChatAsk::New);
                     }
                 }
@@ -704,12 +693,12 @@ impl Sidebar {
             // Human: what is selected shows as a chip here too, where there is room beside the assistant's name.
             if let Some((icon, name)) = self.selected.clone() {
                 let assistant = ui.painter().layout_no_wrap(look.assistant.to_owned(), FontId::proportional(SIDEBAR_TEXT_SIZE - 1.0), Color32::WHITE);
-                let others = (MESSAGE_SEND + 8.0) + (assistant.size().x + 16.0 + 8.0) + (TARGET_MIN + 8.0);
+                let others = (MESSAGE_SEND + 8.0) + (assistant.size().x + 16.0 + 8.0);
                 if ui.available_width() - others >= layer_chip_width(ui, &name) {
                     layer_chip(ui, icon, &name, palette);
                 }
             }
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| self.send_controls(ui, look, notice));
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| self.send_controls(ui, look));
         });
         if look.animate && look.chat.running() {
             working_light(ui, composer);
@@ -728,7 +717,7 @@ impl Sidebar {
         if animate { ctx.animate_value_with_time(egui::Id::unique("composer-height"), tall, COMPOSER_GROW_TIME) } else { tall }
     }
 
-    /// The message box as one row: attach, the text, mode, assistant and send.
+    /// The message box as one row: attach, the text, assistant and send.
     fn message_bar(
         &mut self,
         ui: &mut Ui,
@@ -751,7 +740,7 @@ impl Sidebar {
             let hint = if chip.is_some() { "" } else { HINT };
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
-                self.send_controls(ui, look, notice);
+                self.send_controls(ui, look);
                 // Human: the text field's line sits a little high for its box, so the field is set 3 points lower
                 // to put the typed line on the same middle line as the icons beside it.
                 let field = ui.available_rect_before_wrap().translate(vec2(0.0, 3.0));
@@ -1022,8 +1011,8 @@ impl Sidebar {
         }
     }
 
-    /// Send (or stop, while the assistant works), assistant and mode, for a right-to-left row.
-    fn send_controls(&mut self, ui: &mut Ui, look: Look<'_>, notice: &mut Option<&'static str>) {
+    /// Send (or stop, while the assistant works) and the assistant, for a right-to-left row.
+    fn send_controls(&mut self, ui: &mut Ui, look: Look<'_>) {
         let palette = theme::palette(look.dark);
         let running = look.chat.running();
         let ready = !running && (!self.draft.trim().is_empty() || !self.attached.is_empty());
@@ -1079,9 +1068,6 @@ impl Sidebar {
             }
             None => {}
         });
-        if icon_button(ui, "rocket", Vec2::splat(TARGET_MIN), false, "Mode", palette).clicked() {
-            *notice = Some(NO_MODES);
-        }
     }
 
     /// Draws the tool rail with its top-left corner at `at`. Returns what it asks the app to do, if anything.
@@ -1121,7 +1107,7 @@ impl Sidebar {
                     Act::Pick(tool) => editor.tool == tool,
                     Act::Pointer => matches!(editor.tool, Tool::Move | Tool::Scale | Tool::Eyedropper),
                     Act::Shape => shape_icon.is_some(),
-                    Act::Menu(_) | Act::Component | Act::Find | Act::Later(_) => false,
+                    Act::Menu(_) | Act::Component | Act::Find => false,
                 };
                 if active {
                     ui.painter().circle(slot.center(), RAIL_ACTIVE / 2.0, palette.hover, Stroke::new(1.0, palette.outline));
@@ -1147,7 +1133,6 @@ impl Sidebar {
                     Act::Shape if response.clicked() && shape_icon.is_none() => editor.tool = Tool::Rectangle,
                     Act::Component if response.clicked() => editor.create_component(),
                     Act::Find if response.clicked() => ask = Some(Ask::Find),
-                    Act::Later(sentence) if response.clicked() => ask = Some(Ask::Say(sentence)),
                     Act::Menu(entries) => {
                         egui::Popup::menu(&response).align(egui::RectAlign::RIGHT_START).gap(10.0).show(|ui| {
                             ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
@@ -1159,12 +1144,11 @@ impl Sidebar {
                                 match does {
                                     Does::Tool(tool) => editor.tool = *tool,
                                     Does::Import => ask = Some(Ask::Import),
-                                    Does::Later(sentence) => ask = Some(Ask::Say(sentence)),
                                 }
                             }
                         });
                     }
-                    Act::Pick(_) | Act::Pointer | Act::Shape | Act::Component | Act::Find | Act::Later(_) => {}
+                    Act::Pick(_) | Act::Pointer | Act::Shape | Act::Component | Act::Find => {}
                 }
             }
             // More: the action search.
@@ -1218,9 +1202,9 @@ fn chip_text(name: &str) -> String {
 
 /// The width everything in the message bar but the text field takes, with a selection's chip whose text is
 /// `chip` wide and an assistant's name that is `assistant` wide: the bar's ends, the attach button, the chip,
-/// mode, the assistant's name with its arrow, and send, each with its gap.
+/// the assistant's name with its arrow, and send, each with its gap.
 fn bar_controls(chip: f32, assistant: f32) -> f32 {
-    20.0 + (TARGET_MIN + 12.0) + (chip + 31.0 + 12.0) + (TARGET_MIN + 8.0) + (assistant + 16.0 + 8.0) + (MESSAGE_SEND + 8.0)
+    20.0 + (TARGET_MIN + 12.0) + (chip + 31.0 + 12.0) + (assistant + 16.0 + 8.0) + (MESSAGE_SEND + 8.0)
 }
 
 /// The light that runs along the top edge of the message box `composer` while the assistant works.
@@ -1676,8 +1660,8 @@ mod tests {
         // A short chip and a short name fit the narrow bar with room to spare; a long name asks for more.
         assert!(bar_controls(60.0, 70.0) + MESSAGE_BAR_TYPING_ROOM < MESSAGE_BAR_WIDTH);
         assert!(bar_controls(90.0, 150.0) + MESSAGE_BAR_TYPING_ROOM > MESSAGE_BAR_SELECTED_WIDTH);
-        // Attach and mode are TARGET_MIN (24) wide each.
-        assert_eq!(bar_controls(0.0, 0.0), 189.0);
+        // Attach is TARGET_MIN (24) wide.
+        assert_eq!(bar_controls(0.0, 0.0), 157.0);
         assert_eq!((chip_text("Card"), chip_text(&"n".repeat(30)).chars().count()), ("Card".to_owned(), 22));
     }
 

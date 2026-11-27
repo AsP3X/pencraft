@@ -11,7 +11,6 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -28,8 +27,16 @@ const MOST_BYTES: usize = 32 * 1024 * 1024;
 const MOST_LINE: usize = 8 * 1024;
 /// Most headers a request may have.
 const MOST_HEADERS: usize = 64;
-/// Most connections served at once; one more is told the server is busy and closed.
+/// Most connections served at once. One more takes the place of the connection that has waited longest
+/// between requests; when every one is in the middle of a request, it is told the server is busy and closed.
 const MOST_CONNECTIONS: usize = 16;
+/// How long a request may take to arrive, from its first byte to the end of its body, and how long the server
+/// waits for a caller to take more of an answer.
+const REQUEST_PATIENCE: Duration = Duration::from_secs(10);
+/// How long a connection may stay open with no request on its way: before its first one, and between two.
+const IDLE_PATIENCE: Duration = Duration::from_mins(5);
+/// The server's own pace.
+const PACE: Pace = Pace { request: REQUEST_PATIENCE, idle: IDLE_PATIENCE, most: MOST_CONNECTIONS };
 /// Most of a refused request's body read and thrown away before its connection closes (so the refusal isn't
 /// lost to a reset), and how long that may take.
 const REFUSED_DRAIN: (u64, Duration) = (64 * 1024, Duration::from_secs(1));
@@ -112,8 +119,8 @@ fn secret() -> String {
 ///
 /// # Errors
 /// When no port can be opened or the address file can't be written.
-// Agent: SPAWNS one thread that accepts, and one per connection up to MOST_CONNECTIONS; they end with the
-// process.
+// Agent: SPAWNS one thread that accepts, and one per connection up to MOST_CONNECTIONS; the accepting one
+// ends with the process, a connection's when its caller goes, stalls or is idle too long.
 pub fn start(send: Sender<Call>, wake: impl Fn() + Send + Sync + 'static) -> std::io::Result<Server> {
     let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))?;
     let port = listener.local_addr()?.port();
@@ -140,23 +147,27 @@ pub fn start(send: Sender<Call>, wake: impl Fn() + Send + Sync + 'static) -> std
         off: off.clone(),
         wake: Box::new(wake),
     });
-    std::thread::Builder::new().name("ai-link".to_owned()).spawn(move || {
-        let open = Arc::new(AtomicUsize::new(0));
-        for mut stream in listener.incoming().flatten() {
-            // Human: a caller that opens connection after connection can't make the app start a thread for each.
-            let Some(slot) = Slot::take(&open) else {
-                let _ = respond(&mut stream, "503 Service Unavailable", Some(&json!({ "error": "too many connections at once" })), false);
-                continue;
-            };
-            let shared = shared.clone();
-            // A connection that can't get a thread is dropped, and its slot with it; the client tries again.
-            let _ = std::thread::Builder::new().name("ai-link-client".to_owned()).spawn(move || {
-                let _held = slot;
-                serve(stream, &shared);
-            });
-        }
-    })?;
+    std::thread::Builder::new().name("ai-link".to_owned()).spawn(move || listen(&listener, &shared, PACE))?;
     Ok(Server { port, token, off })
+}
+
+/// Takes the connections that come in on `listener` and serves each on a thread of its own, at `pace`.
+// Agent: BLOCKS for as long as the listener lives; SPAWNS one thread per connection, `pace.most` at most.
+fn listen(listener: &TcpListener, shared: &Arc<Shared>, pace: Pace) {
+    let lobby = Arc::new(Lobby::new(pace.most));
+    for mut stream in listener.incoming().flatten() {
+        // Human: a caller that opens connection after connection can't make the app start a thread for each,
+        // and can't keep others out by holding connections it says nothing on: those are the first to go.
+        let Some(seat) = Lobby::enter(&lobby, &stream) else {
+            // A caller that doesn't take the answer isn't waited for: nothing else is accepted meanwhile.
+            let _ = stream.set_write_timeout(Some(REFUSED_DRAIN.1));
+            let _ = respond(&mut stream, "503 Service Unavailable", Some(&json!({ "error": "too many connections at once" })), false);
+            continue;
+        };
+        let shared = shared.clone();
+        // A connection that can't get a thread is dropped, and its place with it; the client tries again.
+        let _ = std::thread::Builder::new().name("ai-link-client".to_owned()).spawn(move || serve(stream, &shared, &seat, pace));
+    }
 }
 
 /// Writes where this app's server is, and its secret, into the address file.
@@ -235,21 +246,119 @@ struct Shared {
     wake: Box<dyn Fn() + Send + Sync>,
 }
 
-/// One of the [`MOST_CONNECTIONS`] connections served at once; given back when dropped.
-struct Slot(Arc<AtomicUsize>);
+/// How patient the server is with a connection, and how many it serves at once.
+// Human: two kinds of silence look alike on the wire and mean different things. A client that keeps its
+// connection open between tool calls (Claude Code does, for a whole run, while the model thinks) is waiting
+// for its next turn and gets minutes. A request that has started and doesn't finish is stuck or hostile and
+// gets seconds. One short limit for both would cut real clients off; none at all lets a silent caller keep a
+// place forever.
+#[derive(Clone, Copy)]
+struct Pace {
+    /// How long a request may take to arrive, from its first byte to the end of its body.
+    request: Duration,
+    /// How long a connection may stay open with no request on its way.
+    idle: Duration,
+    /// Most connections served at once.
+    most: usize,
+}
 
-impl Slot {
-    /// A slot from the `open` count, unless all are taken.
-    fn take(open: &Arc<AtomicUsize>) -> Option<Slot> {
-        open.try_update(Ordering::AcqRel, Ordering::Acquire, |taken| (taken < MOST_CONNECTIONS).then_some(taken + 1))
-            .ok()
-            .map(|_| Slot(Arc::clone(open)))
+/// One connection being served, as the [`Lobby`] knows it.
+struct Guest {
+    /// Its number, by which its [`Place`] finds it again.
+    id: u64,
+    /// The connection itself (another handle to it), to close it when its place is given away.
+    stream: TcpStream,
+    /// Since when it has had no request on its way; `None` while one arrives or is answered.
+    idle: Option<Instant>,
+}
+
+/// The connections being served: at most `most`.
+struct Lobby {
+    most: usize,
+    /// The next guest's number, and the guests.
+    guests: Mutex<(u64, Vec<Guest>)>,
+}
+
+impl Lobby {
+    /// An empty lobby for `most` connections.
+    fn new(most: usize) -> Lobby {
+        Lobby { most, guests: Mutex::new((0, Vec::new())) }
+    }
+
+    /// A place for the connection `stream`. When all are taken, the connection that has been idle longest is
+    /// closed and gives up its place; `None` when every connection is in the middle of a request.
+    // Human: a client whose idle connection is closed just opens another for its next request, so nothing is
+    // lost; a request under way is never cut off for a newcomer.
+    // Agent: CLOSES the given-up connection's socket, which wakes the thread that waits on it.
+    fn enter(lobby: &Arc<Lobby>, stream: &TcpStream) -> Option<Place> {
+        let handle = stream.try_clone().ok()?;
+        let mut guests = lock(&lobby.guests);
+        if guests.1.len() >= lobby.most {
+            let longest = guests.1.iter().enumerate().filter_map(|(at, guest)| Some((guest.idle?, at))).min().map(|(_, at)| at)?;
+            let gone = guests.1.swap_remove(longest);
+            // Already closed is fine.
+            let _ = gone.stream.shutdown(std::net::Shutdown::Both);
+        }
+        let id = guests.0;
+        guests.0 += 1;
+        guests.1.push(Guest { id, stream: handle, idle: Some(Instant::now()) });
+        Some(Place { lobby: Arc::clone(lobby), id })
     }
 }
 
-impl Drop for Slot {
+/// One connection's place in the [`Lobby`]; given back when dropped.
+struct Place {
+    lobby: Arc<Lobby>,
+    id: u64,
+}
+
+impl Place {
+    /// Notes that a request is on its way (`idle` false) or that the connection waits for its next one. `false`
+    /// when the place was given to another connection meanwhile: this one is closed and must end.
+    fn set_idle(&self, idle: bool) -> bool {
+        let mut guests = lock(&self.lobby.guests);
+        let Some(guest) = guests.1.iter_mut().find(|guest| guest.id == self.id) else { return false };
+        guest.idle = idle.then(Instant::now);
+        true
+    }
+}
+
+impl Drop for Place {
     fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::AcqRel);
+        lock(&self.lobby.guests).1.retain(|guest| guest.id != self.id);
+    }
+}
+
+/// A connection's incoming side, read against the clock.
+// Agent: a socket's own read timeout is per read, so a caller that sends a byte every few seconds would never
+// run into it. This gives each read only what is left until `until`.
+struct Paced {
+    stream: TcpStream,
+    /// When the request being read must be complete; `None` while waiting for one to begin.
+    until: Option<Instant>,
+}
+
+impl Paced {
+    /// Waits for the next request to begin for `patience` at most.
+    fn wait(&mut self, patience: Duration) -> std::io::Result<()> {
+        self.until = None;
+        self.stream.set_read_timeout(Some(patience))
+    }
+
+    /// Everything read from now on must have arrived within `patience`.
+    fn hurry(&mut self, patience: Duration) {
+        self.until = Some(Instant::now() + patience);
+    }
+}
+
+impl Read for Paced {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        if let Some(until) = self.until {
+            // A timeout of zero is refused by the socket: no time left is the end.
+            let left = until.checked_duration_since(Instant::now()).filter(|left| !left.is_zero()).ok_or(std::io::ErrorKind::TimedOut)?;
+            self.stream.set_read_timeout(Some(left))?;
+        }
+        self.stream.read(buffer)
     }
 }
 
@@ -264,7 +373,7 @@ struct Head {
 
 /// Reads one line of a request's head into `line`; `None` when the connection ended, the line is longer than
 /// [`MOST_LINE`] or isn't text.
-fn head_line(reader: &mut BufReader<TcpStream>, line: &mut String) -> Option<()> {
+fn head_line(reader: &mut BufReader<Paced>, line: &mut String) -> Option<()> {
     let limit = u64::try_from(MOST_LINE + 1).unwrap_or(u64::MAX);
     let read = reader.by_ref().take(limit).read_line(line).ok()?;
     (read > 0 && read <= MOST_LINE).then_some(())
@@ -274,7 +383,7 @@ fn head_line(reader: &mut BufReader<TcpStream>, line: &mut String) -> Option<()>
 /// something unreadable or too long.
 // Human: the body is read only once the request has been let in, so a caller without the secret can't make
 // the app take in 32 MB; nor can it send one endless header line, or endless headers.
-fn read_head(reader: &mut BufReader<TcpStream>) -> Option<Head> {
+fn read_head(reader: &mut BufReader<Paced>) -> Option<Head> {
     let mut line = String::new();
     head_line(reader, &mut line)?;
     let mut parts = line.split_whitespace();
@@ -312,25 +421,39 @@ fn respond(stream: &mut TcpStream, status: &str, body: Option<&Value>, keep: boo
 /// on it can be understood.
 // Agent: reads and throws away at most REFUSED_DRAIN of what the caller still sends, so closing doesn't reset
 // the connection before the caller has read the answer.
-fn refuse(out: &mut TcpStream, reader: &mut BufReader<TcpStream>, status: &str, why: &str) {
+fn refuse(out: &mut TcpStream, reader: &mut BufReader<Paced>, status: &str, why: &str) {
     if respond(out, status, Some(&json!({ "error": why })), false).is_err() {
         return;
     }
     let _ = out.shutdown(std::net::Shutdown::Write);
     let (most, patience) = REFUSED_DRAIN;
-    let _ = reader.get_ref().set_read_timeout(Some(patience));
+    reader.get_mut().hurry(patience);
     let _ = std::io::copy(&mut reader.by_ref().take(most), &mut std::io::sink());
 }
 
-/// Serves one connection until it closes.
+/// Serves one connection until it closes, stalls in the middle of a request, or has been idle too long.
 // Human: only a caller that shows the secret is served, and never a web page: a browser sends an `Origin`
 // header with what a page asks for, and a page on the internet must not be able to reach into the app.
 // Both are decided from the head, before the body is read.
-fn serve(stream: TcpStream, shared: &Shared) {
+// Human: between requests the connection may be quiet for `pace.idle`; from a request's first byte on, the
+// whole of it must be there within `pace.request`. While the app works on the answer no clock runs here (the
+// app has its own, PATIENCE), and the connection can't lose its place.
+// Agent: BLOCKS until the connection ends; `seat` says when a request is under way, so the lobby never
+// closes a connection in the middle of one.
+fn serve(stream: TcpStream, shared: &Shared, seat: &Place, pace: Pace) {
     let Ok(mut out) = stream.try_clone() else { return };
-    let mut reader = BufReader::new(stream);
+    // A caller that stops taking an answer is let go too. If the limit can't be set the connection is served
+    // without it.
+    let _ = out.set_write_timeout(Some(pace.request));
+    let mut reader = BufReader::new(Paced { stream, until: None });
     let secret = format!("Bearer {}", shared.token);
-    while let Some(head) = read_head(&mut reader) {
+    loop {
+        // The next request's first byte, however long the client keeps quiet within the idle time.
+        if reader.get_mut().wait(pace.idle).is_err() || !reader.fill_buf().is_ok_and(|waiting| !waiting.is_empty()) || !seat.set_idle(false) {
+            return;
+        }
+        reader.get_mut().hurry(pace.request);
+        let Some(head) = read_head(&mut reader) else { return };
         if head.origin {
             return refuse(&mut out, &mut reader, "403 Forbidden", "requests from web pages are refused");
         }
@@ -355,7 +478,7 @@ fn serve(stream: TcpStream, shared: &Shared) {
                 },
             }
         };
-        if result.is_err() {
+        if result.is_err() || !seat.set_idle(true) {
             return;
         }
     }
@@ -684,11 +807,7 @@ mod tests {
         let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
         let port = listener.local_addr().unwrap().port();
         let (shared, _calls) = shared();
-        std::thread::spawn(move || {
-            for stream in listener.incoming().flatten() {
-                serve(stream, &shared);
-            }
-        });
+        std::thread::spawn(move || listen(&listener, &Arc::new(shared), PACE));
         let ping = r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#;
         let answer: Value = serde_json::from_slice(&post(port, "secret", ping).unwrap()).unwrap();
         assert_eq!(answer, json!({ "jsonrpc": "2.0", "id": 1, "result": {} }));
@@ -712,11 +831,7 @@ mod tests {
         let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
         let port = listener.local_addr().unwrap().port();
         let (shared, _calls) = shared();
-        std::thread::spawn(move || {
-            for stream in listener.incoming().flatten() {
-                serve(stream, &shared);
-            }
-        });
+        std::thread::spawn(move || listen(&listener, &Arc::new(shared), PACE));
         let status = |request: &str| {
             let mut stream = TcpStream::connect(SocketAddr::from((Ipv4Addr::LOCALHOST, port))).unwrap();
             stream.write_all(request.as_bytes()).unwrap();
@@ -737,15 +852,137 @@ mod tests {
         assert_eq!(status(&many), "");
     }
 
+    /// A server at `pace` on a port of its own; returns the port.
+    fn serving_at(pace: Pace) -> u16 {
+        let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (shared, _calls) = shared();
+        std::thread::spawn(move || listen(&listener, &Arc::new(shared), pace));
+        port
+    }
+
+    /// A connection to the server at `port` that gives up reading after five seconds, so a test fails rather
+    /// than hangs.
+    fn connect(port: u16) -> BufReader<TcpStream> {
+        let stream = TcpStream::connect(SocketAddr::from((Ipv4Addr::LOCALHOST, port))).unwrap();
+        stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        BufReader::new(stream)
+    }
+
+    /// Sends a ping on the kept-open connection `client` and returns the answer's status line and body.
+    fn ping_on(client: &mut BufReader<TcpStream>) -> (String, Value) {
+        let request = format!("POST /mcp HTTP/1.1\r\nAuthorization: Bearer secret\r\nContent-Length: {}\r\n\r\n{PING}", PING.len());
+        client.get_mut().write_all(request.as_bytes()).unwrap();
+        let mut status = String::new();
+        client.read_line(&mut status).unwrap();
+        let mut length = 0;
+        loop {
+            let mut header = String::new();
+            client.read_line(&mut header).unwrap();
+            if header.trim_end().is_empty() {
+                break;
+            }
+            if let Some(value) = header.to_ascii_lowercase().strip_prefix("content-length:") {
+                length = value.trim().parse().unwrap();
+            }
+        }
+        let mut body = vec![0; length];
+        client.read_exact(&mut body).unwrap();
+        (status, serde_json::from_slice(&body).unwrap_or(Value::Null))
+    }
+
+    /// Whether the server has closed `client`: reading it ends instead of running into the test's own limit.
+    fn closed(client: &mut BufReader<TcpStream>) -> bool {
+        match client.get_mut().read(&mut [0; 16]) {
+            Ok(read) => read == 0,
+            Err(error) => !matches!(error.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut),
+        }
+    }
+
     #[test]
-    fn only_so_many_connections_are_served_at_once() {
-        let open = Arc::new(AtomicUsize::new(0));
-        let held: Vec<Slot> = std::iter::from_fn(|| Slot::take(&open)).take(MOST_CONNECTIONS + 3).collect();
-        assert_eq!((held.len(), open.load(Ordering::Acquire)), (MOST_CONNECTIONS, MOST_CONNECTIONS));
-        assert!(Slot::take(&open).is_none());
-        drop(held);
-        assert_eq!(open.load(Ordering::Acquire), 0);
-        assert!(Slot::take(&open).is_some());
+    fn a_request_that_stalls_part_way_is_closed_long_before_the_idle_time() {
+        let port = serving_at(Pace { request: Duration::from_millis(200), idle: Duration::from_secs(60), most: 4 });
+        // Half a head, then nothing; and a whole head whose body never comes in full.
+        for part in ["POST /mcp HTTP/1.1\r\nAuthoriz", "POST /mcp HTTP/1.1\r\nAuthorization: Bearer secret\r\nContent-Length: 50\r\n\r\n{\"jsonrpc\""]
+        {
+            let started = Instant::now();
+            let mut client = connect(port);
+            client.get_mut().write_all(part.as_bytes()).unwrap();
+            assert!(closed(&mut client), "{part}");
+            assert!(started.elapsed() < Duration::from_secs(4), "{part}");
+        }
+        // A caller that sends a byte now and then doesn't get a new clock with each: the limit is for the whole request.
+        let started = Instant::now();
+        let mut client = connect(port);
+        let drip = std::thread::spawn({
+            let mut sender = client.get_ref().try_clone().unwrap();
+            move || {
+                for byte in b"POST /mcp HTTP/1.1\r\nX-Slow: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
+                    if sender.write_all(&[*byte]).is_err() {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+            }
+        });
+        assert!(closed(&mut client) && started.elapsed() < Duration::from_secs(2));
+        drip.join().unwrap();
+    }
+
+    #[test]
+    fn a_connection_kept_open_between_requests_still_works_within_the_idle_time() {
+        // The idle time is far longer than a request may take, as it is for real.
+        let port = serving_at(Pace { request: Duration::from_millis(150), idle: Duration::from_secs(60), most: 4 });
+        let mut client = connect(port);
+        let pong = json!({ "jsonrpc": "2.0", "id": 0, "result": {} });
+        let (status, answer) = ping_on(&mut client);
+        assert!(status.starts_with("HTTP/1.1 200") && answer == pong, "{status}");
+        // Quiet for several times what a request may take, as a client is while its model thinks.
+        std::thread::sleep(Duration::from_millis(600));
+        let (status, answer) = ping_on(&mut client);
+        assert!(status.starts_with("HTTP/1.1 200") && answer == pong, "{status}");
+        // Past the idle time the connection is closed: also one that never said anything.
+        let port = serving_at(Pace { request: Duration::from_secs(60), idle: Duration::from_millis(200), most: 4 });
+        let (mut used, mut silent) = (connect(port), connect(port));
+        assert!(ping_on(&mut used).0.starts_with("HTTP/1.1 200"));
+        assert!(closed(&mut used) && closed(&mut silent));
+    }
+
+    #[test]
+    fn a_full_server_lets_the_longest_idle_connection_go_for_a_new_one() {
+        let port = serving_at(Pace { request: Duration::from_secs(5), idle: Duration::from_secs(60), most: 2 });
+        // Two callers take both places and say nothing: the first has been idle longest.
+        let mut first = connect(port);
+        std::thread::sleep(Duration::from_millis(50));
+        let mut second = connect(port);
+        std::thread::sleep(Duration::from_millis(50));
+        let mut third = connect(port);
+        let (status, _) = ping_on(&mut third);
+        assert!(status.starts_with("HTTP/1.1 200"), "{status}");
+        assert!(closed(&mut first));
+        // The other one kept its place and is served.
+        assert!(ping_on(&mut second).0.starts_with("HTTP/1.1 200"));
+    }
+
+    #[test]
+    fn a_connection_in_the_middle_of_a_request_never_loses_its_place() {
+        let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let caller = || TcpStream::connect(SocketAddr::from((Ipv4Addr::LOCALHOST, port))).unwrap();
+        let lobby = Arc::new(Lobby::new(2));
+        let (a, b, c) = (caller(), caller(), caller());
+        let first = Lobby::enter(&lobby, &a).unwrap();
+        let second = Lobby::enter(&lobby, &b).unwrap();
+        // Both busy: a third caller finds no place.
+        assert!(first.set_idle(false) && second.set_idle(false));
+        assert!(Lobby::enter(&lobby, &c).is_none());
+        // One waits for its next request again: it gives its place up, and is told so when it looks.
+        assert!(second.set_idle(true));
+        let third = Lobby::enter(&lobby, &c).unwrap();
+        assert!(!second.set_idle(false) && first.set_idle(true) && third.set_idle(false));
+        // A place given back is free again.
+        drop((first, second, third));
+        assert!(lock(&lobby.guests).1.is_empty() && Lobby::enter(&lobby, &a).is_some());
     }
 
     #[test]

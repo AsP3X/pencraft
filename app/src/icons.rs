@@ -352,7 +352,7 @@ mod tests {
     }
 
     /// The icons the interface's own buttons use.
-    const INTERFACE: [&str; 35] = [
+    const INTERFACE: [&str; 34] = [
         "paperclip",
         "image",
         "file-text",
@@ -365,7 +365,6 @@ mod tests {
         "plus",
         "maximize-2",
         "minimize-2",
-        "rocket",
         "chevron-down",
         "arrow-up",
         "panel-left",

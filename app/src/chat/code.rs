@@ -111,24 +111,29 @@ fn servers(job: &Job<'_>, port: u16, secret: &str) -> Value {
     json!({ "mcpServers": { SERVER: { "type": "http", "url": crate::link::address(port, job.chat), "headers": { "Authorization": format!("Bearer {secret}") } } } })
 }
 
-/// A file with the MCP settings a run of Claude Code is started with; deleted when dropped.
-// Human: the settings hold the secret of Quill's server. On the command line every program on the computer
-// could read it in the list of processes; in a file only the user can read it, and only while the run lasts.
-struct McpConfig(PathBuf);
+/// A file one run of a program is started with: Claude Code's MCP settings, or the message for Grok. Deleted
+/// when dropped.
+// Human: the settings hold the secret of Quill's server, and the message holds the conversation and the
+// design. On the command line every program on the computer could read them in the list of processes, and in
+// the shared temporary folder so could other users; in a file only the user can read, they are private, and
+// they are there only while the run lasts: also when the run fails or is stopped.
+struct RunFile(PathBuf);
 
-impl McpConfig {
-    /// Writes `servers` for the chat `chat` into a new file in Quill's own folder, readable by the user alone.
+impl RunFile {
+    /// Writes `content` for the chat `chat` into a new file in Quill's own folder, readable by the user alone.
+    /// The file is called `kind` with the run's numbers and ends in `ending`.
     ///
     /// # Errors
     /// When there is no home folder, or the file can't be made or written.
-    // Agent: WRITES `~/.pencraft/mcp-<pid>-<chat>-<n>.json`, made new (never through a file that was there)
-    // with mode 0600 on Unix; a number of its own per run, so a run winding down never deletes the next one's.
-    fn write(chat: u64, servers: &Value) -> std::io::Result<McpConfig> {
+    // Agent: WRITES `~/.pencraft/<kind>-<pid>-<chat>-<n>.<ending>`, made new (never through a file that was
+    // there) with mode 0600 on Unix; a number of its own per run, so a run winding down never deletes the next
+    // one's.
+    fn write(kind: &str, ending: &str, chat: u64, content: &[u8]) -> std::io::Result<RunFile> {
         static RUNS: AtomicU64 = AtomicU64::new(0);
         let folder = crate::link::own_folder().ok_or_else(|| std::io::Error::other("there is no home folder"))?;
         std::fs::create_dir_all(&folder)?;
         let run = RUNS.fetch_add(1, Ordering::Relaxed);
-        let path = folder.join(format!("mcp-{}-{chat}-{run}.json", std::process::id()));
+        let path = folder.join(format!("{kind}-{}-{chat}-{run}.{ending}", std::process::id()));
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create_new(true);
         #[cfg(unix)]
@@ -138,13 +143,29 @@ impl McpConfig {
         }
         let mut file = options.open(&path)?;
         // Made: from here on it is deleted when this is dropped, also when writing it fails.
-        let config = McpConfig(path);
-        file.write_all(servers.to_string().as_bytes())?;
-        Ok(config)
+        let made = RunFile(path);
+        file.write_all(content)?;
+        Ok(made)
+    }
+
+    /// The MCP settings `servers` for a run of Claude Code in the chat `chat`.
+    ///
+    /// # Errors
+    /// As [`RunFile::write`].
+    fn config(chat: u64, servers: &Value) -> std::io::Result<RunFile> {
+        RunFile::write("mcp", "json", chat, servers.to_string().as_bytes())
+    }
+
+    /// The message `text` for a run of Grok in the chat `chat`.
+    ///
+    /// # Errors
+    /// As [`RunFile::write`].
+    fn message(chat: u64, text: &str) -> std::io::Result<RunFile> {
+        RunFile::write("message", "txt", chat, text.as_bytes())
     }
 }
 
-impl Drop for McpConfig {
+impl Drop for RunFile {
     fn drop(&mut self) {
         // Already gone is fine.
         let _ = std::fs::remove_file(&self.0);
@@ -377,11 +398,12 @@ fn parts<'a>(line: &'a Value, kind: &'a str) -> impl Iterator<Item = &'a Value> 
 // that collects the program's error output.
 pub fn run(job: &Job<'_>, stop: &AtomicBool, child: &Mutex<Option<Child>>, tell: &dyn Fn(Event) -> bool) {
     let folder = folder();
-    // Agent: lives until this function returns, after the program has ended; its file goes with it.
-    let mut config_file = None;
+    // Agent: lives until this function returns, after the program has ended, however it ended (answered,
+    // failed, stopped, or never started); its file goes with it.
+    let mut run_file = None;
     let mut command = match (job.flavor, job.server) {
-        (Flavor::Claude, Some((port, secret))) => match McpConfig::write(job.chat, &servers(job, *port, secret)) {
-            Ok(config) => claude(job, &config_file.insert(config).0),
+        (Flavor::Claude, Some((port, secret))) => match RunFile::config(job.chat, &servers(job, *port, secret)) {
+            Ok(config) => claude(job, &run_file.insert(config).0),
             Err(error) => {
                 tell(Event::Problem(format!("Claude Code couldn't be given Quill's tools: {error}")));
                 return;
@@ -398,12 +420,13 @@ pub fn run(job: &Job<'_>, stop: &AtomicBool, child: &Mutex<Option<Child>>, tell:
             if !job.pictures.is_empty() {
                 tell(Event::Problem("Grok is given the message without its pictures: its program takes none this way.".to_owned()));
             }
-            let file = folder.clone().unwrap_or_else(std::env::temp_dir).join(format!("message-{}-{}.txt", std::process::id(), job.chat));
-            if let Err(error) = std::fs::write(&file, super::files::flat(job.prompt)) {
-                tell(Event::Problem(format!("The message couldn't be handed to Grok: {error}")));
-                return;
+            match RunFile::message(job.chat, &super::files::flat(job.prompt)) {
+                Ok(message) => grok(job, &run_file.insert(message).0),
+                Err(error) => {
+                    tell(Event::Problem(format!("The message couldn't be handed to Grok: {error}")));
+                    return;
+                }
             }
-            grok(job, &file)
         }
     };
     windowless(&mut command);
@@ -583,7 +606,7 @@ mod tests {
         let servers = servers(&job, 4242, "s3cret");
         assert_eq!(servers["mcpServers"]["pencraft"]["url"], "http://127.0.0.1:4242/mcp?chat=3");
         assert_eq!(servers["mcpServers"]["pencraft"]["headers"]["Authorization"], "Bearer s3cret");
-        let config = McpConfig::write(3, &servers).unwrap();
+        let config = RunFile::config(3, &servers).unwrap();
         let path = config.0.clone();
         assert_eq!(serde_json::from_slice::<Value>(&std::fs::read(&path).unwrap()).unwrap(), servers);
         #[cfg(unix)]
@@ -592,6 +615,18 @@ mod tests {
             assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
         }
         drop(config);
+        assert!(!path.exists());
+        // Grok's message is kept the same way: private, in Quill's folder, and gone with the run.
+        let message = RunFile::message(3, "Make the card blue").unwrap();
+        let path = message.0.clone();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "Make the card blue");
+        assert_eq!(path.parent(), crate::link::own_folder().as_deref());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        drop(message);
         assert!(!path.exists());
     }
 

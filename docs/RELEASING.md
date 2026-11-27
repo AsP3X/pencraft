@@ -201,7 +201,10 @@ the repository has the secrets for it.
   Silicon requires to run anything, and a downloaded copy is stopped at its
   first start ("Apple could not verify Quill is free of malware") until
   the user allows it under **System Settings → Privacy & Security → Open
-  Anyway**. The release build says which of the two it did.
+  Anyway**. A release always has them: its Mac build stops at its first
+  step, naming the secrets that are empty, because installed copies of Quill
+  refuse an update that isn't signed by our team. Ad hoc signing is only for
+  a build made by hand with `installer/build-macos.sh`.
 
 ### Signing the Mac app
 

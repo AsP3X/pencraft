@@ -702,15 +702,14 @@ impl App {
         self.toasts.say(who, text, Instant::now());
     }
 
-    /// Does what the tool rail asked for; a sentence for the user when that is all there is to do.
-    fn asked(&mut self, asked: Option<Ask>) -> Option<&'static str> {
-        match asked? {
-            Ask::Say(sentence) => return Some(sentence),
-            Ask::Import => self.ask_import(),
-            Ask::Actions => self.actions.toggle(),
-            Ask::Find => self.open_find(),
+    /// Does what the tool rail asked for.
+    fn asked(&mut self, asked: Option<Ask>) {
+        match asked {
+            Some(Ask::Import) => self.ask_import(),
+            Some(Ask::Actions) => self.actions.toggle(),
+            Some(Ask::Find) => self.open_find(),
+            None => {}
         }
-        None
     }
 
     /// For a picture of the app: the settings window on a page (`--settings`), the action search open
@@ -1765,7 +1764,7 @@ impl App {
             self.ask_export(options);
         }
         self.quick_asked(pictures, &ctx);
-        notice = notice.or(self.asked(asked));
+        self.asked(asked);
         if let Some(sentence) = notice {
             self.say(sentence);
         }

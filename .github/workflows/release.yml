@@ -95,6 +95,30 @@ jobs:
     needs: prepare
     runs-on: macos-latest
     steps:
+      # Installed copies of Quill take an update only when it is signed by
+      # our team (2G3936C5F4). A release signed ad hoc would be refused by
+      # every one of them, so a release without all five secrets stops here,
+      # before anything is built. Only the names are printed, never a value.
+      - name: Check that the signing and notary secrets are there
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER: ${{ secrets.MACOS_NOTARY_ISSUER }}
+        run: |
+          missing=""
+          for name in MACOS_CERTIFICATE MACOS_CERTIFICATE_PASSWORD MACOS_NOTARY_KEY MACOS_NOTARY_KEY_ID MACOS_NOTARY_ISSUER; do
+            if [ -z "${!name}" ]; then
+              missing="$missing $name"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::These repository secrets are empty:$missing. A release must be signed with the Developer ID and notarised: installed copies of Quill refuse an update that isn't signed by our team, so an ad hoc signed release would leave every user without updates. Set the secrets (docs/RELEASING.md) and push the tag again."
+            exit 1
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install the Rust toolchain
@@ -105,9 +129,10 @@ jobs:
         working-directory: app
         run: cargo test --workspace --locked
 
-      # With the secrets below the app is signed with a Developer ID and
-      # notarised; without them it is signed ad hoc, as before, and Gatekeeper
-      # stops a downloaded copy. docs/RELEASING.md says how to make them.
+      # The app is signed with a Developer ID and notarised. A release never
+      # gets here without the secrets (the first step stops it); the ad hoc
+      # path below is only for a run that isn't a release.
+      # docs/RELEASING.md says how to make the secrets.
       - name: Take the signing certificate and the notary key
         env:
           CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
