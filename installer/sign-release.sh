@@ -31,8 +31,15 @@ if [ -n "$key" ] && [ ! -f "$key" ]; then
   exit 1
 fi
 
+# Which repository, settled here: the files are signed in a temporary folder, where gh can no longer tell
+# from git. A key given by a relative path is made absolute for the same reason.
+repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+if [ -n "$key" ]; then
+  key=$(cd "$(dirname "$key")" && pwd)/$(basename "$key")
+fi
+
 # Asked once: a release that isn't there and one that is already public need different advice.
-if ! draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2> /dev/null); then
+if ! draft=$(gh release view "$tag" --repo "$repo" --json isDraft --jq .isDraft 2> /dev/null); then
   echo "There is no release $tag on GitHub. Push the tag first (git push origin $tag) and wait for the" >&2
   echo "release workflow to finish; it leaves the draft this signs." >&2
   exit 1
@@ -44,7 +51,7 @@ fi
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-gh release download "$tag" --dir "$work"
+gh release download "$tag" --repo "$repo" --dir "$work"
 cd "$work"
 
 if [ ! -f SHA256SUMS.txt ]; then
@@ -72,6 +79,6 @@ else
   minisign -S -m SHA256SUMS.txt -t "Quill $version"
 fi
 
-gh release upload "$tag" SHA256SUMS.txt.minisig --clobber
-gh release edit "$tag" --draft=false
+gh release upload "$tag" --repo "$repo" SHA256SUMS.txt.minisig --clobber
+gh release edit "$tag" --repo "$repo" --draft=false
 echo "$tag is signed and public."
