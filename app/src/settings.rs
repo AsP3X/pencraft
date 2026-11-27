@@ -684,6 +684,19 @@ pub struct Settings {
     picker: Option<models::Picker>,
     /// Where API keys are kept.
     vault: Box<dyn Vault>,
+    /// What the user asked to remove, while they are asked whether they are sure.
+    removing: Option<Removal>,
+}
+
+/// Something in the settings that takes a key out of the keychain when removed, so it is asked about first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Removal {
+    /// The custom provider at this place in the settings, with its key.
+    Provider(usize),
+    /// The image service at this place in the settings, with its key.
+    Service(usize),
+    /// The key of the stock photo site at this place in [`crate::web::KEYED`].
+    PictureKey(usize),
 }
 
 impl Default for Settings {
@@ -710,6 +723,7 @@ impl Default for Settings {
             testing: false,
             picker: None,
             vault: Box::new(Keychain),
+            removing: None,
         }
     }
 }
@@ -834,14 +848,19 @@ impl Settings {
         self.picture_editing = None;
     }
 
+    /// Tidies up after the window, every frame it is closed.
+    // Human: however the window was closed (its cross, Escape, a click beside it, or the app), an image
+    // service form left open goes, and a key typed in it with it.
+    pub fn closed(&mut self) {
+        self.image_form = None;
+    }
+
     /// Draws the window when it is open and applies changes to `prefs`. Returns a sentence to tell the user, if
     /// a control asks for one.
     // Agent: MAIN-THREAD; WRITES prefs only; the caller saves them and follows a changed appearance.
     pub fn show(&mut self, ctx: &egui::Context, prefs: &mut Prefs, facts: &Facts<'_>, dark: bool) -> Option<String> {
         if !self.open {
-            // Human: however the window was closed (its cross, Escape, a click beside it, or the app), an image
-            // service form left open goes, and a key typed in it with it.
-            self.image_form = None;
+            self.closed();
             return None;
         }
         self.search(ctx, &prefs.agents);
@@ -903,7 +922,7 @@ impl Settings {
                 }
                 let close = Rect::from_min_size(pos2(window.right() - 44.0, window.top() + 16.0), Vec2::splat(28.0));
                 ui.scope_builder(UiBuilder::new().max_rect(close), |ui| {
-                    if icon_button(ui, "x", close.size(), false, palette).on_hover_text("Close").clicked() {
+                    if icon_button(ui, "x", close.size(), false, "Close", palette).clicked() {
                         self.open = false;
                     }
                 });
@@ -912,7 +931,80 @@ impl Settings {
             self.open = false;
         }
         self.choose_models(ctx, palette);
+        self.confirm_removal(ctx, prefs, palette, &mut notice);
         notice
+    }
+
+    /// Asks whether to remove what [`Settings::removing`] names, saying what goes and that its key leaves the
+    /// keychain; removes it on yes.
+    // Human: a removed key can't be got back from Quill; the user would have to find it at the provider again.
+    // Cancel is the main button, so Return and Escape both keep everything.
+    // Agent: drawn after the settings window, so it lies over it and takes Escape first. WRITES the keychain,
+    // then prefs, as the remove functions do.
+    fn confirm_removal(&mut self, ctx: &egui::Context, prefs: &mut Prefs, palette: Palette, notice: &mut Option<String>) {
+        let Some(removal) = self.removing.filter(|_| self.open) else {
+            self.removing = None;
+            return;
+        };
+        let (what, name) = match removal {
+            Removal::Provider(index) => ("provider", prefs.agents.providers.get(index).map(|p| p.name.clone())),
+            Removal::Service(index) => ("image service", prefs.images.services.get(index).map(|s| s.name.clone())),
+            Removal::PictureKey(index) => ("key", crate::web::KEYED.get(index).map(|(site, ..)| format!("{site} key"))),
+        };
+        let Some(name) = name else {
+            self.removing = None;
+            return;
+        };
+        let mut choice = None;
+        let modal = egui::Modal::new(egui::Id::unique("settings-remove")).show(ctx, |ui| {
+            ui.set_width(340.0);
+            ui.label(RichText::new(format!("Remove “{name}”?")).strong());
+            ui.label(if what == "key" {
+                "The key will be deleted from your system's keychain.".to_owned()
+            } else {
+                format!("The {what} and its key in your system's keychain will be deleted.")
+            });
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                if ui.add(crate::app::dialog_primary("Cancel", palette)).clicked() {
+                    choice = Some(false);
+                }
+                if ui.add(crate::app::dialog_button("Remove")).clicked() {
+                    choice = Some(true);
+                }
+            });
+        });
+        if choice.is_none() && (modal.should_close() || ctx.input(|i| i.key_pressed(egui::Key::Enter))) {
+            choice = Some(false);
+        }
+        let Some(remove) = choice else { return };
+        self.removing = None;
+        if !remove {
+            return;
+        }
+        let vault: &dyn Vault = self.vault.as_ref();
+        let done = match removal {
+            Removal::Provider(index) => remove_provider(index, prefs, vault),
+            Removal::Service(index) => remove_image_service(index, prefs, vault),
+            Removal::PictureKey(index) => {
+                let Some((site, key_name, _)) = crate::web::KEYED.get(index) else { return };
+                vault
+                    .forget(key_name)
+                    .map(|()| prefs.agents.picture_keys.retain(|known| known != site))
+                    .map_err(|why| format!("The key couldn't be removed from the keychain: {why}"))
+            }
+        };
+        match done {
+            // Human: the form of what was removed has nothing left to show.
+            Ok(()) if !matches!(removal, Removal::PictureKey(_)) => {
+                self.form = None;
+                self.image_form = None;
+                self.loading = None;
+                self.installed = None;
+            }
+            Ok(()) => {}
+            Err(why) => *notice = Some(why),
+        }
     }
 
     /// Draws the window the form's provider's models are chosen in, when it is open, and does what was decided
@@ -1029,7 +1121,7 @@ impl Settings {
     // Agent: laid out from the right. WRITES prefs and the keychain on Save and Remove.
     fn footer(&mut self, ui: &mut Ui, prefs: &mut Prefs, palette: Palette, notice: &mut Option<String>) {
         ui.spacing_mut().item_spacing.x = 8.0;
-        let Settings { form, cli, image_form, loading, testing, installed, vault, .. } = self;
+        let Settings { form, cli, image_form, loading, testing, installed, vault, removing, .. } = self;
         let vault: &dyn Vault = &**vault;
         let mut finished = false;
         if let Some(open) = form {
@@ -1057,10 +1149,7 @@ impl Settings {
             if let Some(index) = open.index
                 && button(ui, "Remove", None, Kind::Quiet, true, palette).clicked()
             {
-                match remove_provider(index, prefs, vault) {
-                    Ok(()) => finished = true,
-                    Err(why) => *notice = Some(why),
-                }
+                *removing = Some(Removal::Provider(index));
             }
             finished |= button(ui, "Cancel", None, Kind::Quiet, true, palette).clicked();
             missing(ui, open.missing(), palette);
@@ -1100,10 +1189,7 @@ impl Settings {
             if let Some(index) = open.index
                 && button(ui, "Remove", None, Kind::Quiet, true, palette).clicked()
             {
-                match remove_image_service(index, prefs, vault) {
-                    Ok(()) => finished = true,
-                    Err(why) => *notice = Some(why),
-                }
+                *removing = Some(Removal::Service(index));
             }
             finished |= button(ui, "Cancel", None, Kind::Quiet, true, palette).clicked();
             missing(ui, open.missing(&prefs.images), palette);
@@ -1320,7 +1406,7 @@ impl Settings {
         heading(ui, "Photo search", palette);
         let why = "Where assistants look for stock photos. With a free key of your own, these sites are searched too, so there is more to choose from. Keys are kept in your system's keychain.";
         hint(ui, why, palette);
-        let Settings { picture_drafts, picture_editing, vault, .. } = self;
+        let Settings { picture_drafts, picture_editing, vault, removing, .. } = self;
         card(ui, palette, |rows| {
             rows.row("Openverse and Wikimedia Commons", Some("Free to search, no key needed."), Lead::Icon("globe"), |ui| {
                 pill(ui, "Always on", Tone::Good, palette);
@@ -1350,10 +1436,7 @@ impl Settings {
                         sized_field(ui, draft, "API key", 170.0, true, true, palette);
                     } else if saved {
                         if button(ui, "Forget", None, Kind::Quiet, true, palette).clicked() {
-                            match vault.forget(key_name) {
-                                Ok(()) => agents.picture_keys.retain(|known| known != name),
-                                Err(why) => *notice = Some(format!("The key couldn't be removed from the keychain: {why}")),
-                            }
+                            *removing = Some(Removal::PictureKey(index));
                         }
                         if button(ui, "Replace", None, Kind::Outline, true, palette).clicked() {
                             *picture_editing = Some(index);
@@ -1585,8 +1668,7 @@ fn chat_page(ui: &mut Ui, agents: &mut Agents, facts: &Facts<'_>, palette: Palet
         .stroke(Stroke::new(1.0, palette.outline))
         .corner_radius(theme::SETTINGS_CARD_RADIUS)
         .inner_margin(egui::Margin::symmetric(12, 10));
-    let example =
-        RichText::new("For example: Use our brand colours #0f172a and #f97316. Answer in German.").color(palette.muted.gamma_multiply(0.75));
+    let example = RichText::new("For example: Use our brand colours #0f172a and #f97316. Answer in German.").color(palette.quiet);
     ui.add(egui::TextEdit::multiline(&mut agents.instructions).frame(frame).hint_text(example).desired_rows(5).desired_width(ui.available_width()));
     ui.add_space(6.0);
     ui.horizontal(|ui| {
@@ -1665,7 +1747,7 @@ fn mcp_page(ui: &mut Ui, prefs: &Prefs, facts: &Facts<'_>, client: &mut String, 
         let Some(port) = facts.port else { return };
         let mut copied = |rows: &mut parts::Rows<'_>, name: &str, more: Option<&str>, value: String| {
             rows.row(name, more, Lead::Nothing, |ui| {
-                if icon_button(ui, "copy", Vec2::splat(26.0), false, palette).on_hover_text("Copy").clicked() {
+                if icon_button(ui, "copy", Vec2::splat(26.0), false, "Copy", palette).clicked() {
                     ui.ctx().copy_text(value.clone());
                     *notice = Some("Copied.".to_owned());
                 }
@@ -2226,7 +2308,7 @@ fn model_rows(ui: &mut Ui, form: &mut Form, palette: Palette) {
         }
         let cell = Rect::from_min_size(pos2(left, line.bottom() - FIELD_HEIGHT - 4.0), Vec2::splat(bin));
         let mut cell = ui.new_child(UiBuilder::new().max_rect(cell).id_salt((index, "bin")));
-        if rows > 1 && icon_button(&mut cell, "trash-2", Vec2::splat(bin), false, palette).on_hover_text("Remove model").clicked() {
+        if rows > 1 && icon_button(&mut cell, "trash-2", Vec2::splat(bin), false, "Remove model", palette).clicked() {
             remove = Some(index);
         }
         ui.add_space(4.0);

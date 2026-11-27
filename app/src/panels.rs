@@ -105,10 +105,12 @@ pub fn layers(ui: &mut Ui, editor: &mut Editor, dark: bool) {
         return;
     }
     let mut action = None;
+    // Human: the rows only read the editor; what the person does is gathered and applied after the list.
+    // Agent: BORROWS the document shared for the whole list instead of copying it every frame.
+    let view: &Editor = editor;
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-        let nodes = editor.doc.children.clone();
-        for node in nodes.iter().rev() {
-            layer_row(ui, editor, node, 0, dark, &mut action);
+        for node in view.doc.children.iter().rev() {
+            layer_row(ui, view, node, 0, dark, &mut action);
         }
     });
     if let Some(action) = action {
@@ -305,9 +307,6 @@ fn apply_layer_action(editor: &mut Editor, action: LayerAction) {
     }
 }
 
-/// Said by the code section's controls: nothing can be exported as code yet.
-const NO_CODE: &str = "Code export isn't available yet.";
-
 /// The properties island for the selection. Returns a sentence to tell the user, if a control asks for one.
 // Agent: MAIN-THREAD; WRITES editor.doc through one checkpoint per edit (a drag merges into its first step).
 pub fn properties(ui: &mut Ui, editor: &mut Editor, dark: bool, pictures: &mut Pictures) -> Option<&'static str> {
@@ -475,35 +474,39 @@ impl Edits {
 
 fn node_panel(ui: &mut Ui, editor: &mut Editor, id: &str, dark: bool, pictures: &mut Pictures) -> Option<&'static str> {
     let role = editor.role(id);
-    let scene = editor.scene_node(id).cloned();
     // Human: an instance and the layers inside it show what the component gives them, with the instance's
     // overrides; that is what the island reads and what an edit starts from.
-    let node = match role {
-        Role::Instance | Role::Inside => scene.as_ref().map(|s| s.node.clone())?,
-        Role::Plain | Role::Component => edit::find(&editor.doc, id).cloned()?,
+    // Agent: BORROWS the layer and its scene node from the editor while the island is drawn (no copy of the
+    // subtree each frame); the borrow ends before the edits below change the editor.
+    let scene = editor.scene_node(id);
+    let node: &Node = match role {
+        Role::Instance | Role::Inside => &scene?.node,
+        Role::Plain | Role::Component => edit::find(&editor.doc, id)?,
     };
     let in_component = role == Role::Plain && edit::ancestry(&editor.doc, id).iter().any(|a| a != id && editor.role(a) == Role::Component);
-    let theme_context = scene.as_ref().map(|s| s.theme.clone()).unwrap_or_default();
+    let no_theme = pen_doc::vars::ThemeContext::default();
     let shown = Shown {
-        node: &node,
+        node,
         vars: Vars::new(&editor.doc),
-        theme: &theme_context,
-        size: scene.as_ref().map_or((0.0, 0.0), |s| (s.local.w, s.local.h)),
-        part: scene.as_ref().map_or(pen_doc::geom::Rect::new(0.0, 0.0, 1.0, 1.0), crate::canvas::fitted_part),
+        theme: scene.map_or(&no_theme, |s| &s.theme),
+        size: scene.map_or((0.0, 0.0), |s| (s.local.w, s.local.h)),
+        part: scene.map_or(pen_doc::geom::Rect::new(0.0, 0.0, 1.0, 1.0), crate::canvas::fitted_part),
         // Human: inside an instance a layer is placed by x and y when the frame it is in has no layout.
         free: crate::ops::is_free(editor, id)
             || (role == Role::Inside && editor.scene_parent(id).is_some_and(|p| p.node.layout_mode() == pen_doc::model::LayoutMode::None)),
         selected: editor.selection.len(),
         role,
         in_component,
-        slot: if role == Role::Inside && node.kind == Kind::Frame { slot_info(editor, id, &node) } else { None },
+        slot: if role == Role::Inside && node.kind == Kind::Frame { slot_info(editor, id, node) } else { None },
         export: editor.export.0,
         folder: editor.folder().map(std::path::Path::to_path_buf),
         palette: theme::palette(dark),
     };
     let mut edits = Edits { pictures: std::mem::take(pictures), ..Edits::default() };
     header(ui, &shown, &mut edits);
-    for section in [slot, context, align, position, layout, connector, appearance, material, fill, stroke, effects, text, code, export] {
+    // Human: the design's Code section (HTML + Tailwind, Copy and Export HTML, Import Web) stays out until code
+    // export exists.
+    for section in [slot, context, align, position, layout, connector, appearance, material, fill, stroke, effects, text, export] {
         section(ui, &shown, &mut edits);
     }
     *pictures = std::mem::take(&mut edits.pictures);
@@ -582,9 +585,7 @@ fn header(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
     if name_ui.add(field).changed() {
         edits.set(move |n| n.name = (!name.is_empty()).then(|| name.clone()));
     }
-    if corner_button(ui, row, "panel-right", "Fold the panel", palette).clicked() {
-        edits.notice = Some("Folding the properties away isn't available yet.");
-    }
+    // Human: the design's "Fold the panel" button in this corner stays out until the panel can fold.
     ui.add_space(8.0);
     // Human: the component button says what the layer can become: a plain layer a component, a
     // component a plain layer again, an instance a detached copy. An instance also leads back to its component.
@@ -1785,35 +1786,6 @@ fn on_circle(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
     }
 }
 
-/// Code: turning the layer into code. Nothing can be exported yet; the controls say so.
-fn code(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
-    let palette = shown.palette;
-    rule(ui, palette);
-    let mut used = title_row(ui, "Code", Some(("settings", "Code settings")), palette);
-    ui.add_space(PROPS_GAP);
-    let (row, response) = ui.allocate_exact_size(vec2(ui.available_width(), PROPS_ROW), Sense::click());
-    plate(ui, row, response.hovered(), palette);
-    ui.painter().text(
-        pos2(row.left() + 8.0, row.center().y),
-        Align2::LEFT_CENTER,
-        "HTML + Tailwind",
-        FontId::proportional(PROPS_TEXT),
-        palette.foreground,
-    );
-    icons::paint(ui.painter(), Rect::from_center_size(pos2(row.right() - 12.0, row.center().y), Vec2::splat(11.0)), "chevron-down", palette.muted);
-    used |= response.clicked();
-    ui.add_space(PROPS_GAP);
-    let [left, right] = pair(ui);
-    used |= plate_button(ui, left, "copy-html", None, "Copy HTML", palette).clicked();
-    used |= plate_button(ui, right, "export-html", None, "Export HTML", palette).clicked();
-    ui.add_space(PROPS_GAP);
-    used |= wide_button(ui, None, "Import Web via Browser", palette).clicked();
-    if used {
-        edits.notice = Some(NO_CODE);
-    }
-    end(ui, true);
-}
-
 /// Export: the selected layer as a file.
 fn export(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
     edits.export = export_controls(ui, shown.export, 1, shown.palette);
@@ -1894,12 +1866,16 @@ fn title_row(ui: &mut Ui, title: &str, action: Option<(&'static str, &str)>, pal
 fn corner_button(ui: &mut Ui, row: Rect, icon: &'static str, hint: &str, palette: Palette) -> Response {
     let button = Rect::from_center_size(pos2(row.right() - 9.0, row.center().y), Vec2::splat(20.0));
     let response = ui.interact(button, ui.scope_id().with(("corner", icon, row.top().to_bits())), Sense::click());
-    if response.hovered() {
+    let lit = crate::sidebar::lit(&response);
+    if lit {
         ui.painter().rect_filled(button, PROPS_RADIUS, palette.hover.gamma_multiply(0.5));
     }
-    let color = if response.hovered() { palette.foreground } else { palette.muted };
+    crate::sidebar::focus_ring(ui, &response, button, PROPS_RADIUS, palette);
+    let color = if lit { palette.foreground } else { palette.muted };
     icons::paint(ui.painter(), Rect::from_center_size(button.center(), Vec2::splat(PROPS_ICON)), icon, color);
-    response.on_hover_text(crate::keys::text(hint))
+    let says = crate::keys::text(hint);
+    crate::sidebar::name_button(&response, &says);
+    response.on_hover_text(says)
 }
 
 /// A small quiet caption.
@@ -2011,12 +1987,16 @@ fn icon_group(ui: &mut Ui, group: Rect, buttons: &[(&'static str, &str)], palett
         let cell = Rect::from_min_size(pos2(left, group.top()), vec2(width, group.height()));
         left = cell.right();
         let response = ui.interact(cell, ui.scope_id().with(("group", *icon, group.top().to_bits())), Sense::click());
-        if response.hovered() {
+        let lit = crate::sidebar::lit(&response);
+        if lit {
             ui.painter().rect_filled(cell.shrink(2.0), PROPS_RADIUS - 1.0, palette.hover.gamma_multiply(0.6));
         }
-        let color = if response.hovered() { palette.foreground } else { palette.muted };
+        crate::sidebar::focus_ring(ui, &response, cell.shrink(1.0), PROPS_RADIUS - 1.0, palette);
+        let color = if lit { palette.foreground } else { palette.muted };
         icons::paint(ui.painter(), Rect::from_center_size(cell.center(), Vec2::splat(PROPS_ICON)), icon, color);
-        if response.on_hover_text(crate::keys::text(hint)).clicked() {
+        let says = crate::keys::text(hint);
+        crate::sidebar::name_button(&response, &says);
+        if response.on_hover_text(says).clicked() {
             clicked = Some(index);
         }
     }
@@ -2069,7 +2049,9 @@ fn check(ui: &mut Ui, cell: Rect, label: &str, checked: bool, enabled: bool, pal
 /// A button on a plate in `cell`, its words centred, an icon before them if given.
 fn plate_button(ui: &mut Ui, cell: Rect, salt: &str, icon: Option<&'static str>, label: &str, palette: Palette) -> Response {
     let response = ui.interact(cell, ui.scope_id().with(("plate", salt)), Sense::click());
-    plate(ui, cell, response.hovered(), palette);
+    plate(ui, cell, crate::sidebar::lit(&response), palette);
+    crate::sidebar::focus_ring(ui, &response, cell, PROPS_RADIUS, palette);
+    crate::sidebar::name_button(&response, label);
     let font = FontId::proportional(PROPS_TEXT);
     let words = ui.painter().layout_no_wrap(label.to_owned(), font.clone(), palette.foreground).size().x;
     let room = if icon.is_some() { PROPS_ICON + 5.0 } else { 0.0 };

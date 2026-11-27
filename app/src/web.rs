@@ -394,6 +394,11 @@ fn moved(url: &str, location: &str) -> Option<String> {
     location.starts_with('/').then(|| format!("{}{location}", &url[..origin_end]))
 }
 
+/// Whether `a` and `b` are addresses on the same host; `false` when either names none.
+fn same_host(a: &str, b: &str) -> bool {
+    matches!((host_of(a), host_of(b)), (Some((a, _)), Some((b, _))) if a.eq_ignore_ascii_case(&b))
+}
+
 /// Gets what is at `url`, at most `most` bytes of it.
 fn fetch(url: &str, most: u64) -> Result<Page, String> {
     fetch_with(url, most, &[])
@@ -420,12 +425,17 @@ fn fetch_with(url: &str, most: u64, headers: &[(&str, &str)]) -> Result<Page, St
         .timeout_global(Some(Duration::from_secs(45)))
         .build()
         .into();
+    let first = url;
     let mut url = url.to_owned();
     let (mut hops, mut attempt) = (0, 0);
+    // Human: the headers can hold a key for the site asked (Pexels' `authorization`). A site that sends the
+    // request on to another host is not given them, from that hop on.
+    let mut send_headers = true;
     loop {
         allowed(&url)?;
+        send_headers &= same_host(first, &url);
         let mut request = agent.get(&url);
-        for (name, value) in headers {
+        for (name, value) in headers.iter().filter(|_| send_headers) {
             request = request.header(*name, *value);
         }
         let mut response = request.call().map_err(|error| format!("The site couldn't be reached: {error}"))?;
@@ -579,6 +589,15 @@ fn results(html: &str) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn headers_go_only_to_the_host_that_was_asked() {
+        assert!(same_host("https://api.pexels.com/v1/search?q=a", "https://API.pexels.com/v1/other"));
+        assert!(same_host("https://api.pexels.com/v1", "http://api.pexels.com:8080/v1"));
+        assert!(!same_host("https://api.pexels.com/v1", "https://images.pexels.com/a.jpg"));
+        assert!(!same_host("https://api.pexels.com/v1", "https://evil.example/a"));
+        assert!(!same_host("https://api.pexels.com/v1", "ftp://api.pexels.com/a"));
+    }
 
     #[test]
     fn only_addresses_out_on_the_internet_are_fetched() {

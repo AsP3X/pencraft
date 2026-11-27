@@ -230,7 +230,7 @@ fn said(ui: &mut Ui, words: &str, palette: Palette) {
 fn head(ui: &mut Ui, provider: &str, palette: Palette) {
     let (row, _) = ui.allocate_exact_size(vec2(ASSISTANT_MENU_WIDTH, ASSISTANT_MENU_ROW), Sense::hover());
     let at = pos2(row.left() + 10.0, row.bottom() - 9.0);
-    ui.painter().text(at, Align2::LEFT_CENTER, provider, FontId::proportional(SIDEBAR_TEXT_SIZE - 2.5), palette.muted.gamma_multiply(0.8));
+    ui.painter().text(at, Align2::LEFT_CENTER, provider, FontId::proportional(SIDEBAR_TEXT_SIZE - 2.5), palette.quiet);
 }
 
 /// How one assistant's line looks.
@@ -268,7 +268,7 @@ fn line(ui: &mut Ui, look: &Line<'_>, palette: Palette) -> egui::Response {
     }
     if !look.beside.is_empty() {
         let small = FontId::proportional(SIDEBAR_TEXT_SIZE - 2.5);
-        let beside = ui.painter().layout_no_wrap(look.beside.to_owned(), small, palette.muted.gamma_multiply(0.8));
+        let beside = ui.painter().layout_no_wrap(look.beside.to_owned(), small, palette.quiet);
         // The provider gives way to a long model name.
         if beside.size().x < row.width() * 0.4 {
             right -= beside.size().x;
@@ -297,7 +297,7 @@ fn foot(ui: &mut Ui, counted: Option<&str>, palette: Palette) -> bool {
     ui.painter().hline(bar.x_range(), bar.top(), Stroke::new(1.0, palette.outline));
     let font = FontId::proportional(SIDEBAR_TEXT_SIZE - 2.5);
     let middle = bar.center().y + 2.0;
-    let quiet = palette.muted.gamma_multiply(0.8);
+    let quiet = palette.quiet;
     ui.painter().text(pos2(bar.right() - 10.0, middle), Align2::RIGHT_CENTER, "↑ ↓ to move  ·  Return to choose", font.clone(), quiet);
     if let Some(counted) = counted {
         ui.painter().text(pos2(bar.left() + 10.0, middle), Align2::LEFT_CENTER, counted, font, quiet);

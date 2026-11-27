@@ -91,10 +91,33 @@ pub fn resolve(base: Option<&Path>, url: &str) -> Option<PathBuf> {
     if url.is_empty() || ["http:", "https:", "data:", "blob:"].iter().any(|scheme| lower.starts_with(scheme)) {
         return None;
     }
-    let path = Path::new(local(url));
+    let path = local(url);
+    if network_path(url) || network_path(path) {
+        return None;
+    }
+    let path = Path::new(path);
     // Human: on Windows a path can start at the top of a drive without naming the drive (`/pictures/a.png`,
     // as a file made on a Mac has it): that is the drive the document is on. Elsewhere such a path is whole.
     if path.is_absolute() || (path.has_root() && base.is_none()) { Some(path.to_path_buf()) } else { base.map(|folder| folder.join(path)) }
+}
+
+/// Whether `text` names a file on another computer: a Windows network path (`\\server\share`,
+/// `\\?\UNC\…`, `//server/…`) or a device path (`\\.\…`).
+// Human: opening such a path makes Windows sign in to that computer with the user's credentials, so a path a
+// document or a model names must not be one. A folder the user opened a document from may still be one.
+// Agent: two separators at the start are refused on every system; the prefix kinds are only parsed on Windows.
+#[must_use]
+pub fn network_path(text: &str) -> bool {
+    let text = text.trim();
+    let separator = |byte: Option<&u8>| matches!(byte, Some(b'\\' | b'/'));
+    if separator(text.as_bytes().first()) && separator(text.as_bytes().get(1)) {
+        return true;
+    }
+    matches!(
+        Path::new(text).components().next(),
+        Some(std::path::Component::Prefix(prefix))
+            if matches!(prefix.kind(), std::path::Prefix::UNC(..) | std::path::Prefix::VerbatimUNC(..) | std::path::Prefix::DeviceNS(..))
+    )
 }
 
 /// The path in `url`, which is a path already or a `file://` address.
@@ -152,6 +175,29 @@ mod tests {
         assert_eq!(resolve(Some(base), "https://example.com/a.png"), None);
         assert_eq!(resolve(Some(base), "data:image/png;base64,AAAA"), None);
         assert_eq!(resolve(Some(base), "  "), None);
+    }
+
+    #[test]
+    fn network_paths_are_never_resolved() {
+        let base = Path::new("/designs/site");
+        for url in [r"\\server\share\a.png", "//server/share/a.png", r"\/server/a.png", "file:////server/share/a.png", r"  \\server\a.png"] {
+            assert!(network_path(url) || network_path(local(url.trim())), "{url}");
+            assert_eq!(resolve(Some(base), url), None, "{url}");
+            assert_eq!(resolve(None, url), None, "{url}");
+        }
+        assert!(!network_path("/pictures/a.png"));
+        assert!(!network_path("./a.png"));
+        assert!(!network_path("a/b.png"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_network_and_device_prefixes_are_refused() {
+        for path in [r"\\?\UNC\server\share\a.png", r"\\server\share\a.png", r"\\.\pipe\x", r"\\?\C:\a.png"] {
+            assert!(network_path(path), "{path}");
+        }
+        assert!(!network_path(r"C:\pictures\a.png"));
+        assert_eq!(resolve(Some(Path::new("D:/designs")), r"\\?\UNC\server\share\a.png"), None);
     }
 
     #[test]

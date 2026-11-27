@@ -72,6 +72,26 @@ impl Toast {
     }
 }
 
+/// A problem that lasts (settings that can't be written, a recovery copy that can't be kept): said once, and
+/// again only after it went away and came back.
+// Human: a failure that repeats every second would otherwise cover the window with the same sentence.
+#[derive(Default)]
+pub struct Lasting {
+    said: bool,
+}
+
+impl Lasting {
+    /// The problem is there now; whether to say it (the first time since it last went away).
+    pub fn fails(&mut self) -> bool {
+        !std::mem::replace(&mut self.said, true)
+    }
+
+    /// It worked: the next failure is said again.
+    pub fn works(&mut self) {
+        self.said = false;
+    }
+}
+
 /// The message line of the window.
 #[derive(Default)]
 pub struct Toasts {
@@ -79,6 +99,16 @@ pub struct Toasts {
 }
 
 impl Toasts {
+    /// The message line, saying `text` from the start when there is one (a problem found before the window opened).
+    #[must_use]
+    pub fn saying(text: Option<&str>) -> Toasts {
+        let mut toasts = Toasts::default();
+        if let Some(text) = text {
+            toasts.say("", text, Instant::now());
+        }
+        toasts
+    }
+
     /// Shows `text` from now on, in place of what is shown. `who` is the model that says it; empty for the app.
     pub fn say(&mut self, who: &str, text: &str, now: Instant) {
         // Human: while a sentence is still there, in whatever shape, the next one starts from that shape.
@@ -189,6 +219,15 @@ fn flash(painter: &egui::Painter, capsule: Rect, radius: f32, color: Color32, st
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_lasting_failure_is_said_once_and_again_only_after_it_worked() {
+        let mut lasting = Lasting::default();
+        assert!(lasting.fails());
+        assert!(!lasting.fails() && !lasting.fails());
+        lasting.works();
+        assert!(lasting.fails());
+    }
 
     #[test]
     fn a_sentence_opens_out_of_a_dot_closes_into_it_and_the_next_takes_its_shape() {

@@ -11,9 +11,9 @@ use super::sources::MOST_REFERENCES;
 use crate::icons;
 use crate::settings::{caption, choice_at, row, switch};
 use crate::theme::{
-    ACCENT, CHIP_RADIUS, DIALOG_BACKDROP, DIALOG_BUTTON, DIALOG_GAP, DIALOG_PADDING, DIALOG_TITLE_SIZE, FIELD_HEIGHT, FIELD_MARGIN, GENERATE_LINES,
-    GENERATE_WIDTH, ON_ACCENT, PIECE_CHIP_PADDING, PIECE_CROSS, PIECE_CROSS_OUT, PIECE_GAP, PIECE_SIDE, PIECE_TEXT, PIECE_TOGGLE, PROBLEM, Palette,
-    SETTINGS_RADIUS,
+    ACCENT, ACCENT_PLATE, CHIP_RADIUS, DIALOG_BACKDROP, DIALOG_BUTTON, DIALOG_GAP, DIALOG_PADDING, DIALOG_TITLE_SIZE, FIELD_HEIGHT, FIELD_MARGIN,
+    GENERATE_LINES, GENERATE_WIDTH, ON_ACCENT, PIECE_CHIP_PADDING, PIECE_CROSS, PIECE_CROSS_OUT, PIECE_GAP, PIECE_SIDE, PIECE_TEXT, PIECE_TOGGLE,
+    PROBLEM, Palette, SETTINGS_RADIUS,
 };
 
 /// The size choice's words for a picture of about 1024 pixels, and of about 2048.
@@ -614,7 +614,7 @@ impl Dialog {
             let response =
                 ui.interact(toggle, ui.scope_id().with(("piece-mark", index)), if markable && !locked { Sense::click() } else { Sense::hover() });
             if piece.change {
-                ui.painter().rect_filled(toggle, CHIP_RADIUS, ACCENT);
+                ui.painter().rect_filled(toggle, CHIP_RADIUS, ACCENT_PLATE);
             } else if markable {
                 if !locked && response.hovered() {
                     ui.painter().rect_filled(toggle, CHIP_RADIUS, palette.hover);

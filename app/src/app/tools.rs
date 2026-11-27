@@ -158,8 +158,17 @@ fn in_sight(editor: &Editor, view: egui::Rect, at: pen_doc::geom::Point) -> bool
 /// A full path a model named, or why it can't be used.
 fn full_path(args: &Value, key: &str) -> Result<Option<PathBuf>, String> {
     let Some(text) = args.get(key).and_then(Value::as_str).filter(|text| !text.trim().is_empty()) else { return Ok(None) };
+    // Human: a network path would make Windows sign in to another computer; a model is not let name one.
+    if crate::images::network_path(text) {
+        return Err(format!("`{key}` must be a file on this computer: \"{text}\" is a network path."));
+    }
     let path = PathBuf::from(text);
     if path.is_absolute() { Ok(Some(path)) } else { Err(format!("`{key}` must be a full path, starting at the root: \"{text}\" isn't.")) }
+}
+
+/// Whether `a` and `b` name the same file: the same path, or the same file once links and `..` are followed.
+fn same_file(a: &Path, b: &Path) -> bool {
+    a == b || matches!((std::fs::canonicalize(a), std::fs::canonicalize(b)), (Ok(a), Ok(b)) if a == b)
 }
 
 /// The path `save_document` saves under, from the `path` it was given: a `.quill` file's, with that ending put
@@ -440,7 +449,13 @@ impl App {
                 let before = editor.place();
                 let (mut moved, mut left) = (false, None);
                 if let Some(path) = path {
-                    was = editor.move_to(save_path(path)?).map_err(|error| format!("Couldn't save: {error}."))?;
+                    let target = save_path(path)?;
+                    // Human: as `export_document`: a file that is there is not written over, unless it is the
+                    // document's own file, which saving writes anyway.
+                    if target.exists() && !editor.path.as_deref().is_some_and(|own| same_file(own, &target)) {
+                        return Err(format!("{} is there already: `save_document` doesn't replace a file. Choose another name.", target.display()));
+                    }
+                    was = editor.move_to(target).map_err(|error| format!("Couldn't save: {error}."))?;
                     moved = true;
                 } else if let Some(next) = editor.path.as_deref().and_then(crate::bundle::successor) {
                     // Human: as when the person saves a `.pen` document or an old bundle: it becomes a `.quill`
@@ -860,6 +875,10 @@ impl App {
             .into_iter()
             .find(|format| ending.as_deref() == Some(format.extension()))
             .ok_or("The path must end in .png, .jpg, .webp, .pdf or .svg.")?;
+        // Human: as `export_document`: nobody is asked before a file is replaced, so one that is there is left.
+        if target.exists() {
+            return Err(format!("{} is there already: `export_layers` doesn't replace a file. Choose another name.", target.display()));
+        }
         let scale = args.get("scale").and_then(Value::as_u64).and_then(|scale| u8::try_from(scale.clamp(1, 3)).ok()).unwrap_or(1);
         let (tab, editor, label) = self.laid_out(call, ctx)?;
         let wanted = agent::ids(args, "ids");
@@ -909,6 +928,36 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn a_model_cant_name_a_network_path() {
+        for text in [r"\\server\share\a.quill", "//server/share/a.quill", r"\/server/a.png"] {
+            let said = full_path(&json!({ "path": text }), "path");
+            assert!(said.as_ref().is_err_and(|said| said.contains("network path")), "{text}: {said:?}");
+        }
+        let home = std::env::temp_dir().join("a.quill");
+        assert_eq!(full_path(&json!({ "path": home.display().to_string() }), "path"), Ok(Some(home)));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_model_cant_name_a_windows_network_path() {
+        for text in [r"\\?\UNC\server\share\a.quill", r"\\.\pipe\x"] {
+            assert!(full_path(&json!({ "path": text }), "path").is_err(), "{text}");
+        }
+    }
+
+    #[test]
+    fn the_same_file_is_found_through_a_different_spelling() {
+        let folder = std::env::temp_dir().join(format!("pencraft-tools-same-{}", std::process::id()));
+        std::fs::create_dir_all(folder.join("sub")).unwrap();
+        let file = folder.join("a.quill");
+        std::fs::write(&file, b"x").unwrap();
+        assert!(same_file(&file, &file));
+        assert!(same_file(&file, &folder.join("sub").join("..").join("a.quill")));
+        assert!(!same_file(&file, &folder.join("b.quill")));
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
 
     #[test]
     fn a_document_is_exported_as_a_pen_file_and_saved_only_as_a_quill_file() {

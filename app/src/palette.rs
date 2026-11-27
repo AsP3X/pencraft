@@ -6,7 +6,7 @@ use egui::{Align2, Color32, FontId, Key, Rect, Sense, Stroke, StrokeKind, pos2, 
 use crate::editor::Tool;
 use crate::icons;
 use crate::ops::{AlignTo, Order};
-use crate::theme::{self, ACCENT, ACTIONS_HEIGHT, ACTIONS_RADIUS, ACTIONS_ROW, ACTIONS_TOP, ACTIONS_WIDTH};
+use crate::theme::{self, ACCENT_PLATE, ACTIONS_HEIGHT, ACTIONS_RADIUS, ACTIONS_ROW, ACTIONS_TOP, ACTIONS_WIDTH};
 
 /// Something the app can do, as the action search and the keyboard ask for it.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -197,9 +197,9 @@ pub const ACTIONS: [Action; 81] = [
     action(Command::TextAlign("center"), "text-align-center", "Text align center", "Text", &["⌥", "⌘", "T"], ""),
     action(Command::TextAlign("right"), "text-align-end", "Text align right", "Text", &["⌥", "⌘", "R"], ""),
     action(Command::TextAlign("justify"), "text-align-justify", "Text align justified", "Text", &["⌥", "⌘", "J"], ""),
-    action(Command::CreateComponent, "component", "Create Component", "Components", &["⌥", "⌘", "K"], "reusable symbol main component"),
-    action(Command::DetachComponent, "component", "Detach Component", "Components", &[], "reusable unlink"),
-    action(Command::DetachInstance, "component", "Detach Instance", "Components", &["⌥", "⌘", "X"], "unlink break"),
+    action(Command::CreateComponent, "component", "Create component", "Components", &["⌥", "⌘", "K"], "reusable symbol main component"),
+    action(Command::DetachComponent, "component", "Detach component", "Components", &[], "reusable unlink"),
+    action(Command::DetachInstance, "component", "Detach instance", "Components", &["⌥", "⌘", "X"], "unlink break"),
     action(Command::GoToComponent, "locate-fixed", "Go to component", "Components", &[], "main component source reveal"),
     action(Command::Deselect, "square-dashed", "Deselect", "Selection", &["esc"], "none clear"),
     action(Command::SelectAll, "square-dashed", "Select all", "Selection", &["⌘", "A"], "everything"),
@@ -378,7 +378,7 @@ fn line(ui: &mut egui::Ui, action: &Action, lit: bool, width: f32, palette: them
     let (row, response) = ui.allocate_exact_size(vec2(width, ACTIONS_ROW), Sense::click());
     let plate = row.shrink2(vec2(7.0, 0.0));
     if lit {
-        ui.painter().rect_filled(plate, 7.0, ACCENT);
+        ui.painter().rect_filled(plate, 7.0, ACCENT_PLATE);
     }
     let ink = if lit { Color32::WHITE } else { palette.foreground };
     icons::paint(ui.painter(), Rect::from_center_size(pos2(plate.left() + 18.0, row.center().y), egui::Vec2::splat(14.0)), action.icon, ink);
@@ -396,6 +396,7 @@ fn line(ui: &mut egui::Ui, action: &Action, lit: bool, width: f32, palette: them
         ui.painter().rect(cap, 4.0, fill, Stroke::new(1.0, edge), StrokeKind::Inside);
         ui.painter().galley(cap.center() - name.size() / 2.0, name, ink);
     }
+    crate::sidebar::name_button(&response, action.label);
     response
 }
 

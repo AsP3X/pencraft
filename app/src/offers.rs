@@ -357,7 +357,7 @@ fn pills(ui: &Ui, motion: &mut Motion, id: egui::Id, frame: &Frame, look: Look) 
         if on_cross {
             ui.painter().circle_filled(cross, OFFER_CROSS / 2.0 - 3.0, palette.hover.gamma_multiply(opacity));
         }
-        let ink = if on_cross { palette.foreground } else { palette.muted.gamma_multiply(0.75) };
+        let ink = if on_cross { palette.foreground } else { palette.quiet };
         icons::paint(ui.painter(), Rect::from_center_size(cross, Vec2::splat(11.0)), CLOSE_ICON, ink.gamma_multiply(opacity));
         if !ready {
             continue;

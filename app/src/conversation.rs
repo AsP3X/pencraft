@@ -24,9 +24,9 @@ use crate::theme::{
     CHAT_DOT_LIFT, CHAT_DOT_PACE, CHAT_FADE, CHAT_FOOT_GAP, CHAT_GAP, CHAT_ICON_AT_WORK, CHAT_ICON_BREATH, CHAT_ICON_BURST, CHAT_ICON_FROM_OWN,
     CHAT_ICON_LEAST, CHAT_ICON_RING, CHAT_ICON_SETTLE, CHAT_ICON_SHAKE, CHAT_ICON_TAIL, CHAT_ICON_TURN, CHAT_NOTE_GAP, CHAT_NOTE_ICON, CHAT_NOTE_ROW,
     CHAT_NOTE_TIMED, CHAT_RISE, CHAT_SCROLL_BAR, CHAT_SCROLL_HELD, CHAT_SEND_RISE, CHAT_SEND_TIME, CHAT_SHIMMER_BAND, CHAT_SHIMMER_TURN,
-    CHAT_SPENT_INK, CHAT_STATUS_HEIGHT, CHAT_STATUS_HOLD, CHAT_STATUS_MORPH, CHAT_STATUS_PAD, CHAT_STEPS_FOLD, CHAT_STEPS_HEAD, CHAT_STEPS_ICON,
-    CHAT_STEPS_LAP, CHAT_STEPS_TIME, CHAT_THOUGHT_GLIDE, CHAT_THOUGHT_ROWS, CHAT_WAIT_COUNTED, CHAT_WRITE_CATCH_UP, CHAT_WRITE_FADE, CHAT_WRITE_PACE,
-    CHIP_CORNER, CHIP_ICON, CHIP_ICON_AT, CHIP_THUMB, ISLAND_RADIUS, MESSAGE_TEXT_SIZE, PROBLEM, Palette, SIDEBAR_TEXT_SIZE,
+    CHAT_STATUS_HEIGHT, CHAT_STATUS_HOLD, CHAT_STATUS_MORPH, CHAT_STATUS_PAD, CHAT_STEPS_FOLD, CHAT_STEPS_HEAD, CHAT_STEPS_ICON, CHAT_STEPS_LAP,
+    CHAT_STEPS_TIME, CHAT_THOUGHT_GLIDE, CHAT_THOUGHT_ROWS, CHAT_WAIT_COUNTED, CHAT_WRITE_CATCH_UP, CHAT_WRITE_FADE, CHAT_WRITE_PACE, CHIP_CORNER,
+    CHIP_ICON, CHIP_ICON_AT, CHIP_THUMB, ISLAND_RADIUS, MESSAGE_TEXT_SIZE, PROBLEM, Palette, SIDEBAR_TEXT_SIZE,
 };
 
 /// What the panel remembers between frames to move things: it lives in egui's memory, not in the chat.
@@ -174,8 +174,12 @@ pub fn show(ui: &mut Ui, chat: &Chat, key: u64, scale: f32, palette: Palette, an
             ui.add_space(12.0);
         });
     });
-    if animate && (moving || chat.running()) {
+    // Human: something arriving or growing moves at full rate; what only shows the assistant is at work (dots,
+    // shimmer) is drawn at the idle rate. New messages wake the window themselves.
+    if animate && moving {
         ui.request_repaint();
+    } else if animate && chat.running() {
+        ui.ctx().request_repaint_after(crate::theme::IDLE_FRAME);
     } else if chat.running() {
         // Human: nothing moves, but the seconds of a wait still count up.
         ui.ctx().request_repaint_after(std::time::Duration::from_secs(1));
@@ -461,7 +465,7 @@ struct Looks<'a> {
 
 /// What a run took and cost, in faint words; the hover says the parts.
 fn spent_words(ui: &mut Ui, spent: &Spent, total: &Spent, scale: f32, palette: Palette) {
-    let words = RichText::new(spent.line()).size((SIDEBAR_TEXT_SIZE - 1.0) * scale).color(palette.muted.gamma_multiply(CHAT_SPENT_INK));
+    let words = RichText::new(spent.line()).size((SIDEBAR_TEXT_SIZE - 1.0) * scale).color(palette.quiet);
     ui.add(egui::Label::new(words).selectable(false)).on_hover_text(spent.details(total).join("\n"));
 }
 
@@ -481,7 +485,7 @@ fn answer_foot(ui: &mut Ui, entry: &Entry, looks: Looks) {
         let since: Option<f64> = ui.data(|data| data.get_temp(id));
         let copied = since.is_some_and(|since| now - since < CHAT_COPIED_STAYS);
         let (slot, response) = ui.allocate_exact_size(Vec2::splat(CHAT_NOTE_ICON), Sense::click());
-        let ink = if response.hovered() || copied { palette.foreground } else { palette.muted.gamma_multiply(CHAT_SPENT_INK) };
+        let ink = if response.hovered() || copied { palette.foreground } else { palette.quiet };
         let icon = if copied { steps::ANSWERED_ICON } else { steps::COPY_ICON };
         icons::paint(ui.painter(), Rect::from_center_size(slot.center(), Vec2::splat(CHIP_ICON)), icon, ink);
         if response.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(if copied { "Copied" } else { "Copy the answer" }).clicked() {
@@ -554,7 +558,7 @@ pub fn counter_size(ctx: &egui::Context, chat: &Chat, under_way: bool) -> Option
 // Agent: MAIN-THREAD; nothing in it can be clicked.
 pub fn counter(ui: &mut Ui, slot: egui::Rect, chat: &Chat, palette: Palette, opacity: f32) {
     let Some((words, hover)) = counter_words(chat) else { return };
-    let ink = palette.muted.gamma_multiply(CHAT_SPENT_INK * opacity);
+    let ink = palette.quiet.gamma_multiply(opacity);
     let words = ui.painter().layout_no_wrap(words, FontId::proportional(SIDEBAR_TEXT_SIZE - 1.0), ink);
     let place = egui::Rect::from_center_size(slot.center(), words.size());
     ui.allocate_rect(slot, Sense::hover()).on_hover_text(hover);
@@ -612,7 +616,7 @@ fn line(ui: &mut Ui, entry: &Entry, shown: &str, looks: Looks) -> Option<Pick> {
 // problem's words and the app's version on the clipboard as text to paste into a report.
 fn trouble(ui: &mut Ui, entry: &Entry, scale: f32, palette: Palette) {
     let font = FontId::proportional((SIDEBAR_TEXT_SIZE - 1.0) * scale);
-    let quiet = palette.muted.gamma_multiply(0.7);
+    let quiet = palette.quiet;
     ui.add_space(5.0);
     for (name, fact) in &entry.about {
         let mut row = LayoutJob::default();
@@ -786,7 +790,7 @@ fn pointing(ui: &mut Ui, entry: &Entry, scale: f32, palette: Palette) {
 /// it they are plain.
 fn note_words(entry: &Entry, scale: f32, palette: Palette, light: Option<f32>) -> LayoutJob {
     let font = FontId::proportional((SIDEBAR_TEXT_SIZE - 1.0) * scale);
-    let quiet = palette.muted.gamma_multiply(0.7);
+    let quiet = palette.quiet;
     let mut text = LayoutJob::default();
     let mut say = |words: &str, color: Color32| text.append(words, 0.0, TextFormat { font_id: font.clone(), color, ..TextFormat::default() });
     match &entry.step {
@@ -984,7 +988,7 @@ fn note(ui: &mut Ui, entry: &Entry, row: Row) {
         let settled = if at_work(entry) { 1.0 } else { clock.map_or(1.0, Clock::settling) };
         let mut right = line.right();
         if let Some(took) = took.filter(|took| *took >= CHAT_NOTE_TIMED && !at_work(entry)) {
-            let ink = palette.muted.gamma_multiply(0.7 * settled);
+            let ink = palette.quiet.gamma_multiply(settled);
             let time = ui.painter().layout_no_wrap(format!("{took:.1} s"), FontId::proportional((SIDEBAR_TEXT_SIZE - 2.0) * scale), ink);
             right -= time.size().x;
             ui.painter().galley(pos2(right, line.center().y - time.size().y / 2.0), time, ink);
@@ -1298,8 +1302,11 @@ pub fn status_line(ctx: &egui::Context, line: &Line, chat: &Chat, palette: Palet
         let pick = paint_face(ui, &morph.face, Spot { island, widths, opacity: new, time, live: true }, palette);
         (response, pick)
     });
-    if animate && (chat.running() || share < 1.0) {
+    // Human: the pill's morph runs at full rate; its light while the assistant works at the idle rate.
+    if animate && share < 1.0 {
         ctx.request_repaint();
+    } else if animate && chat.running() {
+        ctx.request_repaint_after(crate::theme::IDLE_FRAME);
     }
     ctx.data_mut(|data| data.insert_temp(status_id(), morph));
     let (response, pick) = shown.inner;
@@ -1357,7 +1364,7 @@ fn glide(were: f32, should: f32, step: Option<f32>) -> f32 {
 /// the dots stand alone; without a `time` they rest and nothing glides.
 fn waiting(ui: &mut Ui, wait: Option<&Wait>, scale: f32, palette: Palette, time: Option<f64>) {
     let font = FontId::proportional((SIDEBAR_TEXT_SIZE - 1.0) * scale);
-    let quiet = palette.muted.gamma_multiply(0.7);
+    let quiet = palette.quiet;
     // Human: while things move, the wait is the drop of the task list, and a light runs through its words;
     // at rest it is three dots.
     let lead = if time.is_some() { CHAT_NOTE_ICON } else { DOTS_WIDTH };

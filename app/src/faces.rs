@@ -224,6 +224,20 @@ fn families() -> &'static BTreeMap<String, Family> {
     })
 }
 
+/// Starts reading the installed families on a thread of its own, so the first [`installed`] or [`pick`] finds
+/// them ready (or waits only for what is left) instead of reading every font file on the window's thread.
+// Human: the system's fonts are many files to open and parse; doing that while the window draws its first
+// frames would hold it still.
+// Agent: SPAWNS one short-lived thread that fills the `families` OnceLock; a caller on another thread blocks
+// in `get_or_init` until it is done. Not starting the thread only means the first caller reads them itself.
+pub fn warm() {
+    if let Err(why) = std::thread::Builder::new().name("faces".to_owned()).spawn(|| {
+        families();
+    }) {
+        log::warn!("couldn't read the installed fonts ahead: {why}");
+    }
+}
+
 /// The face of `faces` nearest to `weight`, italic if `italic` and there is one.
 fn nearest(faces: &[Face], weight: u16, italic: bool) -> Option<&Face> {
     let slanted = faces.iter().any(|face| face.italic == italic);

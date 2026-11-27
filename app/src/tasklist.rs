@@ -445,7 +445,7 @@ fn rows(ui: &Ui, painter: &egui::Painter, chat: &Chat, look: Look, moment: &Mome
         let slot = Rect::from_center_size(pos2(row.left() + TASKS_MARK / 2.0, row.center().y), Vec2::splat(TASKS_MARK));
         marks.paint(painter, slot, index, state, opacity);
         let color = match state {
-            State::Done => palette.muted.gamma_multiply(0.8),
+            State::Done => palette.quiet,
             State::Doing => palette.primary,
             State::Waiting => palette.muted,
         }
@@ -540,9 +540,13 @@ pub fn show(ui: &Ui, chat: &Chat, key: u64, look: Look) -> Rect {
     }
     let wet = liquid_over(ui, &painter, &mut motion.picture, tasks, look, &moment);
 
-    let moving = wet || gliding || since_step < TASKS_BURST + 0.4 || (chat.running() && tasks.open());
+    // Human: a step's burst, a glide and the liquid move at full rate; the bar's light while the assistant works
+    // at the idle rate.
+    let moving = wet || gliding || since_step < TASKS_BURST + 0.4;
     if look.animate && moving {
         ui.request_repaint();
+    } else if look.animate && chat.running() && tasks.open() {
+        ui.ctx().request_repaint_after(crate::theme::IDLE_FRAME);
     } else if tasks.all_done() {
         // Human: nothing moves, but the finished list is about to be filed into the conversation.
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));

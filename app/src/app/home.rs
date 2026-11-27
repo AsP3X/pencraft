@@ -306,7 +306,7 @@ impl Home {
                 .id(id)
                 .frame(egui::Frame::new())
                 .background_color(Color32::TRANSPARENT)
-                .hint_text(RichText::new(HINT).font(font.clone()).color(palette.muted.gamma_multiply(0.7)))
+                .hint_text(RichText::new(HINT).font(font.clone()).color(palette.quiet))
                 .font(font)
                 .return_key(egui::KeyboardShortcut::new(egui::Modifiers::SHIFT, egui::Key::Enter))
                 .desired_rows(2)
@@ -622,7 +622,7 @@ fn last_line(ui: &mut egui::Ui, palette: Palette) {
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let version = concat!("Quill ", env!("CARGO_PKG_VERSION"), " · formerly Pencraft");
-            words(ui, version, FontId::proportional(HOME_SMALL_TEXT), palette.muted.gamma_multiply(0.7));
+            words(ui, version, FontId::proportional(HOME_SMALL_TEXT), palette.quiet);
         });
     });
 }

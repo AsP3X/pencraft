@@ -84,31 +84,14 @@ fn item(id: &str, label: &str, keys: &str, enabled: bool) -> Node {
     })
 }
 
-/// An item this version can't do yet: shown, greyed.
+/// An item that runs nothing, shown greyed: "No Recent Files".
 fn later(label: &str) -> Node {
     Node::Item(Item::new(LATER, label).enabled(false))
 }
 
-/// The Help menu: links, none of which this version follows.
-fn help_menu() -> Menu {
-    Menu::new(
-        "Help",
-        vec![
-            later("Documentation"),
-            later("Prompt Gallery & Tips"),
-            later("Website"),
-            Node::Separator,
-            later("Cursor Extension"),
-            later("VSCode Extension"),
-            Node::Separator,
-            later("Join Our Discord"),
-        ],
-    )
-    .role(MenuRole::Help)
-}
-
 /// The menus for `state`.
-// Human: what this version can't do yet stays in its place, greyed, so the menus keep their order. Settings is tagged so the Mac
+// Human: what this version can't do yet (the Help links, Chat Text Size, Export Snapshot, the Figma guide, the
+// command-line tool) stays out of the menus until it works. Settings is tagged so the Mac
 // layout moves it into the app menu as "Settings… ⌘,"; Quit, Hide, Minimize, Zoom and Bring All to Front are
 // the layout's own.
 #[must_use]
@@ -135,7 +118,7 @@ pub fn bar(state: &State<'_>) -> MenuBar {
             Node::submenu("Open Recent", recent),
             item("file.home", "Home", "⌘N", true),
             Node::Separator,
-            item("file.import", "Import Image/SVG/Figma…", "", doc),
+            item("file.import", "Import Image or SVG…", "", doc),
             item("file.generate", "Generate Image…", "", doc),
             // Human: with nothing selected the export takes every top-level layer, so it is there whenever a
             // document is open.
@@ -143,11 +126,6 @@ pub fn bar(state: &State<'_>) -> MenuBar {
                 "Export Selection to…",
                 Format::ALL.map(|format| item(&format!("{EXPORT}.{}", format.extension()), format.label(), "", doc)).to_vec(),
             ),
-            later("Export Snapshot…"),
-            Node::Separator,
-            later("Guide: How to Import from Figma…"),
-            Node::Separator,
-            later("Install command-line tool…"),
             Node::Separator,
             item("file.save", "Save", "⌘S", doc),
             item("file.save_as", "Save As…", "⇧⌘S", doc),
@@ -178,7 +156,6 @@ pub fn bar(state: &State<'_>) -> MenuBar {
         "View",
         vec![
             item("view.interface", "Show/Hide UI", "⌘\\", true),
-            Node::submenu("Chat Text Size", ["Smaller", "Default", "Larger"].map(later).to_vec()),
             item("window.actions", "Search Actions…", "⌘P", true),
             Node::Separator,
             item("view.full_screen", "Toggle Full Screen", "⌃⌘F", true),
@@ -198,14 +175,13 @@ pub fn bar(state: &State<'_>) -> MenuBar {
         ],
     )
     .role(MenuRole::Window);
-    let help = help_menu();
     let documents = state
         .tabs
         .iter()
         .enumerate()
         .map(|(index, (name, front))| Document::new(CommandRef::with_params(SHOW_TAB, json!({ "index": index })), name.clone()).active(*front))
         .collect();
-    MenuBar { menus: vec![file, edit, view, window, help], documents }
+    MenuBar { menus: vec![file, edit, view, window], documents }
 }
 
 #[cfg(test)]
@@ -228,7 +204,7 @@ mod tests {
     fn the_menus_keep_their_items_and_order() {
         let recent = ["/designs/site.pen".to_owned()];
         let bar = bar(&State { document: true, selection: false, recent: &recent, tabs: vec![("site".to_owned(), true), ("app".to_owned(), false)] });
-        assert_eq!(bar.menus.iter().map(|m| m.title.as_str()).collect::<Vec<_>>(), ["File", "Edit", "View", "Window", "Help"]);
+        assert_eq!(bar.menus.iter().map(|m| m.title.as_str()).collect::<Vec<_>>(), ["File", "Edit", "View", "Window"]);
         assert_eq!(
             labels(&bar.menus[0]),
             [
@@ -237,14 +213,9 @@ mod tests {
                 "Open Recent ▸",
                 "Home",
                 "—",
-                "Import Image/SVG/Figma…",
+                "Import Image or SVG…",
                 "Generate Image…",
                 "Export Selection to… ▸",
-                "Export Snapshot…",
-                "—",
-                "Guide: How to Import from Figma…",
-                "—",
-                "Install command-line tool…",
                 "—",
                 "Save",
                 "Save As…",

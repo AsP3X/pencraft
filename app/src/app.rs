@@ -65,6 +65,15 @@ fn sweep_working_folders() {
     }
 }
 
+/// Failures that last until something works again, each said once (see [`crate::toast::Lasting`]).
+#[derive(Default)]
+struct Troubles {
+    /// Saving the settings.
+    settings: crate::toast::Lasting,
+    /// Keeping unsaved work for recovery.
+    recovery: crate::toast::Lasting,
+}
+
 /// Crash recovery, as the app holds it.
 #[derive(Default)]
 struct Recovery {
@@ -73,6 +82,8 @@ struct Recovery {
     keeper: Option<crate::recover::Keeper>,
     /// The documents an earlier run that didn't end properly left behind, until the user says what to do with them.
     left: Vec<crate::recover::Left>,
+    /// The user chose Discard and is being asked whether they mean it; nothing is cleared until they do.
+    discarding: bool,
 }
 
 impl Recovery {
@@ -85,7 +96,7 @@ impl Recovery {
         }
         let left = crate::recover::left();
         let keeper = crate::recover::Keeper::start().map_err(|problem| log::warn!("{problem}")).ok();
-        Recovery { keeper, left }
+        Recovery { keeper, left, discarding: false }
     }
 }
 
@@ -186,6 +197,8 @@ pub struct App {
     prompt: Option<ClosePrompt>,
     discard_confirmed: bool,
     toasts: crate::toast::Toasts,
+    /// Lasting failures the user has been told of once.
+    troubles: Troubles,
     screenshot: Option<screenshot::Job>,
     seed: u64,
     canvas_view: egui::Rect,
@@ -205,6 +218,8 @@ pub struct App {
     assistants: Vec<crate::chat::Choice>,
     /// The assistant asked for on the command line, which goes before the one in the settings.
     assistant_asked: Option<String>,
+    /// The chat the user asked to start over while it had something in it, until they confirm or cancel.
+    new_chat_asked: Option<u64>,
     /// Nothing of this run is remembered (`--private`, or a picture).
     private: bool,
     /// Tool calls that wait for the user to finish a drag, each with when it came in.
@@ -257,18 +272,17 @@ fn bar_button(ui: &mut egui::Ui, icon: &'static str, active: bool, tint: Color32
     response
 }
 
-/// The title bar's "Share": an icon and the word.
-fn share_button(ui: &mut egui::Ui, palette: theme::Palette) -> egui::Response {
-    let word = ui.painter().layout_no_wrap("Share".to_owned(), bold(TITLE_TEXT), palette.strong);
-    let width = TAB_PADDING[1] + TAB_ICON + 6.0 + word.size().x + TAB_PADDING[1];
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, TITLE_BUTTON), egui::Sense::click());
-    if response.hovered() {
-        ui.painter().rect_filled(rect, f32::from(theme::CONTROL_RADIUS), palette.field.gamma_multiply(0.6));
-    }
-    let slot = egui::Rect::from_min_size(egui::pos2(rect.left() + TAB_PADDING[1], rect.center().y - TAB_ICON / 2.0), egui::Vec2::splat(TAB_ICON));
-    crate::icons::paint(ui.painter(), slot, "share", palette.strong);
-    ui.painter().galley(egui::pos2(slot.right() + 6.0, rect.center().y - word.size().y / 2.0), word, palette.strong);
-    response
+/// A dialog's main button, in the primary colour.
+pub(crate) fn dialog_primary(text: &str, palette: theme::Palette) -> egui::Button<'_> {
+    egui::Button::new(RichText::new(text).color(palette.primary_text))
+        .fill(palette.primary)
+        .corner_radius(theme::CHIP_RADIUS)
+        .min_size(egui::vec2(theme::DIALOG_BUTTON, theme::FIELD_HEIGHT))
+}
+
+/// A dialog's lesser button, the same size as its main one.
+pub(crate) fn dialog_button(text: &str) -> egui::Button<'_> {
+    egui::Button::new(text).corner_radius(theme::CHIP_RADIUS).min_size(egui::vec2(theme::DIALOG_BUTTON, theme::FIELD_HEIGHT))
 }
 
 /// The window's own three buttons at the end of the title bar, where Quill draws it itself (Windows): close,
@@ -281,13 +295,16 @@ fn window_buttons(ui: &mut egui::Ui, palette: theme::Palette) {
     let ctx = ui.ctx().clone();
     let button = |ui: &mut egui::Ui, icon: &'static str, side: f32, danger: bool, hint: &str| {
         let (rect, response) = ui.allocate_exact_size(egui::vec2(CAPTION_BUTTON, TITLE_BUTTON), egui::Sense::click());
-        let (fill, mark) = match (response.hovered(), danger) {
+        let (fill, mark) = match (crate::sidebar::lit(&response), danger) {
             (true, true) => (theme::PROBLEM, Color32::WHITE),
             (true, false) => (palette.field, palette.strong),
             (false, _) => (Color32::TRANSPARENT, palette.strong),
         };
-        ui.painter().rect_filled(rect, f32::from(theme::CONTROL_RADIUS), fill);
+        let radius = f32::from(theme::CONTROL_RADIUS);
+        ui.painter().rect_filled(rect, radius, fill);
+        crate::sidebar::focus_ring(ui, &response, rect, radius, palette);
         crate::icons::paint(ui.painter(), egui::Rect::from_center_size(rect.center(), egui::Vec2::splat(side)), icon, mark);
+        crate::sidebar::name_button(&response, hint);
         response.on_hover_text(hint).clicked()
     };
     if button(ui, "x", ICON_SIZE, true, "Close") {
@@ -357,18 +374,31 @@ fn resize_edges(ctx: &egui::Context) {
 }
 
 /// Opens the settings: the user's, or for a picture and a private run ones that are kept in memory only.
-fn open_settings(launch: &Launch) -> SettingsStore<Prefs> {
+/// Opens the settings; with them a sentence for the user when some couldn't be read or won't be saved.
+fn open_settings(launch: &Launch) -> (SettingsStore<Prefs>, Option<String>) {
     let location = if launch.screenshot.is_some() || launch.private { Location::Memory } else { Location::Auto };
     let (prefs, report) = SettingsStore::<Prefs>::open(location);
-    if report.has_problems() {
-        log::warn!("settings: some values were reset: {report:?}");
+    if !report.has_problems() {
+        return (prefs, None);
     }
-    prefs
+    log::warn!("settings: some values were reset: {report:?}");
+    // Human: the details stay in the log; the user learns what it means for them.
+    let sentence = if let Some(moved) = &report.broken_moved_to {
+        format!("Your settings file was damaged, so Quill started with its defaults. The old file is kept as {}.", moved.display())
+    } else if report.read_only.is_some() {
+        "Your settings can't be saved this time; changes last until Quill closes.".to_owned()
+    } else {
+        "Some of your settings couldn't be read and were reset to their defaults.".to_owned()
+    };
+    (prefs, Some(sentence))
 }
 
 /// Makes the fonts ready, and the GPU for shader effects.
 fn install_drawing(cc: &eframe::CreationContext<'_>) {
     fonts::install(&cc.egui_ctx);
+    // Human: the starter document and the home page ask which fonts are installed; reading them starts now,
+    // off the window's thread.
+    crate::faces::warm();
     // Human: shader effects run on the same GPU device the window is drawn with.
     if let Some(state) = &cc.wgpu_render_state {
         crate::gpu::install(state.device.clone(), state.queue.clone());
@@ -408,7 +438,7 @@ impl App {
     pub fn new(cc: &eframe::CreationContext<'_>, launch: Launch) -> App {
         install_drawing(cc);
         sweep_working_folders();
-        let prefs = open_settings(&launch);
+        let (prefs, settings_problem) = open_settings(&launch);
         let ctx = cc.egui_ctx.clone();
         let dialogs = Dialogs::new(Arc::new(move || ctx.request_repaint()));
         let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(7, |d| u64::from(d.subsec_nanos()) ^ d.as_secs());
@@ -435,7 +465,8 @@ impl App {
             hide_ui: false,
             prompt: None,
             discard_confirmed: false,
-            toasts: crate::toast::Toasts::default(),
+            toasts: crate::toast::Toasts::saying(settings_problem.as_deref()),
+            troubles: Troubles::default(),
             screenshot: None,
             seed,
             canvas_view: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 700.0)),
@@ -447,6 +478,7 @@ impl App {
             shown: 0,
             assistants: Vec::new(),
             assistant_asked: launch.assistant.clone(),
+            new_chat_asked: None,
             private: launch.private || launch.screenshot.is_some(),
             waiting: Vec::new(),
             picturing: Vec::new(),
@@ -613,7 +645,10 @@ impl App {
                 self.link = Some(server);
                 self.tell_link();
             }
-            Err(error) => log::warn!("AI tools: the local server didn't start: {error}"),
+            Err(error) => {
+                log::warn!("AI tools: the local server didn't start: {error}");
+                self.say(format!("AI apps can't reach Quill: its local tool server didn't start ({error})."));
+            }
         }
     }
 
@@ -1446,7 +1481,7 @@ impl App {
     }
 
     /// The top bar, which is the window's title bar: from the left the app's name, home, the open files and the
-    /// button for a new one; from the right the menu, the settings, Share, Present and Publish, and on Windows the
+    /// button for a new one; from the right the menu and the settings, and on Windows the
     /// window's own three buttons after them (`design/pencraft.pen`, "Redesign: Title bar").
     fn tab_bar(&mut self, ui: &mut egui::Ui) {
         let palette = theme::palette(self.dark());
@@ -1471,17 +1506,8 @@ impl App {
             if cfg!(windows) {
                 window_buttons(ui, palette);
             }
-            // Human: right to left, so the menu ends up first and the globe last.
-            for (icon, hint, sentence) in
-                [("globe", "Publish", "Publishing isn't available yet."), ("play", "Present", "Presenting isn't available yet.")]
-            {
-                if bar_button(ui, icon, false, palette.strong, palette).on_hover_text(hint).clicked() {
-                    self.say(sentence);
-                }
-            }
-            if share_button(ui, palette).clicked() {
-                self.say("Sharing isn't available yet.");
-            }
+            // Human: right to left, so the menu ends up first. Share, Present and Publish (the design's) stay out
+            // of the bar until they do something.
             if bar_button(ui, "settings", false, palette.strong, palette).on_hover_text(crate::keys::text("Settings (⌘,)")).clicked() {
                 self.settings.open_general();
             }
@@ -1715,7 +1741,7 @@ impl App {
                     ui.scope_builder(inside, |ui| {
                         ui.spacing_mut().item_spacing.x = 0.0;
                         let button = egui::Vec2::splat(TITLE_BUTTON);
-                        if icon_button(ui, "minus", button, false, palette).on_hover_text(crate::keys::text("Zoom out (⌘−)")).clicked() {
+                        if icon_button(ui, "minus", button, false, &crate::keys::text("Zoom out (⌘−)"), palette).clicked() {
                             canvas::zoom_at(editor, view, view.center(), canvas::zoom_step(editor.camera.zoom, false));
                         }
                         let label = format!("{:.0}%", editor.camera.zoom * 100.0);
@@ -1726,7 +1752,7 @@ impl App {
                         {
                             canvas::zoom_at(editor, view, view.center(), 1.0);
                         }
-                        if icon_button(ui, "plus", button, false, palette).on_hover_text(crate::keys::text("Zoom in (⌘+)")).clicked() {
+                        if icon_button(ui, "plus", button, false, &crate::keys::text("Zoom in (⌘+)"), palette).clicked() {
                             canvas::zoom_at(editor, view, view.center(), canvas::zoom_step(editor.camera.zoom, true));
                         }
                     });
@@ -1747,6 +1773,11 @@ impl App {
 
     /// Shows the settings window and saves what it changed.
     fn settings_window(&mut self, ctx: &egui::Context) {
+        // Human: a closed window changes nothing, so the settings aren't copied and compared every frame for it.
+        if !self.settings.open {
+            self.settings.closed();
+            return;
+        }
         let dark = self.dark();
         let mut prefs = self.prefs.get().clone();
         let facts =
@@ -1810,23 +1841,32 @@ impl App {
             return;
         };
         let mut choice = None;
-        egui::Modal::new(egui::Id::unique("unsaved")).show(ctx, |ui| {
+        let palette = theme::palette(self.dark());
+        let modal = egui::Modal::new(egui::Id::unique("unsaved")).show(ctx, |ui| {
             ui.set_width(340.0);
             ui.label(RichText::new(format!("Save changes to “{title}”?")).strong());
             ui.label("Your changes will be lost if you don't save them.");
             ui.add_space(10.0);
             ui.horizontal(|ui| {
-                if ui.button("Save").clicked() {
+                if ui.add(dialog_primary("Save", palette)).clicked() {
                     choice = Some(1);
                 }
-                if ui.button("Don't Save").clicked() {
+                if ui.add(dialog_button("Don't Save")).clicked() {
                     choice = Some(2);
                 }
-                if ui.button("Cancel").clicked() {
+                if ui.add(dialog_button("Cancel")).clicked() {
                     choice = Some(0);
                 }
             });
         });
+        // Human: Return saves, the highlighted choice; Escape or a click beside the question cancels.
+        if choice.is_none() {
+            if modal.should_close() {
+                choice = Some(0);
+            } else if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+                choice = Some(1);
+            }
+        }
         match choice {
             Some(1) => {
                 self.prompt = None;
@@ -1890,6 +1930,12 @@ impl App {
         if waiting {
             ctx.request_repaint_after(crate::recover::EVERY);
         }
+        let trouble = keeper.trouble();
+        match trouble {
+            Some(problem) if self.troubles.recovery.fails() => self.say(problem),
+            Some(_) => {}
+            None => self.troubles.recovery.works(),
+        }
     }
 
     /// Asks what to do with the documents an earlier run left behind when it didn't end properly.
@@ -1897,9 +1943,31 @@ impl App {
         if self.recovery.left.is_empty() {
             return;
         }
+        let palette = theme::palette(self.dark());
+        let discarding = self.recovery.discarding;
         let mut choice = None;
+        // Human: Return takes the highlighted choice: Restore, or Keep when asked whether to discard. Escape steps
+        // back from that question, and on the list puts the question off: the copies stay on disk and are
+        // offered again at the next start. A click beside it does nothing, so the list isn't lost by accident.
         egui::Modal::new(egui::Id::unique("recovery")).show(ctx, |ui| {
             ui.set_width(380.0);
+            // Human: Discard deletes the kept copies for good, so it asks once more; Restore is the safe,
+            // highlighted choice in both steps.
+            // Agent: `choice` is Some(true) restore, Some(false) discard for good; Keep only clears `discarding`.
+            if discarding {
+                ui.label(RichText::new("Discard the recovered work?").strong());
+                ui.label("This can't be undone.");
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if ui.add(dialog_primary("Keep", palette)).clicked() {
+                        self.recovery.discarding = false;
+                    }
+                    if ui.add(dialog_button("Discard")).clicked() {
+                        choice = Some(false);
+                    }
+                });
+                return;
+            }
             ui.label(RichText::new("Quill didn't close properly last time").strong());
             ui.label(if self.recovery.left.len() == 1 {
                 "This design had changes that weren't saved:"
@@ -1913,15 +1981,27 @@ impl App {
             }
             ui.add_space(10.0);
             ui.horizontal(|ui| {
-                if ui.button("Restore").clicked() {
+                if ui.add(dialog_primary("Restore", palette)).clicked() {
                     choice = Some(true);
                 }
-                if ui.button("Discard").clicked() {
-                    choice = Some(false);
+                if ui.add(dialog_button("Discard")).clicked() {
+                    self.recovery.discarding = true;
                 }
             });
         });
+        // Agent: only when no button acted this frame: a button reached with Tab takes Return itself.
+        let acted = choice.is_some() || self.recovery.discarding != discarding;
+        let (enter, escape) = ctx.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
+        if !acted && discarding && (enter || escape) {
+            self.recovery.discarding = false;
+        } else if !acted && enter {
+            choice = Some(true);
+        } else if !acted && escape {
+            self.recovery.left.clear();
+            return;
+        }
         let Some(restore) = choice else { return };
+        self.recovery.discarding = false;
         let left = std::mem::take(&mut self.recovery.left);
         if !restore {
             crate::recover::clear(&left);
@@ -2025,8 +2105,17 @@ impl eframe::App for App {
             self.prompt = Some(ClosePrompt { tab, quitting: true });
         }
         let tick = self.prefs.tick(Instant::now());
-        if let SaveStatus::Failed(err) = &tick.status {
-            log::warn!("settings not saved yet: {err}");
+        // Human: the store tries again by itself; the user hears of it once, and again only if it fails after
+        // having worked.
+        match &tick.status {
+            SaveStatus::Failed(err) => {
+                log::warn!("settings not saved yet: {err}");
+                if self.troubles.settings.fails() {
+                    self.say(format!("Your settings couldn't be saved: {err}. Quill keeps trying."));
+                }
+            }
+            SaveStatus::Saved => self.troubles.settings.works(),
+            SaveStatus::Idle | SaveStatus::Pending => {}
         }
         if let Some(deadline) = tick.next_deadline {
             ctx.request_repaint_after(deadline.saturating_duration_since(Instant::now()));
@@ -2103,6 +2192,7 @@ impl eframe::App for App {
         }
         self.dropped(&ctx);
         self.chat_asks(&ctx);
+        self.new_chat_prompt(&ctx);
         self.settings_window(&ctx);
         self.show_picture_dialog(&ctx);
         self.update_prompt(&ctx);

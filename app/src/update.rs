@@ -909,9 +909,8 @@ fn head(ui: &mut Ui, release: &Release, palette: Palette) -> bool {
         });
         if !release.required {
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                fold = crate::sidebar::icon_button(ui, "chevron-down", Vec2::splat(UPDATE_BUTTON_HEIGHT - 4.0), false, palette)
-                    .on_hover_text("Fold away")
-                    .clicked();
+                fold =
+                    crate::sidebar::icon_button(ui, "chevron-down", Vec2::splat(UPDATE_BUTTON_HEIGHT - 4.0), false, "Fold away", palette).clicked();
             });
         }
     });

@@ -9,8 +9,9 @@
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -23,6 +24,15 @@ use crate::app::lock;
 const PROTOCOL: &str = "2025-03-26";
 /// Largest message taken, in bytes.
 const MOST_BYTES: usize = 32 * 1024 * 1024;
+/// Longest line of a request's head (its first line or one header) the server reads.
+const MOST_LINE: usize = 8 * 1024;
+/// Most headers a request may have.
+const MOST_HEADERS: usize = 64;
+/// Most connections served at once; one more is told the server is busy and closed.
+const MOST_CONNECTIONS: usize = 16;
+/// Most of a refused request's body read and thrown away before its connection closes (so the refusal isn't
+/// lost to a reset), and how long that may take.
+const REFUSED_DRAIN: (u64, Duration) = (64 * 1024, Duration::from_secs(1));
 /// How long the server waits for the app to answer a tool call.
 const PATIENCE: Duration = Duration::from_secs(120);
 /// How long the bridge waits for the app to start.
@@ -75,8 +85,14 @@ pub struct Server {
 
 /// Where the server's address and secret are written: `~/.pencraft/agent.json`.
 fn info_file() -> Option<PathBuf> {
+    Some(own_folder()?.join("agent.json"))
+}
+
+/// Quill's folder in the user's home (`~/.pencraft`), which only the user can write into; `None` without a home.
+#[must_use]
+pub fn own_folder() -> Option<PathBuf> {
     let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
-    Some(PathBuf::from(home).join(".pencraft").join("agent.json"))
+    Some(PathBuf::from(home).join(".pencraft"))
 }
 
 /// A secret for this run, made from the operating system's randomness.
@@ -96,7 +112,8 @@ fn secret() -> String {
 ///
 /// # Errors
 /// When no port can be opened or the address file can't be written.
-// Agent: SPAWNS one thread that accepts, and one per connection; they end with the process.
+// Agent: SPAWNS one thread that accepts, and one per connection up to MOST_CONNECTIONS; they end with the
+// process.
 pub fn start(send: Sender<Call>, wake: impl Fn() + Send + Sync + 'static) -> std::io::Result<Server> {
     let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))?;
     let port = listener.local_addr()?.port();
@@ -124,10 +141,19 @@ pub fn start(send: Sender<Call>, wake: impl Fn() + Send + Sync + 'static) -> std
         wake: Box::new(wake),
     });
     std::thread::Builder::new().name("ai-link".to_owned()).spawn(move || {
-        for stream in listener.incoming().flatten() {
+        let open = Arc::new(AtomicUsize::new(0));
+        for mut stream in listener.incoming().flatten() {
+            // Human: a caller that opens connection after connection can't make the app start a thread for each.
+            let Some(slot) = Slot::take(&open) else {
+                let _ = respond(&mut stream, "503 Service Unavailable", Some(&json!({ "error": "too many connections at once" })), false);
+                continue;
+            };
             let shared = shared.clone();
-            // A connection that can't get a thread is dropped; the client tries again.
-            let _ = std::thread::Builder::new().name("ai-link-client".to_owned()).spawn(move || serve(stream, &shared));
+            // A connection that can't get a thread is dropped, and its slot with it; the client tries again.
+            let _ = std::thread::Builder::new().name("ai-link-client".to_owned()).spawn(move || {
+                let _held = slot;
+                serve(stream, &shared);
+            });
         }
     })?;
     Ok(Server { port, token, off })
@@ -136,19 +162,31 @@ pub fn start(send: Sender<Call>, wake: impl Fn() + Send + Sync + 'static) -> std
 /// Writes where this app's server is, and its secret, into the address file.
 fn write_info(port: u16, token: &str) -> std::io::Result<()> {
     let path = info_file().ok_or_else(|| std::io::Error::other("no home folder to write the address into"))?;
+    write_info_to(&path, port, token)
+}
+
+/// Writes where this app's server is, and its secret, into the address file at `path`.
+fn write_info_to(path: &Path, port: u16, token: &str) -> std::io::Result<()> {
     if let Some(folder) = path.parent() {
         std::fs::create_dir_all(folder)?;
     }
     let info = json!({ "url": format!("http://127.0.0.1:{port}/mcp"), "port": port, "token": token, "pid": std::process::id() });
-    std::fs::write(&path, serde_json::to_vec_pretty(&info).unwrap_or_default())?;
-    // Human: the file holds the secret, so only the user may read it. On Windows the user's own folder
-    // already keeps other users out, so the file needs nothing more there.
+    // Human: the file holds the secret, so only the user may read it, from the moment it is there: it is made
+    // readable by the user alone (0600) and only then filled. A file an older Quill left more open is closed
+    // first, as a replaced file keeps the permissions it had. On Windows the user's own folder already keeps
+    // other users out, so the file needs nothing more there.
+    // Agent: craft-atomic writes it beside itself and renames it into place, so a crash never leaves half of it.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+        match std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(error),
+            _ => {}
+        }
     }
-    Ok(())
+    craft_atomic::WriteOptions::default()
+        .with_new_file_permissions(craft_atomic::NewFilePermissions::Private)
+        .atomic_write(path, &serde_json::to_vec_pretty(&info).unwrap_or_default())
 }
 
 /// Whether a Quill is running whose server the address file leads to.
@@ -197,32 +235,57 @@ struct Shared {
     wake: Box<dyn Fn() + Send + Sync>,
 }
 
-/// One HTTP request: its method, path, the headers this server reads, and its body.
-struct Request {
+/// One of the [`MOST_CONNECTIONS`] connections served at once; given back when dropped.
+struct Slot(Arc<AtomicUsize>);
+
+impl Slot {
+    /// A slot from the `open` count, unless all are taken.
+    fn take(open: &Arc<AtomicUsize>) -> Option<Slot> {
+        open.try_update(Ordering::AcqRel, Ordering::Acquire, |taken| (taken < MOST_CONNECTIONS).then_some(taken + 1))
+            .ok()
+            .map(|_| Slot(Arc::clone(open)))
+    }
+}
+
+impl Drop for Slot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+/// The head of one HTTP request: its method, path, the headers this server reads, and how long its body is.
+struct Head {
     method: String,
     path: String,
     authorization: Option<String>,
     origin: bool,
-    body: Vec<u8>,
+    length: usize,
 }
 
-/// Reads one request from `reader`; `None` when the connection ended or sent something unreadable.
-fn read_request(reader: &mut BufReader<TcpStream>) -> Option<Request> {
+/// Reads one line of a request's head into `line`; `None` when the connection ended, the line is longer than
+/// [`MOST_LINE`] or isn't text.
+fn head_line(reader: &mut BufReader<TcpStream>, line: &mut String) -> Option<()> {
+    let limit = u64::try_from(MOST_LINE + 1).unwrap_or(u64::MAX);
+    let read = reader.by_ref().take(limit).read_line(line).ok()?;
+    (read > 0 && read <= MOST_LINE).then_some(())
+}
+
+/// Reads the head of one request from `reader`, not its body; `None` when the connection ended or sent
+/// something unreadable or too long.
+// Human: the body is read only once the request has been let in, so a caller without the secret can't make
+// the app take in 32 MB; nor can it send one endless header line, or endless headers.
+fn read_head(reader: &mut BufReader<TcpStream>) -> Option<Head> {
     let mut line = String::new();
-    if reader.read_line(&mut line).ok()? == 0 {
-        return None;
-    }
+    head_line(reader, &mut line)?;
     let mut parts = line.split_whitespace();
     let (method, path) = (parts.next()?.to_owned(), parts.next()?.to_owned());
     let (mut length, mut authorization, mut origin) = (0_usize, None, false);
-    loop {
+    for _ in 0..=MOST_HEADERS {
         let mut header = String::new();
-        if reader.read_line(&mut header).ok()? == 0 {
-            return None;
-        }
+        head_line(reader, &mut header)?;
         let header = header.trim_end();
         if header.is_empty() {
-            break;
+            return Some(Head { method, path, authorization, origin, length });
         }
         let Some((name, value)) = header.split_once(':') else { continue };
         match name.trim().to_ascii_lowercase().as_str() {
@@ -232,43 +295,63 @@ fn read_request(reader: &mut BufReader<TcpStream>) -> Option<Request> {
             _ => {}
         }
     }
-    if length > MOST_BYTES {
-        return None;
-    }
-    let mut body = vec![0; length];
-    reader.read_exact(&mut body).ok()?;
-    Some(Request { method, path, authorization, origin, body })
+    None
 }
 
-/// Writes an HTTP answer with a JSON body (or none).
-fn respond(stream: &mut TcpStream, status: &str, body: Option<&Value>) -> std::io::Result<()> {
+/// Writes an HTTP answer with a JSON body (or none); `keep` says whether the connection stays open after it.
+fn respond(stream: &mut TcpStream, status: &str, body: Option<&Value>, keep: bool) -> std::io::Result<()> {
     let body = body.map(|b| serde_json::to_vec(b).unwrap_or_default()).unwrap_or_default();
-    let head = format!("HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: keep-alive\r\n\r\n", body.len());
+    let connection = if keep { "keep-alive" } else { "close" };
+    let head = format!("HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: {connection}\r\n\r\n", body.len());
     stream.write_all(head.as_bytes())?;
     stream.write_all(&body)?;
     stream.flush()
 }
 
+/// Answers a request that isn't let in, and ends its connection: its body was never read, so nothing more
+/// on it can be understood.
+// Agent: reads and throws away at most REFUSED_DRAIN of what the caller still sends, so closing doesn't reset
+// the connection before the caller has read the answer.
+fn refuse(out: &mut TcpStream, reader: &mut BufReader<TcpStream>, status: &str, why: &str) {
+    if respond(out, status, Some(&json!({ "error": why })), false).is_err() {
+        return;
+    }
+    let _ = out.shutdown(std::net::Shutdown::Write);
+    let (most, patience) = REFUSED_DRAIN;
+    let _ = reader.get_ref().set_read_timeout(Some(patience));
+    let _ = std::io::copy(&mut reader.by_ref().take(most), &mut std::io::sink());
+}
+
 /// Serves one connection until it closes.
 // Human: only a caller that shows the secret is served, and never a web page: a browser sends an `Origin`
 // header with what a page asks for, and a page on the internet must not be able to reach into the app.
+// Both are decided from the head, before the body is read.
 fn serve(stream: TcpStream, shared: &Shared) {
     let Ok(mut out) = stream.try_clone() else { return };
     let mut reader = BufReader::new(stream);
-    while let Some(request) = read_request(&mut reader) {
-        let allowed = request.authorization.as_deref() == Some(&format!("Bearer {}", shared.token));
-        let result = if request.origin {
-            respond(&mut out, "403 Forbidden", Some(&json!({ "error": "requests from web pages are refused" })))
-        } else if !allowed {
-            respond(&mut out, "401 Unauthorized", Some(&json!({ "error": "the secret from ~/.pencraft/agent.json is missing or wrong" })))
-        } else if request.method != "POST" || request.path.split('?').next() != Some("/mcp") {
-            respond(&mut out, "405 Method Not Allowed", Some(&json!({ "error": "POST JSON-RPC messages to /mcp" })))
+    let secret = format!("Bearer {}", shared.token);
+    while let Some(head) = read_head(&mut reader) {
+        if head.origin {
+            return refuse(&mut out, &mut reader, "403 Forbidden", "requests from web pages are refused");
+        }
+        if head.authorization.as_deref() != Some(secret.as_str()) {
+            return refuse(&mut out, &mut reader, "401 Unauthorized", "the secret from ~/.pencraft/agent.json is missing or wrong");
+        }
+        if head.length > MOST_BYTES {
+            return refuse(&mut out, &mut reader, "413 Content Too Large", "a message may be 32 MB at most");
+        }
+        let mut body = vec![0; head.length];
+        if reader.read_exact(&mut body).is_err() {
+            return;
+        }
+        let result = if head.method != "POST" || head.path.split('?').next() != Some("/mcp") {
+            respond(&mut out, "405 Method Not Allowed", Some(&json!({ "error": "POST JSON-RPC messages to /mcp" })), true)
         } else {
-            match serde_json::from_slice::<Value>(&request.body) {
-                Err(error) => respond(&mut out, "200 OK", Some(&failure(&Value::Null, -32700, &format!("not JSON: {error}")))),
-                Ok(message) => match answer(&message, chat_of(&request.path), shared) {
-                    Some(reply) => respond(&mut out, "200 OK", Some(&reply)),
-                    None => respond(&mut out, "202 Accepted", None),
+            match serde_json::from_slice::<Value>(&body) {
+                Err(error) => respond(&mut out, "200 OK", Some(&failure(&Value::Null, -32700, &format!("not JSON: {error}"))), true),
+                Ok(message) => match answer(&message, chat_of(&head.path), shared) {
+                    Some(reply) => respond(&mut out, "200 OK", Some(&reply), true),
+                    None => respond(&mut out, "202 Accepted", None, true),
                 },
             }
         };
@@ -514,6 +597,24 @@ mod tests {
         (Shared { token: "secret".to_owned(), send: Mutex::new(send), client: Mutex::new("AI".to_owned()), off, wake: Box::new(|| {}) }, calls)
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn the_address_file_is_only_the_users_even_when_an_older_one_was_open() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let folder = std::env::temp_dir().join(format!("pencraft-link-info-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        let path = folder.join("agent.json");
+        let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        write_info_to(&path, 1234, "secret").unwrap();
+        assert_eq!(mode(&path), 0o600);
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        write_info_to(&path, 5678, "again").unwrap();
+        assert_eq!(mode(&path), 0o600);
+        let info: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!((info["port"].as_u64(), info["token"].as_str()), (Some(5678), Some("again")));
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
     #[test]
     fn a_client_is_greeted_and_told_the_tools() {
         let (shared, _calls) = shared();
@@ -604,6 +705,47 @@ mod tests {
         let mut status = String::new();
         BufReader::new(page).read_line(&mut status).unwrap();
         assert!(status.starts_with("HTTP/1.1 403"), "{status}");
+    }
+
+    #[test]
+    fn a_caller_without_the_secret_is_refused_before_its_body_and_long_heads_are_cut_off() {
+        let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (shared, _calls) = shared();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                serve(stream, &shared);
+            }
+        });
+        let status = |request: &str| {
+            let mut stream = TcpStream::connect(SocketAddr::from((Ipv4Addr::LOCALHOST, port))).unwrap();
+            stream.write_all(request.as_bytes()).unwrap();
+            let mut status = String::new();
+            let _ = BufReader::new(stream).read_line(&mut status);
+            status
+        };
+        // A wrong secret is answered from the head alone: the 32 MB it says are coming are never waited for.
+        let big = status("POST /mcp HTTP/1.1\r\nAuthorization: Bearer wrong\r\nContent-Length: 33554432\r\n\r\n");
+        assert!(big.starts_with("HTTP/1.1 401"), "{big}");
+        // With the secret, a body over the limit is refused rather than read.
+        let over = status("POST /mcp HTTP/1.1\r\nAuthorization: Bearer secret\r\nContent-Length: 33554433\r\n\r\n");
+        assert!(over.starts_with("HTTP/1.1 413"), "{over}");
+        // A header line that never ends, or headers without end, get no answer: the connection closes.
+        let long = format!("POST /mcp HTTP/1.1\r\nX-Long: {}\r\n\r\n", "a".repeat(MOST_LINE + 10));
+        assert_eq!(status(&long), "");
+        let many = format!("POST /mcp HTTP/1.1\r\n{}\r\n", "X-A: b\r\n".repeat(MOST_HEADERS + 5));
+        assert_eq!(status(&many), "");
+    }
+
+    #[test]
+    fn only_so_many_connections_are_served_at_once() {
+        let open = Arc::new(AtomicUsize::new(0));
+        let held: Vec<Slot> = std::iter::from_fn(|| Slot::take(&open)).take(MOST_CONNECTIONS + 3).collect();
+        assert_eq!((held.len(), open.load(Ordering::Acquire)), (MOST_CONNECTIONS, MOST_CONNECTIONS));
+        assert!(Slot::take(&open).is_none());
+        drop(held);
+        assert_eq!(open.load(Ordering::Acquire), 0);
+        assert!(Slot::take(&open).is_some());
     }
 
     #[test]

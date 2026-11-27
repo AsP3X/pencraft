@@ -143,9 +143,12 @@ opt-level = 1
 [profile.dev.package."*"]
 opt-level = 2
 
+# Human: one unit and fat LTO make the smallest, fastest app; release builds take longer for it.
+# Agent: no `panic = "abort"`: craft-dialogs catches a panicking native dialog (`catch_unwind`), and the recovery
+# writer and the chat's stderr readers count on `join()` giving `Err` for a thread that panicked.
 [profile.release]
-lto = "thin"
-codegen-units = 4
+lto = "fat"
+codegen-units = 1
 
 # Human: Keep the complete egui family and winit on the storytold fork commits the Craft apps use.
 [patch.crates-io]

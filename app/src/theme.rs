@@ -123,8 +123,15 @@ pub const RAIL_ARROW_STEP: f32 = 12.0;
 pub const PROPERTIES_WIDTH: f32 = 228.0;
 /// Corner radius of controls.
 pub const CONTROL_RADIUS: u8 = 6;
-/// Selection and focus colour.
+/// Selection colour.
 pub const ACCENT: Color32 = Color32::from_rgb(0x3b, 0x82, 0xf6);
+/// The accent as a plate behind white words (a highlighted row, a marked chip): 5.2:1 against white, where
+/// [`ACCENT`] is 3.7:1.
+pub const ACCENT_PLATE: Color32 = Color32::from_rgb(0x25, 0x63, 0xeb);
+/// Width of the ring around a control reached with the keyboard ([`Palette::focus`]).
+pub const FOCUS_RING: f32 = 2.0;
+/// Least side of the area an icon button answers clicks in (WCAG 2.5.8); its icon can be smaller.
+pub const TARGET_MIN: f32 = 24.0;
 /// The colour of components: their outline, canvas label and layer name.
 pub const COMPONENT: Color32 = Color32::from_rgb(0xd9, 0x46, 0xef);
 /// The colour of instances and the layers inside them.
@@ -133,6 +140,10 @@ pub const INSTANCE: Color32 = Color32::from_rgb(0x8b, 0x5c, 0xf6);
 pub const AGENT: Color32 = Color32::from_rgb(96, 125, 255);
 /// How long a layer an AI model touched flashes.
 pub const AGENT_FLASH_TIME: std::time::Duration = std::time::Duration::from_millis(1200);
+/// How often an idle animation that runs as long as the assistant works (the working light, the stop button's
+/// comet, the status pill, the waiting dots) is drawn again: about 30 frames a second, so a long run doesn't
+/// keep the computer drawing at full rate. New content still shows at once.
+pub const IDLE_FRAME: std::time::Duration = std::time::Duration::from_millis(33);
 /// How long the message line shows a sentence.
 pub const TOAST_TIME: std::time::Duration = std::time::Duration::from_secs(6);
 /// How long the message line's capsule takes to open, or to take the shape of the next sentence.
@@ -290,8 +301,6 @@ pub const CHAT_SPENT_STRIP: f32 = CHAT_SPENT_PILL + ISLAND_GAP;
 pub const CHAT_SPENT_PILL: f32 = 22.0;
 /// The room beside the words in that pill.
 pub const CHAT_SPENT_PAD: f32 = 10.0;
-/// How faint the counter's words are, as a share of the muted text's strength.
-pub const CHAT_SPENT_INK: f32 = 0.7;
 /// The size of a note's icon, with the circle that goes around it while its tool works.
 pub const CHAT_NOTE_ICON: f32 = 16.0;
 /// The share of that size the icon itself has while its tool works, inside the circle.
@@ -596,13 +605,20 @@ pub struct Palette {
     pub field: Color32,
     /// Their thin lines (`--rd-line`).
     pub line: Color32,
+    /// Text a step quieter than [`Palette::muted`] (a caption under a caption, a hint): still at least 4.5:1
+    /// against the island, card and window background, unlike `muted` faded by opacity.
+    pub quiet: Color32,
+    /// The ring around a control reached with the keyboard: at least 3:1 against every surface of the
+    /// appearance (WCAG 1.4.11).
+    pub focus: Color32,
 }
 
 /// The light palette (`:root`).
 pub const LIGHT: Palette = Palette {
     background: Color32::from_rgb(0xfa, 0xfa, 0xfa),
     foreground: Color32::from_rgb(0x02, 0x02, 0x02),
-    muted: Color32::from_rgb(0x71, 0x71, 0x7a),
+    // Human: 4.98:1 on `input` and 5.22:1 on `field`; the original's #71717a was 3.8:1 and 4.0:1 there.
+    muted: Color32::from_rgb(0x5f, 0x5f, 0x68),
     border: Color32::from_rgb(0xe4, 0xe4, 0xe7),
     canvas: Color32::from_rgb(0xf6, 0xf6, 0xf6),
     island: Color32::from_rgb(0xfa, 0xfa, 0xfa),
@@ -616,13 +632,16 @@ pub const LIGHT: Palette = Palette {
     soft: Color32::from_rgb(0x55, 0x55, 0x5d),
     field: Color32::from_rgb(0xe9, 0xe9, 0xec),
     line: Color32::from_rgb(0xe4, 0xe4, 0xe8),
+    quiet: Color32::from_rgb(0x6e, 0x6e, 0x77),
+    focus: Color32::from_rgb(0x25, 0x63, 0xeb),
 };
 
 /// The dark palette (`.dark`).
 pub const DARK: Palette = Palette {
     background: Color32::from_rgb(0x18, 0x18, 0x1b),
     foreground: Color32::from_rgb(0xc8, 0xc8, 0xc8),
-    muted: Color32::from_rgb(0xa1, 0xa1, 0xaa),
+    // Human: 4.69:1 on `input` and `hover`; the original's #a1a1aa was 4.07:1 there.
+    muted: Color32::from_rgb(0xad, 0xad, 0xb5),
     border: Color32::from_rgb(0x20, 0x20, 0x20),
     canvas: Color32::from_rgb(0x18, 0x18, 0x1b),
     island: Color32::from_rgb(0x27, 0x27, 0x2a),
@@ -636,6 +655,8 @@ pub const DARK: Palette = Palette {
     soft: Color32::from_rgb(0xb0, 0xb0, 0xb8),
     field: Color32::from_rgb(0x2c, 0x2c, 0x30),
     line: Color32::from_rgb(0x31, 0x31, 0x35),
+    quiet: Color32::from_rgb(0x96, 0x96, 0x9e),
+    focus: Color32::from_rgb(0x60, 0xa5, 0xfa),
 };
 
 /// The palette for an appearance.

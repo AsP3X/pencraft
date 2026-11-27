@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -68,6 +69,8 @@ pub struct Keeper {
     writer: JoinHandle<()>,
     /// For each document kept: the scene it had when it was last handed over, and when that was.
     kept: HashMap<u64, (u64, Instant)>,
+    /// What went wrong with the writing thread's last job, if it failed; `None` once one works again.
+    trouble: Arc<Mutex<Option<String>>>,
 }
 
 impl Keeper {
@@ -92,9 +95,20 @@ impl Keeper {
         let held = made().map_err(|error| format!("the recovery folder {} couldn't be made: {error}", folder.display()))?;
         let (jobs, asked) = channel();
         let into = folder.clone();
-        let writer =
-            std::thread::Builder::new().name("recovery".to_owned()).spawn(move || write_all(&into, &asked)).map_err(|error| error.to_string())?;
-        Ok(Keeper { folder, held, jobs, writer, kept: HashMap::new() })
+        let trouble = Arc::new(Mutex::new(None));
+        let told = Arc::clone(&trouble);
+        let writer = std::thread::Builder::new()
+            .name("recovery".to_owned())
+            .spawn(move || write_all(&into, &asked, &told))
+            .map_err(|error| error.to_string())?;
+        Ok(Keeper { folder, held, jobs, writer, kept: HashMap::new(), trouble })
+    }
+
+    /// What went wrong when the writing thread last failed, while its jobs still fail; `None` once one works.
+    // Agent: MAIN-THREAD; a short lock shared with the writing thread.
+    #[must_use]
+    pub fn trouble(&self) -> Option<String> {
+        self.trouble.lock().unwrap_or_else(PoisonError::into_inner).clone()
     }
 
     /// Looks at one open document: one with unsaved changes that differs from what was last kept is handed to
@@ -144,26 +158,31 @@ impl Keeper {
     }
 }
 
-/// Does the jobs as they come, until nobody can ask for more.
-fn write_all(folder: &Path, asked: &Receiver<Job>) {
+/// Does the jobs as they come, until nobody can ask for more, and says in `trouble` whether the last one failed.
+// Human: the window tells the user once when unsaved work can't be kept for recovery (the disk is full, the
+// folder went away), and again only if it fails after having worked.
+fn write_all(folder: &Path, asked: &Receiver<Job>, trouble: &Mutex<Option<String>>) {
     for job in asked {
-        match job {
-            Job::Keep { id, doc, path, title } => {
-                if let Err(error) = write(folder, id, &doc, path.as_deref(), &title) {
-                    log::warn!("recovery: {title} wasn't kept: {error}");
-                }
-            }
+        let failed = match job {
+            Job::Keep { id, doc, path, title } => write(folder, id, &doc, path.as_deref(), &title).err().map(|error| {
+                log::warn!("recovery: {title} wasn't kept: {error}");
+                format!("Unsaved changes to “{title}” couldn't be kept for recovery: {error}")
+            }),
             Job::Forget(id) => {
+                let mut failed = None;
                 for ending in [FACTS, DOCUMENT] {
                     let file = folder.join(format!("{id}.{ending}"));
                     if file.exists()
                         && let Err(error) = std::fs::remove_file(&file)
                     {
                         log::warn!("recovery: {}: {error}", file.display());
+                        failed = Some(format!("A recovery copy couldn't be removed: {error}"));
                     }
                 }
+                failed
             }
-        }
+        };
+        *trouble.lock().unwrap_or_else(PoisonError::into_inner) = failed;
     }
 }
 

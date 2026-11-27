@@ -9,10 +9,10 @@
 //! Grok's MCP servers once (Settings → Agents), and only that server's tools are approved for it.
 
 use std::io::{BufRead, BufReader, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use serde_json::{Value, json};
 
@@ -106,15 +106,60 @@ pub(super) fn windowless(command: &mut Command) {
     let _ = command;
 }
 
-/// The command that answers `job` with Claude Code.
+/// The MCP settings Claude Code is started with for `job`: Quill's server at `port`, reached with `secret`.
+fn servers(job: &Job<'_>, port: u16, secret: &str) -> Value {
+    json!({ "mcpServers": { SERVER: { "type": "http", "url": crate::link::address(port, job.chat), "headers": { "Authorization": format!("Bearer {secret}") } } } })
+}
+
+/// A file with the MCP settings a run of Claude Code is started with; deleted when dropped.
+// Human: the settings hold the secret of Quill's server. On the command line every program on the computer
+// could read it in the list of processes; in a file only the user can read it, and only while the run lasts.
+struct McpConfig(PathBuf);
+
+impl McpConfig {
+    /// Writes `servers` for the chat `chat` into a new file in Quill's own folder, readable by the user alone.
+    ///
+    /// # Errors
+    /// When there is no home folder, or the file can't be made or written.
+    // Agent: WRITES `~/.pencraft/mcp-<pid>-<chat>-<n>.json`, made new (never through a file that was there)
+    // with mode 0600 on Unix; a number of its own per run, so a run winding down never deletes the next one's.
+    fn write(chat: u64, servers: &Value) -> std::io::Result<McpConfig> {
+        static RUNS: AtomicU64 = AtomicU64::new(0);
+        let folder = crate::link::own_folder().ok_or_else(|| std::io::Error::other("there is no home folder"))?;
+        std::fs::create_dir_all(&folder)?;
+        let run = RUNS.fetch_add(1, Ordering::Relaxed);
+        let path = folder.join(format!("mcp-{}-{chat}-{run}.json", std::process::id()));
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt as _;
+            options.mode(0o600);
+        }
+        let mut file = options.open(&path)?;
+        // Made: from here on it is deleted when this is dropped, also when writing it fails.
+        let config = McpConfig(path);
+        file.write_all(servers.to_string().as_bytes())?;
+        Ok(config)
+    }
+}
+
+impl Drop for McpConfig {
+    fn drop(&mut self) {
+        // Already gone is fine.
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+/// The command that answers `job` with Claude Code, its MCP settings in the file `config`.
 // Human: the program gets no tools but Quill's (no shell, no files, no web): in the chat panel it is a
 // designer, not a coding agent, and nothing it does needs asking the user for permission.
-fn claude(job: &Job<'_>, port: u16, secret: &str) -> Command {
-    let servers = json!({ "mcpServers": { SERVER: { "type": "http", "url": crate::link::address(port, job.chat), "headers": { "Authorization": format!("Bearer {secret}") } } } });
+fn claude(job: &Job<'_>, config: &Path) -> Command {
     let mut command = Command::new(job.program);
     command
         .args(["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages"])
-        .args(["--tools", "", "--strict-mcp-config", "--mcp-config", &servers.to_string()])
+        .args(["--tools", "", "--strict-mcp-config", "--mcp-config"])
+        .arg(config)
         .args(["--allowedTools", &format!("mcp__{SERVER}"), "--append-system-prompt", &super::brief(false, job.instructions)]);
     if !job.model.is_empty() {
         command.args(["--model", job.model]);
@@ -332,8 +377,16 @@ fn parts<'a>(line: &'a Value, kind: &'a str) -> impl Iterator<Item = &'a Value> 
 // that collects the program's error output.
 pub fn run(job: &Job<'_>, stop: &AtomicBool, child: &Mutex<Option<Child>>, tell: &dyn Fn(Event) -> bool) {
     let folder = folder();
+    // Agent: lives until this function returns, after the program has ended; its file goes with it.
+    let mut config_file = None;
     let mut command = match (job.flavor, job.server) {
-        (Flavor::Claude, Some((port, secret))) => claude(job, *port, secret),
+        (Flavor::Claude, Some((port, secret))) => match McpConfig::write(job.chat, &servers(job, *port, secret)) {
+            Ok(config) => claude(job, &config_file.insert(config).0),
+            Err(error) => {
+                tell(Event::Problem(format!("Claude Code couldn't be given Quill's tools: {error}")));
+                return;
+            }
+        },
         (Flavor::Claude, None) => {
             tell(Event::Problem(
                 "Claude Code reaches the document through Quill's local server, which didn't start. Restart Quill, or pick an API assistant."
@@ -503,7 +556,7 @@ mod tests {
             server: None,
             chat: 3,
         };
-        let command = claude(&job, 4242, "s3cret");
+        let command = claude(&job, Path::new("/home/me/.pencraft/mcp.json"));
         let args: Vec<String> = command.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
         let after = |flag: &str| args.iter().position(|a| a == flag).and_then(|at| args.get(at + 1)).cloned();
         assert_eq!(
@@ -515,16 +568,31 @@ mod tests {
         assert!(!args.contains(&"--input-format".to_owned()) && input(&job) == "hi");
         let picture = [json!({ "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "Zm9v" } })];
         let seen = Job { pictures: &picture, ..job };
-        let with: Vec<String> = claude(&seen, 4242, "s3cret").get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let with: Vec<String> =
+            claude(&seen, Path::new("/home/me/.pencraft/mcp.json")).get_args().map(|a| a.to_string_lossy().into_owned()).collect();
         assert_eq!(with.iter().position(|a| a == "--input-format").and_then(|at| with.get(at + 1)).map(String::as_str), Some("stream-json"));
         let line: Value = serde_json::from_str(input(&seen).trim_end()).unwrap();
         assert_eq!(
             (&line["type"], &line["message"]["content"][0], &line["message"]["content"][1]["text"]),
             (&json!("user"), &picture[0], &json!("hi"))
         );
-        let servers: Value = serde_json::from_str(&after("--mcp-config").unwrap()).unwrap();
+        // The secret isn't on the command line: the settings are in a file, which only the user can read and
+        // which goes when the run is over.
+        assert_eq!(after("--mcp-config").as_deref(), Some("/home/me/.pencraft/mcp.json"));
+        assert!(!args.iter().any(|arg| arg.contains("s3cret")));
+        let servers = servers(&job, 4242, "s3cret");
         assert_eq!(servers["mcpServers"]["pencraft"]["url"], "http://127.0.0.1:4242/mcp?chat=3");
         assert_eq!(servers["mcpServers"]["pencraft"]["headers"]["Authorization"], "Bearer s3cret");
+        let config = McpConfig::write(3, &servers).unwrap();
+        let path = config.0.clone();
+        assert_eq!(serde_json::from_slice::<Value>(&std::fs::read(&path).unwrap()).unwrap(), servers);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        drop(config);
+        assert!(!path.exists());
     }
 
     #[test]

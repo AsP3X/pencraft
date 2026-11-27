@@ -263,13 +263,11 @@ impl Picker {
         let corner = Rect::from_min_max(pos2(rect.right() - 64.0, rect.top() - 6.0), pos2(rect.right() + 6.0, rect.top() + 22.0));
         ui.scope_builder(UiBuilder::new().max_rect(corner).layout(Layout::right_to_left(Align::Center)), |ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
-            if icon_button(ui, "x", Vec2::splat(28.0), false, palette).on_hover_text("Close without changes").clicked() {
+            if icon_button(ui, "x", Vec2::splat(28.0), false, "Close without changes", palette).clicked() {
                 answer = Some(Answer::Cancel);
             }
             // Human: a provider's list changes (a model pulled, a new release); this asks for it again.
-            if self.state != State::Loading
-                && icon_button(ui, "refresh-cw", Vec2::splat(28.0), false, palette).on_hover_text("Load the list again").clicked()
-            {
+            if self.state != State::Loading && icon_button(ui, "refresh-cw", Vec2::splat(28.0), false, "Load the list again", palette).clicked() {
                 answer = Some(Answer::Reload);
             }
         });

@@ -484,7 +484,7 @@ pub(super) fn field(ui: &mut Ui, text: &mut String, hint: &str, mono: bool, secr
 /// An outlined text field `width` wide.
 pub(super) fn sized_field(ui: &mut Ui, text: &mut String, hint: &str, width: f32, mono: bool, secret: bool, palette: Palette) -> Response {
     let font = if mono { egui::TextStyle::Monospace } else { egui::TextStyle::Body };
-    let hint = RichText::new(hint).text_style(font.clone()).color(palette.muted.gamma_multiply(0.75));
+    let hint = RichText::new(hint).text_style(font.clone()).color(palette.quiet);
     ui.add(egui::TextEdit::singleline(text).frame(field_frame(palette)).hint_text(hint).font(font).password(secret).desired_width(width))
 }
 

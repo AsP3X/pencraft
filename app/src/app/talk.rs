@@ -232,7 +232,7 @@ impl App {
         for ask in std::mem::take(&mut self.sidebar.chat_asks) {
             match ask {
                 ChatAsk::Stop => self.shown_talk().chat.stop(),
-                ChatAsk::New => self.shown_talk().chat.clear(),
+                ChatAsk::New => self.ask_new_chat(),
                 ChatAsk::Looked => self.find_assistants(),
                 ChatAsk::Assistants => self.settings.open_named("agents"),
                 ChatAsk::Pick(id) => {
@@ -244,6 +244,61 @@ impl App {
                 ChatAsk::Answer(pick) => self.answer_chat(&pick, ctx),
                 ChatAsk::Offer(act) => self.take_offer(act, ctx),
             }
+        }
+    }
+
+    /// Starts the shown chat over, asking first when that would lose something.
+    // Human: starting over replaces the kept conversation with an empty one, so it can't be got back; an empty
+    // chat with nothing running has nothing to lose and starts over without a question.
+    fn ask_new_chat(&mut self) {
+        let talk = self.shown_talk();
+        if talk.chat.entries.is_empty() && !talk.chat.running() {
+            talk.chat.clear();
+        } else {
+            self.new_chat_asked = Some(talk.id);
+        }
+    }
+
+    /// Asks whether to start a chat over that has a conversation or a run in it; clears it on yes.
+    // Agent: the chat is found again by its number, so a tab closed while asking just ends the question.
+    pub(super) fn new_chat_prompt(&mut self, ctx: &egui::Context) {
+        let Some(id) = self.new_chat_asked else { return };
+        let Some(talk) = self.talks.iter().find(|talk| talk.id == id) else {
+            self.new_chat_asked = None;
+            return;
+        };
+        let running = talk.chat.running();
+        let palette = crate::theme::palette(self.dark());
+        let mut choice = None;
+        let modal = egui::Modal::new(egui::Id::unique("new-chat")).show(ctx, |ui| {
+            ui.set_width(340.0);
+            ui.label(egui::RichText::new("Start a new chat?").strong());
+            ui.label(if running {
+                "The assistant will stop, and this conversation will be gone for good."
+            } else {
+                "This conversation will be gone for good."
+            });
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                if ui.add(super::dialog_primary("Cancel", palette)).clicked() {
+                    choice = Some(false);
+                }
+                if ui.add(super::dialog_button("New chat")).clicked() {
+                    choice = Some(true);
+                }
+            });
+        });
+        // Human: as in the other dialogs, Return takes the highlighted choice (Cancel); Escape or a click beside
+        // the question is Cancel too.
+        // Agent: only when no button acted this frame: a button reached with Tab takes Return itself.
+        let enter = ctx.input(|i| i.key_pressed(egui::Key::Enter));
+        if choice.is_none() && (enter || modal.should_close()) {
+            choice = Some(false);
+        }
+        let Some(clear) = choice else { return };
+        self.new_chat_asked = None;
+        if clear && let Some(talk) = self.talks.iter_mut().find(|talk| talk.id == id) {
+            talk.chat.clear();
         }
     }
 

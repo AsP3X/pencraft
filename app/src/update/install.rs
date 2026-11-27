@@ -17,6 +17,12 @@ use super::{API, PATIENCE, ReleaseFile, quiet};
 const UNINSTALLER: &str = "unins000.exe";
 /// The name of the app inside the disk image.
 const BUNDLE: &str = "Pencraft.app";
+/// What `codesign` asks of the app in an update: signed through Apple, by Quill's own Developer ID team
+/// (`2G3936C5F4`, the team of "Developer ID Application: Niklas Vorberg"). The `=` makes it the requirement
+/// itself rather than the name of a file that holds one.
+// Human: `--verify --strict` alone lets any valid signature through, an ad hoc one too: a disk image built by
+// anyone would pass. Only a copy signed by the team that signs Quill's releases is installed.
+const SIGNED_BY_US: &str = r#"-R=anchor apple generic and certificate leaf[subject.OU] = "2G3936C5F4""#;
 /// The largest installer the app is willing to download.
 const MOST: u64 = 1024 * 1024 * 1024;
 /// How the setup wizard is run: a small progress window instead of its pages, no questions, no restart of
@@ -333,8 +339,8 @@ fn stage(image: &Path, bundle: &Path) -> Result<PathBuf, String> {
     run(tool("hdiutil").args(["attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint"]).arg(&mount).arg(image))?;
     let staged = bundle.with_file_name(".Pencraft-update.app");
     let _ = std::fs::remove_dir_all(&staged);
-    let copied =
-        run(tool("ditto").arg(mount.join(BUNDLE)).arg(&staged)).and_then(|_| run(tool("codesign").args(["--verify", "--strict"]).arg(&staged)));
+    let copied = run(tool("ditto").arg(mount.join(BUNDLE)).arg(&staged))
+        .and_then(|_| run(tool("codesign").args(["--verify", "--strict", SIGNED_BY_US]).arg(&staged)));
     let _ = run(tool("hdiutil").arg("detach").arg(&mount).arg("-force"));
     match copied {
         Ok(_) => Ok(staged),

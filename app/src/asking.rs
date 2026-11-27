@@ -145,7 +145,7 @@ impl Column<'_> {
         let button = vec2(label.size().x + 2.0 * CHAT_ASK_PAD, CHAT_ASK_SEND);
         let rect = Rect::from_min_size(pos2(self.width - CHAT_ASK_PAD - button.x, self.y), button);
         if !says.is_empty() {
-            let galley = self.laid_out(says, tiny, palette.muted.gamma_multiply(0.8), wide - button.x - CHAT_ASK_GAP, 1);
+            let galley = self.laid_out(says, tiny, palette.quiet, wide - button.x - CHAT_ASK_GAP, 1);
             let at = pos2(CHAT_ASK_PAD, self.y + (CHAT_ASK_SEND - galley.size().y) / 2.0);
             self.items.push(Item::Words { at, galley, icon: None });
         }
@@ -273,7 +273,7 @@ pub fn paint(ui: &mut Ui, sheet: &Sheet, origin: Pos2, live: bool, palette: Pale
                 let inside = rect.shrink2(vec2(CHAT_ASK_OPTION_PAD, 0.0));
                 let font = FontId::proportional(*size);
                 if !live {
-                    let (words, ink) = if text.is_empty() { (*hint, palette.muted.gamma_multiply(0.7)) } else { (text.as_str(), palette.foreground) };
+                    let (words, ink) = if text.is_empty() { (*hint, palette.quiet) } else { (text.as_str(), palette.foreground) };
                     ui.painter().text(inside.left_center(), egui::Align2::LEFT_CENTER, words, font, ink);
                     continue;
                 }
@@ -283,7 +283,7 @@ pub fn paint(ui: &mut Ui, sheet: &Sheet, origin: Pos2, live: bool, palette: Pale
                     .frame(egui::Frame::NONE)
                     .font(font.clone())
                     .text_color(palette.foreground)
-                    .hint_text(egui::RichText::new(*hint).font(font).color(palette.muted.gamma_multiply(0.7)))
+                    .hint_text(egui::RichText::new(*hint).font(font).color(palette.quiet))
                     .desired_width(inside.width());
                 let row = ui.fonts_mut(|fonts| fonts.row_height(&FontId::proportional(*size)));
                 let response = ui.put(Rect::from_center_size(inside.center(), vec2(inside.width(), row + 2.0)), field);
