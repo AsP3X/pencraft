@@ -1,6 +1,8 @@
 //! The panels around the canvas: the layers list of the sidebar, and the properties island on the right, which
 //! follows the user's properties design: a header, then sections with a title row each, divided by lines.
 
+use std::collections::HashSet;
+
 use egui::{Align, Align2, Color32, FontId, Layout, Rect, Response, RichText, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2, pos2, vec2};
 use pen_doc::color::Rgba;
 use pen_doc::edit;
@@ -19,8 +21,8 @@ use crate::ops::{AlignTo, Order};
 use crate::render::color32;
 use crate::shader;
 use crate::theme::{
-    self, ACCENT, PROBLEM, PROPS_CANCEL, PROPS_GAP, PROPS_ICON, PROPS_MENU_WIDTH, PROPS_PADDING, PROPS_RADIUS, PROPS_ROW, PROPS_SMALL_TEXT,
-    PROPS_TEXT, Palette, SEND_ARROW, SEND_BUTTON,
+    self, ACCENT, LAYER_ARROW_ROOM, LAYER_INDENT, LAYER_LOCK, LAYER_SELECTED_GROW, LAYER_SELECTED_RADIUS, PROBLEM, PROPS_CANCEL, PROPS_GAP,
+    PROPS_ICON, PROPS_MENU_WIDTH, PROPS_PADDING, PROPS_RADIUS, PROPS_ROW, PROPS_SMALL_TEXT, PROPS_TEXT, Palette, SEND_ARROW, SEND_BUTTON,
 };
 
 /// A short symbol for each kind of layer in the layers list.
@@ -99,6 +101,10 @@ pub enum PictureAsk {
 }
 
 /// The layers list: the document tree, with show/hide toggles.
+// Human: a large design has thousands of layers, and most of the list is out of sight. The lines that are
+// unfolded are listed first, which is quick, and only the ones in view are drawn (`show_rows`); what holds
+// the selection is worked out once a frame, not once for every line and selected layer.
+// Agent: MAIN-THREAD; HOT-PATH per frame while the Layers view shows. Every line is one row high.
 pub fn layers(ui: &mut Ui, editor: &mut Editor, dark: bool) {
     if editor.doc.children.is_empty() {
         ui.label(RichText::new("Empty canvas.").color(theme::palette(dark).muted));
@@ -108,9 +114,18 @@ pub fn layers(ui: &mut Ui, editor: &mut Editor, dark: bool) {
     // Human: the rows only read the editor; what the person does is gathered and applied after the list.
     // Agent: BORROWS the document shared for the whole list instead of copying it every frame.
     let view: &Editor = editor;
-    egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-        for node in view.doc.children.iter().rev() {
-            layer_row(ui, view, node, 0, dark, &mut action);
+    let held = holders(&view.doc, &view.selection);
+    let selected: HashSet<&str> = view.selection.iter().map(String::as_str).collect();
+    let base = ui.scope_id();
+    let lines = ui.data_mut(|data| unfolded(view, &held, base, data));
+    // A line is as high as egui makes a row of buttons and text, so the list looks as it did.
+    let high = ui.spacing().interact_size.y.max(ui.text_style_height(&egui::TextStyle::Body));
+    egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, high, lines.len(), |ui, range| {
+        for line in lines.get(range).unwrap_or_default() {
+            let row = line.row();
+            let look = Look { depth: line.depth, open: line.open, holds: line.holds, selected: selected.contains(row.id), high, base };
+            // Human: a line keeps its own widgets' names wherever the list is scrolled to.
+            ui.push_id(("layer", row.id), |ui| draw_row(ui, &row, &look, dark, &mut action));
         }
     });
     if let Some(action) = action {
@@ -128,7 +143,6 @@ enum LayerAction {
 const MASK_TAG: (&str, &str) = ("mask", "Cuts the layers above it in this group to its shape");
 
 /// One line of the layers list.
-#[expect(clippy::struct_excessive_bools, reason = "each says one independent thing about the layer")]
 struct Row<'a> {
     /// The layer's id: a document id, or `instance/inner` inside an instance.
     id: &'a str,
@@ -140,37 +154,188 @@ struct Row<'a> {
     /// The colour of a component's name, or of an instance's and what is inside it.
     linked: Option<Color32>,
     has_kids: bool,
-    /// Top-level layers start open.
-    top: bool,
     /// A word after the layer's name for what it does to other layers, and what that word means.
     does: Option<(&'static str, &'static str)>,
 }
 
-/// Draws one line of the layers list; returns whether its children are shown.
-fn row(ui: &mut Ui, editor: &Editor, line: &Row, depth: usize, dark: bool, action: &mut Option<LayerAction>) -> bool {
+/// The layers that hold the selection without being selected themselves: every layer a selected one lies
+/// in. A layer inside an instance is held by the instance, by what it lies in inside it, and by everything
+/// the instance is in.
+// Agent: goes through the document once, whatever the size of the selection.
+fn holders<'a>(doc: &'a pen_doc::Document, selection: &'a [String]) -> HashSet<&'a str> {
+    fn visit<'a>(nodes: &'a [Node], above: &mut Vec<&'a str>, roots: &HashSet<&str>, held: &mut HashSet<&'a str>) {
+        for node in nodes {
+            if roots.contains(node.id.as_str()) {
+                held.extend(above.iter().copied());
+            }
+            above.push(&node.id);
+            visit(node.kids(), above, roots, held);
+            above.pop();
+        }
+    }
+    let mut held = HashSet::new();
+    if selection.is_empty() {
+        return held;
+    }
+    let mut roots = HashSet::new();
+    for id in selection {
+        held.extend(id.match_indices('/').map(|(at, _)| &id[..at]));
+        roots.insert(id.split('/').next().unwrap_or(id));
+    }
+    visit(&doc.children, &mut Vec::new(), &roots, &mut held);
+    held
+}
+
+/// What a line of the layers list shows.
+#[derive(Clone, Copy)]
+enum Source<'a> {
+    /// A layer of the document, and what it shows when it is an instance.
+    Layer(&'a Node, Option<&'a SceneNode>),
+    /// A layer inside an instance.
+    Inside(&'a SceneNode),
+}
+
+/// A line of the layers list that is unfolded: its parents are all open.
+struct Line<'a> {
+    source: Source<'a>,
+    depth: usize,
+    /// Its children show.
+    open: bool,
+    /// It holds the selection, so it is open whatever was chosen for it.
+    holds: bool,
+}
+
+impl<'a> Line<'a> {
+    fn id(&self) -> &'a str {
+        match self.source {
+            Source::Layer(node, _) => &node.id,
+            Source::Inside(shown) => &shown.id,
+        }
+    }
+
+    fn has_kids(&self) -> bool {
+        match self.source {
+            Source::Layer(node, instance) => instance.map_or(!node.kids().is_empty(), |shown| !shown.children.is_empty()),
+            Source::Inside(shown) => !shown.children.is_empty(),
+        }
+    }
+
+    /// What the line shows, worked out when it is drawn.
+    fn row(&self) -> Row<'a> {
+        match self.source {
+            // Human: an instance has no children of its own in the document; its line unfolds to what it
+            // shows, which comes from the component.
+            Source::Layer(node, instance) => Row {
+                id: &node.id,
+                name: instance.map_or_else(|| node.display_name(), |shown| shown.node.display_name()),
+                kind: &node.kind,
+                hidden: matches!(node.enabled, Some(Flag::Value(false))),
+                locked: crate::ops::is_locked(node),
+                linked: if node.kind == Kind::Ref {
+                    Some(theme::INSTANCE)
+                } else if node.reusable == Some(true) {
+                    Some(theme::COMPONENT)
+                } else {
+                    None
+                },
+                has_kids: self.has_kids(),
+                does: crate::render::is_mask(node).then_some(MASK_TAG),
+            },
+            Source::Inside(shown) => Row {
+                id: &shown.id,
+                name: shown.node.display_name(),
+                kind: &shown.node.kind,
+                hidden: matches!(shown.node.enabled, Some(Flag::Value(false))),
+                locked: crate::ops::is_locked(&shown.node),
+                linked: Some(theme::INSTANCE),
+                has_kids: self.has_kids(),
+                does: crate::render::is_mask(&shown.node).then_some(MASK_TAG),
+            },
+        }
+    }
+}
+
+/// Where a line keeps whether it is open.
+fn open_id(base: egui::Id, id: &str) -> egui::Id {
+    base.with(("layer-open", id))
+}
+
+/// The lines of the layers list that are unfolded, from the top of the list down.
+// Human: containers start closed below the top level, unless they hold the selection; one that does stays
+// open afterwards.
+// Agent: READS and WRITES each container's open flag in egui's memory (`data`).
+fn unfolded<'a>(editor: &'a Editor, held: &HashSet<&str>, base: egui::Id, data: &mut egui::util::IdTypeMap) -> Vec<Line<'a>> {
+    fn add<'a>(
+        source: Source<'a>,
+        depth: usize,
+        editor: &'a Editor,
+        held: &HashSet<&str>,
+        memory: (egui::Id, &mut egui::util::IdTypeMap),
+        lines: &mut Vec<Line<'a>>,
+    ) {
+        let (base, data) = memory;
+        let mut line = Line { source, depth, open: false, holds: false };
+        let (id, has_kids) = (line.id(), line.has_kids());
+        line.holds = held.contains(id);
+        let chosen = data.get_temp_mut_or(open_id(base, id), depth == 0);
+        if line.holds {
+            *chosen = true;
+        }
+        line.open = has_kids && *chosen;
+        let open = line.open;
+        lines.push(line);
+        if !open {
+            return;
+        }
+        match source {
+            Source::Layer(_, Some(shown)) | Source::Inside(shown) => {
+                for child in shown.children.iter().rev() {
+                    add(Source::Inside(child), depth + 1, editor, held, (base, data), lines);
+                }
+            }
+            Source::Layer(node, None) => {
+                for child in node.kids().iter().rev() {
+                    add(layer(editor, child), depth + 1, editor, held, (base, data), lines);
+                }
+            }
+        }
+    }
+    fn layer<'a>(editor: &'a Editor, node: &'a Node) -> Source<'a> {
+        Source::Layer(node, if node.kind == Kind::Ref { editor.scene_node(&node.id) } else { None })
+    }
+    let mut lines = Vec::new();
+    for node in editor.doc.children.iter().rev() {
+        add(layer(editor, node), 0, editor, held, (base, data), &mut lines);
+    }
+    lines
+}
+
+/// How a line of the layers list is drawn.
+struct Look {
+    depth: usize,
+    open: bool,
+    holds: bool,
+    selected: bool,
+    /// How high every line is.
+    high: f32,
+    /// What the open flags are kept under ([`open_id`]).
+    base: egui::Id,
+}
+
+/// Draws one line of the layers list.
+fn draw_row(ui: &mut Ui, line: &Row, look: &Look, dark: bool, action: &mut Option<LayerAction>) {
     let palette = theme::palette(dark);
     let id = line.id;
-    let selected = editor.selection.iter().any(|s| s == id);
-    let open_id = ui.scope_id().with(("layer-open", id));
-    // Human: containers start closed below the top level, unless they hold the selection. A layer inside an
-    // instance is held by the instance, and by everything the instance is in.
-    let holds_selection = editor.selection.iter().any(|s| {
-        let inside = s.strip_prefix(id).is_some_and(|rest| rest.starts_with('/'));
-        let root = s.split('/').next().unwrap_or(s);
-        inside || (s != id && edit::ancestry(&editor.doc, root).iter().any(|a| a == id))
-    });
-    let mut open = ui.data_mut(|d| *d.get_temp_mut_or(open_id, line.top));
-    if holds_selection {
-        open = true;
-    }
-    let shown = ui.horizontal(|ui| {
-        ui.add_space(f32::from(u8::try_from(depth.min(20)).unwrap_or(20)) * 12.0);
+    let shown = ui.allocate_ui_with_layout(vec2(ui.available_width(), look.high), Layout::left_to_right(Align::Center), |ui| {
+        ui.add_space(f32::from(u8::try_from(look.depth.min(20)).unwrap_or(20)) * LAYER_INDENT);
         if line.has_kids {
-            if ui.add(egui::Button::new(if open { "▾" } else { "▸" }).frame(false).small()).clicked() {
-                open = !open;
+            // Human: a container that holds the selection stays open; its arrow does nothing meanwhile.
+            if ui.add(egui::Button::new(if look.open { "▾" } else { "▸" }).frame(false).small()).clicked() && !look.holds {
+                ui.data_mut(|data| data.insert_temp(open_id(look.base, id), !look.open));
+                ui.ctx().request_repaint();
             }
         } else {
-            ui.add_space(14.0);
+            ui.add_space(LAYER_ARROW_ROOM);
         }
         let text_color = if line.hidden {
             palette.muted
@@ -198,78 +363,21 @@ fn row(ui: &mut Ui, editor: &Editor, line: &Row, depth: usize, dark: bool, actio
                 *action = Some(LayerAction::ToggleHidden(id.to_owned()));
             }
             // Human: a closed lock on a locked layer, a faint open one on the others; a click turns it.
-            let (lock, response) = ui.allocate_exact_size(Vec2::splat(13.0), Sense::click());
-            let (icon, ink) = if line.locked { ("lock", palette.foreground) } else { ("lock-open", palette.muted.gamma_multiply(0.45)) };
-            icons::paint(ui.painter(), lock, icon, ink);
+            let (place, response) = ui.allocate_exact_size(Vec2::splat(LAYER_LOCK), Sense::click());
+            let (icon, ink) =
+                if line.locked { ("lock", palette.foreground) } else { ("lock-open", palette.muted.gamma_multiply(theme::LAYER_LOCK_FAINT)) };
+            icons::paint(ui.painter(), place, icon, ink);
             if response.on_hover_text(if line.locked { "Unlock" } else { "Lock" }).clicked() {
                 *action = Some(LayerAction::ToggleLocked(id.to_owned()));
             }
         });
     });
-    if selected {
-        ui.painter().rect_filled(shown.response.rect.expand2(egui::vec2(4.0, 1.0)), 4.0, ACCENT.gamma_multiply(0.18));
-    }
-    if holds_selection == open || !holds_selection {
-        ui.data_mut(|d| d.insert_temp(open_id, open));
-    }
-    open && line.has_kids
-}
-
-fn layer_row(ui: &mut Ui, editor: &Editor, node: &Node, depth: usize, dark: bool, action: &mut Option<LayerAction>) {
-    // Human: an instance has no children of its own in the document; its line unfolds to what it shows, which
-    // comes from the component.
-    let instance = if node.kind == Kind::Ref { editor.scene_node(&node.id) } else { None };
-    let line = Row {
-        id: &node.id,
-        name: instance.map_or_else(|| node.display_name(), |shown| shown.node.display_name()),
-        kind: &node.kind,
-        hidden: matches!(node.enabled, Some(Flag::Value(false))),
-        locked: crate::ops::is_locked(node),
-        linked: if node.kind == Kind::Ref {
-            Some(theme::INSTANCE)
-        } else if node.reusable == Some(true) {
-            Some(theme::COMPONENT)
-        } else {
-            None
-        },
-        has_kids: instance.map_or(!node.kids().is_empty(), |shown| !shown.children.is_empty()),
-        top: depth == 0,
-        does: crate::render::is_mask(node).then_some(MASK_TAG),
-    };
-    if !row(ui, editor, &line, depth, dark, action) {
-        return;
-    }
-    match instance {
-        Some(shown) => {
-            for child in shown.children.iter().rev() {
-                inside_row(ui, editor, child, depth + 1, dark, action);
-            }
-        }
-        None => {
-            for child in node.kids().iter().rev() {
-                layer_row(ui, editor, child, depth + 1, dark, action);
-            }
-        }
-    }
-}
-
-/// The line of a layer inside an instance, and those of its children.
-fn inside_row(ui: &mut Ui, editor: &Editor, shown: &SceneNode, depth: usize, dark: bool, action: &mut Option<LayerAction>) {
-    let line = Row {
-        id: &shown.id,
-        name: shown.node.display_name(),
-        kind: &shown.node.kind,
-        hidden: matches!(shown.node.enabled, Some(Flag::Value(false))),
-        locked: crate::ops::is_locked(&shown.node),
-        linked: Some(theme::INSTANCE),
-        has_kids: !shown.children.is_empty(),
-        top: false,
-        does: crate::render::is_mask(&shown.node).then_some(MASK_TAG),
-    };
-    if row(ui, editor, &line, depth, dark, action) {
-        for child in shown.children.iter().rev() {
-            inside_row(ui, editor, child, depth + 1, dark, action);
-        }
+    if look.selected {
+        ui.painter().rect_filled(
+            shown.response.rect.expand2(LAYER_SELECTED_GROW),
+            LAYER_SELECTED_RADIUS,
+            ACCENT.gamma_multiply(theme::SELECTED_WASH),
+        );
     }
 }
 
@@ -316,7 +424,7 @@ pub fn properties(ui: &mut Ui, editor: &mut Editor, dark: bool, pictures: &mut P
         ui.scope_builder(UiBuilder::new().max_rect(content), |ui| {
             ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
             ui.style_mut().override_font_id = Some(FontId::proportional(PROPS_TEXT));
-            ui.add_space(8.0);
+            ui.add_space(theme::PROPS_SECTION_SPACE);
             if editor.tool == crate::editor::Tool::Scale && !editor.selection.is_empty() {
                 scale_section(ui, editor, theme::palette(dark));
             }
@@ -371,7 +479,7 @@ fn scale_section(ui: &mut Ui, editor: &mut Editor, palette: Palette) {
     } else if ui.ctx().dragged_id().is_none() {
         ui.data_mut(|d| d.insert_temp(egui::Id::unique("scale-drag"), false));
     }
-    ui.add_space(4.0);
+    ui.add_space(theme::PROPS_ROW_SPACE);
     small(ui, "Or pull a handle on the canvas.", palette);
     end(ui, true);
     rule(ui, palette);
@@ -513,7 +621,7 @@ fn node_panel(ui: &mut Ui, editor: &mut Editor, id: &str, dark: bool, pictures: 
     if let Some(chosen) = edits.export {
         editor.export = chosen;
     }
-    ui.add_space(12.0);
+    ui.add_space(theme::PROPS_HEAD_SPACE);
 
     match edits.slot {
         Some(SlotEdit::Insert(component)) => {
@@ -571,10 +679,13 @@ pub fn kind_icon(kind: &Kind) -> &'static str {
 fn header(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
     let (palette, node) = (shown.palette, shown.node);
     let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), PROPS_ROW), Sense::hover());
-    let icon = Rect::from_center_size(pos2(row.left() + 8.0, row.center().y), Vec2::splat(PROPS_ICON));
+    let icon = Rect::from_center_size(pos2(row.left() + theme::PROPS_HEAD_ICON_AT, row.center().y), Vec2::splat(PROPS_ICON));
     icons::paint(ui.painter(), icon, kind_icon(&node.kind), palette.muted);
     // Human: a text field's line sits a little high for its box; 3 points lower puts it level with the icon.
-    let name_box = Rect::from_min_max(pos2(icon.right() + 6.0, row.top() + 3.0), pos2(row.right() - 22.0, row.bottom() + 3.0));
+    let name_box = Rect::from_min_max(
+        pos2(icon.right() + theme::PROPS_HEAD_NAME[0], row.top() + theme::PROPS_HEAD_NAME[1]),
+        pos2(row.right() - theme::PROPS_HEAD_NAME[2], row.bottom() + theme::PROPS_HEAD_NAME[1]),
+    );
     let mut name_ui = ui.new_child(UiBuilder::new().max_rect(name_box).layout(Layout::left_to_right(Align::Center)).id_salt("name"));
     let mut name = node.name.clone().unwrap_or_default();
     let field = egui::TextEdit::singleline(&mut name)
@@ -586,7 +697,7 @@ fn header(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
         edits.set(move |n| n.name = (!name.is_empty()).then(|| name.clone()));
     }
     // Human: the design's "Fold the panel" button in this corner stays out until the panel can fold.
-    ui.add_space(8.0);
+    ui.add_space(theme::PROPS_SECTION_SPACE);
     // Human: the component button says what the layer can become: a plain layer a component, a
     // component a plain layer again, an instance a detached copy. An instance also leads back to its component.
     match shown.role {
@@ -631,7 +742,7 @@ fn slot(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
     if title_row(ui, "Slot", info.filled.then_some(("rotate-ccw", "Reset to the component")), palette) {
         edits.slot = Some(SlotEdit::Clear);
     }
-    ui.add_space(4.0);
+    ui.add_space(theme::PROPS_ROW_SPACE);
     small(ui, if info.choices.is_empty() { "Paste layers here to fill it." } else { "Add a component, or paste layers here." }, palette);
     for (id, name) in &info.choices {
         ui.add_space(PROPS_GAP);
@@ -780,9 +891,9 @@ fn layout(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
     if title_row(ui, "Layout", Some(("layout-panel-left", "Add flex layout (⇧A)")), palette) {
         edits.command = Some(Editor::add_flex_layout);
     }
-    ui.add_space(4.0);
+    ui.add_space(theme::PROPS_ROW_SPACE);
     small(ui, "Dimensions", palette);
-    ui.add_space(4.0);
+    ui.add_space(theme::PROPS_ROW_SPACE);
     let cells = pair(ui);
     let sides = [("W", "Fill Width", "Fit Width", true, shown.size.0), ("H", "Fill Height", "Fit Height", false, shown.size.1)];
     for ((letter, ..), cell) in sides.iter().zip(cells) {
@@ -881,7 +992,7 @@ fn frame_layout(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
     }
     ui.add_space(PROPS_GAP);
     small(ui, "Justify", palette);
-    ui.add_space(4.0);
+    ui.add_space(theme::PROPS_ROW_SPACE);
     let justify = [("Start", "start"), ("Center", "center"), ("End", "end"), ("Between", "space_between"), ("Around", "space_around")];
     let now = node.justify_content.as_deref().unwrap_or("start");
     let labels: Vec<(&str, bool)> = justify.iter().map(|(label, value)| (*label, now == *value)).collect();
@@ -893,7 +1004,7 @@ fn frame_layout(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
     }
     ui.add_space(PROPS_GAP);
     small(ui, "Align", palette);
-    ui.add_space(4.0);
+    ui.add_space(theme::PROPS_ROW_SPACE);
     let items = [("Start", "start"), ("Center", "center"), ("End", "end")];
     let now = node.align_items.as_deref().unwrap_or("start");
     let labels: Vec<(&str, bool)> = items.iter().map(|(label, value)| (*label, now == *value)).collect();
@@ -1036,8 +1147,11 @@ fn appearance(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
             // four values would otherwise hide behind "Mixed".
             let mut open = ui.data(|d| d.get_temp::<bool>(id)).unwrap_or(mixed);
             if open {
-                let lit = Rect::from_center_size(pos2(row.right() - 9.0, row.center().y), Vec2::splat(20.0));
-                ui.painter().rect_filled(lit, PROPS_RADIUS, ACCENT.gamma_multiply(0.25));
+                let lit = Rect::from_center_size(
+                    pos2(row.right() - theme::PROPS_CORNER_BUTTON[0], row.center().y),
+                    Vec2::splat(theme::PROPS_CORNER_BUTTON[1]),
+                );
+                ui.painter().rect_filled(lit, PROPS_RADIUS, ACCENT.gamma_multiply(theme::PROPS_LIT));
             }
             if corner_button(ui, row, "maximize", "Edit corners individually", palette).clicked() {
                 open = !open;
@@ -1131,7 +1245,7 @@ fn material(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
     }
     ui.add_space(PROPS_GAP);
     small(ui, "Appearance", palette);
-    ui.add_space(4.0);
+    ui.add_space(theme::PROPS_ROW_SPACE);
     let choices: Vec<(&str, bool)> = Appearance::ALL.iter().zip(["Auto", "Light", "Dark"]).map(|(a, label)| (label, *a == now.appearance)).collect();
     if let Some(index) = choice_row(ui, "material-appearance", &choices, palette) {
         put(edits, "appearance", Appearance::ALL.get(index).filter(|a| **a != Appearance::Auto).map(|a| a.key()));
@@ -1139,7 +1253,7 @@ fn material(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
     if now.is_glass() {
         ui.add_space(PROPS_GAP);
         small(ui, "Depth", palette);
-        ui.add_space(4.0);
+        ui.add_space(theme::PROPS_ROW_SPACE);
         let depths = Depth::ALL.iter().zip(["Control", "Bar", "Panel"]).map(|(d, label)| (label, Some(*d) == now.depth));
         let choices: Vec<(&str, bool)> = std::iter::once(("By size", now.depth.is_none())).chain(depths).collect();
         if let Some(index) = choice_row(ui, "material-depth", &choices, palette) {
@@ -1153,7 +1267,7 @@ fn material(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
         put(edits, "tint", (!tinted).then_some("#0a84ff"));
     }
     if let Some(tint) = &now.tint {
-        ui.add_space(4.0);
+        ui.add_space(theme::PROPS_ROW_SPACE);
         if tint.starts_with('$') {
             small(ui, tint, palette);
         } else if let Some(c) = color_row(ui, "material-tint", Rgba::parse(tint).unwrap_or(Rgba::WHITE), palette) {
@@ -1175,9 +1289,15 @@ fn material_numbers(ui: &mut Ui, shown: &Shown, stored: &Value, now: &Material, 
     let title = Rect::from_min_max(row.min, pos2(row.right() - PROPS_ROW, row.bottom()));
     let response = ui.interact(title, ui.scope_id().with("material-advanced-title"), Sense::click());
     let color = if response.hovered() { palette.foreground } else { palette.muted };
-    let arrow = Rect::from_center_size(pos2(row.left() + 6.0, row.center().y), Vec2::splat(PROPS_ICON));
+    let arrow = Rect::from_center_size(pos2(row.left() + theme::PROPS_FOLD[0], row.center().y), Vec2::splat(PROPS_ICON));
     icons::paint(ui.painter(), arrow, if open { "chevron-down" } else { "chevron-right" }, color);
-    ui.painter().text(pos2(arrow.right() + 4.0, row.center().y), Align2::LEFT_CENTER, "Advanced", FontId::proportional(PROPS_SMALL_TEXT), color);
+    ui.painter().text(
+        pos2(arrow.right() + theme::PROPS_FOLD[1], row.center().y),
+        Align2::LEFT_CENTER,
+        "Advanced",
+        FontId::proportional(PROPS_SMALL_TEXT),
+        color,
+    );
     if response.clicked() {
         open = !open;
         ui.data_mut(|d| d.insert_temp(open_id, open));
@@ -1197,7 +1317,7 @@ fn material_numbers(ui: &mut Ui, shown: &Shown, stored: &Value, now: &Material, 
     let params = now.resolve(size, now.appearance == Appearance::Dark, &material::Lookup { number: &number, color: &color });
     let knobs: Vec<Knob> = Knob::ALL.into_iter().filter(|knob| now.is_glass() || knob.frosted()).collect();
     for knob in knobs {
-        ui.add_space(4.0);
+        ui.add_space(theme::PROPS_ROW_SPACE);
         let [left, right] = pair(ui);
         ui.painter().text(left.left_center(), Align2::LEFT_CENTER, knob.label(), FontId::proportional(PROPS_SMALL_TEXT), palette.muted);
         let bound = now.advanced.get(knob.key()).and_then(Value::as_str).filter(|text| text.starts_with('$'));
@@ -1367,15 +1487,15 @@ fn effects(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
         let kind = EffectKind::of(effect);
         let off = effects::is_off(effect);
         let color = palette.foreground.gamma_multiply(if off { 0.5 } else { 1.0 });
-        let icon = Rect::from_center_size(pos2(name.left() + 13.0, name.center().y), Vec2::splat(PROPS_ICON));
+        let icon = Rect::from_center_size(pos2(name.left() + theme::PROPS_BUTTON_ICON_AT, name.center().y), Vec2::splat(PROPS_ICON));
         icons::paint(ui.painter(), icon, kind.map_or("circle-dashed", EffectKind::icon), color);
         let label = match kind {
             Some(EffectKind::Shader) => effects::shader_name(effect),
             Some(kind) => kind.label().to_owned(),
             None => "Unknown".to_owned(),
         };
-        let words = ui.painter().with_clip_rect(name.shrink2(vec2(4.0, 0.0)));
-        words.text(pos2(icon.right() + 6.0, name.center().y), Align2::LEFT_CENTER, label, FontId::proportional(PROPS_TEXT), color);
+        let words = ui.painter().with_clip_rect(name.shrink2(vec2(theme::PROPS_NAME_INSET, 0.0)));
+        words.text(pos2(icon.right() + theme::PROPS_ICON_GAP, name.center().y), Align2::LEFT_CENTER, label, FontId::proportional(PROPS_TEXT), color);
         let eye = Rect::from_min_max(line.min, pos2(line.right() - button, line.bottom()));
         if corner_button(ui, eye, if off { "eye-off" } else { "eye" }, if off { "Show" } else { "Hide" }, palette).clicked() {
             let mut changed = list.clone();
@@ -1431,7 +1551,7 @@ fn effect_fields(ui: &mut Ui, shown: &Shown, effect: &Value, kind: Option<Effect
     let caption = |ui: &mut Ui, text: &str| {
         ui.add_space(PROPS_GAP);
         small(ui, text, palette);
-        ui.add_space(4.0);
+        ui.add_space(theme::PROPS_ROW_SPACE);
     };
     match kind? {
         EffectKind::DropShadow | EffectKind::InnerShadow => {
@@ -1516,7 +1636,7 @@ fn with_uniform(effect: &Value, name: &str, value: Value) -> Value {
 fn shader_fields(ui: &mut Ui, shown: &Shown, effect: &Value) -> Option<Value> {
     let palette = shown.palette;
     let url = effect.get("url").and_then(Value::as_str).unwrap_or("").trim();
-    ui.add_space(4.0);
+    ui.add_space(theme::PROPS_ROW_SPACE);
     let note = |ui: &mut Ui, text: &str| {
         ui.add(egui::Label::new(RichText::new(text).size(PROPS_SMALL_TEXT).color(palette.muted)).wrap());
     };
@@ -1550,7 +1670,7 @@ fn shader_fields(ui: &mut Ui, shown: &Shown, effect: &Value) -> Option<Value> {
             }
             shader::Type::Float | shader::Type::Int => {
                 small(ui, uniform.title(), palette);
-                ui.add_space(4.0);
+                ui.add_space(theme::PROPS_ROW_SPACE);
                 let whole = uniform.ty == shader::Type::Int;
                 let bound = given.and_then(Value::as_str).and_then(|text| text.strip_prefix('$'));
                 // Fields are told apart by their place in the panel, so two uniforms never share one.
@@ -1563,7 +1683,7 @@ fn shader_fields(ui: &mut Ui, shown: &Shown, effect: &Value) -> Option<Value> {
             }
             shader::Type::Vec(size) if uniform.color => {
                 small(ui, uniform.title(), palette);
-                ui.add_space(4.0);
+                ui.add_space(theme::PROPS_ROW_SPACE);
                 let unit = |v: f32| crate::render::to_u8(v * 255.0);
                 let current = Rgba { r: unit(now[0]), g: unit(now[1]), b: unit(now[2]), a: if size == 4 { unit(now[3]) } else { 255 } };
                 if let Some(c) = color_row(ui, &uniform.name, current, palette) {
@@ -1574,7 +1694,7 @@ fn shader_fields(ui: &mut Ui, shown: &Shown, effect: &Value) -> Option<Value> {
             }
             shader::Type::Sampler => {
                 small(ui, uniform.title(), palette);
-                ui.add_space(4.0);
+                ui.add_space(theme::PROPS_ROW_SPACE);
                 let source = shader::source(uniform, given);
                 let choices = [("Layer", "pencil:object"), ("Background", "pencil:background"), ("Picture", "")];
                 let chosen = match source {
@@ -1590,7 +1710,7 @@ fn shader_fields(ui: &mut Ui, shown: &Shown, effect: &Value) -> Option<Value> {
                     changed = Some(with_uniform(effect, &uniform.name, Value::String((*value).to_owned())));
                 }
                 if chosen == 2 {
-                    ui.add_space(4.0);
+                    ui.add_space(theme::PROPS_ROW_SPACE);
                     let mut file = if let shader::Source::File(file) = source { file } else { String::new() };
                     ui.push_id(&uniform.name, |ui| {
                         if ui.add(egui::TextEdit::singleline(&mut file).hint_text("./picture.png").desired_width(f32::INFINITY)).changed() {
@@ -1626,8 +1746,19 @@ fn menu_item(ui: &mut Ui, icon: &'static str, label: &str, enabled: bool, palett
         ui.painter().rect_filled(row, PROPS_RADIUS, palette.hover);
     }
     let color = if enabled { palette.foreground } else { palette.muted.gamma_multiply(0.5) };
-    icons::paint(ui.painter(), Rect::from_center_size(pos2(row.left() + 13.0, row.center().y), Vec2::splat(PROPS_ICON)), icon, color);
-    ui.painter().text(pos2(row.left() + 28.0, row.center().y), Align2::LEFT_CENTER, label, FontId::proportional(PROPS_TEXT), color);
+    icons::paint(
+        ui.painter(),
+        Rect::from_center_size(pos2(row.left() + theme::PROPS_BUTTON_ICON_AT, row.center().y), Vec2::splat(PROPS_ICON)),
+        icon,
+        color,
+    );
+    ui.painter().text(
+        pos2(row.left() + theme::PROPS_BUTTON_TEXT_AT, row.center().y),
+        Align2::LEFT_CENTER,
+        label,
+        FontId::proportional(PROPS_TEXT),
+        color,
+    );
     response
 }
 
@@ -1651,7 +1782,7 @@ fn text(ui: &mut Ui, shown: &Shown, edits: &mut Edits) {
     let style = pen_doc::layout::text_style(node, shown.vars, shown.theme);
     ui.add_space(PROPS_GAP);
     small(ui, &style.family, palette);
-    ui.add_space(4.0);
+    ui.add_space(theme::PROPS_ROW_SPACE);
     let [left, right] = pair(ui);
     if let Some(v) = number(ui, left, Tag::Icon("a-large-small"), Some(style.size), node.font_size.as_ref().and_then(Num::variable), 0.5, palette) {
         edits.set(move |n| n.font_size = Some(Num::new(v.max(1.0))));
@@ -1820,7 +1951,7 @@ fn export_controls(ui: &mut Ui, now: Options, count: usize, palette: Palette) ->
     if now.format == Format::Jpeg {
         ui.add_space(PROPS_GAP);
         small(ui, "Quality", palette);
-        ui.add_space(4.0);
+        ui.add_space(theme::PROPS_ROW_SPACE);
         let qualities: Vec<(&str, bool)> = export::QUALITIES.iter().map(|(label, quality)| (*label, *quality == now.quality)).collect();
         if let Some(index) = choice_row(ui, "export-quality", &qualities, palette)
             && let Some((_, quality)) = export::QUALITIES.get(index)
@@ -1845,13 +1976,13 @@ fn export_controls(ui: &mut Ui, now: Options, count: usize, palette: Palette) ->
 /// The line between two sections, from edge to edge of the island.
 fn rule(ui: &mut Ui, palette: Palette) {
     let (line, _) = ui.allocate_exact_size(vec2(ui.available_width(), 1.0), Sense::hover());
-    ui.painter().hline(line.x_range().expand(PROPS_PADDING), line.center().y, Stroke::new(1.0, palette.outline.gamma_multiply(0.7)));
-    ui.add_space(8.0);
+    ui.painter().hline(line.x_range().expand(PROPS_PADDING), line.center().y, Stroke::new(1.0, palette.outline.gamma_multiply(theme::RULE_FADE)));
+    ui.add_space(theme::PROPS_SECTION_SPACE);
 }
 
 /// The space under a section: more when it has content under its title.
 fn end(ui: &mut Ui, content: bool) {
-    ui.add_space(if content { 16.0 } else { 8.0 });
+    ui.add_space(if content { theme::PROPS_SECTION_END } else { theme::PROPS_SECTION_SPACE });
 }
 
 /// A section's title, with a small icon button at its right end if `action` (icon, hint) is given. Returns
@@ -1864,7 +1995,8 @@ fn title_row(ui: &mut Ui, title: &str, action: Option<(&'static str, &str)>, pal
 
 /// An icon button at the right end of `row`.
 fn corner_button(ui: &mut Ui, row: Rect, icon: &'static str, hint: &str, palette: Palette) -> Response {
-    let button = Rect::from_center_size(pos2(row.right() - 9.0, row.center().y), Vec2::splat(20.0));
+    let button =
+        Rect::from_center_size(pos2(row.right() - theme::PROPS_CORNER_BUTTON[0], row.center().y), Vec2::splat(theme::PROPS_CORNER_BUTTON[1]));
     let response = ui.interact(button, ui.scope_id().with(("corner", icon, row.top().to_bits())), Sense::click());
     let lit = crate::sidebar::lit(&response);
     if lit {
@@ -1885,7 +2017,7 @@ fn small(ui: &mut Ui, text: &str, palette: Palette) {
 
 /// Paints the rounded backdrop of a field or button.
 fn plate(ui: &Ui, rect: Rect, hovered: bool, palette: Palette) {
-    ui.painter().rect_filled(rect, PROPS_RADIUS, palette.hover.gamma_multiply(if hovered { 0.7 } else { 0.45 }));
+    ui.painter().rect_filled(rect, PROPS_RADIUS, palette.hover.gamma_multiply(if hovered { theme::PROPS_PLATE[0] } else { theme::PROPS_PLATE[1] }));
 }
 
 /// The next row split into two equal cells.
@@ -1926,19 +2058,31 @@ fn number_or_mixed(
     plate(ui, cell, false, palette);
     let salt = match tag {
         Tag::Letter(letter) => {
-            ui.painter().text(pos2(cell.left() + 8.0, cell.center().y), Align2::LEFT_CENTER, letter, FontId::proportional(PROPS_TEXT), palette.muted);
+            ui.painter().text(
+                pos2(cell.left() + theme::PROPS_LETTER_AT, cell.center().y),
+                Align2::LEFT_CENTER,
+                letter,
+                FontId::proportional(PROPS_TEXT),
+                palette.muted,
+            );
             letter
         }
         Tag::Icon(icon) => {
-            icons::paint(ui.painter(), Rect::from_center_size(pos2(cell.left() + 13.0, cell.center().y), Vec2::splat(11.0)), icon, palette.muted);
+            icons::paint(
+                ui.painter(),
+                Rect::from_center_size(pos2(cell.left() + theme::PROPS_BUTTON_ICON_AT, cell.center().y), Vec2::splat(theme::PROPS_FIELD_ICON)),
+                icon,
+                palette.muted,
+            );
             icon
         }
         Tag::Corner(corner) => {
-            corner_mark(ui.painter(), pos2(cell.left() + 13.0, cell.center().y), corner, palette.muted);
+            corner_mark(ui.painter(), pos2(cell.left() + theme::PROPS_BUTTON_ICON_AT, cell.center().y), corner, palette.muted);
             ["top left", "top right", "bottom right", "bottom left"].get(corner).copied().unwrap_or("corner")
         }
     };
-    let inner = Rect::from_min_max(pos2(cell.left() + 24.0, cell.top()), pos2(cell.right() - 4.0, cell.bottom()));
+    let inner =
+        Rect::from_min_max(pos2(cell.left() + theme::PROPS_FIELD_VALUE, cell.top()), pos2(cell.right() - theme::PROPS_NAME_INSET, cell.bottom()));
     let mut child = ui.new_child(UiBuilder::new().max_rect(inner).layout(Layout::left_to_right(Align::Center)).id_salt((salt, cell.top().to_bits())));
     if let Some(name) = bound {
         child.add(egui::Label::new(RichText::new(format!("${name}")).color(ACCENT)).truncate());
@@ -1963,7 +2107,7 @@ fn number_or_mixed(
 /// The small picture in front of a corner's field: two sides of a box meeting in a round corner, the corner
 /// (counted clockwise from the top left) where it is on the box.
 fn corner_mark(painter: &egui::Painter, centre: egui::Pos2, corner: usize, color: Color32) {
-    let (half, round) = (4.5, 3.5);
+    let [half, round, width] = theme::PROPS_CORNER_MARK;
     // Drawn for the top left corner, then mirrored to where the corner is.
     let (flip_x, flip_y) = (if matches!(corner, 1 | 2) { -1.0 } else { 1.0 }, if matches!(corner, 2 | 3) { -1.0 } else { 1.0 });
     let mut points = vec![vec2(-half, half)];
@@ -1973,7 +2117,7 @@ fn corner_mark(painter: &egui::Painter, centre: egui::Pos2, corner: usize, color
     }));
     points.push(vec2(half, -half));
     let line = points.into_iter().map(|v| centre + vec2(v.x * flip_x, v.y * flip_y)).collect();
-    painter.add(egui::Shape::line(line, Stroke::new(1.2, color)));
+    painter.add(egui::Shape::line(line, Stroke::new(width, color)));
 }
 
 /// One plate with several icon buttons side by side; the index of the one clicked.
@@ -1989,7 +2133,11 @@ fn icon_group(ui: &mut Ui, group: Rect, buttons: &[(&'static str, &str)], palett
         let response = ui.interact(cell, ui.scope_id().with(("group", *icon, group.top().to_bits())), Sense::click());
         let lit = crate::sidebar::lit(&response);
         if lit {
-            ui.painter().rect_filled(cell.shrink(2.0), PROPS_RADIUS - 1.0, palette.hover.gamma_multiply(0.6));
+            ui.painter().rect_filled(
+                cell.shrink(theme::PROPS_GROUP_LIT[0]),
+                PROPS_RADIUS - 1.0,
+                palette.hover.gamma_multiply(theme::PROPS_GROUP_LIT[1]),
+            );
         }
         crate::sidebar::focus_ring(ui, &response, cell.shrink(1.0), PROPS_RADIUS - 1.0, palette);
         let color = if lit { palette.foreground } else { palette.muted };
@@ -2009,8 +2157,10 @@ fn choice_row(ui: &mut Ui, salt: &str, choices: &[(&str, bool)], palette: Palett
     let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), PROPS_ROW - 2.0), Sense::hover());
     plate(ui, row, false, palette);
     let font = FontId::proportional(PROPS_SMALL_TEXT);
-    let widths: Vec<f32> =
-        choices.iter().map(|(label, _)| ui.painter().layout_no_wrap((*label).to_owned(), font.clone(), palette.muted).size().x + 10.0).collect();
+    let widths: Vec<f32> = choices
+        .iter()
+        .map(|(label, _)| ui.painter().layout_no_wrap((*label).to_owned(), font.clone(), palette.muted).size().x + theme::PROPS_CHOICE_ROOM)
+        .collect();
     let scale = row.width() / widths.iter().sum::<f32>().max(1.0);
     let mut clicked = None;
     let mut left = row.left();
@@ -2033,16 +2183,22 @@ fn choice_row(ui: &mut Ui, salt: &str, choices: &[(&str, bool)], palette: Palett
 /// A small box to tick, with its label. Returns whether it was clicked; a disabled one never is.
 fn check(ui: &mut Ui, cell: Rect, label: &str, checked: bool, enabled: bool, palette: Palette) -> bool {
     let response = ui.interact(cell, ui.scope_id().with(("check", label)), if enabled { Sense::click() } else { Sense::hover() });
-    let tick = Rect::from_center_size(pos2(cell.left() + 7.0, cell.center().y), Vec2::splat(12.0));
+    let tick = Rect::from_center_size(pos2(cell.left() + theme::PROPS_CHECK[0], cell.center().y), Vec2::splat(theme::PROPS_CHECK[1]));
     let dim = if enabled { 1.0 } else { 0.5 };
     if checked {
-        ui.painter().rect_filled(tick, 3.0, ACCENT.gamma_multiply(dim));
-        icons::paint(ui.painter(), tick.shrink(2.0), "check", Color32::WHITE);
+        ui.painter().rect_filled(tick, theme::PROPS_CHECK[2], ACCENT.gamma_multiply(dim));
+        icons::paint(ui.painter(), tick.shrink(theme::PROPS_CHECK_INSET), "check", theme::ON_ACCENT);
     } else {
-        ui.painter().rect_stroke(tick, 3.0, Stroke::new(1.0, palette.outline), StrokeKind::Inside);
+        ui.painter().rect_stroke(tick, theme::PROPS_CHECK[2], Stroke::new(1.0, palette.outline), StrokeKind::Inside);
     }
     let color = if response.hovered() && enabled { palette.foreground } else { palette.muted.gamma_multiply(dim) };
-    ui.painter().text(pos2(tick.right() + 7.0, cell.center().y), Align2::LEFT_CENTER, label, FontId::proportional(PROPS_SMALL_TEXT), color);
+    ui.painter().text(
+        pos2(tick.right() + theme::PROPS_CHECK[3], cell.center().y),
+        Align2::LEFT_CENTER,
+        label,
+        FontId::proportional(PROPS_SMALL_TEXT),
+        color,
+    );
     response.clicked()
 }
 
@@ -2054,7 +2210,7 @@ fn plate_button(ui: &mut Ui, cell: Rect, salt: &str, icon: Option<&'static str>,
     crate::sidebar::name_button(&response, label);
     let font = FontId::proportional(PROPS_TEXT);
     let words = ui.painter().layout_no_wrap(label.to_owned(), font.clone(), palette.foreground).size().x;
-    let room = if icon.is_some() { PROPS_ICON + 5.0 } else { 0.0 };
+    let room = if icon.is_some() { PROPS_ICON + theme::PROPS_BUTTON_ICON_ROOM } else { 0.0 };
     let content = room + words;
     let left = cell.center().x - content / 2.0;
     if let Some(icon) = icon {
@@ -2091,17 +2247,20 @@ fn color_row(ui: &mut Ui, salt: &str, current: Rgba, palette: Palette) -> Option
     let (row, _) = ui.allocate_exact_size(vec2(ui.available_width() - 2.0 * (PROPS_ROW - 2.0), PROPS_ROW), Sense::hover());
     plate(ui, row, false, palette);
     let mut result = None;
-    let inner = Rect::from_min_max(pos2(row.left() + 4.0, row.top()), pos2(row.right() - 4.0, row.bottom()));
+    let inner = Rect::from_min_max(pos2(row.left() + theme::PROPS_NAME_INSET, row.top()), pos2(row.right() - theme::PROPS_NAME_INSET, row.bottom()));
     let mut child = ui.new_child(UiBuilder::new().max_rect(inner).layout(Layout::left_to_right(Align::Center)).id_salt(("color", salt)));
-    child.spacing_mut().item_spacing.x = 4.0;
-    child.spacing_mut().interact_size.y = PROPS_ROW - 8.0;
+    child.spacing_mut().item_spacing.x = theme::PROPS_COLOR_ROW[0];
+    child.spacing_mut().interact_size.y = PROPS_ROW - theme::PROPS_COLOR_ROW[1];
     let mut c = color32(current);
     if egui::color_picker::color_edit_button_srgba(&mut child, &mut c, egui::color_picker::Alpha::OnlyBlend).changed() {
         let [r, g, b, a] = c.to_srgba_unmultiplied();
         result = Some(Rgba { r, g, b, a });
     }
     let mut hex = current.to_hex().trim_start_matches('#').to_owned();
-    let field = egui::TextEdit::singleline(&mut hex).frame(egui::Frame::new()).background_color(Color32::TRANSPARENT).desired_width(62.0);
+    let field = egui::TextEdit::singleline(&mut hex)
+        .frame(egui::Frame::new())
+        .background_color(Color32::TRANSPARENT)
+        .desired_width(theme::PROPS_COLOR_ROW[2]);
     if child.add(field).changed()
         && let Some(parsed) = Rgba::parse(&format!("#{hex}"))
     {
@@ -2138,9 +2297,15 @@ fn paint_editor(ui: &mut Ui, paints: Option<&Paints>, shown: &Shown, what: &'sta
                 let c = shown.vars.color(text, shown.theme).unwrap_or_default();
                 let (row, _) = ui.allocate_exact_size(vec2(ui.available_width() - 2.0 * (PROPS_ROW - 2.0), PROPS_ROW), Sense::hover());
                 plate(ui, row, false, palette);
-                let swatch = Rect::from_center_size(pos2(row.left() + 12.0, row.center().y), Vec2::splat(14.0));
-                ui.painter().rect_filled(swatch, 3.0, color32(c));
-                ui.painter().text(pos2(swatch.right() + 6.0, row.center().y), Align2::LEFT_CENTER, text, FontId::proportional(PROPS_TEXT), ACCENT);
+                let swatch = Rect::from_center_size(pos2(row.left() + theme::PROPS_SWATCH[0], row.center().y), Vec2::splat(theme::PROPS_SWATCH[1]));
+                ui.painter().rect_filled(swatch, theme::PROPS_SWATCH[2], color32(c));
+                ui.painter().text(
+                    pos2(swatch.right() + theme::PROPS_ICON_GAP, row.center().y),
+                    Align2::LEFT_CENTER,
+                    text,
+                    FontId::proportional(PROPS_TEXT),
+                    ACCENT,
+                );
             }
             Paint::Solid(text) => {
                 if let Some(c) = color_row(ui, &salt, Rgba::parse(text).unwrap_or_default(), palette) {
@@ -2162,7 +2327,7 @@ fn paint_editor(ui: &mut Ui, paints: Option<&Paints>, shown: &Shown, what: &'sta
                 let (row, _) = ui.allocate_exact_size(vec2(ui.available_width() - 2.0 * (PROPS_ROW - 2.0), PROPS_ROW), Sense::hover());
                 plate(ui, row, false, palette);
                 ui.painter().text(
-                    pos2(row.left() + 8.0, row.center().y),
+                    pos2(row.left() + theme::PROPS_HEAD_ICON_AT, row.center().y),
                     Align2::LEFT_CENTER,
                     label,
                     FontId::proportional(PROPS_TEXT),
@@ -2211,10 +2376,10 @@ fn picture_tools(ui: &mut Ui, line: Rect, pictures: &mut Pictures, palette: Pale
     } else {
         plate(ui, field, false, palette);
     }
-    let inner = field.shrink2(vec2(8.0, 0.0));
+    let inner = field.shrink2(vec2(theme::PROPS_QUICK_FIELD[0], 0.0));
     let mut child = ui.new_child(UiBuilder::new().max_rect(inner).layout(Layout::left_to_right(Align::Center)).id_salt("quick-edit"));
     if pictures.ours {
-        child.spacing_mut().item_spacing.x = 6.0;
+        child.spacing_mut().item_spacing.x = theme::PROPS_QUICK_FIELD[1];
         child.add(egui::Spinner::new().size(PROPS_ICON).color(palette.muted));
         child.add(egui::Label::new(RichText::new("Changing the picture…").color(palette.muted)).truncate().selectable(false));
         if plate_button(ui, button, "quick-cancel", None, "Cancel", palette).on_hover_text("Give up this picture").clicked() {
@@ -2248,7 +2413,7 @@ fn picture_tools(ui: &mut Ui, line: Rect, pictures: &mut Pictures, palette: Pale
         // isn't taken for "Edit with AI…" beside it, which keeps the wand.
         let response = ui.interact(button, ui.scope_id().with("quick-go"), if ready { Sense::click() } else { Sense::hover() });
         let mark = if ready {
-            let fill = if response.hovered() { palette.primary.gamma_multiply(0.85) } else { palette.primary };
+            let fill = if response.hovered() { palette.primary.gamma_multiply(theme::PRIMARY_HOVER) } else { palette.primary };
             ui.painter().circle_filled(button.center(), SEND_BUTTON / 2.0, fill);
             palette.primary_text
         } else {
@@ -2261,15 +2426,15 @@ fn picture_tools(ui: &mut Ui, line: Rect, pictures: &mut Pictures, palette: Pale
         }
     }
     if let Some(problem) = &pictures.problem {
-        ui.add_space(4.0);
+        ui.add_space(theme::PROPS_ROW_SPACE);
         ui.add(egui::Label::new(RichText::new(problem).size(PROPS_SMALL_TEXT).color(PROBLEM)).wrap().selectable(false));
     }
 }
 
 fn section(ui: &mut Ui, title: &str) {
-    ui.add_space(10.0);
+    ui.add_space(theme::PROPS_DOC[0]);
     ui.separator();
-    ui.label(RichText::new(title).strong().size(12.0));
+    ui.label(RichText::new(title).strong().size(theme::PROPS_DOC[1]));
     ui.add_space(2.0);
 }
 
@@ -2317,8 +2482,8 @@ fn document_panel(ui: &mut Ui, editor: &mut Editor, dark: bool) {
                 ui.label(RichText::new(&name).small());
                 if kind == "color" {
                     let color = vars.color(&format!("${name}"), &theme_context).unwrap_or_default();
-                    let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
-                    ui.painter().rect_filled(rect, 3.0, color32(color));
+                    let (rect, _) = ui.allocate_exact_size(egui::Vec2::splat(theme::PROPS_SWATCH[1]), egui::Sense::hover());
+                    ui.painter().rect_filled(rect, theme::PROPS_SWATCH[2], color32(color));
                 } else {
                     let value = vars.lookup(&name, &theme_context).map(ToString::to_string).unwrap_or_default();
                     ui.label(RichText::new(value).small().color(palette.muted));
@@ -2334,6 +2499,110 @@ fn document_panel(ui: &mut Ui, editor: &mut Editor, dark: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Two boards: one with a component in a group, one with an instance of it beside a group in a group.
+    fn layered() -> Editor {
+        let json = r#"{"version":"2.22","children":[
+            {"type":"frame","id":"parts","width":200,"height":100,"layout":"none","children":[
+                {"type":"frame","id":"card","reusable":true,"width":80,"height":40,"layout":"none","children":[
+                    {"type":"frame","id":"inner","width":40,"height":20,"layout":"none","children":[
+                        {"type":"rectangle","id":"dot","width":5,"height":5}]}]}]},
+            {"type":"frame","id":"uses","x":300,"width":200,"height":100,"layout":"none","children":[
+                {"type":"ref","id":"one","ref":"card"},
+                {"type":"frame","id":"outer","width":50,"height":50,"layout":"none","children":[
+                    {"type":"frame","id":"deep","width":20,"height":20,"layout":"none","children":[
+                        {"type":"rectangle","id":"leaf","width":5,"height":5}]}]}]}
+        ]}"#;
+        let mut editor = Editor::new(pen_doc::read(json).unwrap(), None, 1);
+        editor.refresh(&|_| (0.0, 0.0));
+        editor
+    }
+
+    /// The ids of the unfolded lines, each with its depth, as the list shows them with `selection`.
+    fn listed(editor: &mut Editor, ctx: &egui::Context, selection: &[&str]) -> Vec<(String, usize)> {
+        editor.selection = selection.iter().map(|id| (*id).to_owned()).collect();
+        let held = holders(&editor.doc, &editor.selection);
+        let lines = ctx.data_mut(|data| unfolded(editor, &held, egui::Id::NULL, data));
+        lines.iter().map(|line| (line.id().to_owned(), line.depth)).collect()
+    }
+
+    #[test]
+    fn what_holds_the_selection_is_what_each_selected_layer_lies_in() {
+        let editor = layered();
+        let all = ["parts", "card", "inner", "dot", "uses", "one", "one/inner", "one/dot", "outer", "deep", "leaf", "gone"];
+        // The rule the list went by before, asked of every line for every selected layer.
+        let before = |row: &str, selection: &[String]| {
+            selection.iter().any(|s| {
+                let inside = s.strip_prefix(row).is_some_and(|rest| rest.starts_with('/'));
+                let root = s.split('/').next().unwrap_or(s);
+                inside || (s != row && edit::ancestry(&editor.doc, root).iter().any(|a| a == row))
+            })
+        };
+        for first in all {
+            for second in all {
+                let selection = vec![first.to_owned(), second.to_owned()];
+                let held = holders(&editor.doc, &selection);
+                for row in all {
+                    assert_eq!(held.contains(row), before(row, &selection), "{row} with {selection:?}");
+                }
+            }
+        }
+        assert!(holders(&editor.doc, &[]).is_empty());
+    }
+
+    #[test]
+    fn the_list_unfolds_the_top_level_and_what_holds_the_selection_and_keeps_that_open() {
+        let (mut editor, ctx) = (layered(), egui::Context::default());
+        let ids = |lines: &[(String, usize)]| lines.iter().map(|(id, depth)| format!("{depth}{id}")).collect::<Vec<_>>().join(" ");
+        // The last layer is at the top; boards are open, what is on them is closed.
+        assert_eq!(ids(&listed(&mut editor, &ctx, &[])), "0uses 1outer 1one 0parts 1card");
+        // A selected layer opens everything it lies in, in an instance too.
+        assert_eq!(ids(&listed(&mut editor, &ctx, &["leaf"])), "0uses 1outer 2deep 3leaf 1one 0parts 1card");
+        // Human: inside an instance a layer is named after the instance alone (`one/dot`), so the instance
+        // opens for it and a group in between does not.
+        assert_eq!(ids(&listed(&mut editor, &ctx, &["one/dot"])), "0uses 1outer 2deep 3leaf 1one 2one/inner 0parts 1card");
+        // What was opened for the selection stays open when the selection goes.
+        assert_eq!(ids(&listed(&mut editor, &ctx, &[])), "0uses 1outer 2deep 3leaf 1one 2one/inner 0parts 1card");
+        // A container the person closes is closed, with everything in it.
+        ctx.data_mut(|data| data.insert_temp(open_id(egui::Id::NULL, "uses"), false));
+        assert_eq!(ids(&listed(&mut editor, &ctx, &[])), "0uses 0parts 1card");
+        // While it holds the selection it is open all the same.
+        assert_eq!(ids(&listed(&mut editor, &ctx, &["one"])), "0uses 1outer 2deep 3leaf 1one 2one/inner 0parts 1card");
+    }
+
+    #[test]
+    fn only_the_lines_in_view_are_drawn_and_a_click_selects_one() {
+        let (mut editor, ctx) = (layered(), egui::Context::default());
+        // A window three lines high: far fewer labels than layers are laid out.
+        let frame = |editor: &mut Editor, events: Vec<egui::Event>, tall: f32| {
+            let input = egui::RawInput { screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(240.0, tall))), events, ..Default::default() };
+            let mut names = Vec::new();
+            let mut drawn = ctx.run_ui(input, |ui| layers(ui, editor, false));
+            // The font picture this frame made is for a screen; there is none here.
+            drawn.textures_delta.clear();
+            for clipped in &drawn.shapes {
+                if let egui::Shape::Text(text) = &clipped.shape {
+                    names.push(text.galley.text().to_owned());
+                }
+            }
+            names
+        };
+        editor.selection = vec!["leaf".to_owned()];
+        let all = frame(&mut editor, Vec::new(), 600.0);
+        let few = frame(&mut editor, Vec::new(), 60.0);
+        // Seven lines are unfolded; each draws its kind and its name.
+        let lines = |texts: &[String]| texts.iter().filter(|text| *text == "#" || *text == "▭" || *text == "◇").count();
+        assert_eq!(lines(&all), 7, "{all:?}");
+        assert!(lines(&few) <= 4, "{few:?}");
+        // A click on the second line's name selects that layer.
+        let high = 18.0 + 3.0;
+        let at = pos2(60.0, high * 1.5);
+        frame(&mut editor, vec![egui::Event::PointerMoved(at)], 600.0);
+        let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
+        frame(&mut editor, vec![press(true)], 600.0);
+        frame(&mut editor, vec![press(false)], 600.0);
+        assert_eq!(editor.selection, ["outer"]);
+    }
 
     #[test]
     fn corners_are_kept_as_one_value_until_they_differ() {

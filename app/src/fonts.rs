@@ -40,6 +40,18 @@ struct Bound {
 /// `None` until [`install`] ran (and in tests, where no text is drawn).
 static BOUND: Mutex<Option<Bound>> = Mutex::new(None);
 
+/// A number that changes whenever the faces egui can draw with do.
+// Human: what `choose` answers stays the same until then, so an answer can be kept with the number it was
+// given under and used again while the number is the same ([`crate::render::FaceChoice`]).
+static CHANGES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The number of the faces as they are now: an answer of [`choose`] holds while this stays the same.
+// Agent: one atomic read, no lock; safe on any thread.
+#[must_use]
+pub fn changes() -> u64 {
+    CHANGES.load(std::sync::atomic::Ordering::Acquire)
+}
+
 /// How text of one family, weight and slant is drawn.
 pub struct Chosen {
     /// The egui family holding the face.
@@ -133,6 +145,7 @@ pub fn sync(ctx: &egui::Context) -> bool {
     }
     let ready = std::mem::take(&mut bound.sent);
     bound.active.extend(ready);
+    CHANGES.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
     true
 }
 
@@ -243,6 +256,7 @@ pub fn install(ctx: &egui::Context) {
         broken: HashSet::new(),
         files: HashMap::new(),
     });
+    CHANGES.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
     ctx.set_fonts(fonts);
     // Human: the interface text is small (12 px); egui's defaults are larger.
     ctx.all_styles_mut(|style| {

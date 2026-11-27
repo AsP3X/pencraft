@@ -139,6 +139,26 @@ impl Editor {
             || self.scene_node(id).is_some_and(|scene| is_locked(&scene.node))
     }
 
+    /// Whether any of the layers `ids` is locked, as [`Editor::locked`] says of each.
+    // Human: the canvas asks this of the whole selection several times a frame. Asking layer by layer goes
+    // through the document for each one; here the document is gone through once, carrying down whether a
+    // layer on the way was locked.
+    // Agent: READS the document as it is now (not the scene, which an edit in this frame may have left behind).
+    #[must_use]
+    pub fn any_locked(&self, ids: &[String]) -> bool {
+        fn visit(nodes: &[Node], held: bool, wanted: &std::collections::HashSet<&str>) -> bool {
+            nodes.iter().any(|node| {
+                let locked = held || is_locked(node);
+                (locked && wanted.contains(node.id.as_str())) || visit(node.kids(), locked, wanted)
+            })
+        }
+        if let [id] = ids {
+            return self.locked(id);
+        }
+        let wanted = ids.iter().map(|id| id.split('/').next().unwrap_or(id)).collect();
+        visit(&self.doc.children, false, &wanted) || ids.iter().any(|id| self.scene_node(id).is_some_and(|scene| is_locked(&scene.node)))
+    }
+
     /// Gives the selected layers the colour `color`: as their fill, or as their stroke when `stroke` says so or
     /// the layer is a line or a connector, which have no fill. One undo step.
     pub fn drop_color(&mut self, color: pen_doc::color::Rgba, stroke: bool) {

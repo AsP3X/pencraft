@@ -124,6 +124,8 @@ struct TextItem {
     outlines: Vec<(Color32, f32)>,
     /// A number for the letters it shows ([`letters_key`]).
     key: u64,
+    /// The face it is drawn in, chosen when the item was made.
+    face: FaceChoice,
 }
 
 /// A number that texts with the same letters in the same face and size share: what one of them has brought
@@ -297,6 +299,7 @@ pub fn ink_box(ctx: &egui::Context, scene: &SceneNode, vars: Vars<'_>) -> Option
     let galley = ctx.fonts_mut(|fonts| fonts.layout_job(text_job(&style, Color32::WHITE, laid)));
     let text = TextItem {
         key: letters_key(&style),
+        face: FaceChoice::of(&style),
         style,
         color: Color32::WHITE,
         to_doc: scene.to_doc,
@@ -1385,6 +1388,7 @@ impl Builder<'_> {
                 out.push(Item::Text {
                     text: Box::new(TextItem {
                         key: letters_key(&style),
+                        face: FaceChoice::of(&style),
                         style,
                         color: color32(text_color.with_opacity(opacity)),
                         to_doc,
@@ -1483,6 +1487,7 @@ impl Builder<'_> {
                 out.push(Item::Text {
                     text: Box::new(TextItem {
                         key: letters_key(&style),
+                        face: FaceChoice::of(&style),
                         style,
                         color: color32(color.with_opacity(opacity)),
                         to_doc: scene.to_doc,
@@ -2148,26 +2153,62 @@ fn build_path(segments: &[Segment], vb: Rect, w: f32, h: f32) -> Path {
     b.build()
 }
 
+/// The face a text is drawn in, worked out once and kept with the text.
+// Human: every text on the canvas asked for its face every frame: a lock shared by all of them, the family's
+// name in small letters, a look through the installed families and a name put together for egui. The answer
+// only changes when a face becomes ready, so it is kept, with the number the faces had when it was given.
+#[derive(Clone)]
+pub struct FaceChoice {
+    family: FontFamily,
+    coords: VariationCoords,
+    /// The letters are slanted, because the family has no italic of its own.
+    italics: bool,
+    /// [`crate::fonts::changes`] when this was worked out.
+    as_of: u64,
+}
+
+impl FaceChoice {
+    /// The face for text in `style`'s family, weight and slant, as the faces are now.
+    // Agent: TAKES the fonts' lock; asks for the face when it isn't ready yet, as `fonts::choose` does.
+    #[must_use]
+    pub fn of(style: &TextStyle) -> FaceChoice {
+        // Read before the choice is made: a face that becomes ready meanwhile makes this choice an old one.
+        let as_of = crate::fonts::changes();
+        // Human: the face the text names, when it is installed and ready; until then, and for a family nothing
+        // installed can stand in for, the interface face in its regular, bold or italic.
+        let (family, coords, italics) = match crate::fonts::choose(&style.family, style.weight, style.italic) {
+            Some(chosen) => (chosen.family, chosen.coords, chosen.slant),
+            None if style.italic => (FontFamily::Name(ITALIC_FAMILY.into()), VariationCoords::default(), false),
+            None if style.weight >= 600 => (FontFamily::Name(BOLD_FAMILY.into()), VariationCoords::default(), false),
+            None if style.family.to_ascii_lowercase().contains("mono") => (FontFamily::Monospace, VariationCoords::default(), false),
+            None => (FontFamily::Proportional, VariationCoords::default(), false),
+        };
+        FaceChoice { family, coords, italics, as_of }
+    }
+
+    /// This choice while it still holds, or the choice as the faces are now.
+    fn now(&self, style: &TextStyle) -> std::borrow::Cow<'_, FaceChoice> {
+        if self.as_of == crate::fonts::changes() { std::borrow::Cow::Borrowed(self) } else { std::borrow::Cow::Owned(FaceChoice::of(style)) }
+    }
+}
+
 /// The egui text job for a style at `scale` screen points per canvas unit.
 #[must_use]
 pub fn text_job(style: &TextStyle, color: Color32, scale: f32) -> LayoutJob {
-    // Human: the face the text names, when it is installed and ready; until then, and for a family nothing
-    // installed can stand in for, the interface face in its regular, bold or italic.
-    let (family, coords, italics) = match crate::fonts::choose(&style.family, style.weight, style.italic) {
-        Some(chosen) => (chosen.family, chosen.coords, chosen.slant),
-        None if style.italic => (FontFamily::Name(ITALIC_FAMILY.into()), VariationCoords::default(), false),
-        None if style.weight >= 600 => (FontFamily::Name(BOLD_FAMILY.into()), VariationCoords::default(), false),
-        None if style.family.to_ascii_lowercase().contains("mono") => (FontFamily::Monospace, VariationCoords::default(), false),
-        None => (FontFamily::Proportional, VariationCoords::default(), false),
-    };
+    text_job_in(style, &FaceChoice::of(style), color, scale)
+}
+
+/// [`text_job`] with the face already chosen (`face` must be the choice for `style`'s family, weight and slant).
+// Agent: HOT-PATH (every visible text, every frame); takes no lock.
+fn text_job_in(style: &TextStyle, face: &FaceChoice, color: Color32, scale: f32) -> LayoutJob {
     let size = style.size * scale;
     let format = TextFormat {
-        font_id: FontId::new(size, family),
+        font_id: FontId::new(size, face.family.clone()),
         color,
         extra_letter_spacing: style.letter_spacing * scale,
         line_height: style.line_px.map(|l| l * scale),
-        coords,
-        italics,
+        coords: face.coords.clone(),
+        italics: face.italics,
         underline: if style.underline { Stroke::new((size / 16.0).max(1.0), color) } else { Stroke::NONE },
         strikethrough: if style.strikethrough { Stroke::new((size / 16.0).max(1.0), color) } else { Stroke::NONE },
         ..Default::default()
@@ -2236,7 +2277,8 @@ fn outline_ring(width: f32, z: f32) -> Vec<(f32, f32)> {
 /// turned by: the whole text, or its letters one by one when it is set on a circle. `laid` is the scale it
 /// is laid out at; `lay` lays a paragraph out.
 fn text_placed(text: &TextItem, color: Color32, laid: f32, lay: &mut dyn FnMut(LayoutJob) -> std::sync::Arc<egui::Galley>) -> Vec<Letter> {
-    let galley = lay(text_job(&text.style, color, laid));
+    let face = text.face.now(&text.style);
+    let galley = lay(text_job_in(&text.style, &face, color, laid));
     // Human: where the letter whose middle is `at` along a text `long` stands, and the angle it is turned by.
     let (w, h) = text.size;
     if let Some(circle) = text.circle {
@@ -2300,6 +2342,8 @@ fn letters_along(
     let spacing = text.style.letter_spacing * laid;
     let length = last.pos.x + last.advance_width - spacing - first.pos.x;
     let turn = text.to_doc.m[1].atan2(text.to_doc.m[0]);
+    // One letter is set in the face of the whole text.
+    let face = text.face.now(&text.style);
     let mut single = text.style.clone();
     single.letter_spacing = 0.0;
     single.wrap = None;
@@ -2312,7 +2356,7 @@ fn letters_along(
         let (stands, angle) = place(middle / laid, length / laid);
         let on_circle = text.to_doc.apply(stands);
         single.content = glyph.chr.to_string();
-        let letter = lay(text_job(&single, color, laid));
+        let letter = lay(text_job_in(&single, &face, color, laid));
         let Some(drawn) = letter.rows.first().and_then(|row| row.row.glyphs.first().map(|glyph| (row.pos, glyph.pos, glyph.advance_width))) else {
             continue;
         };
@@ -2372,6 +2416,19 @@ fn text_corner(style: &TextStyle, size: (f32, f32), text_h: f32) -> Point {
         (true, TextVAlign::Bottom) => h - text_h,
     };
     Point::new(anchor_x, top)
+}
+
+/// For the timings (`crate::timing`): nanoseconds to make one text's job, with its face chosen each time or kept.
+#[cfg(test)]
+pub fn timing_text_job(style: &TextStyle, kept: bool) -> f64 {
+    const TIMES: u32 = 200_000;
+    let face = FaceChoice::of(style);
+    let start = std::time::Instant::now();
+    for _ in 0..TIMES {
+        let style = std::hint::black_box(style);
+        std::hint::black_box(if kept { text_job_in(style, &face.now(style), Color32::BLACK, 0.25) } else { text_job(style, Color32::BLACK, 0.25) });
+    }
+    start.elapsed().as_secs_f64() * 1e9 / f64::from(TIMES)
 }
 
 #[cfg(test)]

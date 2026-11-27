@@ -144,8 +144,26 @@ pub const AGENT_FLASH_TIME: std::time::Duration = std::time::Duration::from_mill
 /// comet, the status pill, the waiting dots) is drawn again: about 30 frames a second, so a long run doesn't
 /// keep the computer drawing at full rate. New content still shows at once.
 pub const IDLE_FRAME: std::time::Duration = std::time::Duration::from_millis(33);
-/// How long the message line shows a sentence.
+/// How far a line of the layers list is set in for each layer it lies in.
+pub const LAYER_INDENT: f32 = 12.0;
+/// The room a line of the layers list without children leaves where the others have their arrow.
+pub const LAYER_ARROW_ROOM: f32 = 14.0;
+/// The lock at the end of a line of the layers list.
+pub const LAYER_LOCK: f32 = 13.0;
+/// How far the ground of a selected line of the layers list reaches past the line, sideways and up and down.
+pub const LAYER_SELECTED_GROW: egui::Vec2 = egui::vec2(4.0, 1.0);
+/// The corners of that ground.
+pub const LAYER_SELECTED_RADIUS: f32 = 4.0;
+/// How long a message shows that says what happened.
 pub const TOAST_TIME: std::time::Duration = std::time::Duration::from_secs(6);
+/// How long a message shows that says what went wrong.
+pub const TOAST_PROBLEM_TIME: std::time::Duration = std::time::Duration::from_secs(12);
+/// How many messages show at once; one more pushes the oldest out.
+pub const TOAST_MOST: usize = 3;
+/// The room between two messages, one above the other.
+pub const TOAST_STACK_GAP: f32 = 8.0;
+/// The warning sign before a message that says what went wrong.
+pub const TOAST_ICON: f32 = 14.0;
 /// How long the message line's capsule takes to open, or to take the shape of the next sentence.
 pub const TOAST_MORPH: std::time::Duration = std::time::Duration::from_millis(320);
 /// How long the flash on a sentence just said lasts.
@@ -570,6 +588,360 @@ pub const FRAME_NAME_PILL_RADIUS: f32 = 5.0;
 /// Seconds a board's name takes to move to a new place and to turn into the pill or back.
 pub const FRAME_NAME_MORPH: f32 = 0.22;
 
+/// How far under the sidebar's top edge its row of view buttons starts.
+pub const SIDEBAR_HEADER_TOP: f32 = 13.0;
+/// How wide the buttons of the sidebar's header are: chat history, Chat, one of the views on the right, and New.
+pub const SIDEBAR_BUTTONS: [f32; 4] = [31.0, 66.0, 26.0, 68.0];
+/// The room between the sidebar's view buttons on the right of its header.
+pub const SIDEBAR_VIEW_GAP: f32 = 4.0;
+/// How far from the sidebar's left edge the title of its view starts.
+pub const SIDEBAR_TITLE_LEFT: f32 = 16.0;
+/// The room between the sidebar's view buttons and the title row under them.
+pub const SIDEBAR_TITLE_GAP: f32 = 10.0;
+/// The room between the sidebar's title row and the line under it.
+pub const SIDEBAR_RULE_GAP: f32 = 11.0;
+/// How strong the line under a header is, as a share of the outline's colour.
+pub const RULE_FADE: f32 = 0.7;
+/// The room over a sidebar view that only holds a note ("Nothing here yet.").
+pub const SIDEBAR_NOTE_TOP: f32 = 12.0;
+/// The room over the list of a sidebar view (layers, components).
+pub const SIDEBAR_LIST_TOP: f32 = 8.0;
+/// How far down the new chat view its ideas start, as a share of the view's height.
+pub const CHAT_START_DROP: f32 = 0.17;
+/// The least and the most that is, in points.
+pub const CHAT_START_DROP_RANGE: [f32; 2] = [12.0, 93.0];
+/// The room between the new chat view's heading and its ideas.
+pub const CHAT_START_HEAD_GAP: f32 = 8.0;
+/// The room between two ideas of the new chat view.
+pub const CHAT_START_IDEA_GAP: f32 = 9.0;
+/// The room round the words of an idea's chip (new chat view, message bar, home screen).
+pub const CHIP_PADDING: egui::Vec2 = egui::vec2(11.0, 6.0);
+/// The room over the new chat view's second and third section.
+pub const CHAT_START_SECTION_GAP: [f32; 2] = [17.0, 18.0];
+/// The message box's row of controls: how far it is set in at the sides, and how far over the box's
+/// bottom edge it starts and ends.
+pub const COMPOSER_CONTROLS: [f32; 3] = [11.0, 34.0, 6.0];
+/// How far under the message box's top edge its text starts.
+pub const COMPOSER_TEXT_TOP: f32 = 14.0;
+/// The room between the message box's text and its controls.
+pub const COMPOSER_TEXT_GAP: f32 = 2.0;
+/// The room between two controls of the message box and of the message bar's right side.
+pub const COMPOSER_GAP: f32 = 8.0;
+/// The room the assistant's name in the message box leaves for its arrow.
+pub const MODEL_BUTTON_ROOM: f32 = 16.0;
+/// How high the assistant's name in the message box is as a button.
+pub const MODEL_BUTTON_HEIGHT: f32 = 22.0;
+/// The arrow after the assistant's name: how far its middle lies from the right edge, how far under
+/// the middle line, and its size.
+pub const MODEL_BUTTON_ARROW: [f32; 3] = [5.0, 1.0, 10.0];
+/// How far the message bar's content is set in at its ends.
+pub const MESSAGE_BAR_INSET: f32 = 10.0;
+/// The room between two controls on the left of the message bar.
+pub const MESSAGE_BAR_GAP: f32 = 12.0;
+/// How far the message bar's text field is set down to bring its line to the icons' middle line.
+pub const MESSAGE_FIELD_DROP: f32 = 3.0;
+/// The room between two ideas in the row over the message bar.
+pub const BAR_IDEA_GAP: f32 = 6.0;
+/// The least room an idea in that row is started in.
+pub const BAR_IDEA_LEAST: f32 = 120.0;
+/// The stop button's ring: how far inside the button's edge it lies, and how thick it is.
+pub const STOP_RING: [f32; 2] = [0.75, 1.5];
+/// The square in the stop button: its size and its corners.
+pub const STOP_SQUARE: [f32; 2] = [8.0, 2.0];
+/// How large the send button's disc is while there is nothing to send, as a share of its full size.
+pub const SEND_REST: f32 = 0.9;
+/// The size of the small arrow that opens a tool's menu on the rail.
+pub const RAIL_MENU_ARROW: f32 = 10.0;
+/// The ground of that arrow while its menu is open: how far inside its slot it lies, sideways and up
+/// and down, and its corners.
+pub const RAIL_MENU_PLATE: [f32; 3] = [4.0, 1.0, 5.0];
+/// The focus ring of a rail button: how far inside its slot it lies sideways, and its corners.
+pub const RAIL_FOCUS: [f32; 2] = [2.0, 6.0];
+/// The room between a button and the menu it opens: above the message box, and beside the rail.
+pub const MENU_GAP: [f32; 2] = [8.0, 10.0];
+/// The corners of a row of a rail menu.
+pub const RAIL_MENU_RADIUS: f32 = 6.0;
+/// Where a rail menu's row has its tick, its icon and its words, from the left, and its shortcut,
+/// from the right.
+pub const RAIL_MENU_AT: [f32; 4] = [14.0, 33.0, 49.0, 12.0];
+/// The size of the tick in a rail menu's row.
+pub const RAIL_MENU_TICK: f32 = 11.0;
+/// The size of the icon in a rail menu's row.
+pub const RAIL_MENU_ICON: f32 = 14.0;
+/// A selection's or attachment's chip in the message box: the room beside its words, where its icon's
+/// middle and its words lie from the left, the icon's size, and its corners.
+pub const SELECTION_CHIP: [f32; 5] = [31.0, 13.0, 23.0, 11.0, 4.0];
+/// The room the message bar's two ends take together.
+pub const MESSAGE_BAR_ENDS: f32 = 20.0;
+/// The room between a text button's icon and its words.
+pub const BUTTON_ICON_GAP: f32 = 6.0;
+/// How thick the light running along the message box's top edge is.
+pub const COMPOSER_LIGHT_WIDTH: f32 = 1.5;
+/// How far towards white the middle of that light goes.
+pub const COMPOSER_LIGHT_WHITE: f32 = 0.7;
+/// How strong the ground under a hovered button that isn't lit is, as a share of the hover colour.
+pub const HOVER_FAINT: f32 = 0.5;
+/// How strong the outline of an island that is turning into another is, and a soft plate's ground.
+pub const OUTLINE_SOFT: f32 = 0.6;
+
+/// How strong the open lock of a layer that isn't locked is, as a share of the muted colour.
+pub const LAYER_LOCK_FAINT: f32 = 0.45;
+/// How strong the ground of a selected line is, as a share of the accent.
+pub const SELECTED_WASH: f32 = 0.18;
+/// The room between two rows of a section of the properties island.
+pub const PROPS_ROW_SPACE: f32 = 4.0;
+/// The room over and under the line between two sections of the properties island.
+pub const PROPS_SECTION_SPACE: f32 = 8.0;
+/// The room under a section of the properties island that holds something.
+pub const PROPS_SECTION_END: f32 = 16.0;
+/// The room under the properties island's header.
+pub const PROPS_HEAD_SPACE: f32 = 12.0;
+/// Where the middle of the icon in the properties island's header lies, from the row's left.
+pub const PROPS_HEAD_ICON_AT: f32 = 8.0;
+/// The layer's name in the properties island's header: its distance from the icon, how far it is set
+/// down, and the room kept free at its right.
+pub const PROPS_HEAD_NAME: [f32; 3] = [6.0, 3.0, 22.0];
+/// The small button at the right of a title row: how far its middle lies from the row's right, and its size.
+pub const PROPS_CORNER_BUTTON: [f32; 2] = [9.0, 20.0];
+/// How strong the ground of a title row's button that is on is, as a share of the accent.
+pub const PROPS_LIT: f32 = 0.25;
+/// A folding line ("Advanced"): where its arrow's middle lies from the left, and the room between
+/// arrow and words.
+pub const PROPS_FOLD: [f32; 2] = [6.0, 4.0];
+/// Where the middle of a field's or button's icon lies, from its left edge.
+pub const PROPS_BUTTON_ICON_AT: f32 = 13.0;
+/// Where the words of a menu's line start, from its left edge.
+pub const PROPS_BUTTON_TEXT_AT: f32 = 28.0;
+/// How far a field's content is set in from its edges.
+pub const PROPS_NAME_INSET: f32 = 4.0;
+/// The room between an icon and the words after it in the properties island.
+pub const PROPS_ICON_GAP: f32 = 6.0;
+/// How strong a field's ground is under the pointer and otherwise, as a share of the hover colour.
+pub const PROPS_PLATE: [f32; 2] = [0.7, 0.45];
+/// Where a field's letter ("X", "W") starts, from its left edge.
+pub const PROPS_LETTER_AT: f32 = 8.0;
+/// The size of the icon in a number field.
+pub const PROPS_FIELD_ICON: f32 = 11.0;
+/// Where a number field's value starts, from its left edge.
+pub const PROPS_FIELD_VALUE: f32 = 24.0;
+/// The mark of one corner in a corner radius field: half its size, its rounding, and its line's width.
+pub const PROPS_CORNER_MARK: [f32; 3] = [4.5, 3.5, 1.2];
+/// The lit button of a group of icon buttons: how far inside its cell its ground lies, and how strong
+/// that ground is as a share of the hover colour.
+pub const PROPS_GROUP_LIT: [f32; 2] = [2.0, 0.6];
+/// The room a choice of a row of choices has beside its words.
+pub const PROPS_CHOICE_ROOM: f32 = 10.0;
+/// A checkbox in the properties island: where its box's middle lies from the left, the box's size and
+/// corners, and the room between box and words.
+pub const PROPS_CHECK: [f32; 4] = [7.0, 12.0, 3.0, 7.0];
+/// How far inside its box a checkbox's tick lies.
+pub const PROPS_CHECK_INSET: f32 = 2.0;
+/// The room between a button's icon and its words in the properties island.
+pub const PROPS_BUTTON_ICON_ROOM: f32 = 5.0;
+/// A colour's row: the room between its parts, how much lower than the row its controls are, and the
+/// width of its hex field.
+pub const PROPS_COLOR_ROW: [f32; 3] = [4.0, 8.0, 62.0];
+/// A colour's small square: where its middle lies from the row's left, its size, and its corners.
+pub const PROPS_SWATCH: [f32; 3] = [12.0, 14.0, 3.0];
+/// The quick field under a picture: how far its content is set in, and the room between its parts.
+pub const PROPS_QUICK_FIELD: [f32; 2] = [8.0, 6.0];
+/// How strong a filled button is under the pointer, as a share of the primary colour.
+pub const PRIMARY_HOVER: f32 = 0.85;
+/// The document panel: the room over a section's title, and the title's size.
+pub const PROPS_DOC: [f32; 2] = [10.0, 12.0];
+
+/// The room at the right of a settings page, for the scroll bar.
+pub const SETTINGS_PAGE_RIGHT: f32 = 13.0;
+/// The room a settings page keeps free at its right for the close cross.
+pub const SETTINGS_PAGE_CLOSE_ROOM: f32 = 40.0;
+/// The room over a settings page's title and under its last row.
+pub const SETTINGS_PAGE_ENDS: [f32; 2] = [30.0, 36.0];
+/// The room at the right of the bar under a settings form.
+pub const SETTINGS_FOOTER_RIGHT: f32 = 20.0;
+/// The settings window's close cross: how far its left edge lies from the window's right, how far
+/// under the window's top, and its size.
+pub const SETTINGS_CLOSE: [f32; 3] = [44.0, 16.0, 28.0];
+/// The list of pages: how far it is set in at the sides, at the top and at the bottom.
+pub const SETTINGS_NAV_INSET: [f32; 3] = [14.0, 22.0, 18.0];
+/// Where the words of the list of pages start, from its left edge (and end, from its right).
+pub const SETTINGS_NAV_TEXT_AT: f32 = 10.0;
+/// "Settings" over the list of pages: how far down its middle line is, and its size.
+pub const SETTINGS_NAV_TITLE: [f32; 2] = [14.0, 15.0];
+/// The search field over the list of pages: how far down it starts, and the room under it.
+pub const SETTINGS_NAV_SEARCH: [f32; 2] = [44.0, 16.0];
+/// A group of pages: how far down its name's middle line is, the name's size, the height the name
+/// takes, and the room under the group.
+pub const SETTINGS_NAV_GROUP: [f32; 4] = [11.0, 11.0, 24.0, 14.0];
+/// Where the middle of a page's icon lies in its entry, from the left.
+pub const SETTINGS_NAV_ICON_AT: f32 = 17.0;
+/// Where a page's name starts in its entry, from the left.
+pub const SETTINGS_NAV_NAME_AT: f32 = 35.0;
+/// The version under the list of pages: how far over the list's bottom its middle line is, and its size.
+pub const SETTINGS_NAV_FOOT: [f32; 2] = [8.0, 11.5];
+/// The room under a settings page's title or opening words.
+pub const SETTINGS_INTRO_GAP: f32 = 18.0;
+/// The room between two fields of a settings form, one under the other.
+pub const SETTINGS_FIELD_GAP: f32 = 14.0;
+/// The room between two fields of a settings form side by side, and round a block of lines to copy.
+pub const SETTINGS_FIELDS_ACROSS: f32 = 12.0;
+/// The room between a settings card and the note or block under it.
+pub const SETTINGS_PART_GAP: f32 = 10.0;
+/// The room between two controls in one settings row, and over a card's own note.
+pub const SETTINGS_INLINE_GAP: f32 = 8.0;
+/// The room between a settings field and the line of words under it.
+pub const SETTINGS_LINE_GAP: f32 = 6.0;
+/// The room between a settings field's name and a hint, and between two hints.
+pub const SETTINGS_HINT_GAP: f32 = 4.0;
+/// The size of the notes on a settings page.
+pub const SETTINGS_NOTE_TEXT: f32 = 12.0;
+/// The size of a footnote under a settings card.
+pub const SETTINGS_FOOTNOTE_TEXT: f32 = 11.0;
+/// How wide the field for a stock photo site's key is.
+pub const SETTINGS_KEY_FIELD: f32 = 170.0;
+/// How wide the field for the name the assistant is called by is.
+pub const SETTINGS_LABEL_FIELD: f32 = 160.0;
+/// The size of the Copy button beside a line to copy.
+pub const SETTINGS_COPY_BUTTON: f32 = 26.0;
+/// The corners of a block of lines to copy.
+pub const SETTINGS_CODE_RADIUS: f32 = 10.0;
+/// The room between such a block's edge and its lines, across and down.
+pub const SETTINGS_CODE_MARGIN: [i8; 2] = [12, 10];
+/// A model's row in the provider form: the room between its fields, the size of its bin, the height
+/// of the fields' names over the first row, and the room under the fields.
+pub const SETTINGS_MODEL_ROW: [f32; 4] = [8.0, 30.0, 24.0, 4.0];
+/// How the width of a model's row is shared among its five fields.
+pub const SETTINGS_MODEL_SHARES: [f32; 5] = [0.34, 0.18, 0.18, 0.15, 0.15];
+
+/// The room a settings page's title keeps free at its right.
+pub const SETTINGS_TITLE_ROOM: f32 = 60.0;
+/// A card's heading: its height, how far it is set in, and its size.
+pub const SETTINGS_HEADING: [f32; 3] = [18.0, 4.0, 12.0];
+/// The room between the square in front of a settings row and the row's name.
+pub const SETTINGS_LEAD_GAP: f32 = 12.0;
+/// What a row's square holds: the size of a letter, of an icon, and of an icon on the primary colour.
+pub const SETTINGS_TILE_MARK: [f32; 3] = [13.0, 15.0, 16.0];
+/// A settings row's words: the room between them and the row's control, and their least width.
+pub const SETTINGS_ROW_TEXT: [f32; 2] = [16.0, 80.0];
+/// The size of a settings row's name when it is set strong, and when it is set in the typewriter face.
+pub const SETTINGS_ROW_NAME: [f32; 2] = [14.0, 12.5];
+/// A settings row's second line: the room between it and the name, and the room a row's words have
+/// over and under them together.
+pub const SETTINGS_ROW_MORE: [f32; 2] = [3.0, 24.0];
+/// The room between two controls at the right of a settings row.
+pub const SETTINGS_ROW_CONTROL_GAP: f32 = 6.0;
+/// A settings row that leads somewhere, under the pointer: how far inside the row its ground lies,
+/// and how strong that ground is as a share of the hover colour.
+pub const SETTINGS_LINK: [f32; 2] = [4.0, 0.6];
+/// How far over and under the middle of a link row, or of a tile of the grid of providers, its two
+/// lines of words lie.
+pub const SETTINGS_LINK_LINES: f32 = 9.0;
+/// The small chip after a link row's name: its text size, its distance from the name, how far over
+/// the line it starts, the room beside its words, its height, and its corners.
+pub const SETTINGS_LINK_CHIP: [f32; 6] = [11.0, 8.0, 10.0, 14.0, 20.0, 6.0];
+/// The room a link row's second line keeps free at the right for the row's pill.
+pub const SETTINGS_LINK_PILL_ROOM: f32 = 170.0;
+/// The arrow at the end of a link row: how far its middle lies from the right, and its size.
+pub const SETTINGS_LINK_ARROW: [f32; 2] = [22.0, 13.0];
+/// A card's "Show more" row: its height, its text size, and the room between its words and its arrow.
+pub const SETTINGS_MORE_ROW: [f32; 3] = [40.0, 12.5, 12.0];
+/// The size of a small icon in the settings: an arrow, a plus, a button's icon.
+pub const SETTINGS_SMALL_ICON: f32 = 13.0;
+/// How far from a settings row's right edge a value shown in the row ends.
+pub const SETTINGS_ROW_VALUE_AT: f32 = 40.0;
+/// The least width a line of words in the settings is cut short to.
+pub const SETTINGS_LINE_LEAST: f32 = 40.0;
+/// A tile of the grid of providers: its corners, the room at its left, the room between its square and
+/// its words, the room kept free at its right, and how far its plus lies from the right.
+pub const SETTINGS_TILE_BUTTON_LOOK: [f32; 5] = [10.0, 12.0, 10.0, 34.0, 20.0];
+/// How far over such a tile's middle its name lies (its second line lies as a link row's does).
+pub const SETTINGS_TILE_NAME_LIFT: f32 = 8.0;
+/// The knob of a switch.
+pub const SWITCH_KNOB: Color32 = Color32::WHITE;
+/// The size of the words in a settings control: a segment, a menu, a button, a field's hint.
+pub const SETTINGS_CONTROL_TEXT: f32 = 12.5;
+/// A choice of a segmented control: the room beside its words, the room its icon takes, its corners,
+/// and where its content starts from the left.
+pub const SETTINGS_SEGMENT_LOOK: [f32; 4] = [20.0, 19.0, 6.0, 10.0];
+/// Where the middle of a control's icon lies, from where the control's content starts.
+pub const SETTINGS_BUTTON_ICON_AT: f32 = 6.5;
+/// A menu's button in the settings: the room beside its words, where its words start, how far its
+/// arrow's middle lies from the right, the arrow's size, and the room between button and menu.
+pub const SETTINGS_MENU: [f32; 5] = [40.0, 11.0, 14.0, 12.0, 4.0];
+/// A line of such a menu: the room beside its words, its corners, where its tick's middle lies, the
+/// tick's size, and where its words start.
+pub const SETTINGS_MENU_ROW: [f32; 5] = [42.0, 6.0, 14.0, 11.0, 28.0];
+/// A settings button: the room beside its content, where its content starts, and how pale it is
+/// while it can't be pressed.
+pub const SETTINGS_BUTTON: [f32; 3] = [24.0, 12.0, 0.45];
+/// The room between a settings field's name and the field.
+pub const SETTINGS_FIELD_NAME_GAP: f32 = 6.0;
+/// Where the middle of the looking glass lies in a settings search field, from its left.
+pub const SETTINGS_SEARCH_ICON_AT: f32 = 16.0;
+/// A pill that says how something stands ("Connected"): its height, its text size, the room beside
+/// its words, its corners, where its dot's middle lies, the dot's radius, and where its words start.
+pub const SETTINGS_PILL: [f32; 7] = [22.0, 11.5, 30.0, 11.0, 12.0, 3.0, 21.0];
+/// How strong a coloured pill's edge and ground are, as shares of its colour.
+pub const SETTINGS_PILL_TINT: [f32; 2] = [0.5, 0.14];
+
+/// The room the window a provider's models are chosen in keeps free of the app's window, each way.
+pub const MODEL_PICKER_MARGIN: f32 = 32.0;
+/// That window's parts: the height of its head, how far down its search field starts, the room
+/// between the field and the list, and the room between the list and the buttons.
+pub const MODEL_PICKER_HEAD: [f32; 4] = [40.0, 52.0, 12.0, 16.0];
+/// Its head: how far down its title's and its second line's middle lines are, and the second line's size.
+pub const MODEL_PICKER_TITLE: [f32; 3] = [9.0, 30.0, 12.0];
+/// The buttons in its corner: how wide their place is, how far it reaches past the head's corner, how
+/// far down it ends, the room between the buttons, and a button's size.
+pub const MODEL_PICKER_CORNER: [f32; 5] = [64.0, 6.0, 22.0, 4.0, 28.0];
+/// While its list loads: how far over the middle the spinner turns, the spinner's size, and how far
+/// under the middle the words are.
+pub const MODEL_PICKER_WAIT: [f32; 3] = [16.0, 18.0, 14.0];
+/// A model's row: how far inside the row its ground lies, sideways and up and down, the ground's
+/// corners, where its box's middle lies, where its name starts, and the room at its right.
+pub const MODEL_PICKER_ROW_LOOK: [f32; 6] = [5.0, 1.0, 7.0, 23.0, 42.0, 14.0];
+/// A row's box: its size, its corners, the size of its tick, and how strong the empty box's edge is
+/// as a share of the muted colour.
+pub const MODEL_PICKER_TICK: [f32; 4] = [16.0, 5.0, 11.0, 0.55];
+/// What the window says when it has no list: the room beside its words, their least width, the
+/// height its icon takes, the room under the icon, the room over its button, how far down the icon's
+/// middle is, the icon's size, and how far down the words start.
+pub const MODEL_PICKER_EMPTY: [f32; 8] = [64.0, 80.0, 22.0, 10.0, 14.0, 11.0, 20.0, 32.0];
+
+/// The room the action search keeps free of the window's sides, together.
+pub const ACTIONS_MARGIN: f32 = 40.0;
+/// The action search's field: its height, where its looking glass's middle lies, the glass's size,
+/// where the typed words start, and the room at the right.
+pub const ACTIONS_BAR: [f32; 5] = [48.0, 25.0, 15.0, 43.0, 14.0];
+/// The room over and under the action search's list.
+pub const ACTIONS_LIST_PAD: f32 = 6.0;
+/// The size of "No actions found".
+pub const ACTIONS_NOTE_TEXT: f32 = 12.5;
+/// A heading in the action search's list: its height, where its words start, how far under the
+/// middle line they lie, and their size.
+pub const ACTIONS_HEADING: [f32; 4] = [26.0, 17.0, 2.0, 11.0];
+/// The ground of the lit action: how far inside its line it lies sideways, and its corners.
+pub const ACTIONS_PLATE: [f32; 2] = [7.0, 7.0];
+/// An action's line: where its icon's middle lies, the icon's size, where its name starts, the
+/// name's size, and the room at the right.
+pub const ACTIONS_LINE: [f32; 5] = [18.0, 14.0, 36.0, 13.0, 10.0];
+/// A key of an action's shortcut: its text size, the room beside its letter, its least width, its
+/// height, the room between two keys, and its corners.
+pub const ACTIONS_KEY: [f32; 6] = [10.5, 8.0, 19.0, 18.0, 3.0, 4.0];
+/// The ground of a key on the lit action's line.
+pub const ACTIONS_KEY_LIT: Color32 = Color32::from_rgba_premultiplied(40, 40, 40, 40);
+/// The colour of a mark on the problem colour: the cross of the close button under the pointer.
+pub const ON_PROBLEM: Color32 = Color32::WHITE;
+/// The fill of a handle on the canvas: a corner of the selection, the turning handle, a point of a path.
+pub const HANDLE_FILL: Color32 = Color32::WHITE;
+/// How wide a question over the app is ("Save changes to …?"), and the list of recovered designs.
+pub const DIALOG_WIDTH: [f32; 2] = [340.0, 380.0];
+/// The room between such a question's words and its buttons.
+pub const DIALOG_BUTTONS_GAP: f32 = 10.0;
+/// The room between such a window's words and the list under them.
+pub const DIALOG_LIST_GAP: f32 = 4.0;
+/// How much larger a point or handle of a path is under the pointer.
+pub const PEN_OVER_GROW: f32 = 1.5;
+
 /// The colours of one appearance.
 #[derive(Clone, Copy, Debug)]
 pub struct Palette {
@@ -755,6 +1127,10 @@ pub const SETTINGS_GROUP_GAP: f32 = 26.0;
 pub const SETTINGS_PAGE_WIDTH: f32 = 620.0;
 /// Space between the list of pages and the page.
 pub const SETTINGS_PAGE_INSET: f32 = 40.0;
+/// How wide a question over the settings window is ("Remove …?", "Discard the changes to …?").
+pub const SETTINGS_CONFIRM_WIDTH: f32 = 340.0;
+/// The room between such a question's words and its buttons.
+pub const SETTINGS_CONFIRM_GAP: f32 = 10.0;
 /// Height of the bar under a settings form that holds its buttons.
 pub const SETTINGS_FOOTER: f32 = 60.0;
 /// Height of one choice of a segmented control.

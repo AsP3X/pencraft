@@ -23,9 +23,9 @@ use crate::prefs::{AgentName, Agents, Appearance, CustomProvider, ImageService, 
 use crate::secrets::{self, Keychain, Vault};
 use crate::sidebar::icon_button;
 use crate::theme::{
-    self, CHIP_RADIUS, DIALOG_BACKDROP, FIELD_HEIGHT, ICON_SIZE, Palette, SETTINGS_FOOTER, SETTINGS_MARGIN, SETTINGS_MAX, SETTINGS_NAME_FIELD,
-    SETTINGS_NAV_ROW, SETTINGS_NAV_WIDTH, SETTINGS_PAGE_INSET, SETTINGS_PAGE_WIDTH, SETTINGS_PROVIDERS_SHOWN, SETTINGS_RADIUS, SETTINGS_TOOLS_SHOWN,
-    SIDEBAR_TEXT_SIZE,
+    self, CHIP_RADIUS, DIALOG_BACKDROP, FIELD_HEIGHT, ICON_SIZE, Palette, SETTINGS_CONFIRM_GAP, SETTINGS_CONFIRM_WIDTH, SETTINGS_FOOTER,
+    SETTINGS_MARGIN, SETTINGS_MAX, SETTINGS_NAME_FIELD, SETTINGS_NAV_ROW, SETTINGS_NAV_WIDTH, SETTINGS_PAGE_INSET, SETTINGS_PAGE_WIDTH,
+    SETTINGS_PROVIDERS_SHOWN, SETTINGS_RADIUS, SETTINGS_TOOLS_SHOWN, SIDEBAR_TEXT_SIZE,
 };
 
 mod models;
@@ -686,6 +686,20 @@ pub struct Settings {
     vault: Box<dyn Vault>,
     /// What the user asked to remove, while they are asked whether they are sure.
     removing: Option<Removal>,
+    /// Where the user asked to go while a form held changes that aren't saved, while they are asked whether
+    /// to throw those away.
+    leaving: Option<Leave>,
+    /// That question was brought up in this frame.
+    leaving_asked_now: bool,
+}
+
+/// A way out of a form: both close it without saving.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Leave {
+    /// The window closes (its cross, Escape, a click beside it).
+    Close,
+    /// Another page shows.
+    Page(Page),
 }
 
 /// Something in the settings that takes a key out of the keychain when removed, so it is asked about first.
@@ -724,6 +738,8 @@ impl Default for Settings {
             picker: None,
             vault: Box::new(Keychain),
             removing: None,
+            leaving: None,
+            leaving_asked_now: false,
         }
     }
 }
@@ -878,23 +894,26 @@ impl Settings {
             .backdrop_color(egui::Color32::from_black_alpha(DIALOG_BACKDROP))
             .show(ctx, |ui| {
                 let (window, _) = ui.allocate_exact_size(size, Sense::hover());
-                self.pages(ui, window, facts, palette);
+                self.pages(ui, window, facts, prefs, palette);
                 let searching = !self.query.trim().is_empty();
                 // Human: a form's buttons stay in a bar under the page, so they are there however far the
                 // form is scrolled.
                 let form = !searching && (self.form.is_some() || self.cli.is_some() || self.image_form.is_some());
                 let bar = if form { SETTINGS_FOOTER } else { 0.0 };
                 let area = Rect::from_min_max(pos2(window.left() + SETTINGS_NAV_WIDTH + 1.0, window.top() + 1.0), window.max - vec2(1.0, 1.0));
-                let page = Rect::from_min_max(pos2(area.left() + SETTINGS_PAGE_INSET, area.top()), pos2(area.right() - 13.0, area.bottom() - bar));
+                let page = Rect::from_min_max(
+                    pos2(area.left() + SETTINGS_PAGE_INSET, area.top()),
+                    pos2(area.right() - theme::SETTINGS_PAGE_RIGHT, area.bottom() - bar),
+                );
                 ui.scope_builder(UiBuilder::new().max_rect(page), |ui| {
                     ui.set_clip_rect(page.intersect(ui.clip_rect()));
                     egui::ScrollArea::vertical().id_salt(("settings-page", self.page, form, searching)).auto_shrink([false, false]).show(ui, |ui| {
                         // Human: room on the right for the close cross and the scroll bar.
-                        ui.set_max_width((page.width() - 40.0).min(SETTINGS_PAGE_WIDTH));
+                        ui.set_max_width((page.width() - theme::SETTINGS_PAGE_CLOSE_ROOM).min(SETTINGS_PAGE_WIDTH));
                         ui.spacing_mut().item_spacing.y = 0.0;
-                        ui.add_space(30.0);
+                        ui.add_space(theme::SETTINGS_PAGE_ENDS[0]);
                         if searching {
-                            self.results(ui, palette);
+                            self.results(ui, prefs, palette);
                         } else {
                             match self.page {
                                 Page::General => general(ui, prefs, facts, palette, &mut self.check_now),
@@ -910,29 +929,148 @@ impl Settings {
                                 }
                             }
                         }
-                        ui.add_space(36.0);
+                        ui.add_space(theme::SETTINGS_PAGE_ENDS[1]);
                     });
                 });
                 if form {
                     let bar = Rect::from_min_max(pos2(area.left(), area.bottom() - bar), area.max);
                     ui.painter().hline(bar.x_range(), bar.top(), Stroke::new(1.0, palette.outline));
-                    let inner = Rect::from_min_max(pos2(bar.left() + SETTINGS_PAGE_INSET, bar.top()), pos2(bar.right() - 20.0, bar.bottom()));
+                    let inner = Rect::from_min_max(
+                        pos2(bar.left() + SETTINGS_PAGE_INSET, bar.top()),
+                        pos2(bar.right() - theme::SETTINGS_FOOTER_RIGHT, bar.bottom()),
+                    );
                     let buttons = UiBuilder::new().max_rect(inner).layout(Layout::right_to_left(Align::Center));
                     ui.scope_builder(buttons, |ui| self.footer(ui, prefs, palette, &mut notice));
                 }
-                let close = Rect::from_min_size(pos2(window.right() - 44.0, window.top() + 16.0), Vec2::splat(28.0));
+                let close = Rect::from_min_size(
+                    pos2(window.right() - theme::SETTINGS_CLOSE[0], window.top() + theme::SETTINGS_CLOSE[1]),
+                    Vec2::splat(theme::SETTINGS_CLOSE[2]),
+                );
                 ui.scope_builder(UiBuilder::new().max_rect(close), |ui| {
                     if icon_button(ui, "x", close.size(), false, "Close", palette).clicked() {
-                        self.open = false;
+                        self.leave(Leave::Close, prefs);
                     }
                 });
             });
+        // Human: Escape and a click beside the window close it as its cross does: not before the question,
+        // when a form holds something that isn't saved.
         if modal.should_close() {
-            self.open = false;
+            self.leave(Leave::Close, prefs);
         }
         self.choose_models(ctx, palette);
         self.confirm_removal(ctx, prefs, palette, &mut notice);
+        self.confirm_leaving(ctx, palette);
         notice
+    }
+
+    /// What an open form holds that isn't saved, as the question about it names it; `None` when nothing
+    /// would be lost by closing.
+    // Human: a form counts as changed when it differs from what it showed when it was opened: the saved
+    // provider, service or assistant, or the empty (or pre-filled) form for a new one. A key typed for a
+    // stock photo site counts too. A typed key is never read here, only compared.
+    fn unsaved(&self, prefs: &Prefs) -> Option<&'static str> {
+        if let Some(form) = &self.image_form {
+            let opened = form.index.and_then(|index| prefs.images.services.get(index).map(|service| ImageForm::of(index, service)));
+            if *form != opened.unwrap_or_else(ImageForm::new) {
+                return Some("this image service");
+            }
+        }
+        if let Some(form) = &self.form {
+            let saved = form.index.and_then(|index| prefs.agents.providers.get(index).map(|provider| Form::of(index, provider)));
+            let known = || catalog::preset(&form.name).map(|preset| Form::preset(&form.name, preset));
+            // Human: what the provider said it offers (after "Test connection", or a look at its models) is
+            // not something the user entered, and it isn't saved with the form: it doesn't count.
+            let entered = |opened: Form| *form == Form { offered: form.offered.clone(), limits: form.limits.clone(), ..opened };
+            let same = match saved {
+                Some(saved) => entered(saved),
+                None => entered(Form::new()) || known().is_some_and(entered),
+            };
+            if !same {
+                return Some("this provider");
+            }
+        }
+        if let Some(form) = &self.cli {
+            let opened = form.index.and_then(|index| prefs.agents.local.get(index).map(|agent| CliForm::of(index, agent)));
+            if *form != opened.unwrap_or_else(CliForm::new) {
+                return Some("this assistant");
+            }
+        }
+        let typed = self.picture_editing.and_then(|index| self.picture_drafts.get(index)).is_some_and(|draft| !draft.trim().is_empty());
+        typed.then_some("the key you typed")
+    }
+
+    /// Goes `to` (closes the window, or shows another page), which closes any open form: at once when
+    /// nothing would be lost, and after asking otherwise ([`Settings::confirm_leaving`]).
+    fn leave(&mut self, to: Leave, prefs: &Prefs) {
+        if self.unsaved(prefs).is_some() {
+            self.leaving = Some(to);
+            self.leaving_asked_now = true;
+        } else {
+            self.go(to);
+        }
+    }
+
+    /// Goes `to`, throwing away whatever a form holds.
+    fn go(&mut self, to: Leave) {
+        self.leaving = None;
+        self.leave_forms();
+        for draft in &mut self.picture_drafts {
+            draft.clear();
+        }
+        match to {
+            Leave::Close => self.open = false,
+            Leave::Page(page) => {
+                self.page = page;
+                self.query.clear();
+            }
+        }
+    }
+
+    /// Asks whether to throw away what a form holds, when the user asked to leave it ([`Settings::leaving`]).
+    // Human: a key copied from a provider's page and typed in here is gone with the form, and so is a list
+    // of models put together by hand; a stray click beside the window must not cost that. "Keep editing" is
+    // the main button, so Return and Escape both keep everything.
+    // Agent: drawn after the settings window, so it lies over it and takes Escape first.
+    fn confirm_leaving(&mut self, ctx: &egui::Context, palette: Palette) {
+        let Some(to) = self.leaving.filter(|_| self.open) else {
+            self.leaving = None;
+            return;
+        };
+        let what = [
+            self.image_form.as_ref().map(|_| "this image service"),
+            self.form.as_ref().map(|_| "this provider"),
+            self.cli.as_ref().map(|_| "this assistant"),
+        ]
+        .into_iter()
+        .flatten()
+        .next()
+        .unwrap_or("the key you typed");
+        let mut choice = None;
+        let modal = egui::Modal::new(egui::Id::unique("settings-leave")).show(ctx, |ui| {
+            ui.set_width(SETTINGS_CONFIRM_WIDTH);
+            ui.label(RichText::new(format!("Discard the changes to {what}?")).strong());
+            ui.label("What you entered here, a key included, hasn't been saved.");
+            ui.add_space(SETTINGS_CONFIRM_GAP);
+            ui.horizontal(|ui| {
+                if ui.add(crate::app::dialog_primary("Keep editing", palette)).clicked() {
+                    choice = Some(false);
+                }
+                if ui.add(crate::app::dialog_button("Discard")).clicked() {
+                    choice = Some(true);
+                }
+            });
+        });
+        // Human: the Return that asked to leave (on the close button, with the keyboard) is not an answer to
+        // the question it brought up.
+        let asked_now = std::mem::take(&mut self.leaving_asked_now);
+        if choice.is_none() && (modal.should_close() || (!asked_now && ctx.input(|i| i.key_pressed(egui::Key::Enter)))) {
+            choice = Some(false);
+        }
+        match choice {
+            Some(true) => self.go(to),
+            Some(false) => self.leaving = None,
+            None => {}
+        }
     }
 
     /// Asks whether to remove what [`Settings::removing`] names, saying what goes and that its key leaves the
@@ -957,14 +1095,14 @@ impl Settings {
         };
         let mut choice = None;
         let modal = egui::Modal::new(egui::Id::unique("settings-remove")).show(ctx, |ui| {
-            ui.set_width(340.0);
+            ui.set_width(SETTINGS_CONFIRM_WIDTH);
             ui.label(RichText::new(format!("Remove “{name}”?")).strong());
             ui.label(if what == "key" {
                 "The key will be deleted from your system's keychain.".to_owned()
             } else {
                 format!("The {what} and its key in your system's keychain will be deleted.")
             });
-            ui.add_space(10.0);
+            ui.add_space(SETTINGS_CONFIRM_GAP);
             ui.horizontal(|ui| {
                 if ui.add(crate::app::dialog_primary("Cancel", palette)).clicked() {
                     choice = Some(false);
@@ -1040,21 +1178,36 @@ impl Settings {
     }
 
     /// The left of the window: its name, the search field, the list of pages in their groups, and the version.
-    fn pages(&mut self, ui: &mut Ui, window: Rect, facts: &Facts<'_>, palette: Palette) {
+    fn pages(&mut self, ui: &mut Ui, window: Rect, facts: &Facts<'_>, prefs: &Prefs, palette: Palette) {
         let line = window.left() + SETTINGS_NAV_WIDTH;
         ui.painter().vline(line, window.y_range().shrink(1.0), Stroke::new(1.0, palette.outline));
-        let inner = Rect::from_min_max(pos2(window.left() + 14.0, window.top() + 22.0), pos2(line - 14.0, window.bottom() - 18.0));
-        ui.painter().text(pos2(inner.left() + 10.0, inner.top() + 14.0), Align2::LEFT_CENTER, "Settings", strong(15.0), palette.foreground);
-        let search = Rect::from_min_size(pos2(inner.left(), inner.top() + 44.0), vec2(inner.width(), FIELD_HEIGHT));
+        let inner = Rect::from_min_max(
+            pos2(window.left() + theme::SETTINGS_NAV_INSET[0], window.top() + theme::SETTINGS_NAV_INSET[1]),
+            pos2(line - theme::SETTINGS_NAV_INSET[0], window.bottom() - theme::SETTINGS_NAV_INSET[2]),
+        );
+        ui.painter().text(
+            pos2(inner.left() + theme::SETTINGS_NAV_TEXT_AT, inner.top() + theme::SETTINGS_NAV_TITLE[0]),
+            Align2::LEFT_CENTER,
+            "Settings",
+            strong(theme::SETTINGS_NAV_TITLE[1]),
+            palette.foreground,
+        );
+        let search = Rect::from_min_size(pos2(inner.left(), inner.top() + theme::SETTINGS_NAV_SEARCH[0]), vec2(inner.width(), FIELD_HEIGHT));
         ui.scope_builder(UiBuilder::new().max_rect(search), |ui| {
             search_field(ui, &mut self.query, "Search settings", palette);
         });
         let searching = !self.query.trim().is_empty();
-        let mut top = search.bottom() + 16.0;
+        let mut top = search.bottom() + theme::SETTINGS_NAV_SEARCH[1];
         let mut go = None;
         for (group, pages) in PAGES {
-            ui.painter().text(pos2(inner.left() + 10.0, top + 11.0), Align2::LEFT_CENTER, group, strong(11.0), palette.muted);
-            top += 24.0;
+            ui.painter().text(
+                pos2(inner.left() + theme::SETTINGS_NAV_TEXT_AT, top + theme::SETTINGS_NAV_GROUP[0]),
+                Align2::LEFT_CENTER,
+                group,
+                strong(theme::SETTINGS_NAV_GROUP[1]),
+                palette.muted,
+            );
+            top += theme::SETTINGS_NAV_GROUP[2];
             for &(page, icon, name) in pages {
                 let row = Rect::from_min_size(pos2(inner.left(), top), vec2(inner.width(), SETTINGS_NAV_ROW));
                 top = row.bottom() + 2.0;
@@ -1066,37 +1219,41 @@ impl Settings {
                 let color = if active || response.hovered() { palette.foreground } else { palette.muted };
                 icons::paint(
                     ui.painter(),
-                    Rect::from_center_size(pos2(row.left() + 17.0, row.center().y), Vec2::splat(ICON_SIZE - 1.0)),
+                    Rect::from_center_size(pos2(row.left() + theme::SETTINGS_NAV_ICON_AT, row.center().y), Vec2::splat(ICON_SIZE - 1.0)),
                     icon,
                     color,
                 );
-                ui.painter().text(pos2(row.left() + 35.0, row.center().y), Align2::LEFT_CENTER, name, FontId::proportional(SIDEBAR_TEXT_SIZE), color);
+                ui.painter().text(
+                    pos2(row.left() + theme::SETTINGS_NAV_NAME_AT, row.center().y),
+                    Align2::LEFT_CENTER,
+                    name,
+                    FontId::proportional(SIDEBAR_TEXT_SIZE),
+                    color,
+                );
                 if response.clicked() {
                     go = Some(page);
                 }
             }
-            top += 14.0;
+            top += theme::SETTINGS_NAV_GROUP[3];
         }
         if let Some(page) = go {
-            self.page = page;
-            self.query.clear();
-            self.leave_forms();
+            self.leave(Leave::Page(page), prefs);
         }
-        let foot = pos2(inner.left() + 10.0, inner.bottom() - 8.0);
+        let foot = pos2(inner.left() + theme::SETTINGS_NAV_TEXT_AT, inner.bottom() - theme::SETTINGS_NAV_FOOT[0]);
         let version = format!("Quill {}", crate::update::VERSION);
-        ui.painter().text(foot, Align2::LEFT_CENTER, version, FontId::proportional(11.5), palette.muted);
+        ui.painter().text(foot, Align2::LEFT_CENTER, version, FontId::proportional(theme::SETTINGS_NAV_FOOT[1]), palette.muted);
         if facts.update.offered.is_some() {
-            let right = pos2(inner.right() - 10.0, foot.y);
-            ui.painter().text(right, Align2::RIGHT_CENTER, "Update available", FontId::proportional(11.5), palette.foreground);
+            let right = pos2(inner.right() - theme::SETTINGS_NAV_TEXT_AT, foot.y);
+            ui.painter().text(right, Align2::RIGHT_CENTER, "Update available", FontId::proportional(theme::SETTINGS_NAV_FOOT[1]), palette.foreground);
         }
     }
 
     /// What the search field found, in the page's place; a click goes to the setting's page.
-    fn results(&mut self, ui: &mut Ui, palette: Palette) {
+    fn results(&mut self, ui: &mut Ui, prefs: &Prefs, palette: Palette) {
         let found = finds(&self.query);
         title(ui, "Search", palette);
         about(ui, &format!("{} for “{}”", counted(found.len(), "setting"), self.query.trim()), palette);
-        ui.add_space(18.0);
+        ui.add_space(theme::SETTINGS_INTRO_GAP);
         if found.is_empty() {
             ui.label(RichText::new("No setting has that in its name.").color(palette.muted));
             return;
@@ -1111,16 +1268,14 @@ impl Settings {
             }
         });
         if let Some(page) = go {
-            self.page = page;
-            self.query.clear();
-            self.leave_forms();
+            self.leave(Leave::Page(page), prefs);
         }
     }
 
     /// The bar under a form: what is still missing on the left, the form's buttons on the right.
     // Agent: laid out from the right. WRITES prefs and the keychain on Save and Remove.
     fn footer(&mut self, ui: &mut Ui, prefs: &mut Prefs, palette: Palette, notice: &mut Option<String>) {
-        ui.spacing_mut().item_spacing.x = 8.0;
+        ui.spacing_mut().item_spacing.x = theme::SETTINGS_INLINE_GAP;
         let Settings { form, cli, image_form, loading, testing, installed, vault, removing, .. } = self;
         let vault: &dyn Vault = &**vault;
         let mut finished = false;
@@ -1291,7 +1446,7 @@ impl Settings {
             palette,
         );
         search_field(ui, &mut self.provider_query, &format!("Search {} providers", PROVIDERS.len()), palette);
-        ui.add_space(8.0);
+        ui.add_space(theme::SETTINGS_INLINE_GAP);
         let query = self.provider_query.trim().to_lowercase();
         // Human: a provider that is set up is in the list above, not offered again.
         let offered: Vec<(&str, &str)> = PROVIDERS
@@ -1301,7 +1456,7 @@ impl Settings {
             .map(|(name, models, _)| (*name, *models))
             .collect();
         let shown = if self.all_providers || !query.is_empty() { offered.len() } else { offered.len().min(SETTINGS_PROVIDERS_SHOWN) };
-        ui.spacing_mut().item_spacing.x = 8.0;
+        ui.spacing_mut().item_spacing.x = theme::SETTINGS_INLINE_GAP;
         let mut picked = None;
         for pair in offered[..shown].chunks(2) {
             ui.columns(2, |columns| {
@@ -1311,7 +1466,7 @@ impl Settings {
                     }
                 }
             });
-            ui.add_space(8.0);
+            ui.add_space(theme::SETTINGS_INLINE_GAP);
         }
         ui.columns(2, |columns| {
             if tile_button(&mut columns[0], Lead::Icon("terminal"), "Command-line agent", "A program on this computer", false, palette).clicked() {
@@ -1323,15 +1478,15 @@ impl Settings {
             }
         });
         if shown < offered.len() {
-            ui.add_space(8.0);
+            ui.add_space(theme::SETTINGS_INLINE_GAP);
             let more = format!("Show {}", counted(offered.len() - shown, "more provider"));
             if button(ui, &more, Some("chevron-down"), Kind::Quiet, true, palette).clicked() {
                 self.all_providers = true;
             }
         }
-        ui.add_space(10.0);
+        ui.add_space(theme::SETTINGS_PART_GAP);
         let footnote = "*Not all models from each provider are supported by Quill, we are working on validating and adding more models as they fit.";
-        ui.add(egui::Label::new(RichText::new(footnote).size(11.0).color(palette.muted)).wrap());
+        ui.add(egui::Label::new(RichText::new(footnote).size(theme::SETTINGS_FOOTNOTE_TEXT).color(palette.muted)).wrap());
         if let Some(name) = picked {
             *notice = self.open_known(name, prefs);
         }
@@ -1433,7 +1588,7 @@ impl Settings {
                                 Err(why) => *notice = Some(format!("The key couldn't be saved in the keychain: {why}")),
                             }
                         }
-                        sized_field(ui, draft, "API key", 170.0, true, true, palette);
+                        sized_field(ui, draft, "API key", theme::SETTINGS_KEY_FIELD, true, true, palette);
                     } else if saved {
                         if button(ui, "Forget", None, Kind::Quiet, true, palette).clicked() {
                             *removing = Some(Removal::PictureKey(index));
@@ -1453,7 +1608,7 @@ impl Settings {
     fn permissions(&mut self, ui: &mut Ui, prefs: &mut Prefs, palette: Palette) {
         title(ui, "Permissions", palette);
         about(ui, "One place for everything AI is allowed to do. It holds for the chat and for every connected app.", palette);
-        ui.add_space(18.0);
+        ui.add_space(theme::SETTINGS_INTRO_GAP);
         card(ui, palette, |rows| {
             rows.row("Let AI work on my documents", Some(TOOLS_HINT), Lead::Strong("shield-check"), |ui| {
                 switch(ui, &mut prefs.agents.tools, palette);
@@ -1474,7 +1629,7 @@ impl Settings {
             if off > 0 && button(ui, "Turn all on", None, Kind::Quiet, true, palette).clicked() {
                 disabled.clear();
             }
-            ui.label(RichText::new(format!("{} of {} on", all.len() - off, all.len())).size(12.0).color(palette.muted));
+            ui.label(RichText::new(format!("{} of {} on", all.len() - off, all.len())).size(theme::SETTINGS_NOTE_TEXT).color(palette.muted));
         });
         hint(ui, "A tool that is off isn't offered to any assistant or app, and a call to it is refused.", palette);
         let shown = if self.all_tools { all.len() } else { all.len().min(SETTINGS_TOOLS_SHOWN) };
@@ -1502,7 +1657,7 @@ impl Settings {
 fn missing(ui: &mut Ui, what: Option<&str>, palette: Palette) {
     if let Some(what) = what {
         ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-            ui.add(egui::Label::new(RichText::new(what).size(12.0).color(palette.muted)).truncate());
+            ui.add(egui::Label::new(RichText::new(what).size(theme::SETTINGS_NOTE_TEXT).color(palette.muted)).truncate());
         });
     }
 }
@@ -1514,7 +1669,12 @@ fn general(ui: &mut Ui, prefs: &mut Prefs, facts: &Facts<'_>, palette: Palette, 
     card(ui, palette, |rows| {
         rows.row("Theme", None, Lead::Nothing, |ui| theme_choice(ui, &mut prefs.appearance, palette));
         rows.row("Animations and effects", Some("Turn off to save GPU and CPU."), Lead::Nothing, |ui| {
+            // Human: once the user has set it, it is theirs and no longer follows the computer's own setting.
+            let was = prefs.appearance.animations;
             switch(ui, &mut prefs.appearance.animations, palette);
+            if prefs.appearance.animations != was {
+                (prefs.appearance.animations_chosen, prefs.appearance.animations_off_for_system) = (true, false);
+            }
         });
     });
     heading(ui, "Updates", palette);
@@ -1596,7 +1756,7 @@ fn canvas_page(ui: &mut Ui, prefs: &mut Prefs, palette: Palette) {
         let says = "What an assistant's cursor says while it works on the canvas.";
         rows.row("Cursor label", Some(says), Lead::Nothing, |ui| segmented(ui, "cursor-label", &mut agents.cursor_label, &labels, palette));
         rows.row("Label text", Some("What a cursor says while its label is Agent."), Lead::Nothing, |ui| {
-            sized_field(ui, &mut agents.agent_label, "Agent", 160.0, false, false, palette);
+            sized_field(ui, &mut agents.agent_label, "Agent", theme::SETTINGS_LABEL_FIELD, false, false, palette);
         });
     });
     heading(ui, "Import", palette);
@@ -1670,13 +1830,13 @@ fn chat_page(ui: &mut Ui, agents: &mut Agents, facts: &Facts<'_>, palette: Palet
         .inner_margin(egui::Margin::symmetric(12, 10));
     let example = RichText::new("For example: Use our brand colours #0f172a and #f97316. Answer in German.").color(palette.quiet);
     ui.add(egui::TextEdit::multiline(&mut agents.instructions).frame(frame).hint_text(example).desired_rows(5).desired_width(ui.available_width()));
-    ui.add_space(6.0);
+    ui.add_space(theme::SETTINGS_LINE_GAP);
     ui.horizontal(|ui| {
-        ui.add_space(4.0);
-        ui.label(RichText::new("Applies from the next message you send.").size(12.0).color(palette.muted));
+        ui.add_space(theme::SETTINGS_HINT_GAP);
+        ui.label(RichText::new("Applies from the next message you send.").size(theme::SETTINGS_NOTE_TEXT).color(palette.muted));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.add_space(4.0);
-            ui.label(RichText::new(counted(agents.instructions.chars().count(), "character")).size(12.0).color(palette.muted));
+            ui.add_space(theme::SETTINGS_HINT_GAP);
+            ui.label(RichText::new(counted(agents.instructions.chars().count(), "character")).size(theme::SETTINGS_NOTE_TEXT).color(palette.muted));
         });
     });
 
@@ -1747,11 +1907,11 @@ fn mcp_page(ui: &mut Ui, prefs: &Prefs, facts: &Facts<'_>, client: &mut String, 
         let Some(port) = facts.port else { return };
         let mut copied = |rows: &mut parts::Rows<'_>, name: &str, more: Option<&str>, value: String| {
             rows.row(name, more, Lead::Nothing, |ui| {
-                if icon_button(ui, "copy", Vec2::splat(26.0), false, "Copy", palette).clicked() {
+                if icon_button(ui, "copy", Vec2::splat(theme::SETTINGS_COPY_BUTTON), false, "Copy", palette).clicked() {
                     ui.ctx().copy_text(value.clone());
                     *notice = Some("Copied.".to_owned());
                 }
-                ui.label(RichText::new(&value).monospace().size(12.0).color(palette.muted));
+                ui.label(RichText::new(&value).monospace().size(theme::SETTINGS_NOTE_TEXT).color(palette.muted));
             });
         };
         copied(rows, "Address", None, format!("http://127.0.0.1:{port}/mcp"));
@@ -1766,24 +1926,28 @@ fn mcp_page(ui: &mut Ui, prefs: &Prefs, facts: &Facts<'_>, client: &mut String, 
             let tabs: Vec<Segment<'_>> = setups.iter().map(|(app, ..)| Segment::plain(app)).collect();
             segmented(ui, "mcp-client", client, &tabs, palette);
             let (_, how, setup) = setups.iter().find(|(app, ..)| *app == client.as_str()).unwrap_or(&setups[0]);
-            ui.add_space(12.0);
-            egui::Frame::new().fill(palette.hover).corner_radius(10.0).inner_margin(egui::Margin::symmetric(12, 10)).show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(*how).size(12.0).color(palette.muted));
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if button(ui, "Copy", Some("copy"), Kind::Outline, true, palette).clicked() {
-                            ui.ctx().copy_text(setup.clone());
-                            *notice = Some("Copied.".to_owned());
-                        }
+            ui.add_space(theme::SETTINGS_FIELDS_ACROSS);
+            egui::Frame::new()
+                .fill(palette.hover)
+                .corner_radius(theme::SETTINGS_CODE_RADIUS)
+                .inner_margin(egui::Margin::symmetric(theme::SETTINGS_CODE_MARGIN[0], theme::SETTINGS_CODE_MARGIN[1]))
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(*how).size(theme::SETTINGS_NOTE_TEXT).color(palette.muted));
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if button(ui, "Copy", Some("copy"), Kind::Outline, true, palette).clicked() {
+                                ui.ctx().copy_text(setup.clone());
+                                *notice = Some("Copied.".to_owned());
+                            }
+                        });
                     });
+                    ui.add_space(theme::SETTINGS_LINE_GAP);
+                    ui.add(egui::Label::new(RichText::new(setup).monospace().size(theme::SETTINGS_NOTE_TEXT)).wrap());
                 });
-                ui.add_space(6.0);
-                ui.add(egui::Label::new(RichText::new(setup).monospace().size(12.0)).wrap());
-            });
-            ui.add_space(12.0);
+            ui.add_space(theme::SETTINGS_FIELDS_ACROSS);
             let starts = "The app starts `pencraft mcp` and talks to it. If Quill isn't running, that starts it in the background.";
-            ui.add(egui::Label::new(RichText::new(starts).size(12.0).color(palette.muted)).wrap());
+            ui.add(egui::Label::new(RichText::new(starts).size(theme::SETTINGS_NOTE_TEXT).color(palette.muted)).wrap());
         });
     });
     ui.add_space(theme::SETTINGS_GROUP_GAP);
@@ -1799,7 +1963,7 @@ fn pixels(ui: &mut Ui, value: &mut f32) {
 // Human: a form takes the page's place, so it needs a way back that doesn't save.
 fn back(ui: &mut Ui, to: &str, palette: Palette) -> bool {
     let clicked = button(ui, to, Some("chevron-left"), Kind::Quiet, true, palette).on_hover_text("Back without saving").clicked();
-    ui.add_space(8.0);
+    ui.add_space(theme::SETTINGS_INLINE_GAP);
     clicked
 }
 
@@ -1870,7 +2034,7 @@ fn provider_form(
     let owner = saved.map(|provider| provider.name.clone());
     let link = if saved.is_some_and(crate::chat::usable) { Link::Ready } else { Link::NotConnected };
     title(ui, if saved.is_some() { "Provider" } else { "Add provider" }, palette);
-    ui.add_space(18.0);
+    ui.add_space(theme::SETTINGS_INTRO_GAP);
     let name = if form.name.trim().is_empty() { "Custom provider".to_owned() } else { form.name.trim().to_owned() };
     card(ui, palette, |rows| {
         rows.row(&name, Some("Any OpenAI or Anthropic compatible API"), Lead::Icon("server"), |ui| pill(ui, link.words(), link.tone(), palette));
@@ -1879,7 +2043,7 @@ fn provider_form(
     heading(ui, "1 · Connection", palette);
     card(ui, palette, |rows| {
         rows.block(|ui| {
-            ui.spacing_mut().item_spacing.x = 12.0;
+            ui.spacing_mut().item_spacing.x = theme::SETTINGS_FIELDS_ACROSS;
             ui.columns(2, |columns| {
                 caption(&mut columns[0], "Name", palette);
                 field(&mut columns[0], &mut form.name, "My provider", false, false, palette);
@@ -1894,13 +2058,13 @@ fn provider_form(
             if crate::chat::Wire::of(&form.api).is_none() {
                 warning(ui, "The chat can't talk to this API type yet; the provider is kept but not offered there.");
             }
-            ui.add_space(14.0);
+            ui.add_space(theme::SETTINGS_FIELD_GAP);
             caption(ui, "Base URL", palette);
             field(ui, &mut form.base_url, "https://api.example.com/v1", true, false, palette);
             if unprotected(&form.base_url) {
                 warning(ui, "This address isn't encrypted: the key and your messages could be read on the way.");
             }
-            ui.add_space(14.0);
+            ui.add_space(theme::SETTINGS_FIELD_GAP);
             caption(ui, "API key", palette);
             let saved = form.key_ref.is_some() && !form.forget_key;
             field(ui, &mut form.key, if saved { "Saved - type a new key to replace it" } else { "Optional" }, true, true, palette);
@@ -1921,9 +2085,9 @@ fn provider_form(
     card(ui, palette, |rows| {
         rows.block(|ui| {
             model_rows(ui, form, palette);
-            ui.add_space(4.0);
+            ui.add_space(theme::SETTINGS_HINT_GAP);
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 8.0;
+                ui.spacing_mut().item_spacing.x = theme::SETTINGS_INLINE_GAP;
                 // Human: model names change often and differ by provider, so the form asks the provider instead
                 // of guessing them, and shows its answer in a window of its own to search and tick in.
                 if button(ui, "Choose models…", Some("list-checks"), Kind::Primary, !form.base_url.trim().is_empty(), palette).clicked() {
@@ -1948,7 +2112,7 @@ fn image_form(ui: &mut Ui, form: &mut ImageForm, prefs: &Prefs, palette: Palette
     heading(ui, "Service", palette);
     card(ui, palette, |rows| {
         rows.block(|ui| {
-            ui.spacing_mut().item_spacing.x = 12.0;
+            ui.spacing_mut().item_spacing.x = theme::SETTINGS_FIELDS_ACROSS;
             ui.columns(2, |columns| {
                 caption(&mut columns[0], "Name", palette);
                 field(&mut columns[0], &mut form.name, "My image service", false, false, palette);
@@ -1961,11 +2125,11 @@ fn image_form(ui: &mut Ui, form: &mut ImageForm, prefs: &Prefs, palette: Palette
             if kind.is_none() {
                 warning(ui, "Quill doesn't know this kind of service; pick one.");
             }
-            ui.add_space(14.0);
+            ui.add_space(theme::SETTINGS_FIELD_GAP);
             caption(ui, "Model", palette);
             // Human: the hints show the kind's usual model and address, which an empty field stands for.
             field(ui, &mut form.model, kind.map_or("", crate::imagery::Kind::model), true, false, palette);
-            ui.add_space(14.0);
+            ui.add_space(theme::SETTINGS_FIELD_GAP);
             caption(ui, "Address", palette);
             field(ui, &mut form.base_url, kind.map_or("", crate::imagery::Kind::base), true, false, palette);
             if unprotected(&form.base_url) {
@@ -2040,17 +2204,23 @@ fn cli_tools(
             "The program works on your documents through its own MCP servers: add `pencraft mcp` there once (the MCP page has the lines to copy), and let it use that server's tools without asking."
         }
     };
-    ui.add(egui::Label::new(RichText::new(tools).size(12.0).color(palette.muted)).wrap());
+    ui.add(egui::Label::new(RichText::new(tools).size(theme::SETTINGS_NOTE_TEXT).color(palette.muted)).wrap());
     if form.kind != KIND_GROK {
         return;
     }
-    ui.add_space(10.0);
+    ui.add_space(theme::SETTINGS_PART_GAP);
     let pencraft = std::env::current_exe().map_or_else(|_| "pencraft".to_owned(), |path| path.display().to_string());
-    egui::Frame::new().fill(palette.hover).corner_radius(10.0).inner_margin(egui::Margin::symmetric(12, 10)).show(ui, |ui| {
-        ui.set_width(ui.available_width());
-        ui.add(egui::Label::new(RichText::new(hook_line(command.unwrap_or("grok"), &pencraft)).monospace().size(12.0)).wrap());
-    });
-    ui.add_space(10.0);
+    egui::Frame::new()
+        .fill(palette.hover)
+        .corner_radius(theme::SETTINGS_CODE_RADIUS)
+        .inner_margin(egui::Margin::symmetric(theme::SETTINGS_CODE_MARGIN[0], theme::SETTINGS_CODE_MARGIN[1]))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.add(
+                egui::Label::new(RichText::new(hook_line(command.unwrap_or("grok"), &pencraft)).monospace().size(theme::SETTINGS_NOTE_TEXT)).wrap(),
+            );
+        });
+    ui.add_space(theme::SETTINGS_PART_GAP);
     let add = if hooking.is_some() { "Adding…" } else { "Add Quill to Grok" };
     if button(ui, add, None, Kind::Outline, hooking.is_none() && program.is_some(), palette).on_hover_text("Runs the line above").clicked()
         && let Some(program) = program
@@ -2084,7 +2254,7 @@ fn cli_form(
     let program = command.as_deref().and_then(locate);
     let owner = form.index.and_then(|index| agents.local.get(index)).map(|agent| agent.name.clone());
     title(ui, if owner.is_some() { "Agent program" } else { "Add command-line agent" }, palette);
-    ui.add_space(18.0);
+    ui.add_space(theme::SETTINGS_INTRO_GAP);
     let link = match (form.on, program.is_some()) {
         (false, _) => Link::Off,
         (true, true) => Link::Installed,
@@ -2099,14 +2269,14 @@ fn cli_form(
     heading(ui, "Program", palette);
     card(ui, palette, |rows| {
         rows.block(|ui| {
-            ui.spacing_mut().item_spacing.x = 12.0;
+            ui.spacing_mut().item_spacing.x = theme::SETTINGS_FIELDS_ACROSS;
             ui.columns(2, |columns| {
                 caption(&mut columns[0], "Name", palette);
                 field(&mut columns[0], &mut form.name, "My agent", false, false, palette);
                 caption(&mut columns[1], "Kind", palette);
                 wide_choice(&mut columns[1], &mut form.kind, &KINDS, palette);
             });
-            ui.add_space(14.0);
+            ui.add_space(theme::SETTINGS_FIELD_GAP);
             caption(ui, "Program", palette);
             let usual = crate::chat::usual_command(&form.kind);
             let example = usual.map_or_else(|| "/full/path/to/program, or its command".to_owned(), |usual| format!("{usual} (found automatically)"));
@@ -2116,11 +2286,11 @@ fn cli_form(
                 (None, Some(command)) => warning(ui, &format!("`{command}` wasn't found on this computer. Install it, or give its full path.")),
                 (None, None) => note(ui, "Give the program's full path, or the command it is run with.", palette),
             }
-            ui.add_space(14.0);
+            ui.add_space(theme::SETTINGS_FIELD_GAP);
             caption(ui, "Models", palette);
             field(ui, &mut form.models, "Leave empty for the program's own default; several are separated by commas", true, false, palette);
             if form.kind == KIND_PLAIN {
-                ui.add_space(14.0);
+                ui.add_space(theme::SETTINGS_FIELD_GAP);
                 caption(ui, "Arguments", palette);
                 field(ui, &mut form.arguments, "exec {prompt}", true, false, palette);
                 let how = "{prompt} is replaced by the message and {model} by the model. Without {prompt} the message goes to the program's input. The program's printed answer is shown in the chat.";
@@ -2144,7 +2314,7 @@ fn cli_form(
 fn key_help(ui: &mut Ui, help: &str, forgettable: bool, forget: &mut bool, palette: Palette) {
     note(ui, help, palette);
     if forgettable {
-        ui.add_space(6.0);
+        ui.add_space(theme::SETTINGS_LINE_GAP);
         if button(ui, "Forget saved key", None, Kind::Outline, true, palette).clicked() {
             *forget = true;
         }
@@ -2279,15 +2449,14 @@ fn unprotected(address: &str) -> bool {
 fn model_rows(ui: &mut Ui, form: &mut Form, palette: Palette) {
     // Human: five fields side by side and a bin; only the first row carries the fields' names. The prices are
     // dollars for a million tokens and may stay empty: the price list is asked then.
-    let gap = 8.0;
-    let bin = 30.0;
+    let [gap, bin, names_high, under] = theme::SETTINGS_MODEL_ROW;
     let fields = ui.available_width() - bin - 5.0 * gap;
-    let widths = [fields * 0.34, fields * 0.18, fields * 0.18, fields * 0.15, fields * 0.15];
+    let widths = theme::SETTINGS_MODEL_SHARES.map(|share| fields * share);
     let mut remove = None;
     let rows = form.models.len();
     for (index, model) in form.models.iter_mut().enumerate() {
-        let names = if index == 0 { 24.0 } else { 0.0 };
-        let (line, _) = ui.allocate_exact_size(vec2(ui.available_width(), names + FIELD_HEIGHT + 4.0), Sense::hover());
+        let names = if index == 0 { names_high } else { 0.0 };
+        let (line, _) = ui.allocate_exact_size(vec2(ui.available_width(), names + FIELD_HEIGHT + under), Sense::hover());
         let mut left = line.left();
         for (text, name, example, width) in [
             (&mut model.id, "Model ID", "my-model-id", widths[0]),
@@ -2306,12 +2475,12 @@ fn model_rows(ui: &mut Ui, form: &mut Form, palette: Palette) {
             }
             field(&mut cell, text, example, true, false, palette);
         }
-        let cell = Rect::from_min_size(pos2(left, line.bottom() - FIELD_HEIGHT - 4.0), Vec2::splat(bin));
+        let cell = Rect::from_min_size(pos2(left, line.bottom() - FIELD_HEIGHT - under), Vec2::splat(bin));
         let mut cell = ui.new_child(UiBuilder::new().max_rect(cell).id_salt((index, "bin")));
         if rows > 1 && icon_button(&mut cell, "trash-2", Vec2::splat(bin), false, "Remove model", palette).clicked() {
             remove = Some(index);
         }
-        ui.add_space(4.0);
+        ui.add_space(theme::SETTINGS_HINT_GAP);
     }
     if let Some(index) = remove {
         form.models.remove(index);
@@ -2706,6 +2875,63 @@ mod tests {
         form.key = "sk-very-secret".to_owned();
         let shown = format!("{form:?}");
         assert!(!shown.contains("sk-very-secret") && shown.contains("key: \"…\""), "{shown}");
+    }
+
+    #[test]
+    fn leaving_a_form_with_unsaved_changes_asks_first_and_an_untouched_one_just_closes() {
+        let mut prefs = Prefs::default();
+        prefs.agents.providers.push(CustomProvider {
+            name: "Mine".to_owned(),
+            base_url: "https://example.com/v1".to_owned(),
+            ..CustomProvider::default()
+        });
+        let mut settings = Settings { vault: Box::new(Memory::default()), ..Settings::default() };
+        // No form, and a form nothing was typed into: the window closes at once.
+        settings.open_named("general");
+        settings.leave(Leave::Close, &prefs);
+        assert!(!settings.open);
+        for name in ["image-service", "provider", "cli"] {
+            settings.open_named(name);
+            assert_eq!(settings.unsaved(&prefs), None, "{name}");
+            settings.leave(Leave::Close, &prefs);
+            assert!(!settings.open && settings.leaving.is_none(), "{name}");
+        }
+        // A key typed into the image service form: the window stays open and the question is asked.
+        settings.open_named("image-service");
+        settings.image_form.as_mut().unwrap().key = "sk-typed".to_owned();
+        assert_eq!(settings.unsaved(&prefs), Some("this image service"));
+        settings.leave(Leave::Close, &prefs);
+        assert!(settings.open && settings.leaving == Some(Leave::Close));
+        assert_eq!(settings.image_form.as_ref().unwrap().key, "sk-typed");
+        // "Discard": the form and its key go, and the window closes.
+        settings.go(Leave::Close);
+        assert!(!settings.open && settings.image_form.is_none() && settings.leaving.is_none());
+        // A saved provider opened and left as it is closes; with its name changed, another page asks first.
+        settings.open_named("agents");
+        settings.form = Some(Form::of(0, &prefs.agents.providers[0]));
+        assert_eq!(settings.unsaved(&prefs), None);
+        // What the provider answered when it was asked for its models is not a change.
+        settings.form.as_mut().unwrap().offered = vec!["model-a".to_owned()];
+        assert_eq!(settings.unsaved(&prefs), None);
+        settings.form.as_mut().unwrap().name = "Mine too".to_owned();
+        assert_eq!(settings.unsaved(&prefs), Some("this provider"));
+        settings.leave(Leave::Page(Page::Canvas), &prefs);
+        assert!(settings.page == Page::Agents && settings.leaving == Some(Leave::Page(Page::Canvas)) && settings.form.is_some());
+        settings.go(Leave::Page(Page::Canvas));
+        assert!(settings.open && settings.page == Page::Canvas && settings.form.is_none());
+        // A command-line agent's form, and a key typed for a stock photo site.
+        settings.cli = Some(CliForm::new());
+        settings.cli.as_mut().unwrap().program = "claude".to_owned();
+        assert_eq!(settings.unsaved(&prefs), Some("this assistant"));
+        settings.go(Leave::Page(Page::Images));
+        settings.picture_editing = Some(1);
+        assert_eq!(settings.unsaved(&prefs), None);
+        settings.picture_drafts[1] = "key".to_owned();
+        assert_eq!(settings.unsaved(&prefs), Some("the key you typed"));
+        settings.leave(Leave::Close, &prefs);
+        assert!(settings.open);
+        settings.go(Leave::Close);
+        assert!(!settings.open && settings.picture_drafts.iter().all(String::is_empty) && settings.picture_editing.is_none());
     }
 
     #[test]

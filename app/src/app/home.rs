@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 use std::time::{Duration, Instant, SystemTime};
 
 use egui::{Align, Align2, Color32, FontFamily, FontId, Layout, Rect, Response, RichText, Sense, Stroke, StrokeKind, Vec2, pos2, vec2};
@@ -129,6 +130,24 @@ pub(super) struct Home {
     looked: Option<Instant>,
     /// The small pictures, by the file's path.
     thumbs: HashMap<String, Thumb>,
+    /// The one small picture that is being made on another thread, while one is.
+    making: Option<Making>,
+}
+
+/// A small picture on its way: which file it is of, and where it arrives.
+struct Making {
+    path: String,
+    /// When the file was last written, as it was when the making began.
+    stamp: Option<SystemTime>,
+    arrives: mpsc::Receiver<Made>,
+}
+
+/// A small picture as its thread made it.
+struct Made {
+    /// `None` when the design is empty, too large or can't be read.
+    image: Option<egui::ColorImage>,
+    /// A face of its text wasn't ready while it was made.
+    rough: bool,
 }
 
 impl App {
@@ -141,7 +160,7 @@ impl App {
         let palette = theme::palette(self.dark());
         let ctx = ui.ctx().clone();
         self.look_at_recent();
-        self.picture_one(&ctx);
+        self.home.tend_pictures(&ctx);
         let assistant = self.assistant().map(|choice| choice.label.clone());
         let ideas = self.prefs.get().agents.ideas;
         let describe = self.prefs.get().agents.input_on_dashboard;
@@ -206,7 +225,7 @@ impl App {
                 if Path::new(&path).exists() {
                     self.open_path(Path::new(&path));
                 } else {
-                    self.say(format!("{path} isn't there any more. Right-click it to take it off this list."));
+                    self.warn(format!("{path} isn't there any more. Right-click it to take it off this list."));
                 }
             }
             Act::Forget(path) => {
@@ -261,37 +280,97 @@ impl App {
         self.home.files = recent.iter().map(|path| Recent::of(path, own.as_deref())).collect();
         self.home.looked = Some(Instant::now());
     }
+}
 
-    /// Makes one small picture that is missing or out of date, and asks for another frame to make the next.
-    // Human: one a frame, so the home screen is there at once and its pictures come in one after another. A
-    // picture made while a face of its text was still being read is made once more when the face is there.
-    // Agent: MAIN-THREAD; READS one design file and BLOCKS while it is drawn.
-    fn picture_one(&mut self, ctx: &egui::Context) {
-        let ready = !crate::fonts::pending();
-        let home = &mut self.home;
-        home.thumbs.retain(|path, _| path == SAMPLE || home.files.iter().any(|file| file.path == *path));
-        let listed = home.files.iter().filter(|file| file.changed.is_some()).map(|file| (file.path.as_str(), file.changed));
-        let Some((path, stamp)) = std::iter::once((SAMPLE, None)).chain(listed).find(|(path, stamp)| stale(home.thumbs.get(*path), *stamp, ready))
-        else {
-            return;
-        };
-        let path = path.to_owned();
-        let image = if path == SAMPLE {
-            pen_doc::read(&crate::samples::starter(&crate::faces::installed)).ok().and_then(|doc| picture(ctx, doc, None))
-        } else {
-            // Human: a bundle's pictures lie inside it and aren't unpacked for a small picture; its picture
-            // layers show their placeholder, never a file that happens to lie beside the bundle.
-            let beside = Some(Path::new(&path)).filter(|path| !crate::bundle::is_bundle(path));
-            design(Path::new(&path)).and_then(|doc| picture(ctx, doc, beside))
-        };
-        let texture = image.map(|image| ctx.load_texture(format!("home {path}"), image, egui::TextureOptions::LINEAR));
-        let tries = home.thumbs.get(&path).filter(|old| old.stamp == stamp).map_or(0, |old| old.tries + 1);
-        home.thumbs.insert(path, Thumb { stamp, texture, rough: crate::fonts::pending(), tries });
-        ctx.request_repaint();
-    }
+/// How full egui's picture of letters is.
+#[expect(clippy::redundant_closure_for_method_calls, reason = "the method's path is not general over the font view's lifetime and doesn't compile")]
+fn font_fill(ctx: &egui::Context) -> f32 {
+    ctx.fonts(|fonts| fonts.font_atlas_fill_ratio())
+}
+
+/// The small picture of the design at `path` (or of the starter board), made here and now.
+// Agent: runs on the `pencraft-thumb` thread: READS one design file and BLOCKS while it is laid out and drawn.
+// It measures and lays out text through `ctx`, under egui's own locks, as the thread that builds the canvas's
+// drawing does (`render::build_beside`).
+fn made(ctx: &egui::Context, path: &str) -> Made {
+    let faces = crate::fonts::changes();
+    let before = font_fill(ctx);
+    let image = if path == SAMPLE {
+        pen_doc::read(&crate::samples::starter(&crate::faces::installed)).ok().and_then(|doc| picture(ctx, doc, None))
+    } else {
+        // Human: a bundle's pictures lie inside it and aren't unpacked for a small picture; its picture
+        // layers show their placeholder, never a file that happens to lie beside the bundle.
+        let beside = Some(Path::new(path)).filter(|path| !crate::bundle::is_bundle(path));
+        design(Path::new(path)).and_then(|doc| picture(ctx, doc, beside))
+    };
+    // A face that is still waited for, or became ready while this was drawn: some of the text is in another.
+    // Human: the window empties its picture of letters when that is nearly full. Should that happen while
+    // this picture's text is drawn from it, letters may be missing; the picture is then made once more.
+    let emptied = font_fill(ctx) < before;
+    Made { image, rough: emptied || crate::fonts::pending() || crate::fonts::changes() != faces }
 }
 
 impl Home {
+    /// Takes in the small picture that was being made, and has the next one made that is missing or out of date.
+    // Human: reading a design, laying it out and drawing it takes a moment for a large one, and the home screen
+    // stood still for it. Now a thread of its own does that, one picture at a time; the card shows its empty
+    // ground until the picture is there, and the screen stays quick. A picture made while a face of its text
+    // was still being read is made once more when the face is there.
+    // Agent: MAIN-THREAD; the texture is handed to egui here. SPAWNS at most one thread at a time
+    // (`pencraft-thumb`), which WAKES the UI when it is done; no file is read on this thread.
+    fn tend_pictures(&mut self, ctx: &egui::Context) {
+        let ready = !crate::fonts::pending();
+        let Some((path, stamp)) =
+            self.next_picture(ready, &mut |path, image| ctx.load_texture(format!("home {path}"), image, egui::TextureOptions::LINEAR))
+        else {
+            return;
+        };
+        let (send, arrives) = mpsc::channel();
+        let (ctx, of) = (ctx.clone(), path.clone());
+        let work = move || {
+            // The home screen may be gone when the picture is done; then nobody takes it, which is fine.
+            let _unheard = send.send(made(&ctx, &of));
+            ctx.request_repaint();
+        };
+        match std::thread::Builder::new().name("pencraft-thumb".to_owned()).spawn(work) {
+            Ok(_) => self.making = Some(Making { path, stamp, arrives }),
+            Err(error) => {
+                // Human: without a thread the card stays without a picture; it is not asked for again.
+                log::warn!("no thread to make a design's small picture on: {error}");
+                self.thumbs.insert(path, Thumb { stamp, texture: None, rough: false, tries: 0 });
+            }
+        }
+    }
+
+    /// Takes in the picture that was being made when it has arrived (`load` hands it to egui), and says which
+    /// one to make next: the first that is missing or out of date. `None` while one is being made, and when
+    /// none is needed. `ready` is whether every face asked for is there.
+    // Human: one at a time, and each file once: while a picture is on its way no other is started, so
+    // drawing the home screen again, in another frame or after coming back to it, starts nothing twice. A
+    // file written while its picture was being made gets one more, of what it holds now.
+    fn next_picture(
+        &mut self,
+        ready: bool,
+        load: &mut dyn FnMut(&str, egui::ColorImage) -> egui::TextureHandle,
+    ) -> Option<(String, Option<SystemTime>)> {
+        self.thumbs.retain(|path, _| path == SAMPLE || self.files.iter().any(|file| file.path == *path));
+        if let Some(making) = &self.making {
+            let made = match making.arrives.try_recv() {
+                Ok(made) => made,
+                Err(mpsc::TryRecvError::Empty) => return None,
+                // Its thread ended without a picture: the card stays without one.
+                Err(mpsc::TryRecvError::Disconnected) => Made { image: None, rough: false },
+            };
+            let Making { path, stamp, .. } = self.making.take()?;
+            let tries = self.thumbs.get(&path).filter(|old| old.stamp == stamp).map_or(0, |old| old.tries + 1);
+            let texture = made.image.map(|image| load(&path, image));
+            self.thumbs.insert(path, Thumb { stamp, texture, rough: made.rough, tries });
+        }
+        let listed = self.files.iter().filter(|file| file.changed.is_some()).map(|file| (file.path.as_str(), file.changed));
+        let (path, stamp) = std::iter::once((SAMPLE, None)).chain(listed).find(|(path, stamp)| stale(self.thumbs.get(*path), *stamp, ready))?;
+        Some((path.to_owned(), stamp))
+    }
+
     /// The box a design is described in, and a row of ideas under it.
     // Human: Return sends, as in the chat; ⇧Return starts a new line. The words start a new document and go to
     // its assistant.
@@ -342,8 +421,8 @@ impl Home {
         }
         ui.add_space(10.0);
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 6.0;
-            ui.spacing_mut().button_padding = vec2(11.0, 6.0);
+            ui.spacing_mut().item_spacing.x = theme::BAR_IDEA_GAP;
+            ui.spacing_mut().button_padding = theme::CHIP_PADDING;
             // Human: an idea that doesn't fit whole is shortened with "…"; none is started in less room than a
             // few words need, so the row never wraps.
             for idea in IDEAS {
@@ -542,7 +621,7 @@ fn design(path: &Path) -> Option<pen_doc::Document> {
 
 /// A small picture of everything in `doc`, which is saved at `path`; `None` when it is empty.
 // Human: the whole canvas, as zoom-to-fit would show it, at the size the largest card needs on this screen.
-// Agent: MAIN-THREAD; lays the document out and draws it, as an export does.
+// Agent: runs on the `pencraft-thumb` thread (see `made`); lays the document out and draws it, as an export does.
 fn picture(ctx: &egui::Context, doc: pen_doc::Document, path: Option<&Path>) -> Option<egui::ColorImage> {
     let mut editor = Editor::new(doc, path.map(Path::to_path_buf), 0);
     editor.refresh(&super::text_measure(ctx));
@@ -692,6 +771,95 @@ mod tests {
         assert!(!stale(Some(&thumb(true, 0)), Some(then), false));
         assert!(stale(Some(&thumb(true, 0)), Some(then), true));
         assert!(!stale(Some(&thumb(true, MOST_TRIES)), Some(then), true));
+    }
+
+    fn recent(path: &str, changed: SystemTime) -> Recent {
+        Recent { path: path.to_owned(), name: path.to_owned(), folder: String::new(), changed: Some(changed) }
+    }
+
+    #[test]
+    fn one_picture_is_made_at_a_time_each_file_once_and_again_when_the_file_was_written() {
+        let ctx = egui::Context::default();
+        let loaded = std::cell::Cell::new(0);
+        let mut load = |path: &str, image: egui::ColorImage| {
+            loaded.set(loaded.get() + 1);
+            ctx.load_texture(path, image, egui::TextureOptions::LINEAR)
+        };
+        let then = SystemTime::UNIX_EPOCH;
+        let at = |seconds: u64| then + Duration::from_secs(seconds);
+        let mut home = Home { files: vec![recent("a.quill", at(1)), recent("b.quill", at(1))], ..Home::default() };
+        home.thumbs.insert(SAMPLE.to_owned(), Thumb { stamp: None, texture: None, rough: false, tries: 0 });
+        // The first file without a picture is next; while it is being made, nothing else is started, however
+        // often the home screen is drawn.
+        assert_eq!(home.next_picture(true, &mut load), Some(("a.quill".to_owned(), Some(at(1)))));
+        let (send, arrives) = mpsc::channel();
+        home.making = Some(Making { path: "a.quill".to_owned(), stamp: Some(at(1)), arrives });
+        for _ in 0..3 {
+            assert_eq!(home.next_picture(true, &mut load), None);
+        }
+        // The file is written while its picture is on its way: the picture that arrives is of the old file.
+        home.files[0].changed = Some(at(2));
+        send.send(Made { image: Some(egui::ColorImage::filled([2, 2], Color32::WHITE)), rough: false }).unwrap();
+        // It is taken in (handed to egui once, here), and the next one starts: the same file, as it is now.
+        assert_eq!(home.next_picture(true, &mut load), Some(("a.quill".to_owned(), Some(at(2)))));
+        assert!(home.making.is_none() && loaded.get() == 1);
+        assert!(home.thumbs["a.quill"].stamp == Some(at(1)) && home.thumbs["a.quill"].texture.is_some());
+        // A thread that ends without a picture leaves the card without one, and is not started again.
+        let (send, arrives) = mpsc::channel::<Made>();
+        home.making = Some(Making { path: "a.quill".to_owned(), stamp: Some(at(2)), arrives });
+        drop(send);
+        assert_eq!(home.next_picture(true, &mut load), Some(("b.quill".to_owned(), Some(at(1)))));
+        assert!(home.thumbs["a.quill"].stamp == Some(at(2)) && home.thumbs["a.quill"].texture.is_none());
+        // Everything has its picture: nothing more is made.
+        home.thumbs.insert("b.quill".to_owned(), Thumb { stamp: Some(at(1)), texture: None, rough: false, tries: 0 });
+        assert_eq!(home.next_picture(true, &mut load), None);
+        assert_eq!(loaded.get(), 1);
+        // A picture made too early is made once more, and one of a file that left the list is dropped.
+        home.thumbs.get_mut("b.quill").unwrap().rough = true;
+        assert_eq!(home.next_picture(true, &mut load), Some(("b.quill".to_owned(), Some(at(1)))));
+        home.files.remove(0);
+        home.next_picture(false, &mut load);
+        assert!(!home.thumbs.contains_key("a.quill"));
+    }
+
+    /// How long the window stands still for a large design's small picture. Run by hand:
+    /// `cargo test --release -- --ignored timing_35 --nocapture`.
+    #[test]
+    #[ignore = "timing: prints frame times"]
+    fn timing_35_a_large_designs_small_picture() {
+        let folder = std::env::temp_dir().join(format!("quill-thumb-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let file = folder.join("large.pen");
+        std::fs::write(&file, crate::timing::large_design()).unwrap();
+        let path = file.display().to_string();
+        let ctx = egui::Context::default();
+        let frame = |ctx: &egui::Context, draw: &mut dyn FnMut()| {
+            let start = Instant::now();
+            let mut drawn = ctx.run_ui(egui::RawInput::default(), |_| draw());
+            drawn.textures_delta.clear();
+            start.elapsed()
+        };
+        // As it was: read, laid out and drawn in the frame, on the window's thread.
+        let mut here = None;
+        let before = frame(&ctx, &mut || here = made(&ctx, &path).image);
+        assert!(here.is_some());
+        println!("35 before: the frame that makes the picture stands still for {:.1} ms", before.as_secs_f64() * 1000.0);
+        // As it is: frames go on while a thread makes it.
+        let mut home = Home { files: vec![recent(&path, SystemTime::UNIX_EPOCH)], ..Home::default() };
+        home.thumbs.insert(SAMPLE.to_owned(), Thumb { stamp: None, texture: None, rough: false, tries: 0 });
+        let (began, mut longest, mut frames) = (Instant::now(), Duration::ZERO, 0);
+        while home.thumbs.get(&path).is_none_or(|thumb| thumb.texture.is_none()) {
+            longest = longest.max(frame(&ctx, &mut || home.tend_pictures(&ctx)));
+            frames += 1;
+            std::thread::sleep(Duration::from_millis(2));
+            assert!(began.elapsed() < Duration::from_secs(60), "the picture never arrived");
+        }
+        println!(
+            "35 after: {frames} frames went on meanwhile, the longest {:.3} ms; the picture was there after {:.1} ms",
+            longest.as_secs_f64() * 1000.0,
+            began.elapsed().as_secs_f64() * 1000.0
+        );
+        std::fs::remove_dir_all(&folder).unwrap();
     }
 
     #[test]

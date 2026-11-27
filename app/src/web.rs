@@ -14,11 +14,14 @@
 
 use std::fmt::Write as _;
 use std::io::Read;
-use std::net::{IpAddr, ToSocketAddrs};
+use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde_json::{Value, json};
+use ureq::unversioned::resolver::{ResolvedSocketAddrs, Resolver};
+use ureq::unversioned::transport::{DefaultConnector, NextTimeout};
 
 use crate::link::Call;
 
@@ -367,18 +370,120 @@ fn public(address: IpAddr) -> bool {
     }
 }
 
-/// Refuses an address that isn't a web page out on the internet.
+/// Looks up the addresses a host's name stands for.
+// Agent: the one place the web tools ask the name service; a test puts answers of its own here.
+trait Lookup: Send + Sync + 'static {
+    /// The addresses of `host`, each with `port`.
+    ///
+    /// # Errors
+    /// When the name can't be looked up.
+    fn addresses(&self, host: &str, port: u16) -> std::io::Result<Vec<SocketAddr>>;
+}
+
+/// The computer's own name service.
+struct SystemLookup;
+
+impl Lookup for SystemLookup {
+    fn addresses(&self, host: &str, port: u16) -> std::io::Result<Vec<SocketAddr>> {
+        (host, port).to_socket_addrs().map(Iterator::collect)
+    }
+}
+
+/// The addresses to connect to for `host`, given what a look-up of its name `found`: every one of them is out
+/// on the internet.
+///
+/// # Errors
+/// A sentence when the name wasn't found, or when any of its addresses is this computer or its local network.
 // Human: a model reads what the web says, and a page could tell it to fetch something from this computer or
-// the network it is on (a router, another app's local server). Those addresses are never fetched.
-// Agent: BLOCKS on looking the name up. The look-up is done once more by the request itself, so a name that
-// changes its answer in between is not caught here.
-fn allowed(url: &str) -> Result<(), String> {
-    let (host, port) = host_of(url).ok_or("Only http and https addresses can be fetched.")?;
-    let addresses: Vec<_> = (host.as_str(), port).to_socket_addrs().map_err(|error| format!("The site \"{host}\" wasn't found: {error}"))?.collect();
+// the network it is on (a router, another app's local server). Those addresses are never fetched. A name
+// that has even one such address among its answers is refused whole: no honest site answers that way.
+fn checked(host: &str, found: std::io::Result<Vec<SocketAddr>>) -> Result<Vec<SocketAddr>, String> {
+    let addresses = found.map_err(|error| format!("The site \"{host}\" wasn't found: {error}"))?;
     if addresses.is_empty() || !addresses.iter().all(|address| public(address.ip())) {
         return Err(format!("\"{host}\" is on this computer or its local network, which isn't fetched."));
     }
-    Ok(())
+    Ok(addresses)
+}
+
+/// The host and port of the user's proxy at `uri`: its port, or the usual one of its kind.
+fn proxy_host(uri: &ureq::http::Uri) -> Option<(String, u16)> {
+    let usual = match uri.scheme_str() {
+        Some("http") => 80,
+        Some("https") => 443,
+        _ => 1080,
+    };
+    let host = uri.host()?.trim_start_matches('[').trim_end_matches(']');
+    Some((host.to_owned(), uri.port_u16().unwrap_or(usual)))
+}
+
+/// How many addresses of one name a request is handed at most: as many as ureq's list of them holds.
+const MOST_ADDRESSES: usize = 16;
+
+/// The name service the web tools' requests connect through: it hands a request only addresses that were
+/// checked ([`checked`]), so the connection can't go anywhere else.
+// Human: the guard used to look a name up, check the answer, and then let the request look the name up
+// again. A hostile name service could answer the first question with a public address and the second with
+// 127.0.0.1 or an address on the local network ("DNS rebinding"), and the request went there. Now there is
+// one question, and the connection is made to the very addresses that were checked. That holds for every
+// address a site sends the request on to, since each new connection asks here.
+// Human: the name in the address stays what the request is made for: the certificate is still checked
+// against the site's name, never against a number.
+// Agent: BLOCKS on the look-up, on a thread of its own when the request has a time limit, as ureq's own
+// resolver does. `said` takes the sentence for a refusal, which ureq's error has no room for.
+struct Guard {
+    lookup: Arc<dyn Lookup>,
+    said: Arc<Mutex<Option<String>>>,
+}
+
+impl std::fmt::Debug for Guard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Guard").finish_non_exhaustive()
+    }
+}
+
+impl Guard {
+    /// The addresses of `host`, asked for within `timeout`.
+    fn look_up(&self, host: &str, port: u16, timeout: NextTimeout) -> Result<std::io::Result<Vec<SocketAddr>>, ureq::Error> {
+        if timeout.after.is_not_happening() {
+            return Ok(self.lookup.addresses(host, port));
+        }
+        let (send, arrives) = std::sync::mpsc::sync_channel(1);
+        let (lookup, name) = (self.lookup.clone(), host.to_owned());
+        // The answer of a look-up that took too long is dropped with the channel.
+        let asked = std::thread::Builder::new().name("pencraft-lookup".to_owned()).spawn(move || drop(send.send(lookup.addresses(&name, port))));
+        if let Err(error) = asked {
+            return Ok(Err(error));
+        }
+        arrives.recv_timeout(*timeout.after).map_err(|_| ureq::Error::Timeout(timeout.reason))
+    }
+}
+
+impl Resolver for Guard {
+    fn resolve(&self, uri: &ureq::http::Uri, config: &ureq::config::Config, timeout: NextTimeout) -> Result<ResolvedSocketAddrs, ureq::Error> {
+        let refuse = |said: String| {
+            *crate::app::lock(&self.said) = Some(said);
+            ureq::Error::HostNotFound
+        };
+        // Human: a proxy the user's own computer is set to reach the web through is theirs, wherever it is;
+        // it is the one address that is connected to unchecked. Its address may carry a name and a password
+        // and need not be a web address (SOCKS), so it is read as ureq reads it, not as a page's address is.
+        let proxy = config.proxy().is_some_and(|proxy| proxy.uri() == uri);
+        let named = if proxy { proxy_host(uri) } else { host_of(&uri.to_string()) };
+        let Some((host, port)) = named else {
+            return Err(refuse("Only http and https addresses can be fetched.".to_owned()));
+        };
+        let found = self.look_up(&host, port, timeout)?;
+        let addresses = if proxy {
+            found.map_err(|error| refuse(format!("The proxy \"{host}\" wasn't found: {error}")))?
+        } else {
+            checked(&host, found).map_err(refuse)?
+        };
+        let mut resolved = self.empty();
+        for address in addresses.into_iter().take(MOST_ADDRESSES) {
+            resolved.push(address);
+        }
+        if resolved.is_empty() { Err(ureq::Error::HostNotFound) } else { Ok(resolved) }
+    }
 }
 
 /// Where a site's "it has moved to `location`" answer leads from `url`.
@@ -417,14 +522,24 @@ fn pause(retry_after: Option<&str>, attempt: u32) -> Duration {
 // after that the model is told to take something from another site.
 // Agent: BLOCKS on the network and while it waits for a site; call it from a thread of its own.
 fn fetch_with(url: &str, most: u64, headers: &[(&str, &str)]) -> Result<Page, String> {
-    let agent: ureq::Agent = ureq::Agent::config_builder()
+    fetch_through(url, most, headers, &(Arc::new(SystemLookup) as Arc<dyn Lookup>))
+}
+
+/// [`fetch_with`], looking names up with `lookup`.
+fn fetch_through(url: &str, most: u64, headers: &[(&str, &str)], lookup: &Arc<dyn Lookup>) -> Result<Page, String> {
+    let config = ureq::Agent::config_builder()
         .http_status_as_error(false)
         .max_redirects(0)
         .user_agent(AGENT)
         .timeout_connect(Some(Duration::from_secs(15)))
         .timeout_global(Some(Duration::from_secs(45)))
-        .build()
-        .into();
+        .build();
+    // Human: through a proxy it is the proxy that looks the site's name up, out of this app's hands; the
+    // name is then checked here before each request, which is all that can be done from this side.
+    let proxied = config.proxy().is_some();
+    let said = Arc::new(Mutex::new(None));
+    let guard = Guard { lookup: lookup.clone(), said: said.clone() };
+    let agent = ureq::Agent::with_parts(config, DefaultConnector::default(), guard);
     let first = url;
     let mut url = url.to_owned();
     let (mut hops, mut attempt) = (0, 0);
@@ -432,13 +547,18 @@ fn fetch_with(url: &str, most: u64, headers: &[(&str, &str)]) -> Result<Page, St
     // request on to another host is not given them, from that hop on.
     let mut send_headers = true;
     loop {
-        allowed(&url)?;
+        let (host, port) = host_of(&url).ok_or("Only http and https addresses can be fetched.")?;
+        if proxied {
+            checked(&host, lookup.addresses(&host, port))?;
+        }
         send_headers &= same_host(first, &url);
         let mut request = agent.get(&url);
         for (name, value) in headers.iter().filter(|_| send_headers) {
             request = request.header(*name, *value);
         }
-        let mut response = request.call().map_err(|error| format!("The site couldn't be reached: {error}"))?;
+        // A refusal by the guard has its own sentence; anything else is the connection's.
+        let mut response =
+            request.call().map_err(|error| crate::app::lock(&said).take().unwrap_or_else(|| format!("The site couldn't be reached: {error}")))?;
         let status = response.status().as_u16();
         let header = |name: &str| response.headers().get(name).and_then(|value| value.to_str().ok()).map(str::to_owned);
         if (300..400).contains(&status) {
@@ -626,7 +746,9 @@ mod tests {
             assert!(public(open.parse().unwrap()), "{open}");
         }
         for local in ["http://localhost:8080/", "http://127.0.0.1/", "http://[::1]/", "http://192.168.1.1/admin"] {
-            assert!(allowed(local).is_err(), "{local}");
+            let (guard, said) = guard(SystemLookup);
+            assert!(guard.resolve(&local.parse().unwrap(), &direct(), NextTimeout::default()).is_err(), "{local}");
+            assert!(said.lock().unwrap().as_deref().is_some_and(|said| said.contains("local network")), "{local}");
         }
         assert_eq!(moved("https://a.example/x/y", "/z"), Some("https://a.example/z".to_owned()));
         assert_eq!(moved("https://a.example/x", "http://b.example/"), Some("http://b.example/".to_owned()));
@@ -699,6 +821,129 @@ mod tests {
         // The sources take turns, so the first pictures of an answer are from different sites.
         let turns = in_turns(vec![vec![json!(1), json!(2), json!(3)], vec![], vec![json!("a")]], 3);
         assert_eq!(turns, vec![json!(1), json!("a"), json!(2)]);
+    }
+
+    /// A name service that answers from a list: each name's answers in turn, the last one from then on.
+    struct Stub {
+        answers: Vec<(&'static str, Vec<Vec<&'static str>>)>,
+        asked: std::sync::atomic::AtomicUsize,
+        /// How long each answer takes.
+        slow: Duration,
+    }
+
+    impl Stub {
+        fn of(answers: &[(&'static str, &[&[&'static str]])]) -> Stub {
+            let answers = answers.iter().map(|(name, turns)| (*name, turns.iter().map(|turn| turn.to_vec()).collect())).collect();
+            Stub { answers, asked: std::sync::atomic::AtomicUsize::new(0), slow: Duration::ZERO }
+        }
+
+        fn asked(&self) -> usize {
+            self.asked.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    impl Lookup for Arc<Stub> {
+        fn addresses(&self, host: &str, port: u16) -> std::io::Result<Vec<SocketAddr>> {
+            std::thread::sleep(self.slow);
+            let turn = self.asked.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let (_, turns) = self.answers.iter().find(|(name, _)| *name == host).ok_or(std::io::ErrorKind::NotFound)?;
+            let answer = turns.get(turn).or(turns.last()).ok_or(std::io::ErrorKind::NotFound)?;
+            Ok(answer.iter().map(|address| SocketAddr::new(address.parse().unwrap(), port)).collect())
+        }
+    }
+
+    fn guard(lookup: impl Lookup) -> (Guard, Arc<Mutex<Option<String>>>) {
+        let said = Arc::new(Mutex::new(None));
+        (Guard { lookup: Arc::new(lookup), said: said.clone() }, said)
+    }
+
+    /// A request's settings without a proxy, whatever this computer's environment says.
+    fn direct() -> ureq::config::Config {
+        ureq::Agent::config_builder().proxy(None).build()
+    }
+
+    #[test]
+    fn a_name_that_stands_for_this_computer_or_its_network_is_refused_and_a_public_one_passes() {
+        for local in ["127.0.0.1", "10.1.2.3", "169.254.169.254", "192.168.0.7", "::1", "::ffff:127.0.0.1", "::ffff:10.1.2.3", "fe80::1"] {
+            let stub = Arc::new(Stub::of(&[("site.example", &[&[local]])]));
+            let (guard, said) = guard(stub.clone());
+            let refused = guard.resolve(&"https://site.example/page".parse().unwrap(), &direct(), NextTimeout::default());
+            assert!(matches!(refused, Err(ureq::Error::HostNotFound)), "{local}");
+            assert_eq!(
+                said.lock().unwrap().take().unwrap(),
+                "\"site.example\" is on this computer or its local network, which isn't fetched.",
+                "{local}"
+            );
+            assert_eq!(stub.asked(), 1);
+        }
+        // One local address among public ones refuses the name whole.
+        let (mixed, _) = guard(Arc::new(Stub::of(&[("site.example", &[&["93.184.216.34", "127.0.0.1"]])])));
+        assert!(mixed.resolve(&"http://site.example/".parse().unwrap(), &direct(), NextTimeout::default()).is_err());
+        // A public name passes: the request is handed the checked addresses, with the address's port.
+        let stub = Arc::new(Stub::of(&[("site.example", &[&["93.184.216.34", "2606:2800:220:1:248:1893:25c8:1946"]])]));
+        let (open, said) = guard(stub.clone());
+        let found = open.resolve(&"https://site.example:8443/page".parse().unwrap(), &direct(), NextTimeout::default()).unwrap();
+        let found: Vec<String> = found.iter().map(ToString::to_string).collect();
+        assert_eq!(found, ["93.184.216.34:8443", "[2606:2800:220:1:248:1893:25c8:1946]:8443"]);
+        assert!(said.lock().unwrap().is_none() && stub.asked() == 1);
+        // A name nobody knows, and an address that is no web address.
+        let (unknown, said) = guard(Arc::new(Stub::of(&[])));
+        assert!(unknown.resolve(&"https://nowhere.example/".parse().unwrap(), &direct(), NextTimeout::default()).is_err());
+        assert!(said.lock().unwrap().take().unwrap().starts_with("The site \"nowhere.example\" wasn't found"));
+    }
+
+    #[test]
+    fn a_name_that_changes_its_answer_cant_send_the_connection_somewhere_unchecked() {
+        // The name service says a public address first and this computer from then on (DNS rebinding).
+        let stub = Arc::new(Stub::of(&[("turning.example", &[&["93.184.216.34"], &["127.0.0.1"]])]));
+        let (guard, said) = guard(stub.clone());
+        let uri: ureq::http::Uri = "http://turning.example/".parse().unwrap();
+        // One question for one connection, and the connection gets what was checked: the public address.
+        let first = guard.resolve(&uri, &direct(), NextTimeout::default()).unwrap();
+        assert_eq!(first.iter().map(ToString::to_string).collect::<Vec<_>>(), ["93.184.216.34:80"]);
+        assert_eq!(stub.asked(), 1);
+        // The next connection (a retry, or a site that sent the request on to this name) asks again and
+        // is refused, since that answer is checked too.
+        assert!(guard.resolve(&uri, &direct(), NextTimeout::default()).is_err());
+        assert!(said.lock().unwrap().is_some() && stub.asked() == 2);
+    }
+
+    #[test]
+    fn a_request_never_reaches_a_local_server_behind_a_public_looking_name() {
+        // Run without a proxy only: through one, the proxy does the connecting.
+        if ureq::Proxy::try_from_env().is_some() {
+            return;
+        }
+        let server = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        server.set_nonblocking(true).unwrap();
+        let port = server.local_addr().unwrap().port();
+        let stub = Arc::new(Stub::of(&[("inside.example", &[&["127.0.0.1"]])]));
+        let refused = fetch_through(&format!("http://inside.example:{port}/secret"), 1000, &[], &(Arc::new(stub.clone()) as Arc<dyn Lookup>));
+        assert_eq!(refused.err().unwrap(), "\"inside.example\" is on this computer or its local network, which isn't fetched.");
+        // Nothing connected to the server, and the name was asked for once.
+        assert!(matches!(server.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock));
+        assert_eq!(stub.asked(), 1);
+    }
+
+    #[test]
+    fn the_users_own_proxy_is_reached_wherever_it_is_and_a_slow_look_up_is_given_up() {
+        let proxy = ureq::Proxy::new("http://127.0.0.1:3128").unwrap();
+        let through = ureq::Agent::config_builder().proxy(Some(proxy.clone())).build();
+        let (guard, _) = guard(SystemLookup);
+        let found = guard.resolve(proxy.uri(), &through, NextTimeout::default()).unwrap();
+        assert_eq!(found.iter().map(ToString::to_string).collect::<Vec<_>>(), ["127.0.0.1:3128"]);
+        // A proxy that asks for a name and a password is reached as well.
+        let signed = ureq::Proxy::new("http://someone:secret@127.0.0.1:3128").unwrap();
+        let with_name = ureq::Agent::config_builder().proxy(Some(signed.clone())).build();
+        let found = guard.resolve(signed.uri(), &with_name, NextTimeout::default()).unwrap();
+        assert_eq!(found.iter().map(ToString::to_string).collect::<Vec<_>>(), ["127.0.0.1:3128"]);
+        // Another address on this computer is still refused with that proxy set.
+        assert!(guard.resolve(&"http://127.0.0.1:8080/".parse().unwrap(), &through, NextTimeout::default()).is_err());
+        // A look-up that takes longer than the request has left ends as a timeout.
+        let slow = Stub { slow: Duration::from_millis(400), ..Stub::of(&[("slow.example", &[&["93.184.216.34"]])]) };
+        let (guard, _) = self::guard(Arc::new(slow));
+        let soon = NextTimeout { after: Duration::from_millis(20).into(), ..NextTimeout::default() };
+        assert!(matches!(guard.resolve(&"http://slow.example/".parse().unwrap(), &direct(), soon), Err(ureq::Error::Timeout(_))));
     }
 
     /// Searches, reads and fetches on the real web. Run by hand: `cargo test -- --ignored real_web --nocapture`.

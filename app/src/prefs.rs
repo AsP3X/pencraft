@@ -39,6 +39,7 @@ pub struct Welcome {
 /// Look of the window.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
+#[expect(clippy::struct_excessive_bools, reason = "each is one switch of the settings file, kept under its own key")]
 pub struct Appearance {
     /// Dark instead of light. While `follow_system` is on, the app sets this to what the computer shows.
     pub dark: bool,
@@ -48,12 +49,26 @@ pub struct Appearance {
     pub language: String,
     /// Animations and effects in the interface.
     pub animations: bool,
+    /// The user has set `animations` themselves; until then it follows what the computer asks for
+    /// ([`crate::motion`]).
+    pub animations_chosen: bool,
+    /// Quill turned `animations` off because the computer asks for less motion; it turns them on again
+    /// when the computer no longer does. An "off" from an earlier version, or the user's own, has this unset
+    /// and stays off.
+    pub animations_off_for_system: bool,
 }
 
 impl Default for Appearance {
     fn default() -> Self {
         // Human: following the computer is off at first, so a look chosen in an earlier version stays chosen.
-        Appearance { dark: false, follow_system: false, language: "System".to_owned(), animations: true }
+        Appearance {
+            dark: false,
+            follow_system: false,
+            language: "System".to_owned(),
+            animations: true,
+            animations_chosen: false,
+            animations_off_for_system: false,
+        }
     }
 }
 

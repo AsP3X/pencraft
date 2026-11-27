@@ -6,7 +6,10 @@ use egui::{Align2, Color32, FontId, Key, Rect, Sense, Stroke, StrokeKind, pos2, 
 use crate::editor::Tool;
 use crate::icons;
 use crate::ops::{AlignTo, Order};
-use crate::theme::{self, ACCENT_PLATE, ACTIONS_HEIGHT, ACTIONS_RADIUS, ACTIONS_ROW, ACTIONS_TOP, ACTIONS_WIDTH};
+use crate::theme::{
+    self, ACCENT_PLATE, ACTIONS_BAR, ACTIONS_HEADING, ACTIONS_HEIGHT, ACTIONS_KEY, ACTIONS_KEY_LIT, ACTIONS_LINE, ACTIONS_LIST_PAD, ACTIONS_MARGIN,
+    ACTIONS_NOTE_TEXT, ACTIONS_PLATE, ACTIONS_RADIUS, ACTIONS_ROW, ACTIONS_TOP, ACTIONS_WIDTH, ON_ACCENT, OUTLINE_SOFT, RULE_FADE,
+};
 
 /// Something the app can do, as the action search and the keyboard ask for it.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -283,7 +286,7 @@ impl Palette {
         }
         let palette = theme::palette(dark);
         let screen = ctx.content_rect();
-        let width = ACTIONS_WIDTH.min(screen.width() - 40.0);
+        let width = ACTIONS_WIDTH.min(screen.width() - ACTIONS_MARGIN);
         let found = matching(&self.query);
         let (up, down, enter, escape) = ctx.input_mut(|i| {
             (
@@ -309,14 +312,14 @@ impl Palette {
                 egui::Frame::new().fill(palette.island).stroke(Stroke::new(1.0, palette.outline)).corner_radius(ACTIONS_RADIUS).show(ui, |ui| {
                     ui.set_width(width);
                     ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
-                    let (bar, _) = ui.allocate_exact_size(vec2(width, 48.0), Sense::hover());
+                    let (bar, _) = ui.allocate_exact_size(vec2(width, ACTIONS_BAR[0]), Sense::hover());
                     icons::paint(
                         ui.painter(),
-                        Rect::from_center_size(pos2(bar.left() + 25.0, bar.center().y), egui::Vec2::splat(15.0)),
+                        Rect::from_center_size(pos2(bar.left() + ACTIONS_BAR[1], bar.center().y), egui::Vec2::splat(ACTIONS_BAR[2])),
                         "search",
                         palette.muted,
                     );
-                    let field = Rect::from_min_max(pos2(bar.left() + 43.0, bar.top()), pos2(bar.right() - 14.0, bar.bottom()));
+                    let field = Rect::from_min_max(pos2(bar.left() + ACTIONS_BAR[3], bar.top()), pos2(bar.right() - ACTIONS_BAR[4], bar.bottom()));
                     let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(field).layout(egui::Layout::left_to_right(egui::Align::Center)));
                     let edit = inner.add(
                         egui::TextEdit::singleline(&mut self.query)
@@ -329,23 +332,29 @@ impl Palette {
                         self.cursor = 0;
                     }
                     edit.request_focus();
-                    ui.painter().hline(bar.x_range(), bar.bottom(), Stroke::new(1.0, palette.outline.gamma_multiply(0.7)));
+                    ui.painter().hline(bar.x_range(), bar.bottom(), Stroke::new(1.0, palette.outline.gamma_multiply(RULE_FADE)));
                     egui::ScrollArea::vertical().max_height(ACTIONS_HEIGHT).auto_shrink([false, true]).show(ui, |ui| {
-                        ui.add_space(6.0);
+                        ui.add_space(ACTIONS_LIST_PAD);
                         if found.is_empty() {
                             let (row, _) = ui.allocate_exact_size(vec2(width, ACTIONS_ROW), Sense::hover());
-                            ui.painter().text(row.center(), Align2::CENTER_CENTER, "No actions found", FontId::proportional(12.5), palette.muted);
+                            ui.painter().text(
+                                row.center(),
+                                Align2::CENTER_CENTER,
+                                "No actions found",
+                                FontId::proportional(ACTIONS_NOTE_TEXT),
+                                palette.muted,
+                            );
                         }
                         let mut heading = "";
                         for (index, found_action) in found.iter().enumerate() {
                             if found_action.category != heading {
                                 heading = found_action.category;
-                                let (row, _) = ui.allocate_exact_size(vec2(width, 26.0), Sense::hover());
+                                let (row, _) = ui.allocate_exact_size(vec2(width, ACTIONS_HEADING[0]), Sense::hover());
                                 ui.painter().text(
-                                    pos2(row.left() + 17.0, row.center().y + 2.0),
+                                    pos2(row.left() + ACTIONS_HEADING[1], row.center().y + ACTIONS_HEADING[2]),
                                     Align2::LEFT_CENTER,
                                     heading,
-                                    FontId::proportional(11.0),
+                                    FontId::proportional(ACTIONS_HEADING[3]),
                                     palette.muted,
                                 );
                             }
@@ -361,7 +370,7 @@ impl Palette {
                                 chosen = Some(found_action.command);
                             }
                         }
-                        ui.add_space(6.0);
+                        ui.add_space(ACTIONS_LIST_PAD);
                     });
                 });
             });
@@ -376,24 +385,34 @@ impl Palette {
 /// One action's line: its icon and name, and its shortcut as key caps at the right; `lit` is the highlighted one.
 fn line(ui: &mut egui::Ui, action: &Action, lit: bool, width: f32, palette: theme::Palette) -> egui::Response {
     let (row, response) = ui.allocate_exact_size(vec2(width, ACTIONS_ROW), Sense::click());
-    let plate = row.shrink2(vec2(7.0, 0.0));
+    let plate = row.shrink2(vec2(ACTIONS_PLATE[0], 0.0));
     if lit {
-        ui.painter().rect_filled(plate, 7.0, ACCENT_PLATE);
+        ui.painter().rect_filled(plate, ACTIONS_PLATE[1], ACCENT_PLATE);
     }
-    let ink = if lit { Color32::WHITE } else { palette.foreground };
-    icons::paint(ui.painter(), Rect::from_center_size(pos2(plate.left() + 18.0, row.center().y), egui::Vec2::splat(14.0)), action.icon, ink);
-    ui.painter().text(pos2(plate.left() + 36.0, row.center().y), Align2::LEFT_CENTER, action.label, FontId::proportional(13.0), ink);
-    let mut right = plate.right() - 10.0;
+    let ink = if lit { ON_ACCENT } else { palette.foreground };
+    icons::paint(
+        ui.painter(),
+        Rect::from_center_size(pos2(plate.left() + ACTIONS_LINE[0], row.center().y), egui::Vec2::splat(ACTIONS_LINE[1])),
+        action.icon,
+        ink,
+    );
+    ui.painter().text(
+        pos2(plate.left() + ACTIONS_LINE[2], row.center().y),
+        Align2::LEFT_CENTER,
+        action.label,
+        FontId::proportional(ACTIONS_LINE[3]),
+        ink,
+    );
+    let mut right = plate.right() - ACTIONS_LINE[4];
     // Human: a cap is as wide as its key's name needs: one sign on a Mac, a word like "Ctrl" elsewhere.
     for key in crate::keys::caps(action.keys).iter().rev() {
-        let ink = if lit { Color32::WHITE } else { palette.muted };
-        let name = ui.painter().layout_no_wrap((*key).to_owned(), FontId::proportional(10.5), ink);
-        let width = (name.size().x + 8.0).max(19.0);
-        let cap = Rect::from_min_size(pos2(right - width, row.center().y - 9.0), vec2(width, 18.0));
-        right = cap.left() - 3.0;
-        let (fill, edge) =
-            if lit { (Color32::from_white_alpha(40), Color32::TRANSPARENT) } else { (palette.hover.gamma_multiply(0.6), palette.outline) };
-        ui.painter().rect(cap, 4.0, fill, Stroke::new(1.0, edge), StrokeKind::Inside);
+        let ink = if lit { ON_ACCENT } else { palette.muted };
+        let name = ui.painter().layout_no_wrap((*key).to_owned(), FontId::proportional(ACTIONS_KEY[0]), ink);
+        let width = (name.size().x + ACTIONS_KEY[1]).max(ACTIONS_KEY[2]);
+        let cap = Rect::from_min_size(pos2(right - width, row.center().y - ACTIONS_KEY[3] / 2.0), vec2(width, ACTIONS_KEY[3]));
+        right = cap.left() - ACTIONS_KEY[4];
+        let (fill, edge) = if lit { (ACTIONS_KEY_LIT, Color32::TRANSPARENT) } else { (palette.hover.gamma_multiply(OUTLINE_SOFT), palette.outline) };
+        ui.painter().rect(cap, ACTIONS_KEY[5], fill, Stroke::new(1.0, edge), StrokeKind::Inside);
         ui.painter().galley(cap.center() - name.size() / 2.0, name, ink);
     }
     crate::sidebar::name_button(&response, action.label);

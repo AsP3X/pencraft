@@ -910,7 +910,7 @@ impl App {
             .iter()
             .enumerate()
             .map(|(tab, editor)| {
-                json!({ "name": editor.title(), "file": editor.path.as_ref().map(|p| p.display().to_string()), "inFront": Some(tab) == front, "unsavedChanges": editor.dirty })
+                json!({ "name": editor.title(), "file": editor.path.as_ref().map(|p| p.display().to_string()), "inFront": Some(tab) == front, "unsavedChanges": editor.dirty() })
             })
             .collect();
         let (ready, default) = self.image_services();
@@ -971,7 +971,7 @@ mod tests {
         std::fs::create_dir_all(unpacked.join("images")).unwrap();
         std::fs::write(unpacked.join("images/x.png"), b"x").unwrap();
         editor.save().unwrap();
-        editor.dirty = true;
+        editor.mark_unsaved();
         // A name without the ending gets it; the picture comes to lie beside the file; the document stays.
         let path = |name: &str| json!({ "path": folder.join("out").join(name).display().to_string() });
         let answer = export_document(&editor, &path("copy.v2"), None).unwrap();
@@ -979,7 +979,7 @@ mod tests {
         let written = std::fs::read_to_string(folder.join("out/copy.v2.pen")).unwrap();
         assert!(written.starts_with("{\n  \"version\": \"2.22\"") && written.contains("\"./images/x.png\""), "{written}");
         assert_eq!(std::fs::read(folder.join("out/images/x.png")).unwrap(), b"x");
-        assert_eq!((editor.path.as_ref(), editor.folder(), editor.dirty), (Some(&folder.join("site.quill")), Some(unpacked.as_path()), true));
+        assert_eq!((editor.path.as_ref(), editor.folder(), editor.dirty()), (Some(&folder.join("site.quill")), Some(unpacked.as_path()), true));
         // A `.pen` file that is there is not replaced, under the name given or the name with the ending added.
         let before = std::fs::read(folder.join("out/copy.v2.pen")).unwrap();
         assert!(export_document(&editor, &path("copy.v2.pen"), None).unwrap_err().contains("is there already: `export_document` doesn't replace"));

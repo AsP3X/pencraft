@@ -11,7 +11,7 @@ use crate::fuzzy;
 use crate::icons;
 use crate::sidebar::icon_button;
 use crate::theme::{
-    CHECKING, DIALOG_PADDING, DIALOG_TITLE_SIZE, FIELD_HEIGHT, MODEL_PICKER_BACKDROP, MODEL_PICKER_ROW, MODEL_PICKER_SIZE, Palette,
+    self, CHECKING, DIALOG_PADDING, DIALOG_TITLE_SIZE, FIELD_HEIGHT, MODEL_PICKER_BACKDROP, MODEL_PICKER_ROW, MODEL_PICKER_SIZE, Palette,
     SETTINGS_CARD_RADIUS, SETTINGS_FOOTER, SETTINGS_RADIUS,
 };
 
@@ -190,7 +190,10 @@ impl Picker {
     pub(super) fn show(&mut self, ctx: &egui::Context, palette: Palette) -> Option<Answer> {
         self.rank();
         let screen = ctx.content_rect();
-        let size = vec2(MODEL_PICKER_SIZE[0].min(screen.width() - 32.0), MODEL_PICKER_SIZE[1].min(screen.height() - 32.0));
+        let size = vec2(
+            MODEL_PICKER_SIZE[0].min(screen.width() - theme::MODEL_PICKER_MARGIN),
+            MODEL_PICKER_SIZE[1].min(screen.height() - theme::MODEL_PICKER_MARGIN),
+        );
         let frame = egui::Frame::new().fill(palette.island).stroke(Stroke::new(1.0, palette.outline)).corner_radius(SETTINGS_RADIUS);
         let id = egui::Id::unique("model-picker");
         let modal = egui::Modal::new(id)
@@ -208,9 +211,12 @@ impl Picker {
     fn draw(&mut self, ui: &mut Ui, window: Rect, palette: Palette) -> Option<Answer> {
         let pad = f32::from(DIALOG_PADDING);
         let inner = window.shrink2(vec2(pad, 0.0));
-        let mut answer =
-            self.head(ui, Rect::from_min_max(pos2(inner.left(), window.top() + pad), pos2(inner.right(), window.top() + pad + 40.0)), palette);
-        let search = Rect::from_min_size(pos2(inner.left(), window.top() + pad + 52.0), vec2(inner.width(), FIELD_HEIGHT));
+        let mut answer = self.head(
+            ui,
+            Rect::from_min_max(pos2(inner.left(), window.top() + pad), pos2(inner.right(), window.top() + pad + theme::MODEL_PICKER_HEAD[0])),
+            palette,
+        );
+        let search = Rect::from_min_size(pos2(inner.left(), window.top() + pad + theme::MODEL_PICKER_HEAD[1]), vec2(inner.width(), FIELD_HEIGHT));
         let field = ui.scope_builder(UiBuilder::new().max_rect(search), |ui| search_field(ui, &mut self.query, "Search models", palette)).inner;
         if std::mem::take(&mut self.fresh) {
             field.request_focus();
@@ -221,7 +227,10 @@ impl Picker {
             field.request_focus();
         }
         let bar = Rect::from_min_max(pos2(window.left() + 1.0, window.bottom() - SETTINGS_FOOTER), window.max - vec2(1.0, 1.0));
-        let list = Rect::from_min_max(pos2(inner.left(), search.bottom() + 12.0), pos2(inner.right(), bar.top() - 16.0));
+        let list = Rect::from_min_max(
+            pos2(inner.left(), search.bottom() + theme::MODEL_PICKER_HEAD[2]),
+            pos2(inner.right(), bar.top() - theme::MODEL_PICKER_HEAD[3]),
+        );
         ui.painter().rect(list, SETTINGS_CARD_RADIUS, palette.card, Stroke::new(1.0, palette.outline), StrokeKind::Inside);
         let within = list.shrink(1.0);
         ui.scope_builder(UiBuilder::new().max_rect(within), |ui| {
@@ -252,22 +261,39 @@ impl Picker {
     /// The window's head: what it is for, whose models these are, and at the right the ways to load the list
     /// again and to close.
     fn head(&self, ui: &mut Ui, rect: Rect, palette: Palette) -> Option<Answer> {
-        ui.painter().text(rect.left_top() + vec2(0.0, 9.0), Align2::LEFT_CENTER, "Choose models", strong(DIALOG_TITLE_SIZE), palette.foreground);
+        ui.painter().text(
+            rect.left_top() + vec2(0.0, theme::MODEL_PICKER_TITLE[0]),
+            Align2::LEFT_CENTER,
+            "Choose models",
+            strong(DIALOG_TITLE_SIZE),
+            palette.foreground,
+        );
         let under = match &self.state {
             State::Loading => format!("Asking {}…", self.provider),
             State::Failed(_) => format!("{} didn't give its models", self.provider),
             State::Listed => format!("{} · {}", self.provider, super::counted(self.offered.len(), "model")),
         };
-        ui.painter().text(rect.left_top() + vec2(0.0, 30.0), Align2::LEFT_CENTER, under, FontId::proportional(12.0), palette.muted);
+        ui.painter().text(
+            rect.left_top() + vec2(0.0, theme::MODEL_PICKER_TITLE[1]),
+            Align2::LEFT_CENTER,
+            under,
+            FontId::proportional(theme::MODEL_PICKER_TITLE[2]),
+            palette.muted,
+        );
         let mut answer = None;
-        let corner = Rect::from_min_max(pos2(rect.right() - 64.0, rect.top() - 6.0), pos2(rect.right() + 6.0, rect.top() + 22.0));
+        let corner = Rect::from_min_max(
+            pos2(rect.right() - theme::MODEL_PICKER_CORNER[0], rect.top() - theme::MODEL_PICKER_CORNER[1]),
+            pos2(rect.right() + theme::MODEL_PICKER_CORNER[1], rect.top() + theme::MODEL_PICKER_CORNER[2]),
+        );
         ui.scope_builder(UiBuilder::new().max_rect(corner).layout(Layout::right_to_left(Align::Center)), |ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
-            if icon_button(ui, "x", Vec2::splat(28.0), false, "Close without changes", palette).clicked() {
+            ui.spacing_mut().item_spacing.x = theme::MODEL_PICKER_CORNER[3];
+            if icon_button(ui, "x", Vec2::splat(theme::MODEL_PICKER_CORNER[4]), false, "Close without changes", palette).clicked() {
                 answer = Some(Answer::Cancel);
             }
             // Human: a provider's list changes (a model pulled, a new release); this asks for it again.
-            if self.state != State::Loading && icon_button(ui, "refresh-cw", Vec2::splat(28.0), false, "Load the list again", palette).clicked() {
+            if self.state != State::Loading
+                && icon_button(ui, "refresh-cw", Vec2::splat(theme::MODEL_PICKER_CORNER[4]), false, "Load the list again", palette).clicked()
+            {
                 answer = Some(Answer::Reload);
             }
         });
@@ -277,9 +303,18 @@ impl Picker {
     /// What the list's place shows while the provider is asked.
     fn waiting(&self, ui: &mut Ui, within: Rect, palette: Palette) {
         let middle = within.center();
-        ui.put(Rect::from_center_size(middle - vec2(0.0, 16.0), Vec2::splat(18.0)), egui::Spinner::new().size(18.0).color(palette.muted));
+        ui.put(
+            Rect::from_center_size(middle - vec2(0.0, theme::MODEL_PICKER_WAIT[0]), Vec2::splat(theme::MODEL_PICKER_WAIT[1])),
+            egui::Spinner::new().size(theme::MODEL_PICKER_WAIT[1]).color(palette.muted),
+        );
         let words = format!("Asking {} for its models…", self.provider);
-        ui.painter().text(middle + vec2(0.0, 14.0), Align2::CENTER_CENTER, words, FontId::proportional(12.5), palette.muted);
+        ui.painter().text(
+            middle + vec2(0.0, theme::MODEL_PICKER_WAIT[2]),
+            Align2::CENTER_CENTER,
+            words,
+            FontId::proportional(theme::SETTINGS_CONTROL_TEXT),
+            palette.muted,
+        );
     }
 
     /// The shown models, one row each: a tick box, and the model's name with the letters the search found
@@ -289,7 +324,7 @@ impl Picker {
         let mut clicked = None;
         egui::ScrollArea::vertical().id_salt("model-picker-rows").auto_shrink([false, false]).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
-            ui.add_space(4.0);
+            ui.add_space(theme::SETTINGS_HINT_GAP);
             for (row, (place, found)) in self.shown.iter().enumerate() {
                 let Some(id) = self.offered.get(*place) else { continue };
                 let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), MODEL_PICKER_ROW), Sense::click());
@@ -306,17 +341,26 @@ impl Picker {
                 // Human: the row the arrow keys are on is filled like a hovered one, a little stronger.
                 let fill = match (row == self.cursor && (searching || self.keyed), response.hovered()) {
                     (true, _) => palette.hover,
-                    (false, true) => palette.hover.gamma_multiply(0.6),
+                    (false, true) => palette.hover.gamma_multiply(theme::OUTLINE_SOFT),
                     (false, false) => Color32::TRANSPARENT,
                 };
-                ui.painter().rect_filled(rect.shrink2(vec2(5.0, 1.0)), 7.0, fill);
+                ui.painter().rect_filled(
+                    rect.shrink2(vec2(theme::MODEL_PICKER_ROW_LOOK[0], theme::MODEL_PICKER_ROW_LOOK[1])),
+                    theme::MODEL_PICKER_ROW_LOOK[2],
+                    fill,
+                );
                 let middle = rect.center().y;
-                tick_box(ui, Rect::from_center_size(pos2(rect.left() + 23.0, middle), Vec2::splat(16.0)), ticked, palette);
-                let left = rect.left() + 42.0;
-                let name = name(ui, id, found, searching, rect.right() - left - 14.0, palette);
+                tick_box(
+                    ui,
+                    Rect::from_center_size(pos2(rect.left() + theme::MODEL_PICKER_ROW_LOOK[3], middle), Vec2::splat(theme::MODEL_PICKER_TICK[0])),
+                    ticked,
+                    palette,
+                );
+                let left = rect.left() + theme::MODEL_PICKER_ROW_LOOK[4];
+                let name = name(ui, id, found, searching, rect.right() - left - theme::MODEL_PICKER_ROW_LOOK[5], palette);
                 ui.painter().galley(pos2(left, middle - name.size().y / 2.0), name, palette.foreground);
             }
-            ui.add_space(4.0);
+            ui.add_space(theme::SETTINGS_HINT_GAP);
         });
         if let Some(row) = clicked {
             self.cursor = row;
@@ -331,10 +375,10 @@ impl Picker {
         let ticked = self.ticked();
         let listed = self.state == State::Listed;
         ui.scope_builder(UiBuilder::new().max_rect(rect).layout(Layout::left_to_right(Align::Center)), |ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.spacing_mut().item_spacing.x = theme::SETTINGS_HINT_GAP;
             let words = if ticked == 0 { "None selected".to_owned() } else { format!("{ticked} selected") };
-            ui.add(egui::Label::new(egui::RichText::new(words).size(12.5).color(palette.muted)).selectable(false));
-            ui.add_space(6.0);
+            ui.add(egui::Label::new(egui::RichText::new(words).size(theme::SETTINGS_CONTROL_TEXT).color(palette.muted)).selectable(false));
+            ui.add_space(theme::SETTINGS_LINE_GAP);
             let all = if self.query.trim().is_empty() { "Select all" } else { "Select shown" };
             let open = self.shown.iter().filter_map(|(place, _)| self.offered.get(*place)).any(|id| !self.chosen.contains(id));
             if button(ui, all, None, Kind::Quiet, listed && open, palette).clicked() {
@@ -345,7 +389,7 @@ impl Picker {
             }
         });
         ui.scope_builder(UiBuilder::new().max_rect(rect).layout(Layout::right_to_left(Align::Center)), |ui| {
-            ui.spacing_mut().item_spacing.x = 8.0;
+            ui.spacing_mut().item_spacing.x = theme::SETTINGS_INLINE_GAP;
             let take = if ticked == 0 { "Done".to_owned() } else { format!("Use {}", super::counted(ticked, "model")) };
             if button(ui, &take, None, Kind::Primary, listed, palette).clicked() {
                 answer = Some(Answer::Apply);
@@ -361,10 +405,16 @@ impl Picker {
 /// A tick box in `rect`: filled with a tick when `ticked`, an empty outline otherwise.
 fn tick_box(ui: &Ui, rect: Rect, ticked: bool, palette: Palette) {
     if ticked {
-        ui.painter().rect_filled(rect, 5.0, palette.primary);
-        icons::paint(ui.painter(), Rect::from_center_size(rect.center(), Vec2::splat(11.0)), "check", palette.primary_text);
+        ui.painter().rect_filled(rect, theme::MODEL_PICKER_TICK[1], palette.primary);
+        icons::paint(ui.painter(), Rect::from_center_size(rect.center(), Vec2::splat(theme::MODEL_PICKER_TICK[2])), "check", palette.primary_text);
     } else {
-        ui.painter().rect(rect, 5.0, palette.card, Stroke::new(1.0, palette.muted.gamma_multiply(0.55)), StrokeKind::Inside);
+        ui.painter().rect(
+            rect,
+            theme::MODEL_PICKER_TICK[1],
+            palette.card,
+            Stroke::new(1.0, palette.muted.gamma_multiply(theme::MODEL_PICKER_TICK[3])),
+            StrokeKind::Inside,
+        );
     }
 }
 
@@ -384,26 +434,34 @@ fn runs(id: &str, found: &[usize]) -> Vec<(String, bool)> {
 /// A model's name on one line of at most `width`: while a search is on, the letters it `found` are in the
 /// main colour and the rest is quiet; without one the whole name is in the main colour.
 fn name(ui: &Ui, id: &str, found: &[usize], searching: bool, width: f32, palette: Palette) -> std::sync::Arc<egui::Galley> {
-    let font = FontId::monospace(12.5);
+    let font = FontId::monospace(theme::SETTINGS_ROW_NAME[1]);
     let mut job = LayoutJob::default();
     for (run, hit) in runs(id, found) {
         let color = if hit || !searching { palette.foreground } else { palette.muted };
         job.append(&run, 0.0, TextFormat::simple(font.clone(), color));
     }
-    job.wrap = TextWrapping::truncate_at_width(width.max(40.0));
+    job.wrap = TextWrapping::truncate_at_width(width.max(theme::SETTINGS_LINE_LEAST));
     ui.fonts_mut(|fonts| fonts.layout_job(job))
 }
 
 /// Something said in the middle of the list's place: an icon, a sentence, and a button under it when there is
 /// something to do. Returns whether the button was clicked.
 fn said(ui: &mut Ui, within: Rect, icon: &'static str, tint: Color32, words: &str, action: Option<&str>, palette: Palette) -> bool {
-    let width = (within.width() - 64.0).max(80.0);
-    let text = ui.painter().layout(words.to_owned(), FontId::proportional(12.5), palette.muted, width);
-    let height = 22.0 + 10.0 + text.size().y + if action.is_some() { 14.0 + FIELD_HEIGHT } else { 0.0 };
+    let width = (within.width() - theme::MODEL_PICKER_EMPTY[0]).max(theme::MODEL_PICKER_EMPTY[1]);
+    let text = ui.painter().layout(words.to_owned(), FontId::proportional(theme::SETTINGS_CONTROL_TEXT), palette.muted, width);
+    let height = theme::MODEL_PICKER_EMPTY[2]
+        + theme::MODEL_PICKER_EMPTY[3]
+        + text.size().y
+        + if action.is_some() { theme::MODEL_PICKER_EMPTY[4] + FIELD_HEIGHT } else { 0.0 };
     let top = within.center().y - height / 2.0;
-    icons::paint(ui.painter(), Rect::from_center_size(pos2(within.center().x, top + 11.0), Vec2::splat(20.0)), icon, tint);
-    let at = pos2(within.center().x - text.size().x / 2.0, top + 32.0);
-    let under = at.y + text.size().y + 14.0;
+    icons::paint(
+        ui.painter(),
+        Rect::from_center_size(pos2(within.center().x, top + theme::MODEL_PICKER_EMPTY[5]), Vec2::splat(theme::MODEL_PICKER_EMPTY[6])),
+        icon,
+        tint,
+    );
+    let at = pos2(within.center().x - text.size().x / 2.0, top + theme::MODEL_PICKER_EMPTY[7]);
+    let under = at.y + text.size().y + theme::MODEL_PICKER_EMPTY[4];
     ui.painter().galley(at, text, palette.muted);
     let Some(action) = action else { return false };
     let place = Rect::from_min_size(pos2(within.left(), under), vec2(within.width(), FIELD_HEIGHT));

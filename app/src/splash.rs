@@ -112,6 +112,11 @@ impl Splash {
         Splash { began: Instant::now(), posed, pictures: None, sound: None }
     }
 
+    /// Draws only the ground the film starts on: the film, and its sound, have not begun.
+    pub fn hold(ui: &Ui) {
+        ui.painter().rect_filled(ui.max_rect(), 0.0, ground_at(0.0));
+    }
+
     /// Draws the film's frame of this moment over the whole of `ui`, and says what the user chose.
     // Human: with animations turned off in the settings there is no film: its last frame shows at once.
     pub fn show(&mut self, ui: &mut Ui, animations: bool) -> Outcome {

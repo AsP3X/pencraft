@@ -39,6 +39,7 @@ mod link;
 mod liquid;
 mod material;
 mod menus;
+mod motion;
 mod offers;
 mod ops;
 mod palette;
@@ -61,6 +62,8 @@ mod snap;
 mod splash;
 mod tasklist;
 mod theme;
+#[cfg(test)]
+mod timing;
 mod toast;
 mod tool_icons;
 mod update;

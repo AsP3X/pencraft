@@ -4,7 +4,7 @@
 //! layer, onto one of that layer's sides, or off into the open), a square one at each waypoint (drag to move, a
 //! double click takes it out) and a small dot in the middle of each stretch (drag it to add a waypoint there).
 
-use egui::{Color32, CursorIcon, Pos2, Rect as ScreenRect, Stroke};
+use egui::{CursorIcon, Pos2, Rect as ScreenRect, Stroke};
 use pen_doc::connector::{LINE, POINTS};
 use pen_doc::edit;
 use pen_doc::geom::{Affine, Point, Rect};
@@ -381,11 +381,11 @@ pub fn overlay(ui: &egui::Ui, painter: &egui::Painter, editor: &Editor, view: Sc
         let grow = if under == Some(spot) || held == Some(spot) { 1.5 } else { 0.0 };
         match spot {
             Spot::End(_) => {
-                painter.circle(at, WIRE_END / 2.0 + grow, Color32::WHITE, edge);
+                painter.circle(at, WIRE_END / 2.0 + grow, crate::theme::HANDLE_FILL, edge);
             }
             Spot::Via(_) => {
                 let square = ScreenRect::from_center_size(at, egui::Vec2::splat(WIRE_POINT + 2.0 * grow));
-                painter.rect(square, 1.0, Color32::WHITE, edge, egui::StrokeKind::Inside);
+                painter.rect(square, 1.0, crate::theme::HANDLE_FILL, edge, egui::StrokeKind::Inside);
             }
             // The dots between the points are only an offer, and stay out of the way while something is dragged.
             Spot::Middle(_) if grab.is_none() => {

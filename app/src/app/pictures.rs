@@ -1722,11 +1722,11 @@ mod tests {
 
         // Exported as a `.pen` file elsewhere: the files come to lie beside that file, and the document stays as
         // it is, in its `.quill` file, with its unsaved changes.
-        editor.dirty = true;
+        editor.mark_unsaved();
         let before = pen_doc::write(&editor.doc).unwrap();
         let told = export_pen(&editor, &back.join("back.pen"), None).unwrap();
         assert_eq!(told, ["Only Quill draws its masks; other programs that open .pen files leave them out."]);
-        assert_eq!((editor.path.as_ref(), editor.folder(), editor.dirty), (Some(&bundle), Some(unpacked.as_path()), true));
+        assert_eq!((editor.path.as_ref(), editor.folder(), editor.dirty()), (Some(&bundle), Some(unpacked.as_path()), true));
         assert_eq!(pen_doc::write(&editor.doc).unwrap(), before);
         assert_eq!(std::fs::read(back.join("images/far.png")).unwrap(), b"far");
         assert_eq!(std::fs::read(back.join("fx/glow.glsl")).unwrap(), b"void main(){}");
@@ -1911,7 +1911,7 @@ mod tests {
         editor.move_to(next.clone()).unwrap();
         assert_eq!(settle(&mut editor, was.as_deref(), None), Vec::<String>::new());
         assert_eq!(editor.save_or_return(Some(before)).unwrap(), Vec::<String>::new());
-        assert_eq!((editor.path.as_ref(), editor.bundled(), editor.dirty), (Some(&folder.join("site.quill")), true, false));
+        assert_eq!((editor.path.as_ref(), editor.bundled(), editor.dirty()), (Some(&folder.join("site.quill")), true, false));
         let files = crate::bundle::quill::read(&std::fs::read(&next).unwrap(), 1 << 20).unwrap().entries;
         let held: Vec<(&str, usize)> = files.iter().map(|file| (file.name.as_str(), file.bytes.len())).collect();
         assert_eq!((held[1], held.len(), files[1].bytes.as_slice()), (("images/x.png", 1), 2, &b"x"[..]));

@@ -1,6 +1,6 @@
 //! One open document: its file, the document itself, the laid-out scene, selection, camera and undo history.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use pen_doc::edit::{self, IdMaker};
@@ -90,6 +90,74 @@ pub fn find_in<'a>(nodes: &'a [SceneNode], id: &str) -> Option<&'a SceneNode> {
     nodes.iter().find_map(|n| if n.id == id { Some(n) } else { find_in(&n.children, id) })
 }
 
+/// Where each node of a scene lies in it, by its scene id: the place of each node on the way down to it, from
+/// the top level.
+// Human: the canvas asks for the scene node of every selected layer several times a frame. Going through the
+// whole scene for each was a second's work for a thousand selected layers in a large design; looked up here
+// it is a few steps down the tree.
+// Agent: only `Editor::refresh` writes it, in the same step that writes `Editor::scene`, so it is never older
+// than the scene. A path that doesn't lead to its id (which can't happen while that holds) is not trusted:
+// `Editor::scene_node` then searches as it did before.
+#[derive(Default)]
+struct Places {
+    at: HashMap<String, Box<[u32]>>,
+    /// An id was there twice. The first one in drawing order is the one found, which only building the
+    /// whole map in that order keeps true.
+    doubled: bool,
+}
+
+impl Places {
+    /// The map for the whole of `scene`.
+    fn of(scene: &[SceneNode]) -> Places {
+        let mut places = Places::default();
+        for (at, root) in scene.iter().enumerate() {
+            places.add(root, at);
+        }
+        places
+    }
+
+    /// Takes in `root`, the top-level node at `at`, and everything in it.
+    fn add(&mut self, root: &SceneNode, at: usize) {
+        fn visit(places: &mut Places, node: &SceneNode, path: &mut Vec<u32>) {
+            match places.at.entry(node.id.clone()) {
+                std::collections::hash_map::Entry::Occupied(_) => places.doubled = true,
+                std::collections::hash_map::Entry::Vacant(free) => {
+                    free.insert(path.as_slice().into());
+                }
+            }
+            for (index, child) in node.children.iter().enumerate() {
+                path.push(u32::try_from(index).unwrap_or(u32::MAX));
+                visit(places, child, path);
+                path.pop();
+            }
+        }
+        visit(self, root, &mut vec![u32::try_from(at).unwrap_or(u32::MAX)]);
+    }
+
+    /// Forgets `root`, which was the top-level node at `at`, and everything in it.
+    fn remove(&mut self, root: &SceneNode, at: usize) {
+        let at = u32::try_from(at).unwrap_or(u32::MAX);
+        root.walk(
+            &mut |node, _| {
+                if self.at.get(&node.id).is_some_and(|path| path.first() == Some(&at)) {
+                    self.at.remove(&node.id);
+                }
+            },
+            0,
+        );
+    }
+
+    /// The node `path` leads to in `scene`.
+    fn follow<'a>(scene: &'a [SceneNode], path: &[u32]) -> Option<&'a SceneNode> {
+        let (first, rest) = path.split_first()?;
+        let mut node = scene.get(usize::try_from(*first).ok()?)?;
+        for index in rest {
+            node = node.children.get(usize::try_from(*index).ok()?)?;
+        }
+        Some(node)
+    }
+}
+
 /// A number no scene and no top-level node of one has had yet, in any open document.
 fn next_number() -> u64 {
     static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -132,8 +200,6 @@ pub struct Editor {
     pub camera: Camera,
     /// The active tool.
     pub tool: Tool,
-    /// Whether there are changes not yet saved.
-    pub dirty: bool,
     /// The theme value chosen for each theme axis in the document panel (`Mode: Dark`), on top of the defaults.
     pub theme_choice: Vec<(String, String)>,
     /// A part of the document the canvas is asked to bring into view; taken by [`Editor::take_focus`].
@@ -153,13 +219,27 @@ pub struct Editor {
     pub scaled: (f32, Vec<String>),
     /// What an AI model working on this document shows on the canvas.
     pub activity: crate::activity::Activity,
-    undo: Vec<Document>,
-    redo: Vec<Document>,
+    /// The documents to step back to, each with the number its state had ([`Editor::state`]).
+    undo: Vec<(Document, u64)>,
+    /// The documents to step forward to again, each with its state's number.
+    redo: Vec<(Document, u64)>,
+    /// A number for the document as it is now; every change gives it one no state of this document had.
+    // Human: this is how the editor knows whether there are unsaved changes: the file holds the state with
+    // the number `saved`. Undoing back to that state, or redoing forward to it, lands on its number again
+    // and the document counts as saved; a new edit after an undo throws the states ahead away, and with
+    // them the saved one, which then can't be reached any more.
+    state: u64,
+    /// The last number given out for a state of this document.
+    last_state: u64,
+    /// The number of the state the file holds; `None` when no state that can be reached is the file's.
+    saved: Option<u64>,
     ids: IdMaker,
     needs_layout: bool,
     needs_fit: bool,
     /// What the scene was last built from, to tell which of its top-level nodes an edit changed.
     laid: Laid,
+    /// Where each node of [`Editor::scene`] lies in it.
+    places: Places,
 }
 
 /// What a scene was built from, and what is known of each of its top-level nodes.
@@ -198,7 +278,6 @@ impl Editor {
             selection: Vec::new(),
             camera: Camera::default(),
             tool: Tool::Move,
-            dirty: false,
             theme_choice: Vec::new(),
             focus: None,
             spotlight: (Vec::new(), None),
@@ -210,10 +289,14 @@ impl Editor {
             activity: crate::activity::Activity::default(),
             undo: Vec::new(),
             redo: Vec::new(),
+            state: 0,
+            last_state: 0,
+            saved: Some(0),
             ids: IdMaker::new(seed),
             needs_layout: true,
             needs_fit: true,
             laid: Laid::default(),
+            places: Places::default(),
         }
     }
 
@@ -327,19 +410,37 @@ impl Editor {
 
     /// Records the document before a change, for undo. Call once per user action, before changing `doc`.
     pub fn checkpoint(&mut self) {
-        self.undo.push(self.doc.clone());
+        self.undo.push((self.doc.clone(), self.state));
         if self.undo.len() > UNDO_LIMIT {
             self.undo.remove(0);
         }
         self.redo.clear();
-        self.dirty = true;
+        self.new_state();
         self.needs_layout = true;
     }
 
     /// Marks the document changed without a new undo step (continuing a drag).
     pub fn touched(&mut self) {
-        self.dirty = true;
+        self.new_state();
         self.needs_layout = true;
+    }
+
+    /// The document is in a state it has not been in: it gets a number of its own.
+    fn new_state(&mut self) {
+        self.last_state += 1;
+        self.state = self.last_state;
+    }
+
+    /// Whether there are changes not yet saved: the document is not in the state its file holds.
+    #[must_use]
+    pub fn dirty(&self) -> bool {
+        self.saved != Some(self.state)
+    }
+
+    /// Counts the document as unsaved in every state it can reach: no file holds any of them (a document
+    /// brought back from a run that didn't end properly, which has no file).
+    pub fn mark_unsaved(&mut self) {
+        self.saved = None;
     }
 
     /// Puts `doc`, kept from a run that didn't end properly, in the place of the document: its changes count as
@@ -355,22 +456,21 @@ impl Editor {
         if self.pen.pop() {
             return;
         }
-        if let Some(previous) = self.undo.pop() {
-            self.redo.push(std::mem::replace(&mut self.doc, previous));
+        if let Some((previous, state)) = self.undo.pop() {
+            self.redo.push((std::mem::replace(&mut self.doc, previous), std::mem::replace(&mut self.state, state)));
             self.after_history();
         }
     }
 
     /// Steps forward again after an undo.
     pub fn redo(&mut self) {
-        if let Some(next) = self.redo.pop() {
-            self.undo.push(std::mem::replace(&mut self.doc, next));
+        if let Some((next, state)) = self.redo.pop() {
+            self.undo.push((std::mem::replace(&mut self.doc, next), std::mem::replace(&mut self.state, state)));
             self.after_history();
         }
     }
 
     fn after_history(&mut self) {
-        self.dirty = true;
         self.needs_layout = true;
         let doc = &self.doc;
         // A layer inside an instance stays selected while its instance is still there.
@@ -412,6 +512,7 @@ impl Editor {
         let theme = self.root_theme();
         let Some(changed) = self.changed_roots(&theme) else {
             self.scene = self.laid_out(measure);
+            self.places = Places::of(&self.scene);
             let laid = &mut self.laid;
             let mut rest = self.doc.clone();
             laid.nodes = std::mem::take(&mut rest.children);
@@ -427,10 +528,17 @@ impl Editor {
         for (at, root) in changed.iter().copied().zip(built) {
             let (Some(node), Some(place)) = (self.doc.children.get(at), self.scene.get_mut(at)) else { continue };
             self.laid.wired[at] = pen_doc::connector::has_connector(&root);
+            self.places.remove(place, at);
+            self.places.add(&root, at);
             *place = root;
             self.laid.nodes[at] = node.clone();
             self.laid.shows[at] = shown_by(node);
             self.laid.stamps[at] = next_number();
+        }
+        // Human: an id that is there twice is found where it comes first in the whole scene, which the map
+        // only keeps to when it is built whole.
+        if self.places.doubled {
+            self.places = Places::of(&self.scene);
         }
         // Human: a connector follows layers that may lie in another top-level node, so every one is routed
         // again, and every top-level node with a connector in it counts as changed.
@@ -505,17 +613,18 @@ impl Editor {
 
     /// The laid-out scene node for an id: a document node's id, or `instance/inner` for a node inside an instance.
     #[must_use]
+    // Agent: HOT-PATH (several times a frame for every selected layer); a few steps by `Editor::places`.
     pub fn scene_node(&self, id: &str) -> Option<&SceneNode> {
-        find_in(&self.scene, id)
+        let path = self.places.at.get(id)?;
+        Places::follow(&self.scene, path).filter(|node| node.id == id).or_else(|| find_in(&self.scene, id))
     }
 
     /// The scene node that holds the one with `id`.
     #[must_use]
     pub fn scene_parent(&self, id: &str) -> Option<&SceneNode> {
-        fn search<'a>(nodes: &'a [SceneNode], id: &str) -> Option<&'a SceneNode> {
-            nodes.iter().find_map(|n| if n.children.iter().any(|c| c.id == id) { Some(n) } else { search(&n.children, id) })
-        }
-        search(&self.scene, id)
+        let path = self.places.at.get(id)?;
+        let (_, above) = path.split_last()?;
+        Places::follow(&self.scene, above).filter(|parent| parent.children.iter().any(|child| child.id == id))
     }
 
     /// What the layer with `id` is to components.
@@ -598,7 +707,7 @@ impl Editor {
         if moved.values().all(Option::is_none) {
             return;
         }
-        for past in self.undo.iter_mut().chain(&mut self.redo) {
+        for (past, _) in self.undo.iter_mut().chain(&mut self.redo) {
             image_urls(past, &mut |url| {
                 if let Some(Some(to)) = moved.get(url.as_str()) {
                     url.clone_from(to);
@@ -634,7 +743,8 @@ impl Editor {
             told.push(format!("These files the document names weren't found and aren't in the .quill file: {}.", packed.missing.join(", ")));
         }
         craft_atomic::atomic_write(&path, &packed.bytes).map_err(|e| format!("{}: {e}", path.display()))?;
-        self.dirty = false;
+        // Human: the file now holds the document as it is; stepping back or forward from here leaves it.
+        self.saved = Some(self.state);
         Ok(told)
     }
 
@@ -796,12 +906,14 @@ mod tests {
         let (before, mut kept) = (pen_doc::write(&editor.doc).unwrap(), editor.doc.clone());
         kept.children.pop();
         editor.selection = vec!["from".to_owned()];
-        assert!(!editor.dirty);
+        assert!(!editor.dirty());
         editor.restore(kept.clone());
         editor.refresh(&|_| (0.0, 0.0));
-        assert!(editor.dirty && editor.scene.len() == kept.children.len());
+        assert!(editor.dirty() && editor.scene.len() == kept.children.len());
         editor.undo();
         assert_eq!(pen_doc::write(&editor.doc).unwrap(), before);
+        // That is the file's document again: nothing is unsaved.
+        assert!(!editor.dirty());
     }
 
     fn measure(style: &pen_doc::layout::TextStyle) -> (f32, f32) {
@@ -838,6 +950,207 @@ mod tests {
         let before = editor.stamps().to_vec();
         editor.refresh(&measure);
         assert_eq!(editor.stamps()[..2], before[..2]);
+    }
+
+    /// One edit as the canvas, a panel or a model makes it: an undo step, then the change.
+    fn widen(editor: &mut Editor, width: f32) {
+        editor.checkpoint();
+        assert!(editor.change("chip", &|node| node.width = Some(pen_doc::value::Num::new(width))));
+    }
+
+    #[test]
+    fn a_document_is_unsaved_exactly_while_it_is_not_in_the_state_its_file_holds() {
+        let mut editor = editor();
+        assert!(!editor.dirty());
+        // Two edits, then back: at the file's state nothing is unsaved; a step forward and there is again.
+        widen(&mut editor, 50.0);
+        widen(&mut editor, 60.0);
+        assert!(editor.dirty());
+        editor.undo();
+        assert!(editor.dirty());
+        editor.undo();
+        assert!(!editor.dirty());
+        editor.redo();
+        assert!(editor.dirty());
+        // A drag goes on without a new undo step: the document changed all the same.
+        editor.undo();
+        editor.touched();
+        assert!(editor.dirty());
+        // Saved in the middle of its history (as Save, Save As and a model's save do, all through `save`):
+        // that state is the file's, and steps away from it in either direction are unsaved.
+        let folder = std::env::temp_dir().join(format!("quill-saved-point-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let mut editor = self::editor();
+        widen(&mut editor, 50.0);
+        widen(&mut editor, 60.0);
+        editor.undo();
+        editor.move_to(folder.join("first.quill")).unwrap();
+        editor.save().unwrap();
+        assert!(!editor.dirty());
+        editor.undo();
+        assert!(editor.dirty());
+        editor.redo();
+        assert!(!editor.dirty());
+        editor.redo();
+        assert!(editor.dirty());
+        editor.undo();
+        assert!(!editor.dirty());
+        // Saved under another name from a step back: that step is the saved one now.
+        editor.undo();
+        editor.move_to(folder.join("second.quill")).unwrap();
+        editor.save().unwrap();
+        assert!(!editor.dirty());
+        editor.redo();
+        assert!(editor.dirty());
+        // Saved at the last step. A new edit after an undo throws away the steps ahead, the saved one with
+        // them: no undo or redo comes back to it.
+        editor.redo();
+        editor.save().unwrap();
+        editor.undo();
+        assert!(editor.dirty());
+        widen(&mut editor, 70.0);
+        editor.redo();
+        assert!(editor.dirty());
+        for _ in 0..3 {
+            editor.undo();
+            assert!(editor.dirty());
+        }
+        for _ in 0..3 {
+            editor.redo();
+            assert!(editor.dirty());
+        }
+        // Until it is saved again.
+        editor.save().unwrap();
+        assert!(!editor.dirty());
+        // A document counted as unsaved because no file holds it stays so through undo and redo.
+        widen(&mut editor, 80.0);
+        editor.mark_unsaved();
+        editor.undo();
+        assert!(editor.dirty());
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    /// Every node of the scene is found by its id where a search of the whole scene finds it, with the node
+    /// that holds it, and nothing else is found.
+    fn assert_places_hold(editor: &Editor, when: &str) {
+        fn parent_of<'a>(nodes: &'a [SceneNode], id: &str) -> Option<&'a SceneNode> {
+            nodes.iter().find_map(|n| if n.children.iter().any(|c| c.id == id) { Some(n) } else { parent_of(&n.children, id) })
+        }
+        let mut ids = HashSet::new();
+        for top in &editor.scene {
+            top.walk(
+                &mut |node, _| {
+                    ids.insert(node.id.clone());
+                },
+                0,
+            );
+        }
+        for id in &ids {
+            let (quick, searched) = (editor.scene_node(id), find_in(&editor.scene, id));
+            assert!(matches!((quick, searched), (Some(a), Some(b)) if std::ptr::eq(a, b)), "{when}: {id}");
+            let (quick, searched) = (editor.scene_parent(id), parent_of(&editor.scene, id));
+            assert_eq!(quick.map(std::ptr::from_ref), searched.map(std::ptr::from_ref), "{when}: the parent of {id}");
+        }
+        assert_eq!(editor.places.at.len(), ids.len(), "{when}: ids that are in no scene are kept");
+        assert!(editor.scene_node("nowhere").is_none() && editor.scene_parent("nowhere").is_none(), "{when}");
+    }
+
+    #[test]
+    fn scene_nodes_are_found_by_id_after_every_kind_of_change() {
+        let mut editor = editor();
+        assert_places_hold(&editor, "at first");
+        assert_eq!(editor.scene_parent("chip").map(|parent| parent.id.as_str()), Some("parts"));
+        assert!(editor.scene_parent("parts").is_none());
+        // An edit that builds one board again, and one that builds everything again.
+        edit(&mut editor, "word", &|node| node.content = Some("Hello there".to_owned()));
+        assert_places_hold(&editor, "after an edit on one board");
+        edit(&mut editor, "chip", &|node| node.width = Some(pen_doc::value::Num::new(60.0)));
+        assert_places_hold(&editor, "after a component changed");
+        // A layer goes: its id is found no more. Undo brings it back, redo takes it away again.
+        editor.checkpoint();
+        assert!(edit::remove(&mut editor.doc, "to").is_some());
+        editor.refresh(&measure);
+        assert!(editor.scene_node("to").is_none());
+        assert_places_hold(&editor, "after a layer was removed");
+        editor.undo();
+        editor.refresh(&measure);
+        assert!(editor.scene_node("to").is_some());
+        assert_places_hold(&editor, "after undo");
+        editor.redo();
+        editor.refresh(&measure);
+        assert!(editor.scene_node("to").is_none());
+        assert_places_hold(&editor, "after redo");
+        // A layer moves to another board, as a model's edit or a drag does.
+        editor.checkpoint();
+        let (moved, _) = edit::remove(&mut editor.doc, "from").unwrap();
+        assert!(edit::insert(&mut editor.doc, Some("alone"), 0, moved));
+        editor.refresh(&measure);
+        assert_eq!(editor.scene_parent("from").map(|parent| parent.id.as_str()), Some("alone"));
+        assert_places_hold(&editor, "after a layer changed boards");
+        // The boards change places, and one more comes.
+        editor.checkpoint();
+        editor.doc.children.swap(0, 3);
+        let mut extra = editor.doc.children[1].clone();
+        extra.id = "extra".to_owned();
+        extra.children = None;
+        editor.doc.children.insert(1, extra);
+        editor.refresh(&measure);
+        assert_places_hold(&editor, "after the boards changed places");
+        // Another document takes this one's place (a kept copy restored, a model's whole new document).
+        let other = pen_doc::read(r#"{"version":"2.22","children":[{"type":"rectangle","id":"only","width":10,"height":10}]}"#).unwrap();
+        editor.restore(other);
+        editor.refresh(&measure);
+        assert!(editor.scene_node("only").is_some() && editor.scene_node("parts").is_none());
+        assert_places_hold(&editor, "after another document");
+    }
+
+    #[test]
+    fn an_id_that_is_there_twice_is_found_where_it_comes_first() {
+        let json = r#"{"version":"2.22","children":[
+            {"type":"frame","id":"a","width":100,"height":100,"layout":"none","children":[{"type":"rectangle","id":"twin","width":10,"height":10}]},
+            {"type":"frame","id":"b","x":200,"width":100,"height":100,"layout":"none","children":[{"type":"rectangle","id":"twin","width":20,"height":20}]}
+        ]}"#;
+        let mut editor = Editor::new(pen_doc::read(json).unwrap(), None, 1);
+        editor.refresh(&measure);
+        let first = |editor: &Editor| std::ptr::eq(editor.scene_node("twin").unwrap(), find_in(&editor.scene, "twin").unwrap());
+        assert!(first(&editor));
+        // The board the first one is on is built again, then the other: still the first in drawing order.
+        for (step, board) in [0, 1, 0].into_iter().enumerate() {
+            editor.doc.children[board].y = Some(i32::try_from(step + 1).unwrap().into());
+            editor.touched();
+            editor.refresh(&measure);
+            assert!(first(&editor), "after board {board} was built again");
+        }
+        // The first one goes: the other is found.
+        editor.doc.children[0].children = Some(Vec::new());
+        editor.touched();
+        editor.refresh(&measure);
+        assert!(first(&editor) && (editor.scene_node("twin").unwrap().local.w - 20.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn a_selection_holds_a_locked_layer_when_one_of_them_or_what_it_is_in_is_locked() {
+        let mut editor = editor();
+        let all: Vec<String> = ["parts", "chip", "uses", "one", "from", "plain", "to", "word", "nowhere"].map(str::to_owned).to_vec();
+        let agree = |editor: &Editor| {
+            for from in 0..all.len() {
+                for to in from..=all.len() {
+                    let ids = &all[from..to];
+                    assert_eq!(editor.any_locked(ids), ids.iter().any(|id| editor.locked(id)), "{ids:?}");
+                }
+            }
+        };
+        agree(&editor);
+        assert!(!editor.any_locked(&all));
+        // A board is locked: so is everything on it, and nothing else.
+        assert!(editor.change("uses", &|node| crate::ops::lock(node, true)));
+        agree(&editor);
+        assert!(editor.any_locked(&["word".to_owned(), "from".to_owned()]) && !editor.any_locked(&["word".to_owned(), "to".to_owned()]));
+        // One layer alone is locked.
+        assert!(editor.change("uses", &|node| crate::ops::lock(node, false)) && editor.change("to", &|node| crate::ops::lock(node, true)));
+        editor.touched();
+        editor.refresh(&measure);
+        agree(&editor);
     }
 
     #[test]

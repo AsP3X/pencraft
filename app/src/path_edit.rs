@@ -13,7 +13,7 @@ use pen_doc::value::Num;
 use crate::editor::{Editor, Tool};
 use crate::ops::{is_free, set_position, stored_position};
 use crate::pen::{self, Contour, Side, Spot};
-use crate::theme::{ACCENT, PEN_ANCHOR, PEN_HANDLE, PEN_REACH, PEN_STRETCH_REACH};
+use crate::theme::{self, ACCENT, PEN_ANCHOR, PEN_HANDLE, PEN_REACH, PEN_STRETCH_REACH};
 
 /// The path whose points are being edited.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -472,15 +472,15 @@ pub fn overlay(ui: &egui::Ui, painter: &egui::Painter, editor: &Editor, view: Sc
         for (handle, side) in [(anchor.before, Side::Before), (anchor.after, Side::After)] {
             let Some(handle) = handle.map(place) else { continue };
             painter.line_segment([place(anchor.at), handle], line);
-            let half = if under == Some(Hit::Handle((c, a), side)) { PEN_HANDLE / 2.0 + 1.5 } else { PEN_HANDLE / 2.0 };
+            let half = if under == Some(Hit::Handle((c, a), side)) { PEN_HANDLE / 2.0 + theme::PEN_OVER_GROW } else { PEN_HANDLE / 2.0 };
             let corners = [egui::vec2(0.0, -half), egui::vec2(half, 0.0), egui::vec2(0.0, half), egui::vec2(-half, 0.0)];
-            painter.add(egui::Shape::convex_polygon(corners.map(|v| handle + v).to_vec(), Color32::WHITE, line));
+            painter.add(egui::Shape::convex_polygon(corners.map(|v| handle + v).to_vec(), theme::HANDLE_FILL, line));
         }
     }
     for (c, contour) in shape.contours.iter().enumerate() {
         for (a, anchor) in contour.anchors.iter().enumerate() {
-            let radius = if under == Some(Hit::Anchor((c, a))) { PEN_ANCHOR / 2.0 + 1.5 } else { PEN_ANCHOR / 2.0 };
-            let (fill, edge) = if editing.selected.contains(&(c, a)) { (ACCENT, Color32::WHITE) } else { (Color32::WHITE, ACCENT) };
+            let radius = if under == Some(Hit::Anchor((c, a))) { PEN_ANCHOR / 2.0 + theme::PEN_OVER_GROW } else { PEN_ANCHOR / 2.0 };
+            let (fill, edge) = if editing.selected.contains(&(c, a)) { (ACCENT, theme::HANDLE_FILL) } else { (theme::HANDLE_FILL, ACCENT) };
             painter.circle(place(anchor.at), radius, fill, Stroke::new(1.0, edge));
         }
     }

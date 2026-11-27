@@ -15,13 +15,19 @@ use crate::editor::{Editor, Tool};
 use crate::icons;
 use crate::tasklist::{tint as blend, turned};
 use crate::theme::{
-    self, CHAT_ACCENT, CHAT_ASK_WIDTH, CHAT_SPENT_PAD, CHAT_SPENT_PILL, CHAT_SPENT_STRIP, CHAT_STATUS_GAP, CHAT_STATUS_STAY, CHIP_CORNER,
-    CHIP_HEIGHT, CHIP_ICON, CHIP_ICON_AT, CHIP_RADIUS, CHIP_THUMB, COMPOSER_GROW_TIME, COMPOSER_HEIGHT, COMPOSER_LIGHT_SHARE, COMPOSER_LIGHT_TURN,
-    COMPOSER_ROWS_MOST, ICON_SIZE, IDEA_ROW, IDEA_ROW_GAP, ISLAND_GAP, ISLAND_PADDING, ISLAND_RADIUS, MESSAGE_BAR_HEIGHT, MESSAGE_BAR_SELECTED_WIDTH,
-    MESSAGE_BAR_TYPING_ROOM, MESSAGE_BAR_WIDTH, MESSAGE_SEND, MESSAGE_SEND_TIME, MESSAGE_SEND_TURN, MESSAGE_TEXT_SIZE, Palette, RAIL_ACTIVE,
-    RAIL_ARROW_STEP, RAIL_MENU_ROW, RAIL_MENU_WIDTH, RAIL_STEP, RAIL_WIDTH, SELECTION_CHIP_HEIGHT, SEND_ARROW, SIDEBAR_ANIMATION, SIDEBAR_GROW_START,
-    SIDEBAR_HEADER_PADDING, SIDEBAR_ROW, SIDEBAR_SLIDE_END, SIDEBAR_TEXT_SIZE, SIDEBAR_TITLE_SIZE, SIDEBAR_WIDE_WIDTH, SIDEBAR_WIDTH, TARGET_MIN,
-    ZOOM_ISLAND,
+    self, BAR_IDEA_GAP, BAR_IDEA_LEAST, BUTTON_ICON_GAP, CHAT_ACCENT, CHAT_ASK_WIDTH, CHAT_SPENT_PAD, CHAT_SPENT_PILL, CHAT_SPENT_STRIP,
+    CHAT_START_DROP, CHAT_START_DROP_RANGE, CHAT_START_HEAD_GAP, CHAT_START_IDEA_GAP, CHAT_START_SECTION_GAP, CHAT_STATUS_GAP, CHAT_STATUS_STAY,
+    CHIP_CORNER, CHIP_HEIGHT, CHIP_ICON, CHIP_ICON_AT, CHIP_PADDING, CHIP_RADIUS, CHIP_THUMB, COMPONENT, COMPOSER_CONTROLS, COMPOSER_GAP,
+    COMPOSER_GROW_TIME, COMPOSER_HEIGHT, COMPOSER_LIGHT_SHARE, COMPOSER_LIGHT_TURN, COMPOSER_LIGHT_WHITE, COMPOSER_LIGHT_WIDTH, COMPOSER_ROWS_MOST,
+    COMPOSER_TEXT_GAP, COMPOSER_TEXT_TOP, FOCUS_RING, HOVER_FAINT, ICON_SIZE, IDEA_ROW, IDEA_ROW_GAP, IDLE_FRAME, ISLAND_GAP, ISLAND_PADDING,
+    ISLAND_RADIUS, MENU_GAP, MESSAGE_BAR_ENDS, MESSAGE_BAR_GAP, MESSAGE_BAR_HEIGHT, MESSAGE_BAR_INSET, MESSAGE_BAR_SELECTED_WIDTH,
+    MESSAGE_BAR_TYPING_ROOM, MESSAGE_BAR_WIDTH, MESSAGE_FIELD_DROP, MESSAGE_SEND, MESSAGE_SEND_TIME, MESSAGE_SEND_TURN, MESSAGE_TEXT_SIZE,
+    MODEL_BUTTON_ARROW, MODEL_BUTTON_HEIGHT, MODEL_BUTTON_ROOM, OUTLINE_SOFT, Palette, RAIL_ACTIVE, RAIL_ARROW_STEP, RAIL_FOCUS, RAIL_MENU_ARROW,
+    RAIL_MENU_AT, RAIL_MENU_ICON, RAIL_MENU_PLATE, RAIL_MENU_RADIUS, RAIL_MENU_ROW, RAIL_MENU_TICK, RAIL_MENU_WIDTH, RAIL_STEP, RAIL_WIDTH,
+    RULE_FADE, SELECTION_CHIP, SELECTION_CHIP_HEIGHT, SEND_ARROW, SEND_REST, SIDEBAR_ANIMATION, SIDEBAR_BUTTONS, SIDEBAR_GROW_START,
+    SIDEBAR_HEADER_PADDING, SIDEBAR_HEADER_TOP, SIDEBAR_LIST_TOP, SIDEBAR_NOTE_TOP, SIDEBAR_ROW, SIDEBAR_RULE_GAP, SIDEBAR_SLIDE_END,
+    SIDEBAR_TEXT_SIZE, SIDEBAR_TITLE_GAP, SIDEBAR_TITLE_LEFT, SIDEBAR_TITLE_SIZE, SIDEBAR_VIEW_GAP, SIDEBAR_WIDE_WIDTH, SIDEBAR_WIDTH, STOP_RING,
+    STOP_SQUARE, TARGET_MIN, ZOOM_ISLAND,
 };
 
 /// Said when a chat control is used: the chat has no assistant behind it in this version.
@@ -425,7 +431,7 @@ impl Sidebar {
             island(ui, rect, pose.radius, palette);
             // Human: the box being typed in has a stronger edge.
             if pose.boxed && ctx.memory(|memory| memory.has_focus(egui::Id::unique("message-field"))) {
-                ui.painter().rect_stroke(rect, pose.radius, Stroke::new(1.0, palette.muted.gamma_multiply(0.6 * pose.opacity)), StrokeKind::Inside);
+                ui.painter().rect_stroke(rect, pose.radius, (1.0, palette.muted.gamma_multiply(OUTLINE_SOFT * pose.opacity)), StrokeKind::Inside);
             }
             ui.scope_builder(UiBuilder::new().max_rect(rect), |ui| {
                 ui.set_clip_rect(rect.intersect(ui.clip_rect()));
@@ -512,34 +518,39 @@ impl Sidebar {
     fn panel(&mut self, ui: &mut Ui, panel: Rect, editor: &mut Editor, look: Look<'_>) {
         let dark = look.dark;
         let palette = theme::palette(dark);
-        let buttons =
-            Rect::from_min_size(panel.min + vec2(SIDEBAR_HEADER_PADDING, 13.0), vec2(panel.width() - 2.0 * SIDEBAR_HEADER_PADDING, SIDEBAR_ROW));
+        let [history, chat, other, new] = SIDEBAR_BUTTONS;
+        let buttons = Rect::from_min_size(
+            panel.min + vec2(SIDEBAR_HEADER_PADDING, SIDEBAR_HEADER_TOP),
+            vec2(panel.width() - 2.0 * SIDEBAR_HEADER_PADDING, SIDEBAR_ROW),
+        );
         ui.scope_builder(UiBuilder::new().max_rect(buttons).layout(Layout::left_to_right(Align::Center)), |ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
-            if icon_button(ui, "messages-square", vec2(31.0, SIDEBAR_ROW), self.view == View::History, "Chat history", palette).clicked() {
+            if icon_button(ui, "messages-square", vec2(history, SIDEBAR_ROW), self.view == View::History, "Chat history", palette).clicked() {
                 self.view = View::History;
             }
-            if text_button(ui, Some("message-circle"), "Chat", vec2(66.0, SIDEBAR_ROW), self.view == View::Chat, false, palette).clicked() {
+            if text_button(ui, Some("message-circle"), "Chat", vec2(chat, SIDEBAR_ROW), self.view == View::Chat, false, palette).clicked() {
                 self.view = View::Chat;
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
+                ui.spacing_mut().item_spacing.x = SIDEBAR_VIEW_GAP;
                 for (view, icon) in
                     [(View::Libraries, "library"), (View::Components, "component"), (View::Present, "presentation"), (View::Layers, "layers")]
                 {
-                    if icon_button(ui, icon, vec2(26.0, SIDEBAR_ROW), self.view == view, view.title(), palette).clicked() {
+                    if icon_button(ui, icon, vec2(other, SIDEBAR_ROW), self.view == view, view.title(), palette).clicked() {
                         self.view = view;
                     }
                 }
             });
         });
-        let title =
-            Rect::from_min_max(pos2(panel.left() + 16.0, buttons.bottom() + 10.0), pos2(buttons.right(), buttons.bottom() + 10.0 + SIDEBAR_ROW));
+        let title = Rect::from_min_max(
+            pos2(panel.left() + SIDEBAR_TITLE_LEFT, buttons.bottom() + SIDEBAR_TITLE_GAP),
+            pos2(buttons.right(), buttons.bottom() + SIDEBAR_TITLE_GAP + SIDEBAR_ROW),
+        );
         ui.scope_builder(UiBuilder::new().max_rect(title).layout(Layout::left_to_right(Align::Center)), |ui| {
             ui.add(egui::Label::new(RichText::new(self.view.title()).size(SIDEBAR_TITLE_SIZE)).selectable(false));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| match self.view {
                 View::History => {
-                    if text_button(ui, Some("plus"), "New", vec2(68.0, SIDEBAR_ROW - 1.0), false, true, palette).on_hover_text("New chat").clicked() {
+                    if text_button(ui, Some("plus"), "New", vec2(new, SIDEBAR_ROW - 1.0), false, true, palette).on_hover_text("New chat").clicked() {
                         self.view = View::Chat;
                         self.chat_asks.push(ChatAsk::New);
                     }
@@ -552,7 +563,7 @@ impl Sidebar {
                         self.wide = !self.wide;
                     }
                     if !look.chat.entries.is_empty()
-                        && text_button(ui, Some("plus"), "New", vec2(68.0, SIDEBAR_ROW - 1.0), false, true, palette)
+                        && text_button(ui, Some("plus"), "New", vec2(new, SIDEBAR_ROW - 1.0), false, true, palette)
                             .on_hover_text("New chat")
                             .clicked()
                     {
@@ -562,11 +573,11 @@ impl Sidebar {
                 View::Layers | View::Present | View::Components | View::Libraries => {}
             });
         });
-        let line = title.bottom() + 11.0;
+        let line = title.bottom() + SIDEBAR_RULE_GAP;
         // Human: the chat has no line under the header: its task list belongs to the header, and the
         // conversation fades out under both as it scrolls up.
         if self.view != View::Chat {
-            ui.painter().hline(panel.x_range(), line, Stroke::new(1.0, palette.outline.gamma_multiply(0.7)));
+            ui.painter().hline(panel.x_range(), line, Stroke::new(1.0, palette.outline.gamma_multiply(RULE_FADE)));
         }
         let body = Rect::from_min_max(pos2(panel.left() + ISLAND_PADDING, line + 1.0), pos2(panel.right() - ISLAND_PADDING, panel.bottom() - 1.0));
         // Human: a view that isn't the chat still shows a question of the assistant's, under itself. The chat
@@ -584,7 +595,7 @@ impl Sidebar {
             match self.view {
                 // Human: past chats aren't listed yet, so the view says what will be there, as the empty views do.
                 View::History => {
-                    ui.add_space(12.0);
+                    ui.add_space(SIDEBAR_NOTE_TOP);
                     ui.label(RichText::new("Past chats will appear here.").color(palette.muted));
                 }
                 View::Chat if look.chat.entries.is_empty() => {
@@ -596,12 +607,12 @@ impl Sidebar {
                     self.chat_asks.extend(pick.map(ChatAsk::Answer));
                 }
                 View::Layers => {
-                    ui.add_space(8.0);
+                    ui.add_space(SIDEBAR_LIST_TOP);
                     crate::panels::layers(ui, editor, dark);
                 }
                 View::Components => components(ui, editor, palette),
                 View::Present | View::Libraries => {
-                    ui.add_space(12.0);
+                    ui.add_space(SIDEBAR_NOTE_TOP);
                     ui.label(RichText::new("Nothing here yet.").color(palette.muted));
                 }
             }
@@ -629,7 +640,7 @@ impl Sidebar {
     fn start_of_chat(&mut self, ui: &mut Ui, palette: Palette) {
         egui::ScrollArea::vertical().id_salt("new-chat").auto_shrink([false, false]).show(ui, |ui| {
             // Human: the ideas sit a little above the middle; in a short window they move up instead of scrolling.
-            ui.add_space((ui.available_height() * 0.17).clamp(12.0, 93.0));
+            ui.add_space((ui.available_height() * CHAT_START_DROP).clamp(CHAT_START_DROP_RANGE[0], CHAT_START_DROP_RANGE[1]));
             // Human: there are far more ideas than the six that show; the button deals another six.
             ui.horizontal(|ui| {
                 heading(ui, "Ask me to design anything");
@@ -639,10 +650,10 @@ impl Sidebar {
                     }
                 });
             });
-            ui.add_space(8.0);
+            ui.add_space(CHAT_START_HEAD_GAP);
             ui.scope(|ui| {
-                ui.spacing_mut().item_spacing.y = 9.0;
-                ui.spacing_mut().button_padding = vec2(11.0, 6.0);
+                ui.spacing_mut().item_spacing.y = CHAT_START_IDEA_GAP;
+                ui.spacing_mut().button_padding = CHIP_PADDING;
                 for idea in self.ideas.clone() {
                     let chip = egui::Button::new(idea)
                         .truncate()
@@ -655,11 +666,11 @@ impl Sidebar {
                     }
                 }
             });
-            ui.add_space(17.0);
+            ui.add_space(CHAT_START_SECTION_GAP[0]);
             heading(ui, "Generate code");
             note(ui, "Ask the agent to build your design with React, Tailwind, Next.js, or your preferred stack.", palette);
             note(ui, "For an HTML file, select a frame and click “Export HTML” in the properties panel.", palette);
-            ui.add_space(18.0);
+            ui.add_space(CHAT_START_SECTION_GAP[1]);
             heading(ui, "Attach context files");
             note(ui, "Drop a PNG/JPG, DESIGN.md or any text file here or attach via +", palette);
         });
@@ -668,11 +679,16 @@ impl Sidebar {
     /// The message box island: the text, and under it attach, mode, assistant and send.
     fn composer(&mut self, ui: &mut Ui, composer: Rect, editor: &Editor, look: Look<'_>, notice: &mut Option<&'static str>) {
         let palette = theme::palette(look.dark);
-        let controls =
-            Rect::from_min_max(pos2(composer.left() + 11.0, composer.bottom() - 34.0), pos2(composer.right() - 11.0, composer.bottom() - 6.0));
+        let controls = Rect::from_min_max(
+            pos2(composer.left() + COMPOSER_CONTROLS[0], composer.bottom() - COMPOSER_CONTROLS[1]),
+            pos2(composer.right() - COMPOSER_CONTROLS[0], composer.bottom() - COMPOSER_CONTROLS[2]),
+        );
         // Human: the text has the upper floor to itself and never runs into the controls under it: the box
         // grows with it, and past its tallest the text scrolls.
-        let text = Rect::from_min_max(composer.min + vec2(ISLAND_PADDING, 14.0), pos2(composer.right() - ISLAND_PADDING, controls.top() - 2.0));
+        let text = Rect::from_min_max(
+            composer.min + vec2(ISLAND_PADDING, COMPOSER_TEXT_TOP),
+            pos2(composer.right() - ISLAND_PADDING, controls.top() - COMPOSER_TEXT_GAP),
+        );
         ui.scope_builder(UiBuilder::new().max_rect(text), |ui| {
             ui.set_clip_rect(text.intersect(ui.clip_rect()));
             egui::ScrollArea::vertical().id_salt("message").max_height(text.height()).show(ui, |ui| {
@@ -685,7 +701,7 @@ impl Sidebar {
             });
         });
         ui.scope_builder(UiBuilder::new().max_rect(controls).layout(Layout::left_to_right(Align::Center)), |ui| {
-            ui.spacing_mut().item_spacing.x = 8.0;
+            ui.spacing_mut().item_spacing.x = COMPOSER_GAP;
             if icon_button(ui, "plus", Vec2::splat(TARGET_MIN), false, "Attach files", palette).clicked() {
                 self.chat_asks.push(ChatAsk::Attach);
             }
@@ -693,7 +709,7 @@ impl Sidebar {
             // Human: what is selected shows as a chip here too, where there is room beside the assistant's name.
             if let Some((icon, name)) = self.selected.clone() {
                 let assistant = ui.painter().layout_no_wrap(look.assistant.to_owned(), FontId::proportional(SIDEBAR_TEXT_SIZE - 1.0), Color32::WHITE);
-                let others = (MESSAGE_SEND + 8.0) + (assistant.size().x + 16.0 + 8.0);
+                let others = (MESSAGE_SEND + COMPOSER_GAP) + (assistant.size().x + MODEL_BUTTON_ROOM + COMPOSER_GAP);
                 if ui.available_width() - others >= layer_chip_width(ui, &name) {
                     layer_chip(ui, icon, &name, palette);
                 }
@@ -728,8 +744,8 @@ impl Sidebar {
         notice: &mut Option<&'static str>,
     ) {
         let palette = theme::palette(look.dark);
-        ui.scope_builder(UiBuilder::new().max_rect(bar.shrink2(vec2(10.0, 0.0))).layout(Layout::left_to_right(Align::Center)), |ui| {
-            ui.spacing_mut().item_spacing.x = 12.0;
+        ui.scope_builder(UiBuilder::new().max_rect(bar.shrink2(vec2(MESSAGE_BAR_INSET, 0.0))).layout(Layout::left_to_right(Align::Center)), |ui| {
+            ui.spacing_mut().item_spacing.x = MESSAGE_BAR_GAP;
             if icon_button(ui, "plus", Vec2::splat(TARGET_MIN), false, "Attach files", palette).clicked() {
                 self.chat_asks.push(ChatAsk::Attach);
             }
@@ -739,11 +755,11 @@ impl Sidebar {
             }
             let hint = if chip.is_some() { "" } else { HINT };
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.spacing_mut().item_spacing.x = 8.0;
+                ui.spacing_mut().item_spacing.x = COMPOSER_GAP;
                 self.send_controls(ui, look);
                 // Human: the text field's line sits a little high for its box, so the field is set 3 points lower
                 // to put the typed line on the same middle line as the icons beside it.
-                let field = ui.available_rect_before_wrap().translate(vec2(0.0, 3.0));
+                let field = ui.available_rect_before_wrap().translate(vec2(0.0, MESSAGE_FIELD_DROP));
                 ui.scope_builder(UiBuilder::new().max_rect(field).layout(Layout::left_to_right(Align::Center)), |ui| {
                     let edit = self.message_field(ui, false, hint, field.width(), editor, look, notice);
                     // Human: the one-line field doesn't give up the keyboard for Return with ⌘ or Ctrl held, so the
@@ -767,13 +783,13 @@ impl Sidebar {
             ui.scope_builder(UiBuilder::new().max_rect(place).layout(Layout::left_to_right(Align::Center)), |ui| {
                 ui.set_clip_rect(place.intersect(ui.clip_rect()));
                 ui.multiply_opacity(opacity);
-                ui.spacing_mut().item_spacing.x = 6.0;
-                ui.spacing_mut().button_padding = vec2(11.0, 6.0);
+                ui.spacing_mut().item_spacing.x = BAR_IDEA_GAP;
+                ui.spacing_mut().button_padding = CHIP_PADDING;
                 // Human: an idea that doesn't fit whole is shortened with "…"; none is started in less room than
                 // a few words need. Nothing reaches past the row, so the layer never covers what is beside it.
                 for idea in BAR_IDEAS.into_iter().chain(self.ideas.clone()) {
                     let room = place.right() - ui.cursor().left();
-                    if room < 120.0 {
+                    if room < BAR_IDEA_LEAST {
                         break;
                     }
                     let chip = egui::Button::new(idea)
@@ -996,7 +1012,7 @@ impl Sidebar {
         }
         let response = file_chip(ui, &self.attached.len().to_string(), palette).on_hover_text("Attached files");
         let mut removed = None;
-        egui::Popup::menu(&response).align(egui::RectAlign::TOP_START).gap(8.0).show(|ui| {
+        egui::Popup::menu(&response).align(egui::RectAlign::TOP_START).gap(MENU_GAP[0]).show(|ui| {
             ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
             for (index, path) in self.attached.iter().enumerate() {
                 let name = crate::chat::files::name(path);
@@ -1027,15 +1043,15 @@ impl Sidebar {
         };
         let (centre, radius) = (rect.center(), MESSAGE_SEND / 2.0);
         if running {
-            ui.painter().circle(centre, radius - 0.75, palette.island, Stroke::new(1.5, palette.outline));
+            ui.painter().circle(centre, radius - STOP_RING[0], palette.island, Stroke::new(STOP_RING[1], palette.outline));
             if look.animate {
                 let head = turned(ui.input(|input| input.time), MESSAGE_SEND_TURN) * std::f32::consts::TAU;
-                crate::conversation::comet(ui.painter(), centre, radius - 0.75, head, CHAT_ACCENT);
-                ui.ctx().request_repaint_after(theme::IDLE_FRAME);
+                crate::conversation::comet(ui.painter(), centre, radius - STOP_RING[0], head, CHAT_ACCENT);
+                ui.ctx().request_repaint_after(IDLE_FRAME);
             }
-            ui.painter().rect_filled(Rect::from_center_size(centre, Vec2::splat(8.0)), 2.0, palette.foreground);
+            ui.painter().rect_filled(Rect::from_center_size(centre, Vec2::splat(STOP_SQUARE[0])), STOP_SQUARE[1], palette.foreground);
         } else {
-            ui.painter().circle_filled(centre, radius * (0.9 + 0.1 * dark), blend(palette.input, palette.primary, dark));
+            ui.painter().circle_filled(centre, radius * (SEND_REST + (1.0 - SEND_REST) * dark), blend(palette.input, palette.primary, dark));
             let mark = blend(palette.muted, palette.primary_text, dark);
             icons::paint(ui.painter(), Rect::from_center_size(centre, Vec2::splat(SEND_ARROW + 1.0)), "arrow-up", mark);
         }
@@ -1113,17 +1129,17 @@ impl Sidebar {
                     ui.painter().circle(slot.center(), RAIL_ACTIVE / 2.0, palette.hover, Stroke::new(1.0, palette.outline));
                 }
                 let (icon, size) = match act {
-                    Act::Menu(_) => (icon, 10.0),
+                    Act::Menu(_) => (icon, RAIL_MENU_ARROW),
                     Act::Pointer if editor.tool == Tool::Scale => ("scaling", ICON_SIZE),
                     Act::Pointer if editor.tool == Tool::Eyedropper => ("pipette", ICON_SIZE),
                     Act::Shape => (shape_icon.unwrap_or(icon), ICON_SIZE),
                     _ => (icon, ICON_SIZE),
                 };
                 if matches!(act, Act::Menu(_)) && (lit(&response) || egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&response))) {
-                    ui.painter().rect_filled(slot.shrink2(vec2(4.0, 1.0)), 5.0, palette.hover);
+                    ui.painter().rect_filled(slot.shrink2(vec2(RAIL_MENU_PLATE[0], RAIL_MENU_PLATE[1])), RAIL_MENU_PLATE[2], palette.hover);
                 }
                 icons::paint(ui.painter(), Rect::from_center_size(slot.center(), Vec2::splat(size)), icon, tint(&response, active, palette));
-                focus_ring(ui, &response, slot.shrink2(vec2(2.0, 0.0)), 6.0, palette);
+                focus_ring(ui, &response, slot.shrink2(vec2(RAIL_FOCUS[0], 0.0)), RAIL_FOCUS[1], palette);
                 let says = crate::keys::text(hint);
                 name_button(&response, &says);
                 let response = response.on_hover_text(says);
@@ -1134,7 +1150,7 @@ impl Sidebar {
                     Act::Component if response.clicked() => editor.create_component(),
                     Act::Find if response.clicked() => ask = Some(Ask::Find),
                     Act::Menu(entries) => {
-                        egui::Popup::menu(&response).align(egui::RectAlign::RIGHT_START).gap(10.0).show(|ui| {
+                        egui::Popup::menu(&response).align(egui::RectAlign::RIGHT_START).gap(MENU_GAP[1]).show(|ui| {
                             ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
                             for (icon, label, key, does) in entries {
                                 let ticked = matches!(does, Does::Tool(tool) if *tool == editor.tool);
@@ -1171,18 +1187,23 @@ impl Sidebar {
 fn menu_line(ui: &mut Ui, ticked: bool, icon: &'static str, label: &str, key: &str, palette: Palette) -> egui::Response {
     let (row, response) = ui.allocate_exact_size(vec2(RAIL_MENU_WIDTH, RAIL_MENU_ROW), Sense::click());
     if lit(&response) {
-        ui.painter().rect_filled(row, 6.0, palette.hover);
+        ui.painter().rect_filled(row, RAIL_MENU_RADIUS, palette.hover);
     }
-    focus_ring(ui, &response, row, 6.0, palette);
+    focus_ring(ui, &response, row, RAIL_MENU_RADIUS, palette);
     name_button(&response, label);
     let middle = row.center().y;
     if ticked {
-        icons::paint(ui.painter(), Rect::from_center_size(pos2(row.left() + 14.0, middle), Vec2::splat(11.0)), "check", palette.muted);
+        icons::paint(
+            ui.painter(),
+            Rect::from_center_size(pos2(row.left() + RAIL_MENU_AT[0], middle), Vec2::splat(RAIL_MENU_TICK)),
+            "check",
+            palette.muted,
+        );
     }
-    icons::paint(ui.painter(), Rect::from_center_size(pos2(row.left() + 33.0, middle), Vec2::splat(14.0)), icon, palette.muted);
+    icons::paint(ui.painter(), Rect::from_center_size(pos2(row.left() + RAIL_MENU_AT[1], middle), Vec2::splat(RAIL_MENU_ICON)), icon, palette.muted);
     let font = FontId::proportional(SIDEBAR_TEXT_SIZE - 1.0);
-    ui.painter().text(pos2(row.left() + 49.0, middle), Align2::LEFT_CENTER, label, font.clone(), palette.foreground);
-    ui.painter().text(pos2(row.right() - 12.0, middle), Align2::RIGHT_CENTER, key, font, palette.muted);
+    ui.painter().text(pos2(row.left() + RAIL_MENU_AT[2], middle), Align2::LEFT_CENTER, label, font.clone(), palette.foreground);
+    ui.painter().text(pos2(row.right() - RAIL_MENU_AT[3], middle), Align2::RIGHT_CENTER, key, font, palette.muted);
     response
 }
 
@@ -1204,7 +1225,11 @@ fn chip_text(name: &str) -> String {
 /// `chip` wide and an assistant's name that is `assistant` wide: the bar's ends, the attach button, the chip,
 /// the assistant's name with its arrow, and send, each with its gap.
 fn bar_controls(chip: f32, assistant: f32) -> f32 {
-    20.0 + (TARGET_MIN + 12.0) + (chip + 31.0 + 12.0) + (assistant + 16.0 + 8.0) + (MESSAGE_SEND + 8.0)
+    MESSAGE_BAR_ENDS
+        + (TARGET_MIN + MESSAGE_BAR_GAP)
+        + (chip + SELECTION_CHIP[0] + MESSAGE_BAR_GAP)
+        + (assistant + MODEL_BUTTON_ROOM + COMPOSER_GAP)
+        + (MESSAGE_SEND + COMPOSER_GAP)
 }
 
 /// The light that runs along the top edge of the message box `composer` while the assistant works.
@@ -1219,16 +1244,16 @@ fn working_light(ui: &Ui, composer: Rect) {
     for piece in 0..PIECES {
         // Brightest in its middle, and gone at both ends.
         let strength = 1.0 - (2.0 * (f32::from(piece) + 0.5) / f32::from(PIECES) - 1.0).abs();
-        let color = blend(CHAT_ACCENT, Color32::WHITE, 0.7 * strength.powi(3)).gamma_multiply(strength);
-        painter.line_segment([at(piece), at(piece + 1)], Stroke::new(1.5, color));
+        let color = blend(CHAT_ACCENT, Color32::WHITE, COMPOSER_LIGHT_WHITE * strength.powi(3)).gamma_multiply(strength);
+        painter.line_segment([at(piece), at(piece + 1)], Stroke::new(COMPOSER_LIGHT_WIDTH, color));
     }
-    ui.ctx().request_repaint_after(theme::IDLE_FRAME);
+    ui.ctx().request_repaint_after(IDLE_FRAME);
 }
 
 /// How wide the chip of a layer called `name` is.
 pub fn layer_chip_width(ui: &Ui, name: &str) -> f32 {
     let font = FontId::proportional(SIDEBAR_TEXT_SIZE - 2.0);
-    ui.painter().layout_no_wrap(chip_text(name), font, Color32::WHITE).size().x + 31.0
+    ui.painter().layout_no_wrap(chip_text(name), font, Color32::WHITE).size().x + SELECTION_CHIP[0]
 }
 
 /// The selected layer's chip in the message bar: its kind and name in a thin outline.
@@ -1236,21 +1261,31 @@ pub fn layer_chip(ui: &mut Ui, icon: &'static str, name: &str, palette: Palette)
     let font = FontId::proportional(SIDEBAR_TEXT_SIZE - 2.0);
     let name = chip_text(name);
     let words = ui.painter().layout_no_wrap(name.clone(), font.clone(), palette.muted).size().x;
-    let (chip, _) = ui.allocate_exact_size(vec2(words + 31.0, SELECTION_CHIP_HEIGHT), Sense::hover());
-    ui.painter().rect_stroke(chip, 4.0, Stroke::new(1.0, palette.outline), StrokeKind::Inside);
-    icons::paint(ui.painter(), Rect::from_center_size(pos2(chip.left() + 13.0, chip.center().y), Vec2::splat(11.0)), icon, palette.muted);
-    ui.painter().text(pos2(chip.left() + 23.0, chip.center().y), Align2::LEFT_CENTER, name, font, palette.muted);
+    let (chip, _) = ui.allocate_exact_size(vec2(words + SELECTION_CHIP[0], SELECTION_CHIP_HEIGHT), Sense::hover());
+    ui.painter().rect_stroke(chip, SELECTION_CHIP[4], Stroke::new(1.0, palette.outline), StrokeKind::Inside);
+    icons::paint(
+        ui.painter(),
+        Rect::from_center_size(pos2(chip.left() + SELECTION_CHIP[1], chip.center().y), Vec2::splat(SELECTION_CHIP[3])),
+        icon,
+        palette.muted,
+    );
+    ui.painter().text(pos2(chip.left() + SELECTION_CHIP[2], chip.center().y), Align2::LEFT_CENTER, name, font, palette.muted);
 }
 
 /// The chip the attached files share: a paperclip and their number; it can be clicked.
 fn file_chip(ui: &mut Ui, count: &str, palette: Palette) -> Response {
     let font = FontId::proportional(SIDEBAR_TEXT_SIZE - 2.0);
     let words = ui.painter().layout_no_wrap(count.to_owned(), font.clone(), palette.muted).size().x;
-    let (chip, response) = ui.allocate_exact_size(vec2(words + 31.0, SELECTION_CHIP_HEIGHT), Sense::click());
+    let (chip, response) = ui.allocate_exact_size(vec2(words + SELECTION_CHIP[0], SELECTION_CHIP_HEIGHT), Sense::click());
     let ink = if response.hovered() { palette.foreground } else { palette.muted };
-    ui.painter().rect_stroke(chip, 4.0, Stroke::new(1.0, palette.outline), StrokeKind::Inside);
-    icons::paint(ui.painter(), Rect::from_center_size(pos2(chip.left() + 13.0, chip.center().y), Vec2::splat(11.0)), "paperclip", ink);
-    ui.painter().text(pos2(chip.left() + 23.0, chip.center().y), Align2::LEFT_CENTER, count, font, ink);
+    ui.painter().rect_stroke(chip, SELECTION_CHIP[4], Stroke::new(1.0, palette.outline), StrokeKind::Inside);
+    icons::paint(
+        ui.painter(),
+        Rect::from_center_size(pos2(chip.left() + SELECTION_CHIP[1], chip.center().y), Vec2::splat(SELECTION_CHIP[3])),
+        "paperclip",
+        ink,
+    );
+    ui.painter().text(pos2(chip.left() + SELECTION_CHIP[2], chip.center().y), Align2::LEFT_CENTER, count, font, ink);
     response
 }
 
@@ -1373,7 +1408,7 @@ pub fn name_button(response: &Response, label: &str) {
 /// Draws the keyboard focus ring around `rect`, `radius` round, while `response` has the focus.
 pub fn focus_ring(ui: &Ui, response: &Response, rect: Rect, radius: f32, palette: Palette) {
     if response.has_focus() {
-        ui.painter().rect_stroke(rect, radius, Stroke::new(theme::FOCUS_RING, palette.focus), StrokeKind::Inside);
+        ui.painter().rect_stroke(rect, radius, Stroke::new(FOCUS_RING, palette.focus), StrokeKind::Inside);
     }
 }
 
@@ -1388,7 +1423,7 @@ fn backdrop(ui: &Ui, response: &Response, active: bool, palette: Palette) {
     if active {
         ui.painter().rect_filled(response.rect, CHIP_RADIUS, palette.hover);
     } else if lit(response) {
-        ui.painter().rect_filled(response.rect, CHIP_RADIUS, palette.hover.gamma_multiply(0.5));
+        ui.painter().rect_filled(response.rect, CHIP_RADIUS, palette.hover.gamma_multiply(HOVER_FAINT));
     }
     focus_ring(ui, response, response.rect, CHIP_RADIUS, palette);
 }
@@ -1412,7 +1447,7 @@ pub fn text_button(ui: &mut Ui, icon: Option<&'static str>, text: &str, size: Ve
     }
     let color = tint(&response, active || outlined, palette);
     let galley = ui.painter().layout_no_wrap(text.to_owned(), FontId::proportional(SIDEBAR_TEXT_SIZE), color);
-    let icon_room = if icon.is_some() { ICON_SIZE + 6.0 } else { 0.0 };
+    let icon_room = if icon.is_some() { ICON_SIZE + BUTTON_ICON_GAP } else { 0.0 };
     let content = icon_room + galley.size().x;
     let left = rect.center().x - content / 2.0;
     if let Some(icon) = icon {
@@ -1427,10 +1462,18 @@ pub fn text_button(ui: &mut Ui, icon: Option<&'static str>, text: &str, size: Ve
 fn model_button(ui: &mut Ui, name: &str, palette: Palette) -> Response {
     let font = FontId::proportional(SIDEBAR_TEXT_SIZE - 1.0);
     let width = ui.painter().layout_no_wrap(name.to_owned(), font.clone(), palette.muted).size().x;
-    let (rect, response) = ui.allocate_exact_size(vec2(width + 16.0, 22.0), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(vec2(width + MODEL_BUTTON_ROOM, MODEL_BUTTON_HEIGHT), Sense::click());
     let color = tint(&response, false, palette);
     ui.painter().text(rect.left_center(), Align2::LEFT_CENTER, name, font, color);
-    icons::paint(ui.painter(), Rect::from_center_size(pos2(rect.right() - 5.0, rect.center().y + 1.0), Vec2::splat(10.0)), "chevron-down", color);
+    icons::paint(
+        ui.painter(),
+        Rect::from_center_size(
+            pos2(rect.right() - MODEL_BUTTON_ARROW[0], rect.center().y + MODEL_BUTTON_ARROW[1]),
+            Vec2::splat(MODEL_BUTTON_ARROW[2]),
+        ),
+        "chevron-down",
+        color,
+    );
     response
 }
 
@@ -1470,7 +1513,7 @@ fn components(ui: &mut Ui, editor: &mut Editor, palette: Palette) {
     }
     let mut found = Vec::new();
     collect(&editor.doc.children, &mut found);
-    ui.add_space(8.0);
+    ui.add_space(SIDEBAR_LIST_TOP);
     if found.is_empty() {
         ui.label(RichText::new("No components in this document.").color(palette.muted));
         return;
@@ -1482,7 +1525,7 @@ fn components(ui: &mut Ui, editor: &mut Editor, palette: Palette) {
             ui.horizontal(|ui| {
                 if ui.small_button("+").on_hover_text("Insert an instance").clicked() {
                     editor.insert_instance(&id);
-                } else if ui.selectable_label(selected, RichText::new(name).color(crate::theme::COMPONENT)).clicked() {
+                } else if ui.selectable_label(selected, RichText::new(name).color(COMPONENT)).clicked() {
                     editor.selection = vec![id];
                 }
             });

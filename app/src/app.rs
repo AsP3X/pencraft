@@ -241,6 +241,8 @@ pub struct App {
     prices: Arc<std::sync::Mutex<crate::chat::prices::Catalogue>>,
     /// The welcome film, while it shows in the place of everything else.
     film: Option<crate::splash::Splash>,
+    /// The question to the computer whether it asks for less motion, asked once at the start.
+    motion: crate::motion::System,
     /// The app's icon as the title bar shows it before the name; `None` when it couldn't be read.
     mark: Option<egui::TextureHandle>,
     /// The tab that is pouring out of the "new file" button and the one draining away, while they do.
@@ -266,7 +268,11 @@ fn bold(size: f32) -> egui::FontId {
 fn bar_button(ui: &mut egui::Ui, icon: &'static str, active: bool, tint: Color32, palette: theme::Palette) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(egui::Vec2::splat(TITLE_BUTTON), egui::Sense::click());
     if active || response.hovered() {
-        ui.painter().rect_filled(rect, f32::from(theme::CONTROL_RADIUS), if active { palette.field } else { palette.field.gamma_multiply(0.6) });
+        ui.painter().rect_filled(
+            rect,
+            f32::from(theme::CONTROL_RADIUS),
+            if active { palette.field } else { palette.field.gamma_multiply(theme::OUTLINE_SOFT) },
+        );
     }
     crate::icons::paint(ui.painter(), egui::Rect::from_center_size(rect.center(), egui::Vec2::splat(ICON_SIZE)), icon, tint);
     response
@@ -296,7 +302,7 @@ fn window_buttons(ui: &mut egui::Ui, palette: theme::Palette) {
     let button = |ui: &mut egui::Ui, icon: &'static str, side: f32, danger: bool, hint: &str| {
         let (rect, response) = ui.allocate_exact_size(egui::vec2(CAPTION_BUTTON, TITLE_BUTTON), egui::Sense::click());
         let (fill, mark) = match (crate::sidebar::lit(&response), danger) {
-            (true, true) => (theme::PROBLEM, Color32::WHITE),
+            (true, true) => (theme::PROBLEM, theme::ON_PROBLEM),
             (true, false) => (palette.field, palette.strong),
             (false, _) => (Color32::TRANSPARENT, palette.strong),
         };
@@ -447,6 +453,8 @@ impl App {
             // Human: the price list goes by the settings, so it is started before the app takes them over.
             prices: crate::chat::prices::start(looks_up_prices(&prefs.get().agents, &launch)),
             film: welcome_film(&launch, prefs.get().welcome.seen),
+            // A picture of the app shows what its settings say, whatever this computer asks for.
+            motion: if launch.screenshot.is_some() { crate::motion::System::unasked() } else { crate::motion::System::ask(&cc.egui_ctx) },
             mark: title_mark(&cc.egui_ctx),
             pours: pour::Pours::default(),
             prefs,
@@ -647,7 +655,7 @@ impl App {
             }
             Err(error) => {
                 log::warn!("AI tools: the local server didn't start: {error}");
-                self.say(format!("AI apps can't reach Quill: its local tool server didn't start ({error})."));
+                self.warn(format!("AI apps can't reach Quill: its local tool server didn't start ({error})."));
             }
         }
     }
@@ -693,13 +701,23 @@ impl App {
         self.seed
     }
 
+    /// Shows `text` as a message: as a problem when its words say something went wrong ([`crate::toast::kind_of`]).
+    // Human: many sentences come from places that give one for a success and one for a failure alike (an
+    // export, a settings page); those are told apart by their words. Where a failure is known as one, it is
+    // said with `App::warn`.
     fn say(&mut self, text: impl Into<String>) {
-        self.toasts.say("", &text.into(), Instant::now());
+        let text = text.into();
+        self.toasts.say("", &text, crate::toast::kind_of(&text));
+    }
+
+    /// Shows `text` as a message that says what went wrong: it looks the part and stays longer.
+    fn warn(&mut self, text: impl Into<String>) {
+        self.toasts.say("", &text.into(), crate::toast::Kind::Problem);
     }
 
     /// [`App::say`] for what a model says: its name stands before the sentence.
     fn say_from(&mut self, who: &str, text: &str) {
-        self.toasts.say(who, text, Instant::now());
+        self.toasts.say(who, text, crate::toast::Kind::Note);
     }
 
     /// Does what the tool rail asked for.
@@ -778,7 +796,7 @@ impl App {
             return;
         }
         if let Err(error) = self.try_open(path) {
-            self.say(error);
+            self.warn(error);
         }
     }
 
@@ -813,7 +831,7 @@ impl App {
                 let seed = self.next_seed();
                 self.add_tab(Editor::new(doc, None, seed));
             }
-            Err(e) => self.say(format!("The starter board didn't load: {e}")),
+            Err(e) => self.warn(format!("The starter board didn't load: {e}")),
         }
     }
 
@@ -858,7 +876,7 @@ impl App {
             let left = editor.path.as_deref().map(name).unwrap_or_default();
             from = Some(editor.place());
             if let Err(error) = editor.move_to(next.clone()) {
-                self.say(format!("Couldn't save: {error}"));
+                self.warn(format!("Couldn't save: {error}"));
                 return;
             }
             renamed = Some(format!("It is now {}; {left} is left as it is.", name(&next)));
@@ -883,7 +901,7 @@ impl App {
                     self.close_tab_now(tab);
                 }
             }
-            Err(e) => self.say(format!("Couldn't save: {e}")),
+            Err(e) => self.warn(format!("Couldn't save: {e}")),
         }
     }
 
@@ -929,7 +947,7 @@ impl App {
 
     /// Closes a tab, asking first when it has unsaved changes.
     fn close_tab(&mut self, tab: usize) {
-        if self.tabs.get(tab).is_some_and(|t| t.dirty) {
+        if self.tabs.get(tab).is_some_and(Editor::dirty) {
             self.prompt = Some(ClosePrompt { tab, quitting: false });
         } else {
             self.close_tab_now(tab);
@@ -1156,7 +1174,7 @@ impl App {
                     let path = match bundle::ended(path, bundle::ENDING) {
                         Ok(path) => path,
                         Err(error) => {
-                            self.say(format!("Couldn't save: {error}"));
+                            self.warn(format!("Couldn't save: {error}"));
                             continue;
                         }
                     };
@@ -1165,7 +1183,7 @@ impl App {
                         let before = editor.place();
                         match editor.move_to(path) {
                             Ok(was) => self.save_from(tab, close, was.as_deref(), Some(before)),
-                            Err(error) => self.say(format!("Couldn't save: {error}")),
+                            Err(error) => self.warn(format!("Couldn't save: {error}")),
                         }
                     }
                 }
@@ -1192,7 +1210,7 @@ impl App {
                         self.say(sentence);
                     }
                 }
-                (_, Answer::Unavailable(why)) => self.say(format!("The file dialog couldn't open: {why}")),
+                (_, Answer::Unavailable(why)) => self.warn(format!("The file dialog couldn't open: {why}")),
                 (Then::SaveAs { close: true, .. }, Answer::Cancelled) => self.discard_confirmed = false,
                 (_, Answer::Cancelled | Answer::Message(_)) => {}
             }
@@ -1545,7 +1563,7 @@ impl App {
                 break;
             }
             // Human: a saved file's tab shows its whole name, ending included.
-            let (title, dirty) = (self.tabs[i].tab_name(), self.tabs[i].dirty);
+            let (title, dirty) = (self.tabs[i].tab_name(), self.tabs[i].dirty());
             let born = self.pours.born_at(i);
             let look = TabLook { active: self.active == Some(i), dirty, at_work: self.chat_at_work(i), born };
             let (response, closed) = tab_button(ui, &title, look, palette);
@@ -1817,7 +1835,7 @@ impl App {
             Some(crate::update::Answer::Quit) => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             Some(crate::update::Answer::Get(address)) => {
                 if let Err(problem) = crate::update::open_in_browser(&address) {
-                    self.say(problem);
+                    self.warn(problem);
                 }
             }
             Some(crate::update::Answer::Install(prepared)) => {
@@ -1842,10 +1860,10 @@ impl App {
         let mut choice = None;
         let palette = theme::palette(self.dark());
         let modal = egui::Modal::new(egui::Id::unique("unsaved")).show(ctx, |ui| {
-            ui.set_width(340.0);
+            ui.set_width(theme::DIALOG_WIDTH[0]);
             ui.label(RichText::new(format!("Save changes to “{title}”?")).strong());
             ui.label("Your changes will be lost if you don't save them.");
-            ui.add_space(10.0);
+            ui.add_space(theme::DIALOG_BUTTONS_GAP);
             ui.horizontal(|ui| {
                 if ui.add(dialog_primary("Save", palette)).clicked() {
                     choice = Some(1);
@@ -1909,7 +1927,7 @@ impl App {
                 editor.paste_picture(&saved.url, (saved.width, saved.height), visible);
                 view_of.request_repaint();
             }
-            Err(problem) => self.say(format!("Couldn't paste the picture: {problem}")),
+            Err(problem) => self.warn(format!("Couldn't paste the picture: {problem}")),
         }
     }
 
@@ -1923,7 +1941,7 @@ impl App {
         let now = Instant::now();
         let mut waiting = false;
         for tab in &self.tabs {
-            let seen = crate::recover::Seen { id: tab.id, dirty: tab.dirty, scene: tab.generation, path: tab.path.as_deref(), title: &tab.title() };
+            let seen = crate::recover::Seen { id: tab.id, dirty: tab.dirty(), scene: tab.generation, path: tab.path.as_deref(), title: &tab.title() };
             waiting |= keeper.look(&seen, &tab.doc, now);
         }
         if waiting {
@@ -1931,7 +1949,7 @@ impl App {
         }
         let trouble = keeper.trouble();
         match trouble {
-            Some(problem) if self.troubles.recovery.fails() => self.say(problem),
+            Some(problem) if self.troubles.recovery.fails() => self.warn(problem),
             Some(_) => {}
             None => self.troubles.recovery.works(),
         }
@@ -1949,14 +1967,14 @@ impl App {
         // back from that question, and on the list puts the question off: the copies stay on disk and are
         // offered again at the next start. A click beside it does nothing, so the list isn't lost by accident.
         egui::Modal::new(egui::Id::unique("recovery")).show(ctx, |ui| {
-            ui.set_width(380.0);
+            ui.set_width(theme::DIALOG_WIDTH[1]);
             // Human: Discard deletes the kept copies for good, so it asks once more; Restore is the safe,
             // highlighted choice in both steps.
             // Agent: `choice` is Some(true) restore, Some(false) discard for good; Keep only clears `discarding`.
             if discarding {
                 ui.label(RichText::new("Discard the recovered work?").strong());
                 ui.label("This can't be undone.");
-                ui.add_space(10.0);
+                ui.add_space(theme::DIALOG_BUTTONS_GAP);
                 ui.horizontal(|ui| {
                     if ui.add(dialog_primary("Keep", palette)).clicked() {
                         self.recovery.discarding = false;
@@ -1973,12 +1991,12 @@ impl App {
             } else {
                 "These designs had changes that weren't saved:"
             });
-            ui.add_space(4.0);
+            ui.add_space(theme::DIALOG_LIST_GAP);
             for left in &self.recovery.left {
                 let place = left.path.as_ref().map_or_else(|| "never saved".to_owned(), |path| path.display().to_string());
                 ui.label(format!("{} ({place})", left.title));
             }
-            ui.add_space(10.0);
+            ui.add_space(theme::DIALOG_BUTTONS_GAP);
             ui.horizontal(|ui| {
                 if ui.add(dialog_primary("Restore", palette)).clicked() {
                     choice = Some(true);
@@ -2016,7 +2034,7 @@ impl App {
         }
         crate::recover::clear(&restored);
         if !failed.is_empty() {
-            self.say(format!("Couldn't restore {}", failed.join("; ")));
+            self.warn(format!("Couldn't restore {}", failed.join("; ")));
         }
     }
 
@@ -2030,7 +2048,7 @@ impl App {
         } else {
             let seed = self.next_seed();
             let mut editor = Editor::new(doc, None, seed);
-            editor.dirty = true;
+            editor.mark_unsaved();
             self.add_tab(editor);
         }
         Ok(())
@@ -2038,7 +2056,7 @@ impl App {
 
     /// After one unsaved question while quitting: ask about the next unsaved tab, or quit.
     fn continue_quit(&mut self, ctx: &egui::Context) {
-        if let Some(tab) = self.tabs.iter().position(|t| t.dirty) {
+        if let Some(tab) = self.tabs.iter().position(Editor::dirty) {
             self.prompt = Some(ClosePrompt { tab, quitting: true });
         } else if !self.dialogs.is_open() && self.dialogs.queued() == 0 {
             self.discard_confirmed = true;
@@ -2071,10 +2089,34 @@ impl App {
 
 impl App {
     /// Shows the welcome film in the place of everything else. Returns whether it took this frame.
+    /// Takes in the computer's answer whether it asks for less motion, the one time it arrives: "Animations
+    /// and effects" follows it, unless the user has set that switch themselves.
+    // Agent: WRITES prefs (saved like any other change) only when the switch has to change.
+    fn follow_system_motion(&mut self) {
+        let Some(reduced) = self.motion.answer() else { return };
+        let appearance = &self.prefs.get().appearance;
+        let now = crate::motion::Switch {
+            on: appearance.animations,
+            chosen: appearance.animations_chosen,
+            off_for_system: appearance.animations_off_for_system,
+        };
+        if let Some(on) = crate::motion::follow(now, reduced) {
+            self.prefs.update(|prefs| (prefs.appearance.animations, prefs.appearance.animations_off_for_system) = (on, !on));
+        }
+    }
+
     // Human: when the user goes on, the film is over for good: the settings remember that it was seen. "Set up
     // an assistant" goes on to the settings window where assistants are set up.
     fn show_film(&mut self, ui: &mut egui::Ui) -> bool {
+        self.follow_system_motion();
         let Some(film) = &mut self.film else { return false };
+        // Human: the film and its music don't start before it is known whether the computer asks for less
+        // motion (a moment, at the very start): until then only the film's ground shows.
+        if self.motion.pending() {
+            egui::CentralPanel::default().frame(egui::Frame::new()).show(ui, |ui| crate::splash::Splash::hold(ui));
+            ui.ctx().request_repaint();
+            return true;
+        }
         let animations = self.prefs.get().appearance.animations;
         let mut outcome = crate::splash::Outcome::Playing;
         egui::CentralPanel::default().frame(egui::Frame::new()).show(ui, |ui| outcome = film.show(ui, animations));
@@ -2097,7 +2139,7 @@ impl eframe::App for App {
         if ctx.input(|i| i.viewport().close_requested())
             && !self.discard_confirmed
             && self.screenshot.is_none()
-            && let Some(tab) = self.tabs.iter().position(|t| t.dirty)
+            && let Some(tab) = self.tabs.iter().position(Editor::dirty)
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.active = Some(tab);
@@ -2110,7 +2152,7 @@ impl eframe::App for App {
             SaveStatus::Failed(err) => {
                 log::warn!("settings not saved yet: {err}");
                 if self.troubles.settings.fails() {
-                    self.say(format!("Your settings couldn't be saved: {err}. Quill keeps trying."));
+                    self.warn(format!("Your settings couldn't be saved: {err}. Quill keeps trying."));
                 }
             }
             SaveStatus::Saved => self.troubles.settings.works(),
@@ -2197,7 +2239,7 @@ impl eframe::App for App {
         self.update_prompt(&ctx);
         self.close_prompt(&ctx);
         self.recovery_prompt(&ctx);
-        self.toasts.show(&ctx, self.dark());
+        self.toasts.show(&ctx, self.dark(), self.prefs.get().appearance.animations);
         let title = self.active.and_then(|i| self.tabs.get(i)).map_or_else(|| "Quill".to_owned(), |t| format!("{} — Quill", t.title()));
         let current = ctx.input(|i| i.viewport().title.clone());
         if current.as_deref() != Some(title.as_str()) {
@@ -2362,7 +2404,11 @@ fn tab_button(ui: &mut egui::Ui, title: &str, look: TabLook, palette: theme::Pal
     let mut painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
     painter.set_opacity(born.map_or(1.0, |look| look.shown));
     if born.is_none() && (active || hovered) {
-        ui.painter().rect_filled(rect, f32::from(theme::CONTROL_RADIUS), if active { palette.field } else { palette.field.gamma_multiply(0.6) });
+        ui.painter().rect_filled(
+            rect,
+            f32::from(theme::CONTROL_RADIUS),
+            if active { palette.field } else { palette.field.gamma_multiply(theme::OUTLINE_SOFT) },
+        );
     }
     let slide = born.map_or(0.0, |look| look.slide);
     let slot = egui::Rect::from_min_size(egui::pos2(rect.left() + end + slide, rect.center().y - TAB_ICON / 2.0), egui::Vec2::splat(TAB_ICON));

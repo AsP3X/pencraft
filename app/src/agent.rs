@@ -472,7 +472,7 @@ pub fn state(editor: &Editor) -> Value {
     json!({
         "file": editor.path.as_ref().map(|p| p.display().to_string()),
         "name": editor.title(),
-        "unsavedChanges": editor.dirty,
+        "unsavedChanges": editor.dirty(),
         "selection": editor.selection,
         "topLevelLayers": top,
         "components": reusable,

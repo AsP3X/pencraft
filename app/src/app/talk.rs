@@ -343,7 +343,7 @@ impl App {
         let (good, bad): (Vec<_>, Vec<_>) = paths.into_iter().map(|path| files::read(&path).map(|_| path)).partition(Result::is_ok);
         let room = files::MOST_FILES.saturating_sub(self.sidebar.attached.len());
         if let Some(why) = bad.into_iter().find_map(Result::err) {
-            self.say(why);
+            self.warn(why);
         } else if good.len() > room {
             self.say(format!("A message can carry {} files.", files::MOST_FILES));
         }
@@ -450,7 +450,7 @@ impl App {
                     talk.chat.waiting.push(message);
                 }
             }
-            Err(why) => self.say(why),
+            Err(why) => self.warn(why),
         }
     }
 

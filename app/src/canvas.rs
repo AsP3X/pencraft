@@ -854,7 +854,7 @@ impl Canvas {
             && let Some((foot, dot)) = rotate_dot(editor, view)
         {
             painter.line_segment([foot, dot], Stroke::new(1.0, ACCENT));
-            painter.circle(dot, ROTATE_DOT, Color32::WHITE, Stroke::new(1.5, ACCENT));
+            painter.circle(dot, ROTATE_DOT, theme::HANDLE_FILL, Stroke::new(1.5, ACCENT));
             if self.drag.is_none() && ui.input(|i| i.pointer.hover_pos()).is_some_and(|p| dot.distance(p) <= ROTATE_DOT_GRAB) {
                 ui.ctx().set_cursor_icon(CursorIcon::Grab);
             }
@@ -869,7 +869,7 @@ impl Canvas {
             // The handles sit on the box's own corners, so they turn with a turned layer.
             for corner in tight(node).corners() {
                 let r = ScreenRect::from_center_size(screen(cam, view, node.to_doc.apply(corner)), egui::vec2(HANDLE_SIZE, HANDLE_SIZE));
-                painter.rect(r, 1.0, Color32::WHITE, Stroke::new(1.0, ACCENT), StrokeKind::Inside);
+                painter.rect(r, 1.0, theme::HANDLE_FILL, Stroke::new(1.0, ACCENT), StrokeKind::Inside);
             }
             // Human: just outside a corner the pointer turns the layer; a small turning arrow by the pointer says so.
             if self.drag.is_none()
@@ -880,7 +880,7 @@ impl Canvas {
                 crate::icons::paint(painter, ScreenRect::from_center_size(p + egui::vec2(14.0, 14.0), egui::Vec2::splat(13.0)), "rotate-cw", ACCENT);
             }
             for (centre, _) in radius_handles(editor, view, id, node).into_iter().flatten() {
-                painter.circle(centre, RADIUS_HANDLE, Color32::WHITE, Stroke::new(1.0, ACCENT));
+                painter.circle(centre, RADIUS_HANDLE, theme::HANDLE_FILL, Stroke::new(1.0, ACCENT));
             }
         }
     }
@@ -1120,7 +1120,7 @@ fn size_label_rect(painter: &egui::Painter, at: Pos2, text: &str) -> ScreenRect 
 fn size_label(painter: &egui::Painter, rect: ScreenRect, text: &str) {
     let galley = painter.layout_no_wrap(text.to_owned(), egui::FontId::proportional(SIZE_LABEL_TEXT), Color32::WHITE);
     painter.rect_filled(rect, 5.0, ACCENT);
-    painter.galley(rect.min + egui::vec2(6.0, 2.5), galley, Color32::WHITE);
+    painter.galley(rect.min + egui::vec2(6.0, 2.5), galley, theme::ON_ACCENT);
 }
 
 fn trim(v: f32) -> String {
@@ -1519,7 +1519,7 @@ fn pick(editor: &Editor, p: Point, deep: bool) -> Option<String> {
 
 /// Whether a locked layer is among the selected ones: the selection then has no handles and isn't turned.
 fn holds_locked(editor: &Editor) -> bool {
-    editor.selection.iter().any(|id| editor.locked(id))
+    editor.any_locked(&editor.selection)
 }
 
 /// The scene nodes a box selection picks from: the selection's siblings, or the top level.
@@ -1873,11 +1873,11 @@ fn pen_overlay(ui: &egui::Ui, painter: &egui::Painter, editor: &Editor, view: Sc
         let half = PEN_HANDLE / 2.0;
         let diamond =
             vec![handle + egui::vec2(0.0, -half), handle + egui::vec2(half, 0.0), handle + egui::vec2(0.0, half), handle + egui::vec2(-half, 0.0)];
-        painter.add(egui::Shape::convex_polygon(diamond, Color32::WHITE, line));
+        painter.add(egui::Shape::convex_polygon(diamond, theme::HANDLE_FILL, line));
     }
     for (index, anchor) in anchors.iter().enumerate() {
         let radius = if index == 0 && closing { PEN_ANCHOR / 2.0 + 1.5 } else { PEN_ANCHOR / 2.0 };
-        painter.circle(place(anchor.at), radius, Color32::WHITE, line);
+        painter.circle(place(anchor.at), radius, theme::HANDLE_FILL, line);
     }
 }
 
@@ -2208,7 +2208,7 @@ mod tests {
         let order = |editor: &Editor| editor.doc.children[0].kids().iter().map(|n| n.id.clone()).collect::<Vec<_>>();
         // A press alone changes nothing: the layer stays in the layout.
         drag(&mut canvas, &ctx, &mut editor, &[Point::new(120.0, 70.0)]);
-        assert!(!node(&editor, "red").is_absolute() && !editor.dirty);
+        assert!(!node(&editor, "red").is_absolute() && !editor.dirty());
         // Dragged, it goes with the pointer and stays where it is let go, out of the layout; the others close up.
         drag(&mut canvas, &ctx, &mut editor, &[Point::new(120.0, 70.0), Point::new(130.0, 80.0), Point::new(420.0, 270.0)]);
         editor.refresh(&|_| (0.0, 0.0));
