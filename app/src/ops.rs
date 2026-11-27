@@ -204,22 +204,28 @@ impl Editor {
             return;
         }
         self.checkpoint();
+        // Human: what changes is the layer each deleted one lay in, or the instance that now hides it.
+        let mut changed: Vec<Option<String>> = Vec::new();
         for id in std::mem::take(&mut self.selection) {
             // Human: a layer inside an instance belongs to the component and can't be taken out of one instance;
             // the instance hides it instead (an override of `enabled` with `false`).
             // What the instance put into a slot itself is its own to remove.
-            let own = edit::owner(&self.doc, &id).zip(id.rsplit('/').next().map(str::to_owned));
+            let owner = edit::owner(&self.doc, &id);
+            let own = owner.clone().zip(id.rsplit('/').next().map(str::to_owned));
             if let Some(((instance, _), last)) = own
                 && edit::remove_override_child(&mut self.doc, &instance, &last)
             {
+                changed.push(Some(instance));
                 continue;
             }
             if self.role(&id) == Role::Inside {
                 self.change(&id, &|node| node.enabled = Some(Flag::Value(false)));
-            } else {
-                edit::remove(&mut self.doc, &id);
+                changed.push(owner.map(|(instance, _)| instance));
+            } else if let Some((_, slot)) = edit::remove(&mut self.doc, &id) {
+                changed.push(slot.parent);
             }
         }
+        self.changed_only(&changed);
     }
 
     /// Adds `nodes` to the frame with scene id `slot` inside an instance, as content of that instance alone, and
@@ -357,14 +363,18 @@ impl Editor {
     // and letter spacing, gap, padding, stroke width, corner radius, and shadows' and blurs' sizes. A layer placed
     // by a layout keeps its place; sizes that fill or fit, and values bound to variables, are left alone.
     // Agent: always starts from `start`, so a drag can call this every frame without the error adding up. The
-    // caller makes the undo step.
-    pub fn scale_from(&mut self, start: &ScaleStart, factor: f32, anchor: Point) {
+    // caller makes the undo step, and says the document changed: the layers written are returned for that
+    // ([`Editor::touched_only`]).
+    // Human: only the scaled layers are taken from `start` again, not the whole document: copying a large
+    // design on every frame of the drag, and comparing all of it afterwards, was most of what a step cost.
+    // Nothing else changes between `start` and the end of the drag.
+    pub fn scale_from(&mut self, start: &ScaleStart, factor: f32, anchor: Point) -> Vec<String> {
         fn find<'a>(nodes: &'a [SceneNode], id: &str) -> Option<&'a SceneNode> {
             nodes.iter().find_map(|n| if n.id == id { Some(n) } else { find(&n.children, id) })
         }
         let factor = if factor.is_finite() { factor.clamp(SCALE_MIN, SCALE_MAX) } else { 1.0 };
-        self.doc = start.doc.clone();
         let selected: Vec<String> = self.selection.clone();
+        let mut written = Vec::new();
         for id in &selected {
             // A layer inside another selected one is scaled with that one.
             let chain = edit::ancestry(&self.doc, id);
@@ -376,13 +386,17 @@ impl Editor {
             let moved = Point::new(anchor.x + (origin.x - anchor.x) * factor, anchor.y + (origin.y - anchor.y) * factor);
             let parent = edit::slot(&self.doc, id).and_then(|slot| slot.parent);
             let local = parent.as_deref().and_then(|p| find(&start.scene, p)).and_then(|p| layout::to_local(p, moved)).unwrap_or(moved);
+            let (Some(was), Some(node)) = (edit::find(&start.doc, id), edit::find_mut(&mut self.doc, id)) else { continue };
+            node.clone_from(was);
             let free = is_free(self, id);
             let Some(node) = edit::find_mut(&mut self.doc, id) else { continue };
             if free {
                 set_position(node, local.x, local.y);
             }
             scale_node(node, factor, false);
+            written.push(id.clone());
         }
+        written
     }
 
     /// Scales the selection to `factor` of what it was when it was selected, around its middle (the Scale
@@ -583,7 +597,8 @@ impl Editor {
             }
         }
         self.checkpoint();
-        let mut pasted = Vec::new();
+        // Human: what changes is the layer each copy is put into.
+        let (mut pasted, mut changed) = (Vec::new(), Vec::new());
         for Placement { mut node, parent, origin, moved, .. } in plan {
             self.link_components(&mut node);
             self.renew_ids(&mut node);
@@ -593,7 +608,9 @@ impl Editor {
             }
             pasted.push(node.id.clone());
             edit::insert(&mut self.doc, parent.as_deref(), usize::MAX, node);
+            changed.push(parent);
         }
+        self.changed_only(&changed);
         self.selection = pasted;
     }
 
@@ -673,7 +690,8 @@ impl Editor {
         };
         let board_spot = if lone_board { ids.first().and_then(|id| self.empty_space_right(id)) } else { None };
         self.checkpoint();
-        let mut copies = Vec::new();
+        // Human: what changes is the layer each copy is put into.
+        let (mut copies, mut changed) = (Vec::new(), Vec::new());
         for id in ids {
             let (Some(slot), Some(mut copy)) = (edit::slot(&self.doc, &id), edit::find(&self.doc, &id).cloned()) else { continue };
             self.link_components(&mut copy);
@@ -683,7 +701,9 @@ impl Editor {
             }
             copies.push(copy.id.clone());
             edit::insert(&mut self.doc, slot.parent.as_deref(), slot.index + 1, copy);
+            changed.push(slot.parent);
         }
+        self.changed_only(&changed);
         self.selection = copies;
     }
 
@@ -1700,6 +1720,7 @@ mod tests {
         editor.rotate_from(&start, 150.0);
         assert_eq!(edit::find(&editor.doc, "box").unwrap().rotation.as_ref().and_then(Num::literal), Some(-120.0));
         editor.rotate_from(&start, -90.0);
+        editor.touched();
         assert_eq!((edit::find(&editor.doc, "box").unwrap().rotation.clone(), position(&editor, "box")), (None, (10.0, 20.0)));
         // Two boards turn together around the middle of both.
         editor.selection = vec!["one".to_owned(), "two".to_owned()];

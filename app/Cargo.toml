@@ -65,6 +65,9 @@ keyring = "=4.2.0"
 # Human: blocking HTTPS for the chat's calls to a provider's API: rustls and bundled root certificates, no
 # async runtime, no OpenSSL. The same client the Craft libraries use.
 ureq = { version = "=3.5.0", default-features = false, features = ["rustls", "gzip"] }
+# Human: checks that a release's checksums were signed with our offline key before an update is installed
+# (docs/RELEASING.md). Only verifies, and has no dependencies of its own.
+minisign-verify = "=0.3.0"
 # Human: Only for the macOS start-up hook that keeps a `--screenshot` run from taking focus; the same fork eframe uses.
 winit = { version = "=0.30.13", default-features = false }
 # Human: Runs shader effects on the GPU. The same wgpu eframe draws with (one copy in Cargo.lock); named here
@@ -121,6 +124,7 @@ craft-ai-core.workspace = true
 craft-pdf.workspace = true
 keyring.workspace = true
 ureq.workspace = true
+minisign-verify.workspace = true
 egui.workspace = true
 eframe.workspace = true
 serde.workspace = true

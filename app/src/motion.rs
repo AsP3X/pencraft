@@ -1,15 +1,22 @@
-//! Whether the computer asks for less motion (macOS: System Settings › Accessibility › Display › Reduce
-//! motion), asked once when the app starts.
+//! Whether the computer asks for less motion, asked once when the app starts: macOS (System Settings ›
+//! Accessibility › Display › Reduce motion), Windows (Settings › Accessibility › Visual effects › Animation
+//! effects) and Linux (GNOME's `enable-animations`).
 //!
 // Human: the app has its own "Animations and effects" switch. Until the user has set it, it follows the
 // computer: someone who told the system to keep things still should not be met by a film with music on first
 // launch, before any switch can be reached.
 // Human: neither egui, winit nor accesskit (the versions this app builds with) say what the system asks for.
-// On macOS the setting can be read with the system's own `defaults` program, which needs no unsafe code and
-// no new library. On Windows and Linux there is no way that clean, so the system is not asked there and the
-// app's own switch decides alone.
-// Agent: SPAWNS one short-lived thread (macOS only), which RUNS `/usr/bin/defaults read` twice; nothing is
-// written. The answer is taken on the main thread with `System::answer`.
+// Each system has a program of its own that prints the setting, which needs no unsafe code and no new
+// library: `defaults` on macOS, `reg query` on Windows, `gsettings` on Linux.
+// Human: on Windows the switch is what `SPI_GETCLIENTAREAANIMATION` reports. Microsoft documents that
+// call, not where its answer is kept; the place read here (the second bit of the fifth byte of
+// `UserPreferencesMask` under `HKCU\Control Panel\Desktop`, set while things move) is the one Wine's
+// win32u uses and the one seen to change when the switch is turned. It is the copy written at the last
+// change, which is what a program that starts later finds.
+// Human: an answer that can't be had (no `gsettings`, a desktop without that key, a value that isn't
+// there) is "unknown", never "reduced": the app's own switch then decides alone.
+// Agent: SPAWNS one short-lived thread, which RUNS the system's program (twice on macOS); nothing is
+// written. The answer is taken on the main thread with `System::answer`; an unknown one is never sent.
 
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -70,29 +77,91 @@ impl System {
 }
 
 /// Whether what `defaults read` printed for a switch says the switch is on.
+#[cfg(any(target_os = "macos", test))]
 fn on(printed: &str) -> bool {
     matches!(printed.trim(), "1" | "true" | "YES")
 }
 
-/// Starts the thread that asks macOS; `None` when it can't be started.
+/// Whether what `reg query "HKCU\Control Panel\Desktop" /v UserPreferencesMask` printed says Windows asks
+/// for less motion; `None` when it doesn't say.
+// Human: the line reads `    UserPreferencesMask    REG_BINARY    9E1E078012000000`: the bytes in order, two
+// letters each. The fifth byte's second bit is set while "Animation effects" is on. A value too short to
+// have that byte (an old profile) says nothing.
+#[cfg(any(windows, test))]
+fn windows_reduced(printed: &str) -> Option<bool> {
+    /// Where the byte with the switch starts among the letters, and the switch's bit in it.
+    const BYTE: std::ops::Range<usize> = 8..10;
+    const MOVING: u8 = 0x02;
+    let line = printed.lines().find(|line| line.contains("UserPreferencesMask") && line.contains("REG_BINARY"))?;
+    let bytes = line.split_whitespace().last()?;
+    let byte = u8::from_str_radix(bytes.get(BYTE)?, 16).ok()?;
+    Some(byte & MOVING == 0)
+}
+
+/// Whether what `gsettings get org.gnome.desktop.interface enable-animations` printed says the desktop asks
+/// for less motion; `None` when it is neither `true` nor `false`.
+#[cfg(any(target_os = "linux", test))]
+fn gnome_reduced(printed: &str) -> Option<bool> {
+    match printed.trim() {
+        "true" => Some(false),
+        "false" => Some(true),
+        _ => None,
+    }
+}
+
+/// What `program` prints when run with `arguments`, and whether it says it worked; `None` when it can't be run.
+// Agent: RUNS a program and waits for it; call it on a thread of its own.
+#[cfg(any(target_os = "macos", windows, target_os = "linux"))]
+fn printed(program: &str, arguments: &[&str]) -> Option<(String, bool)> {
+    let mut command = std::process::Command::new(program);
+    command.args(arguments).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    // Human: without this a console window flashes up for the moment the program runs.
+    #[cfg(windows)]
+    std::os::windows::process::CommandExt::creation_flags(&mut command, crate::link::CREATE_NO_WINDOW);
+    let done = command.output().ok()?;
+    Some((String::from_utf8_lossy(&done.stdout).into_owned(), done.status.success()))
+}
+
+/// Asks macOS; `None` only when `defaults` can't be run at all.
 #[cfg(target_os = "macos")]
-fn asking(wake: &egui::Context) -> Option<mpsc::Receiver<bool>> {
+fn reduced() -> Option<bool> {
     /// Where macOS keeps the switch, by version: the older place, then the newer one.
     const PLACES: [(&str, &str); 2] = [("com.apple.universalaccess", "reduceMotion"), ("com.apple.Accessibility", "ReduceMotionEnabled")];
+    let mut any = false;
+    for (domain, key) in PLACES {
+        // A key that was never set is not there: `defaults` then fails, which means "off".
+        let (text, worked) = printed("/usr/bin/defaults", &["read", domain, key])?;
+        any |= worked && on(&text);
+    }
+    Some(any)
+}
+
+/// Asks Windows; a value that isn't there gives no answer.
+#[cfg(windows)]
+fn reduced() -> Option<bool> {
+    let (text, worked) = printed("reg", &["query", r"HKCU\Control Panel\Desktop", "/v", "UserPreferencesMask"])?;
+    worked.then(|| windows_reduced(&text)).flatten()
+}
+
+/// Asks a GNOME desktop; another desktop has no `gsettings` or not this key, and gives no answer.
+#[cfg(target_os = "linux")]
+fn reduced() -> Option<bool> {
+    let (text, worked) = printed("gsettings", &["get", "org.gnome.desktop.interface", "enable-animations"])?;
+    worked.then(|| gnome_reduced(&text)).flatten()
+}
+
+/// Starts the thread that asks the system; `None` when it can't be started.
+#[cfg(any(target_os = "macos", windows, target_os = "linux"))]
+fn asking(wake: &egui::Context) -> Option<mpsc::Receiver<bool>> {
     let (send, arrives) = mpsc::channel();
     let wake = wake.clone();
     let work = move || {
-        let read = |(domain, key): &(&str, &str)| {
-            // A key that was never set is not there: `defaults` then fails, which means "off".
-            std::process::Command::new("/usr/bin/defaults")
-                .args(["read", domain, key])
-                .stdin(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .output()
-                .is_ok_and(|done| done.status.success() && on(&String::from_utf8_lossy(&done.stdout)))
-        };
-        // The app may have gone on without the answer; then nobody takes it, which is fine.
-        let _unheard = send.send(PLACES.iter().any(read));
+        // Human: with no answer nothing is sent, and the app sees that the question is over when this
+        // thread ends. The app may also have gone on without the answer; then nobody takes it, which is fine.
+        if let Some(reduced) = reduced() {
+            let _unheard = send.send(reduced);
+        }
+        drop(send);
         wake.request_repaint();
     };
     match std::thread::Builder::new().name("pencraft-motion".to_owned()).spawn(work) {
@@ -104,8 +173,8 @@ fn asking(wake: &egui::Context) -> Option<mpsc::Receiver<bool>> {
     }
 }
 
-/// On Windows and Linux the system isn't asked (see the top of this file).
-#[cfg(not(target_os = "macos"))]
+/// On any other system there is nothing to ask.
+#[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
 fn asking(_wake: &egui::Context) -> Option<mpsc::Receiver<bool>> {
     None
 }
@@ -143,6 +212,38 @@ mod tests {
     fn the_systems_switch_is_read_from_what_defaults_prints() {
         assert!(on("1\n") && on("true") && on(" YES "));
         assert!(!on("0\n") && !on("") && !on("The domain/default pair of (x, y) does not exist"));
+    }
+
+    #[test]
+    fn windows_switch_is_the_second_bit_of_the_fifth_byte_reg_prints() {
+        let told = |bytes: &str| format!("\r\nHKEY_CURRENT_USER\\Control Panel\\Desktop\r\n    UserPreferencesMask    REG_BINARY    {bytes}\r\n\r\n");
+        // "Animation effects" on (things move), then off, as Windows 11 writes them.
+        assert_eq!(windows_reduced(&told("9E1E078012000000")), Some(false));
+        assert_eq!(windows_reduced(&told("9012078010000000")), Some(true));
+        assert_eq!(windows_reduced(&told("9e1e078002")), Some(false));
+        // Too short to hold the switch, not bytes, no such line, or nothing at all: unknown.
+        assert_eq!(windows_reduced(&told("9E1E0780")), None);
+        assert_eq!(windows_reduced(&told("9E1E0780ZZ000000")), None);
+        assert_eq!(windows_reduced("    MenuShowDelay    REG_SZ    400\r\n"), None);
+        assert_eq!(windows_reduced("ERROR: The system was unable to find the specified registry key or value."), None);
+        assert_eq!(windows_reduced(""), None);
+    }
+
+    #[test]
+    fn gnomes_switch_is_read_from_what_gsettings_prints_and_anything_else_is_unknown() {
+        assert_eq!(gnome_reduced("true\n"), Some(false));
+        assert_eq!(gnome_reduced("false\n"), Some(true));
+        assert_eq!(gnome_reduced(""), None);
+        assert_eq!(gnome_reduced("No such schema \u{201c}org.gnome.desktop.interface\u{201d}"), None);
+        assert_eq!(gnome_reduced("@b true"), None);
+    }
+
+    #[test]
+    fn an_answer_the_system_never_gives_is_not_waited_for() {
+        let (send, arrives) = mpsc::channel::<bool>();
+        let mut system = System { asked: Instant::now(), arrives: Some(arrives), settled: false };
+        drop(send);
+        assert!(system.answer().is_none() && system.settled && !system.pending());
     }
 
     #[test]

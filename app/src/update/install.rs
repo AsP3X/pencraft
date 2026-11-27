@@ -1,17 +1,29 @@
 //! Puts a newer Quill in the place of the running one.
 //!
 //! The installer of a release is downloaded into the temporary folder and compared with the checksum the
-//! release gives for it. On Windows it is the setup wizard, which is then run without its pages; on a Mac it
-//! is the disk image, whose app is copied beside the running one and swapped in once the app has quit. Either
-//! way the new version starts by itself. A copy that can't be replaced this way has no [`Place`], and the card
-//! sends the user to the browser instead.
+//! release gives for it; once the app knows a key ([`KEYS`]), the checksums themselves must be signed with it.
+//! On Windows the installer is the setup wizard, which is then run without its pages; on a Mac it is the disk
+//! image, whose app is copied beside the running one and swapped in once the app has quit. Either way the new
+//! version starts by itself. A copy that can't be replaced this way has no [`Place`], and the card sends the
+//! user to the browser instead.
 
 use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
+use minisign_verify::{PublicKey, Signature};
+
 use super::{API, PATIENCE, ReleaseFile, quiet};
+
+/// The public halves of the keys a release's checksums are signed with, as `minisign -G` prints them (the
+/// second line of the `.pub` file). The secret halves are kept away from GitHub: docs/RELEASING.md.
+// Human: whoever can change a release on GitHub can change the installer and its checksums together, so the
+// checksums prove nothing by themselves. A signature made with a key GitHub never sees does. Two keys, so
+// one that is lost or stolen can be left out of the next version while the other still signs it.
+// Agent: while this is EMPTY nothing is checked and updates work as they did before; with a key in it, a
+// release without a valid `SHA256SUMS.txt.minisig` is not offered and never installed.
+pub(super) const KEYS: &[&str] = &[];
 
 /// The file the setup wizard leaves beside the program it installed.
 const UNINSTALLER: &str = "unins000.exe";
@@ -38,6 +50,40 @@ if mv "$2" "$2.old"; then
   if mv "$3" "$2"; then rm -rf "$2.old"; else mv "$2.old" "$2"; fi
 fi
 /usr/bin/open "$2""#;
+
+/// Whether a release must come with signed checksums: it must as soon as the app knows a key.
+#[must_use]
+pub fn checks_signatures() -> bool {
+    demanded(KEYS)
+}
+
+fn demanded(keys: &[&str]) -> bool {
+    !keys.is_empty()
+}
+
+/// What the signature of a release's checksums has to say besides being ours: the version it was made for.
+/// It is the signature's trusted comment (`minisign -S -t "Quill 1.2.3"`).
+// Human: without it, the signed checksums of an old release could be handed out again with the old installer
+// under a new version's number, and bring back a bug that was fixed since.
+fn said(version: &str) -> String {
+    format!("Quill {version}")
+}
+
+/// Makes sure `signature` (the text of a `.minisig` file) was made over `sums` with one of `keys`, for `version`.
+fn signed(sums: &[u8], signature: &str, keys: &[&str], version: &str) -> Result<(), String> {
+    let refused = || "The release's checksums are not signed by Quill's makers, so the update was not installed.".to_owned();
+    let signature = Signature::decode(signature).map_err(|_| refused())?;
+    // Human: a signature made the old way, over the file itself rather than its hash, is not taken.
+    let ours = keys.iter().filter_map(|key| PublicKey::from_base64(key).ok()).any(|key| key.verify(sums, &signature, false).is_ok());
+    if !ours {
+        return Err(refused());
+    }
+    if signature.trusted_comment() == said(version) {
+        Ok(())
+    } else {
+        Err("The release's signature was made for another version, so the update was not installed.".to_owned())
+    }
+}
 
 /// How the running copy can be replaced.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -302,6 +348,16 @@ fn download(address: &str, to: &Path, progress: &Progress, token: impl FnOnce() 
     file.flush().map_err(unwritten)
 }
 
+/// What proves that a release's checksums are ours.
+struct Proof<'a> {
+    /// Where `SHA256SUMS.txt.minisig` is handed out.
+    signature: &'a str,
+    /// The keys it may be signed with.
+    keys: &'a [&'a str],
+    /// The version the release says it is.
+    version: &'a str,
+}
+
 /// One download of a release file and of the release's checksums.
 struct Order<'a> {
     /// Where the file is handed out.
@@ -310,15 +366,26 @@ struct Order<'a> {
     sums: &'a str,
     /// The file's name in `SHA256SUMS.txt`.
     name: &'a str,
+    /// What the checksums must be proved with, `None` while the app knows no key.
+    proof: Option<Proof<'a>>,
 }
 
-/// Downloads a release file to `to` and makes sure it is the file the release's checksums describe. A file
-/// that isn't is deleted.
-// Agent: BLOCKS; WRITES `to` and `SHA256SUMS.txt` beside it.
+/// Downloads a release file to `to` and makes sure it is the file the release's checksums describe, and that
+/// the checksums are signed when there is something to prove them with. A file that isn't is deleted.
+// Human: the signature is looked at before the installer is asked for, so nothing large is downloaded from a
+// release that isn't ours.
+// Agent: BLOCKS; WRITES `to`, and `SHA256SUMS.txt` and `SHA256SUMS.txt.minisig` beside it.
 fn receive(order: &Order<'_>, to: &Path, progress: &Progress, token: &dyn Fn() -> Option<String>) -> Result<(), String> {
     let list = to.with_file_name("SHA256SUMS.txt");
     download(order.sums, &list, &Progress::default(), token)?;
-    let sums = std::fs::read_to_string(&list).map_err(|error| format!("The release's checksums couldn't be read: {error}"))?;
+    let unread = |error: std::io::Error| format!("The release's checksums couldn't be read: {error}");
+    let listed = std::fs::read(&list).map_err(unread)?;
+    if let Some(proof) = &order.proof {
+        let note = to.with_file_name("SHA256SUMS.txt.minisig");
+        download(proof.signature, &note, &Progress::default(), token)?;
+        signed(&listed, &std::fs::read_to_string(&note).map_err(unread)?, proof.keys, proof.version)?;
+    }
+    let sums = String::from_utf8_lossy(&listed);
     let wanted = checksum_for(&sums, order.name).ok_or_else(|| format!("The release gives no checksum for {}.", order.name))?;
     let checked = download(order.file, to, progress, token).and_then(|()| file_hash(to)).and_then(|found| {
         if found == wanted { Ok(()) } else { Err("The downloaded file is not the one the release describes, so it was not installed.".to_owned()) }
@@ -351,13 +418,34 @@ fn stage(image: &Path, bundle: &Path) -> Result<PathBuf, String> {
     }
 }
 
+/// The files of a release an update in place needs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Files {
+    /// The installer for this system.
+    pub installer: ReleaseFile,
+    /// The checksums of the release's files.
+    pub checksums: ReleaseFile,
+    /// The signature of the checksums, when the release has one.
+    pub signature: Option<ReleaseFile>,
+    /// The version the release says it is.
+    pub version: String,
+}
+
 /// Downloads the installer of a release, checks it, and gets it ready to be installed in `place`.
 ///
 /// # Errors
-/// When the download fails or is stopped, when the file is not the one the release's checksums describe, or
-/// when the Mac's new bundle couldn't be put beside the old one.
+/// When the download fails or is stopped, when the checksums are not signed with one of our keys for this
+/// version (once the app knows a key), when the file is not the one the checksums describe, or when the
+/// Mac's new bundle couldn't be put beside the old one.
 // Agent: BLOCKS for the whole download, so call it on a thread of its own; WRITES into the temporary folder.
-pub fn fetch(installer: &ReleaseFile, checksums: &ReleaseFile, place: &Place, progress: &Progress) -> Result<Prepared, String> {
+pub fn fetch(files: &Files, place: &Place, progress: &Progress) -> Result<Prepared, String> {
+    let Files { installer, checksums, signature, version } = files;
+    let signature = signature.as_ref().map(|file| file_address(API, file.repository, file.id));
+    let proof = match &signature {
+        Some(signature) if checks_signatures() => Some(Proof { signature, keys: KEYS, version }),
+        None if checks_signatures() => return Err("The release's checksums are not signed, so the update was not installed.".to_owned()),
+        _ => None,
+    };
     let folder = std::env::temp_dir().join("pencraft-update");
     std::fs::create_dir_all(&folder).map_err(|error| format!("No folder to download into: {error}"))?;
     let to = folder.join(match place {
@@ -365,7 +453,7 @@ pub fn fetch(installer: &ReleaseFile, checksums: &ReleaseFile, place: &Place, pr
         Place::Bundle(_) => "pencraft.dmg",
     });
     let file = file_address(API, installer.repository, installer.id);
-    let order = Order { file: &file, sums: &file_address(API, checksums.repository, checksums.id), name: &installer.name };
+    let order = Order { file: &file, sums: &file_address(API, checksums.repository, checksums.id), name: &installer.name, proof };
     receive(&order, &to, progress, &super::token)?;
     match place {
         Place::Setup => Ok(Prepared::Setup(to)),
@@ -543,23 +631,108 @@ mod tests {
         let to = folder("receive").join("pencraft-setup.exe");
         let sums = format!("{ABC}  pencraft-9.1.0-setup.exe\n");
         let (address, server) = serve(vec![reply("200 OK", sums.as_bytes()), reply("200 OK", b"abc")]);
-        let order = Order { file: &address, sums: &address, name: "pencraft-9.1.0-setup.exe" };
+        let order = Order { file: &address, sums: &address, name: "pencraft-9.1.0-setup.exe", proof: None };
         receive(&order, &to, &Progress::default(), &|| None).unwrap();
         assert_eq!(std::fs::read(&to).unwrap(), b"abc");
         server.join().unwrap();
 
         // Human: another file under the same name is thrown away.
         let (address, server) = serve(vec![reply("200 OK", sums.as_bytes()), reply("200 OK", b"abd")]);
-        let order = Order { file: &address, sums: &address, name: "pencraft-9.1.0-setup.exe" };
+        let order = Order { file: &address, sums: &address, name: "pencraft-9.1.0-setup.exe", proof: None };
         assert!(receive(&order, &to, &Progress::default(), &|| None).unwrap_err().starts_with("The downloaded file is not the one"));
         assert!(!to.exists());
         server.join().unwrap();
 
         // Human: a release that says nothing about the file gets nothing downloaded.
         let (address, server) = serve(vec![reply("200 OK", b"")]);
-        let order = Order { file: &address, sums: &address, name: "pencraft-9.1.0-setup.exe" };
+        let order = Order { file: &address, sums: &address, name: "pencraft-9.1.0-setup.exe", proof: None };
         assert_eq!(receive(&order, &to, &Progress::default(), &|| None).unwrap_err(), "The release gives no checksum for pencraft-9.1.0-setup.exe.");
         assert_eq!(server.join().unwrap().len(), 1);
+    }
+
+    // Human: two keys made for these tests and a signature the first made over the checksums below, as
+    // `minisign -S -t "Quill 9.1.0"` writes it. Their secret halves were thrown away.
+    const KEY: &str = "RWRRdWlsbFRzQUkgZ4DaxaamZh4LiHmEirzY5ZF+AMXa1F9hvKfiWDlJ";
+    const OTHER_KEY: &str = "RWRRdWlsbFRzQnXk9XwybfG50Ao+hMED9PvAaLOyGCzQ+VyYL6oSh01c";
+    const SIGNATURE: &str = "untrusted comment: signature from a key made for Quill's tests\n\
+        RURRdWlsbFRzQU9+Jg/TPpKs+pttu/HUuoRYvLjgFFoa4dSKQJvYAOnZV2cCZLAcrLjUN2BLX9fGmIfDicMbBy/YTlpt91g6IwE=\n\
+        trusted comment: Quill 9.1.0\n\
+        gFfbVc/GLLneJGKyiAuAS6DpfmdqJmFWTEv1GiVSxTwHpGSw25XGtcNMhChGIgHDeQmE7H7VDiq8UPuKrbz1Aw==\n";
+
+    fn signed_sums() -> String {
+        format!("{ABC}  pencraft-9.1.0-setup.exe\n")
+    }
+
+    #[test]
+    fn checksums_count_only_when_one_of_our_keys_signed_them_for_this_version() {
+        let sums = signed_sums();
+        assert_eq!(signed(sums.as_bytes(), SIGNATURE, &[KEY], "9.1.0"), Ok(()));
+        // Human: either of the two keys will do, and one that can't be read is passed over.
+        assert_eq!(signed(sums.as_bytes(), SIGNATURE, &["not a key", OTHER_KEY, KEY], "9.1.0"), Ok(()));
+        // Human: Windows line ends in the signature file change nothing.
+        assert_eq!(signed(sums.as_bytes(), &SIGNATURE.replace('\n', "\r\n"), &[KEY], "9.1.0"), Ok(()));
+
+        let not_ours = "The release's checksums are not signed by Quill's makers, so the update was not installed.";
+        assert_eq!(signed(sums.as_bytes(), SIGNATURE, &[OTHER_KEY], "9.1.0").unwrap_err(), not_ours);
+        assert_eq!(signed(sums.as_bytes(), SIGNATURE, &[], "9.1.0").unwrap_err(), not_ours);
+        // Human: other checksums under the same signature: what someone who changed the installer would send.
+        let changed = sums.replace("ba78", "ba79");
+        assert_eq!(signed(changed.as_bytes(), SIGNATURE, &[KEY], "9.1.0").unwrap_err(), not_ours);
+        assert_eq!(signed(sums.as_bytes(), "", &[KEY], "9.1.0").unwrap_err(), not_ours);
+        assert_eq!(signed(sums.as_bytes(), "not a signature\nat all\n", &[KEY], "9.1.0").unwrap_err(), not_ours);
+        // Human: a comment changed after signing breaks the signature, it doesn't pass for the other version.
+        let relabelled = SIGNATURE.replace("Quill 9.1.0", "Quill 9.2.0");
+        assert_eq!(signed(sums.as_bytes(), &relabelled, &[KEY], "9.2.0").unwrap_err(), not_ours);
+
+        // Human: an old release's signed checksums, handed out again as a newer version.
+        assert_eq!(
+            signed(sums.as_bytes(), SIGNATURE, &[KEY], "9.2.0").unwrap_err(),
+            "The release's signature was made for another version, so the update was not installed."
+        );
+    }
+
+    #[test]
+    fn signatures_are_asked_for_as_soon_as_the_app_knows_a_key() {
+        assert!(!demanded(&[]));
+        assert!(demanded(&[KEY]));
+        assert_eq!(checks_signatures(), demanded(KEYS));
+        // Human: a key that was pasted in wrong would refuse every release.
+        for key in KEYS {
+            assert!(PublicKey::from_base64(key).is_ok(), "{key} is not a minisign public key");
+        }
+    }
+
+    #[cfg(any(windows, target_os = "macos"))]
+    #[test]
+    fn an_installer_is_only_asked_for_after_the_checksums_proved_to_be_ours() {
+        let to = folder("signed").join("pencraft-setup.exe");
+        let sums = signed_sums();
+        let order = |address: &'static str, keys: &'static [&'static str], version: &'static str| Order {
+            file: address,
+            sums: address,
+            name: "pencraft-9.1.0-setup.exe",
+            proof: Some(Proof { signature: address, keys, version }),
+        };
+        let (address, server) = serve(vec![reply("200 OK", sums.as_bytes()), reply("200 OK", SIGNATURE.as_bytes()), reply("200 OK", b"abc")]);
+        let address: &'static str = address.leak();
+        receive(&order(address, &[KEY], "9.1.0"), &to, &Progress::default(), &|| None).unwrap();
+        assert_eq!(std::fs::read(&to).unwrap(), b"abc");
+        assert_eq!(server.join().unwrap().len(), 3);
+        std::fs::remove_file(&to).unwrap();
+
+        // Human: signed with a key the app doesn't know: the installer is never downloaded.
+        let (address, server) = serve(vec![reply("200 OK", sums.as_bytes()), reply("200 OK", SIGNATURE.as_bytes())]);
+        let address: &'static str = address.leak();
+        assert!(receive(&order(address, &[OTHER_KEY], "9.1.0"), &to, &Progress::default(), &|| None).unwrap_err().contains("not signed by"));
+        assert_eq!(server.join().unwrap().len(), 2);
+        assert!(!to.exists());
+
+        // Human: a release whose signature can't be had is no release to install.
+        let (address, server) = serve(vec![reply("200 OK", sums.as_bytes()), reply("404 Not Found", b"no")]);
+        let address: &'static str = address.leak();
+        assert_eq!(receive(&order(address, &[KEY], "9.1.0"), &to, &Progress::default(), &|| None).unwrap_err(), "GitHub answered 404");
+        server.join().unwrap();
+        assert!(!to.exists());
     }
 
     #[test]

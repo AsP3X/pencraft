@@ -52,6 +52,11 @@
    "value": 200
   },
   {
+   "name": "chat history: most conversations kept",
+   "group": "file",
+   "value": 100
+  },
+  {
    "name": "frame layout when unset",
    "group": "layout",
    "value": "horizontal"
@@ -447,6 +452,19 @@
    "group": "render",
    "value": 1000000,
    "source": "Quill's own limit (src/render/bake.rs MAX_PIXELS)"
+  },
+  {
+   "name": "picture memory budget",
+   "group": "render",
+   "value": 536870912,
+   "unit": "bytes",
+   "source": "Quill's own limit (src/images.rs BUDGET)"
+  },
+  {
+   "name": "threads reading picture files at most",
+   "group": "render",
+   "value": 4,
+   "source": "Quill's own limit (src/images.rs WORKERS)"
   },
   {
    "name": "shader effect order",

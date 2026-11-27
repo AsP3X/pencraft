@@ -195,7 +195,7 @@ impl App {
                     ui.horizontal(|ui| {
                         words(ui, "Recent", FontId::proportional(SIDEBAR_TITLE_SIZE), palette.foreground);
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            let open = text_button(ui, Some("folder-open"), "Open…", vec2(88.0, SIDEBAR_ROW), false, true, palette);
+                            let open = text_button(ui, Some("folder-open"), "Open…", vec2(theme::HOME_OPEN_WIDTH, SIDEBAR_ROW), false, true, palette);
                             if open.on_hover_text(crate::keys::text("Open a design (⌘O)")).clicked() {
                                 act = Some(Act::Open);
                             }
@@ -394,14 +394,16 @@ impl Home {
             let ready = !self.prompt.trim().is_empty();
             let mut send =
                 ready && edit.has_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter) && !input.modifiers.shift && !input.modifiers.alt);
-            ui.add_space(8.0);
+            ui.add_space(theme::HOME_PROMPT_FOOT[0]);
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 6.0;
+                ui.spacing_mut().item_spacing.x = theme::HOME_PROMPT_FOOT[1];
                 if let Some(name) = assistant {
                     let (icon, _) = ui.allocate_exact_size(Vec2::splat(ICON_SIZE - 2.0), Sense::hover());
                     crate::icons::paint(ui.painter(), icon, "sparkles", palette.muted);
                     words(ui, name, FontId::proportional(HOME_SMALL_TEXT), palette.muted);
-                } else if text_button(ui, Some("settings"), "Set up an assistant", vec2(160.0, HOME_SEND), false, true, palette).clicked() {
+                } else if text_button(ui, Some("settings"), "Set up an assistant", vec2(theme::HOME_SET_UP_WIDTH, HOME_SEND), false, true, palette)
+                    .clicked()
+                {
                     *act = Some(Act::Assistants);
                 }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -419,7 +421,7 @@ impl Home {
         if !ideas {
             return;
         }
-        ui.add_space(10.0);
+        ui.add_space(theme::HOME_IDEAS_GAP);
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = theme::BAR_IDEA_GAP;
             ui.spacing_mut().button_padding = theme::CHIP_PADDING;
@@ -427,7 +429,7 @@ impl Home {
             // few words need, so the row never wraps.
             for idea in IDEAS {
                 let room = ui.available_width();
-                if room < 150.0 {
+                if room < theme::HOME_IDEA_LEAST {
                     break;
                 }
                 let chip = egui::Button::new(RichText::new(idea).color(palette.muted))
@@ -465,13 +467,18 @@ impl Home {
                     let inside = picture_place(ui, rect, HOME_START_PICTURE, palette);
                     match start {
                         Start::Blank => {
-                            crate::icons::paint(ui.painter(), Rect::from_center_size(inside.center(), Vec2::splat(18.0)), "plus", palette.muted);
+                            crate::icons::paint(
+                                ui.painter(),
+                                Rect::from_center_size(inside.center(), Vec2::splat(theme::HOME_CARD_ICON)),
+                                "plus",
+                                palette.muted,
+                            );
                         }
                         Start::Screen(screen) => {
                             // Human: the frame the design starts with, in its own shape: tall for a phone, wide
                             // for a desktop window.
                             let sheet = fitted(inside, vec2(screen.w, screen.h), f32::INFINITY);
-                            ui.painter().rect(sheet, 3.0, palette.island, Stroke::new(1.0, palette.muted), StrokeKind::Inside);
+                            ui.painter().rect(sheet, theme::HOME_SHEET_RADIUS, palette.island, Stroke::new(1.0, palette.muted), StrokeKind::Inside);
                         }
                         Start::Sample => {
                             if let Some(texture) = sample {
@@ -495,12 +502,23 @@ impl Home {
             let (rect, _) = ui.allocate_exact_size(vec2(width, HOME_EMPTY_HEIGHT), Sense::hover());
             ui.painter().rect_stroke(rect, HOME_CARD_RADIUS, Stroke::new(1.0, palette.outline), StrokeKind::Inside);
             let middle = rect.center();
-            crate::icons::paint(ui.painter(), Rect::from_center_size(middle - vec2(0.0, 26.0), Vec2::splat(18.0)), "folder-open", palette.muted);
+            crate::icons::paint(
+                ui.painter(),
+                Rect::from_center_size(middle - vec2(0.0, theme::HOME_EMPTY_LINES[0]), Vec2::splat(theme::HOME_CARD_ICON)),
+                "folder-open",
+                palette.muted,
+            );
             let font = FontId::proportional(HOME_CARD_TEXT);
-            ui.painter().text(middle + vec2(0.0, 2.0), Align2::CENTER_CENTER, "Designs you open or save show up here", font, palette.foreground);
+            ui.painter().text(
+                middle + vec2(0.0, theme::HOME_EMPTY_LINES[1]),
+                Align2::CENTER_CENTER,
+                "Designs you open or save show up here",
+                font,
+                palette.foreground,
+            );
             let small = FontId::proportional(HOME_SMALL_TEXT);
             ui.painter().text(
-                middle + vec2(0.0, 22.0),
+                middle + vec2(0.0, theme::HOME_EMPTY_LINES[2]),
                 Align2::CENTER_CENTER,
                 "Drop a .quill or .pen file on the window to open it",
                 small,
@@ -521,7 +539,7 @@ impl Home {
                     let (rect, response) = card(ui, vec2(across, HOME_CARD_PADDING + tall + HOME_CARD_LINES), palette);
                     let inside = picture_place(ui, rect, tall, palette);
                     let texture = self.thumbs.get(&file.path).and_then(|thumb| thumb.texture.as_ref());
-                    let mark = Rect::from_center_size(inside.center(), Vec2::splat(18.0));
+                    let mark = Rect::from_center_size(inside.center(), Vec2::splat(theme::HOME_CARD_ICON));
                     let (note, ink) = if let Some(changed) = file.changed {
                         match texture {
                             Some(texture) => paint_picture(ui, inside, texture),
@@ -568,7 +586,7 @@ fn card_width(width: f32, count: u8, gap: f32) -> f32 {
 }
 
 /// How long ago, in words, something `since` back happened.
-fn ago(since: Duration) -> String {
+pub(super) fn ago(since: Duration) -> String {
     const MINUTE: u64 = 60;
     const HOUR: u64 = 60 * MINUTE;
     const DAY: u64 = 24 * HOUR;
@@ -644,7 +662,7 @@ fn words(ui: &mut egui::Ui, text: &str, font: FontId, color: Color32) {
 /// A card's place and ground: brighter under the pointer, outlined in the accent while it has the keyboard.
 fn card(ui: &mut egui::Ui, size: Vec2, palette: Palette) -> (Rect, Response) {
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
-    let fill = if response.hovered() { palette.hover.gamma_multiply(0.6) } else { palette.island };
+    let fill = if response.hovered() { palette.hover.gamma_multiply(theme::HOME_CARD_HOVER) } else { palette.island };
     let edge = if response.has_focus() { ACCENT } else { palette.outline };
     ui.painter().rect(rect, HOME_CARD_RADIUS, fill, Stroke::new(1.0, edge), StrokeKind::Inside);
     (rect, response.on_hover_cursor(egui::CursorIcon::PointingHand))
@@ -659,10 +677,12 @@ fn picture_place(ui: &egui::Ui, card: Rect, tall: f32, palette: Palette) -> Rect
 
 /// The two lines at the foot of a card: its name in `ink`, and a quieter note. Each is cut short with "…".
 fn card_lines(ui: &egui::Ui, card: Rect, title: &str, note: &str, ink: Color32, palette: Palette) {
-    let left = card.left() + HOME_CARD_PADDING + 4.0;
-    let width = card.right() - HOME_CARD_PADDING - 4.0 - left;
+    let left = card.left() + HOME_CARD_PADDING + theme::HOME_CARD_TEXT_INSET;
+    let width = card.right() - HOME_CARD_PADDING - theme::HOME_CARD_TEXT_INSET - left;
     let top = card.bottom() - HOME_CARD_LINES;
-    for (text, size, color, down) in [(title, HOME_CARD_TEXT, ink, 10.0), (note, HOME_SMALL_TEXT, palette.muted, 29.0)] {
+    for (text, size, color, down) in
+        [(title, HOME_CARD_TEXT, ink, theme::HOME_CARD_LINE_TOPS[0]), (note, HOME_SMALL_TEXT, palette.muted, theme::HOME_CARD_LINE_TOPS[1])]
+    {
         let mut job = egui::text::LayoutJob::simple_singleline(text.to_owned(), FontId::proportional(size), color);
         job.wrap = egui::text::TextWrapping::truncate_at_width(width);
         let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
@@ -687,16 +707,16 @@ fn paint_picture(ui: &egui::Ui, area: Rect, texture: &egui::TextureHandle) {
 /// The home screen's last line: the shortcuts worth knowing here, and the app's version at the other end.
 fn last_line(ui: &mut egui::Ui, palette: Palette) {
     ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = vec2(18.0, 8.0);
+        ui.spacing_mut().item_spacing = Vec2::from(theme::HOME_KEYS_GAP);
         for (label, keys) in [("New design", "⇧⌘N"), ("Open", "⌘O"), ("Search actions", "⌘P"), ("Settings", "⌘,")] {
             let font = FontId::proportional(HOME_SMALL_TEXT);
             let label = ui.painter().layout_no_wrap(label.to_owned(), font.clone(), palette.muted);
             let keys = ui.painter().layout_no_wrap(crate::keys::text(keys).into_owned(), font, palette.muted);
-            let key = vec2(keys.size().x + 12.0, HOME_KEY_HEIGHT);
-            let (rect, _) = ui.allocate_exact_size(vec2(label.size().x + 7.0 + key.x, HOME_KEY_HEIGHT), Sense::hover());
+            let key = vec2(keys.size().x + theme::HOME_KEY_ROOM, HOME_KEY_HEIGHT);
+            let (rect, _) = ui.allocate_exact_size(vec2(label.size().x + theme::HOME_KEY_LABEL_GAP + key.x, HOME_KEY_HEIGHT), Sense::hover());
             ui.painter().galley(pos2(rect.left(), rect.center().y - label.size().y / 2.0), label, palette.muted);
             let cap = Rect::from_min_size(pos2(rect.right() - key.x, rect.top()), key);
-            ui.painter().rect_stroke(cap, 5.0, Stroke::new(1.0, palette.outline), StrokeKind::Inside);
+            ui.painter().rect_stroke(cap, theme::HOME_KEY_RADIUS, Stroke::new(1.0, palette.outline), StrokeKind::Inside);
             ui.painter().galley(cap.center() - keys.size() / 2.0, keys, palette.muted);
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {

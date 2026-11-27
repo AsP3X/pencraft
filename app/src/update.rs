@@ -59,6 +59,8 @@ const PATIENCE: Duration = Duration::from_secs(20);
 
 /// The name of the release file that lists the checksums of the others.
 const CHECKSUMS: &str = "SHA256SUMS.txt";
+/// The name of the release file that signs the checksums: what `minisign -S -m SHA256SUMS.txt` writes.
+const SIGNATURE: &str = "SHA256SUMS.txt.minisig";
 /// How often the card looks at a download to show how far it is.
 const GLANCE: Duration = Duration::from_millis(100);
 
@@ -88,6 +90,8 @@ pub struct Release {
     pub installer: Option<ReleaseFile>,
     /// The file with the checksums of the release's files, when the release has one.
     pub checksums: Option<ReleaseFile>,
+    /// The file that signs the checksums, when the release has one.
+    pub signature: Option<ReleaseFile>,
     /// Nobody may stay on an older version: this release, or one between it and the running app, says so.
     pub required: bool,
     /// The repository it was released in, one of [`REPOSITORIES`].
@@ -184,6 +188,7 @@ pub fn parse_release(json: &str, repository: &'static str) -> Result<Release, St
         download,
         installer: file(&is_installer_for_this_system),
         checksums: file(&|name| name == CHECKSUMS),
+        signature: file(&|name| name == SIGNATURE),
     })
 }
 
@@ -262,8 +267,23 @@ pub fn latest(current: &str, repository: &'static str, fetch: Fetch<'_>, token: 
     if !(200..300).contains(&status) {
         return Err(format!("GitHub answered {status}"));
     }
-    let release = parse_release(&body, repository)?;
-    Ok(is_newer(&release.version, current).then_some(release))
+    Ok(shown(parse_release(&body, repository)?, current, install::checks_signatures()))
+}
+
+/// The release when it is one to offer: newer than `current` and, once the app checks signatures (`signed`),
+/// with its checksums signed.
+// Human: a release is published as a draft and signed by hand before it is made public (docs/RELEASING.md),
+// so one without a signature is either not finished or not ours. It is passed over without a word, the
+// browser download too, and the next look asks again.
+fn shown(release: Release, current: &str, signed: bool) -> Option<Release> {
+    if !is_newer(&release.version, current) {
+        return None;
+    }
+    if signed && release.signature.is_none() {
+        log::info!("update: {} has no {SIGNATURE}, so it is not offered", release.version);
+        return None;
+    }
+    Some(release)
 }
 
 /// Asks GitHub for an address, with a sign-in or without; gives the status and the text of the answer.
@@ -472,6 +492,7 @@ impl Updates {
             download: releases_page(REPOSITORIES[1]),
             installer: None,
             checksums: None,
+            signature: None,
             required: false,
             repository: REPOSITORIES[1],
         });
@@ -621,21 +642,27 @@ impl Updates {
     }
 
     /// The installer and the checksums of the offered release, when this copy can install them itself.
-    fn installable(&self) -> Option<(ReleaseFile, ReleaseFile, Place)> {
+    fn installable(&self) -> Option<(install::Files, Place)> {
         let release = self.offered.as_ref()?;
-        Some((release.installer.clone()?, release.checksums.clone()?, self.place.clone()?))
+        let files = install::Files {
+            installer: release.installer.clone()?,
+            checksums: release.checksums.clone()?,
+            signature: release.signature.clone(),
+            version: release.version.clone(),
+        };
+        Some((files, self.place.clone()?))
     }
 
     /// Starts downloading the offered release's installer on a thread of its own.
     // Agent: SPAWNS one thread that lives as long as the download; WAKES the window through `ctx` when it ends.
     fn fetch(&mut self, ctx: &egui::Context) {
-        let Some((installer, checksums, place)) = self.installable() else { return };
-        let progress = Arc::new(Progress::of(installer.size));
+        let Some((files, place)) = self.installable() else { return };
+        let progress = Arc::new(Progress::of(files.installer.size));
         let (send, result) = channel();
         let (shared, ctx) = (Arc::clone(&progress), ctx.clone());
         let work = move || {
             // Human: a download the user stopped has nobody waiting for its answer.
-            let _ = send.send(install::fetch(&installer, &checksums, &place, &shared));
+            let _ = send.send(install::fetch(&files, &place, &shared));
             ctx.request_repaint();
         };
         match std::thread::Builder::new().name("update-download".to_owned()).spawn(work) {
@@ -1151,7 +1178,8 @@ mod tests {
             {"name": "pencraft-9.1.0-setup.exe", "browser_download_url": "https://github.com/AsP3X/pencraft/releases/download/v9.1.0/pencraft-9.1.0-setup.exe"},
             {"name": "pencraft-9.1.0-x64.msi", "browser_download_url": "https://github.com/AsP3X/pencraft/releases/download/v9.1.0/pencraft-9.1.0-x64.msi"},
             {"name": "pencraft-9.1.0-macos-universal.dmg", "browser_download_url": "https://github.com/AsP3X/pencraft/releases/download/v9.1.0/pencraft-9.1.0-macos-universal.dmg"},
-            {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/AsP3X/pencraft/releases/download/v9.1.0/SHA256SUMS.txt"}
+            {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/AsP3X/pencraft/releases/download/v9.1.0/SHA256SUMS.txt"},
+            {"name": "SHA256SUMS.txt.minisig", "browser_download_url": "https://github.com/AsP3X/pencraft/releases/download/v9.1.0/SHA256SUMS.txt.minisig"}
         ]
     }"#;
 
@@ -1162,6 +1190,7 @@ mod tests {
             download: releases_page(OLD),
             installer: None,
             checksums: None,
+            signature: None,
             required: false,
             repository: OLD,
         }
@@ -1222,6 +1251,7 @@ mod tests {
                 download: releases_page(OLD),
                 installer: None,
                 checksums: None,
+                signature: None,
                 required: false,
                 repository: OLD,
             }
@@ -1234,6 +1264,7 @@ mod tests {
         let numbered = NEWER.replace(r#"{"name": "#, r#"{"id": 7, "size": 9, "name": "#);
         let release = parse_release(&numbered, OLD).unwrap();
         assert_eq!(release.checksums, Some(ReleaseFile { id: 7, name: CHECKSUMS.to_owned(), size: 9, repository: OLD }));
+        assert_eq!(release.signature, Some(ReleaseFile { id: 7, name: SIGNATURE.to_owned(), size: 9, repository: OLD }));
         if cfg!(all(windows, target_arch = "x86_64")) {
             assert_eq!(release.installer.unwrap().name, "pencraft-9.1.0-setup.exe");
         } else if cfg!(target_os = "macos") {
@@ -1244,6 +1275,19 @@ mod tests {
         // Human: files GitHub gave no number can't be asked for.
         let release = parse_release(NEWER, OLD).unwrap();
         assert_eq!((release.installer, release.checksums), (None, None));
+    }
+
+    #[test]
+    fn a_release_whose_checksums_are_not_signed_is_not_offered_once_signatures_are_checked() {
+        let numbered = NEWER.replace(r#"{"name": "#, r#"{"id": 7, "size": 9, "name": "#);
+        let signed = parse_release(&numbered, OLD).unwrap();
+        let unsigned = Release { signature: None, ..signed.clone() };
+        assert_eq!(shown(signed.clone(), "0.1.0", true), Some(signed.clone()));
+        assert_eq!(shown(unsigned.clone(), "0.1.0", true), None);
+        // Human: a copy that knows no key offers it as it always did.
+        assert_eq!(shown(unsigned.clone(), "0.1.0", false), Some(unsigned));
+        // Human: a signature doesn't make an old release new.
+        assert_eq!(shown(signed, "9.1.0", true), None);
     }
 
     #[test]

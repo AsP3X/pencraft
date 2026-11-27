@@ -53,7 +53,8 @@ Download from the [latest release](https://github.com/AsP3X/pencraft/releases/la
 | `pencraft-<version>-x64.exe` | Windows, just the program. Put it anywhere and run it. |
 | `pencraft-<version>-macos-universal.dmg` | macOS 11 or newer, Apple Silicon and Intel. Open it and drag the app to Applications; it is still named Pencraft there, so that copies already installed keep updating. |
 
-Each release lists the SHA-256 of its files in `SHA256SUMS.txt`.
+Each release lists the SHA-256 of its files in `SHA256SUMS.txt`, which is
+signed in `SHA256SUMS.txt.minisig` ([minisign](https://jedisct1.github.io/minisign/)).
 
 The files are not code-signed, and the Mac app is not notarised by Apple.
 That is why the first start needs one extra step:

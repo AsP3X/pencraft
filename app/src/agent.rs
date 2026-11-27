@@ -899,6 +899,40 @@ pub fn edit_staged(editor: &mut Editor, args: &Value, after: &mut dyn FnMut(&Edi
     Ok((results, touched))
 }
 
+/// The layers an `edit_layers` call changed and nothing outside of which it changed, for
+/// [`Editor::changed_only`]: `before` is the document before the call, `now` after it, `results` what
+/// [`edit`] gave for `args`. `None` when that can't be said for sure, and the document is to be compared.
+// Human: an update changes its layer (inside an instance, the instance, whose overrides are written); a layer
+// that is put in, copied or replaced changes the layer it lies in, a deleted one the layer it lay in, a moved
+// one both. Anything else (the variables), and a layer a later operation of the same call took away again,
+// is not followed.
+// Agent: READS both documents; nothing is written. `Some(None)` among the layers is the top level.
+#[must_use]
+pub fn changed_layers(before: &pen_doc::Document, now: &pen_doc::Document, args: &Value, results: &[Value]) -> Option<Vec<Option<String>>> {
+    let shared = |doc: &pen_doc::Document| {
+        (doc.version.clone(), doc.pencraft.clone(), doc.themes.clone(), doc.imports.clone(), doc.variables.clone(), doc.extra.clone())
+    };
+    let operations = args.get("operations").and_then(Value::as_array)?;
+    if operations.len() != results.len() || shared(before) != shared(now) {
+        return None;
+    }
+    let mut changed = Vec::new();
+    for (op, result) in operations.iter().zip(results) {
+        let id = result.get("id").and_then(Value::as_str);
+        match (op.get("op").and_then(Value::as_str)?, id) {
+            ("update", Some(id)) => {
+                let layer = if edit::find(now, id).is_some() { id.to_owned() } else { edit::owner(now, id)?.0 };
+                changed.push(Some(layer));
+            }
+            ("insert" | "copy" | "replace", Some(id)) => changed.push(edit::slot(now, id)?.parent),
+            ("move", Some(id)) => changed.extend([edit::slot(before, id)?.parent, edit::slot(now, id)?.parent]),
+            ("delete", None) => changed.push(edit::slot(before, result.get("deleted").and_then(Value::as_str)?)?.parent),
+            _ => return None,
+        }
+    }
+    Some(changed)
+}
+
 /// The boxes the layers `ids` have after the document was laid out again.
 #[must_use]
 pub fn boxes(editor: &Editor, ids: &[String]) -> Value {
@@ -1169,6 +1203,41 @@ mod tests {
         editor.touched();
         editor.refresh(&|_| (10.0, 10.0));
         assert!(boxes(&editor, &touched)[&card]["width"].as_f64().is_some());
+    }
+
+    #[test]
+    fn a_call_says_which_layers_it_changed_or_that_it_cant_tell() {
+        let json = r#"{"version":"2.22","children":[
+            {"type":"frame","id":"board","x":0,"y":0,"width":400,"height":300,"layout":"none","children":[
+                {"type":"frame","id":"card","x":10,"y":10,"width":100,"height":100,"layout":"none","children":[
+                    {"type":"rectangle","id":"dot","x":5,"y":5,"width":10,"height":10}]},
+                {"type":"frame","id":"other","x":200,"y":10,"width":100,"height":100,"layout":"none"}]}]}"#;
+        let changed = |call: &Value| {
+            let mut editor = Editor::new(pen_doc::read(json).unwrap(), None, 1);
+            let before = editor.doc.clone();
+            let (results, _) = edit(&mut editor, call).unwrap();
+            changed_layers(&before, &editor.doc, call, &results)
+        };
+        let some = |ids: &[Option<&str>]| Some(ids.iter().map(|id| id.map(str::to_owned)).collect::<Vec<_>>());
+        // An update is its layer; what comes, goes or moves is the layer it lies in, lay in, or both.
+        let call = json!({ "operations": [
+            { "op": "update", "id": "dot", "properties": { "fill": "#ff0000" } },
+            { "op": "insert", "parent": "card", "node": { "type": "rectangle", "width": 5, "height": 5 } },
+            { "op": "move", "id": "dot", "parent": "other" },
+            { "op": "copy", "id": "card" },
+        ] });
+        assert_eq!(changed(&call), some(&[Some("dot"), Some("card"), Some("card"), Some("other"), Some("board")]));
+        assert_eq!(changed(&json!({ "operations": [{ "op": "delete", "id": "dot" }] })), some(&[Some("card")]));
+        // The top level is named as such, for the editor to compare.
+        assert_eq!(changed(&json!({ "operations": [{ "op": "delete", "id": "board" }] })), some(&[None]));
+        // A layer made and taken away again in one call, and the variables: not followed.
+        let call = json!({ "operations": [
+            { "op": "insert", "parent": "card", "node": { "type": "rectangle", "id": "new", "width": 5, "height": 5 } },
+            { "op": "delete", "id": "new" },
+        ] });
+        assert_eq!(changed(&call), None);
+        let call = json!({ "operations": [{ "op": "set_variables", "variables": { "accent": { "type": "color", "value": "#ff0000" } } }] });
+        assert_eq!(changed(&call), None);
     }
 
     #[test]

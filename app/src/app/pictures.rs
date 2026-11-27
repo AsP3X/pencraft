@@ -392,9 +392,13 @@ pub(super) fn fill_with(editor: &mut Editor, id: &str, url: &str) -> Result<(), 
 fn edit_once(editor: &mut Editor, arguments: &Value) -> Result<Vec<Value>, String> {
     let before = editor.doc.clone();
     let (results, _) = agent::edit(editor, arguments)?;
+    let changed = agent::changed_layers(&before, &editor.doc, arguments, &results);
     let after = std::mem::replace(&mut editor.doc, before);
     editor.checkpoint();
     editor.doc = after;
+    if let Some(changed) = changed {
+        editor.changed_only(&changed);
+    }
     Ok(results)
 }
 

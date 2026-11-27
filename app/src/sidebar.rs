@@ -115,10 +115,26 @@ pub struct Look<'a> {
     pub animate: bool,
 }
 
+/// A kept chat as the History view lists it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PastRow {
+    /// Its file, by which the app opens or deletes it.
+    pub file: PathBuf,
+    /// The first thing the user said in it.
+    pub title: String,
+    /// Its document's name and when it was last added to ("shop.quill · 2 days ago").
+    pub note: String,
+    /// It is the chat the panel shows.
+    pub current: bool,
+}
+
 /// The sidebar's state for one window.
 pub struct Sidebar {
     /// The view in the panel.
     pub view: View,
+    /// The kept chats the History view lists, newest first. `None` when they have to be read (again): the
+    /// app fills them in while the History view shows.
+    pub past: Option<Vec<PastRow>>,
     /// Folded away: only the tool rail shows.
     pub collapsed: bool,
     /// Widened with the new chat's expand button.
@@ -193,6 +209,10 @@ pub enum ChatAsk {
     Stop,
     /// Start a new chat.
     New,
+    /// Show the kept chat in this file in the chat panel, to go on with it.
+    OpenPast(PathBuf),
+    /// Delete the kept chat in this file (the app asks first).
+    DeletePast(PathBuf),
     /// The assistant menu was opened: look again for what is installed.
     Looked,
     /// Talk to the assistant with this id from now on.
@@ -218,6 +238,7 @@ impl Default for Sidebar {
         // Human: the sidebar starts folded away and stays so until the user opens it.
         Sidebar {
             view: View::Chat,
+            past: None,
             collapsed: true,
             wide: false,
             draft: String::new(),
@@ -527,6 +548,8 @@ impl Sidebar {
             ui.spacing_mut().item_spacing.x = 2.0;
             if icon_button(ui, "messages-square", vec2(history, SIDEBAR_ROW), self.view == View::History, "Chat history", palette).clicked() {
                 self.view = View::History;
+                // The list is read again each time the view is opened.
+                self.past = None;
             }
             if text_button(ui, Some("message-circle"), "Chat", vec2(chat, SIDEBAR_ROW), self.view == View::Chat, false, palette).clicked() {
                 self.view = View::Chat;
@@ -593,11 +616,7 @@ impl Sidebar {
         ui.scope_builder(UiBuilder::new().max_rect(body), |ui| {
             ui.set_clip_rect(body.intersect(ui.clip_rect()));
             match self.view {
-                // Human: past chats aren't listed yet, so the view says what will be there, as the empty views do.
-                View::History => {
-                    ui.add_space(SIDEBAR_NOTE_TOP);
-                    ui.label(RichText::new("Past chats will appear here.").color(palette.muted));
-                }
+                View::History => self.chat_asks.extend(past_chats(ui, self.past.as_deref().unwrap_or_default(), palette)),
                 View::Chat if look.chat.entries.is_empty() => {
                     crate::conversation::forget(ui.ctx(), look.chat_id);
                     self.start_of_chat(ui, palette);
@@ -1502,6 +1521,52 @@ fn note(ui: &mut Ui, text: &str, palette: Palette) {
 }
 
 /// The components view: every reusable layer of the document; a click selects it.
+/// The History view: the kept chats, newest first. Gives what the user asked of one: open it, or delete it.
+// Human: a line is a button: a click, or Return or the space bar with the keyboard on it, opens the chat in
+// the chat panel. The bin at its end deletes it (the app asks first). Tab goes from a line to its bin and
+// on to the next line; a screen reader hears a line as its title, its document and its date.
+// Agent: MAIN-THREAD; draws only, the app reads and changes the files.
+fn past_chats(ui: &mut Ui, rows: &[PastRow], palette: Palette) -> Option<ChatAsk> {
+    if rows.is_empty() {
+        ui.add_space(SIDEBAR_NOTE_TOP);
+        ui.label(RichText::new("No chats yet. What you and the assistant say is kept here.").color(palette.muted));
+        return None;
+    }
+    let [height, gap] = theme::HISTORY_ROW;
+    let [inset, title_top, note_top] = theme::HISTORY_ROW_INSET;
+    let mut asked = None;
+    ui.add_space(SIDEBAR_LIST_TOP);
+    egui::ScrollArea::vertical().id_salt("past-chats").auto_shrink([false, false]).show(ui, |ui| {
+        ui.spacing_mut().item_spacing.y = gap;
+        for row in rows {
+            let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::click());
+            backdrop(ui, &response, row.current, palette);
+            name_button(&response, &format!("{}, {}", row.title, row.note));
+            let bin = Rect::from_center_size(pos2(rect.right() - inset - SIDEBAR_ROW / 2.0, rect.center().y), Vec2::splat(SIDEBAR_ROW));
+            let width = bin.left() - inset - (rect.left() + inset);
+            let lines = [
+                (&row.title, SIDEBAR_TEXT_SIZE, tint(&response, row.current, palette), title_top),
+                (&row.note, theme::HISTORY_NOTE_TEXT, palette.muted, note_top),
+            ];
+            for (text, size, color, down) in lines {
+                let mut job = egui::text::LayoutJob::simple_singleline(text.clone(), FontId::proportional(size), color);
+                job.wrap = egui::text::TextWrapping::truncate_at_width(width);
+                let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
+                ui.painter().galley(pos2(rect.left() + inset, rect.top() + down), galley, color);
+            }
+            // The bin lies over the line's end and takes the clicks there.
+            let deleted =
+                ui.scope_builder(UiBuilder::new().max_rect(bin), |ui| icon_button(ui, "trash", bin.size(), false, "Delete this chat", palette)).inner;
+            if deleted.clicked() {
+                asked = Some(ChatAsk::DeletePast(row.file.clone()));
+            } else if response.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                asked = Some(ChatAsk::OpenPast(row.file.clone()));
+            }
+        }
+    });
+    asked
+}
+
 fn components(ui: &mut Ui, editor: &mut Editor, palette: Palette) {
     fn collect(nodes: &[Node], out: &mut Vec<(String, String)>) {
         for node in nodes {
@@ -1536,6 +1601,63 @@ fn components(ui: &mut Ui, editor: &mut Editor, palette: Palette) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Frames of the History view with `rows` in a panel 300 wide: one without events, one for each of
+    /// `steps` with its events, and two more. Gives what was asked in any of the frames.
+    fn history_frames(rows: &[PastRow], steps: &[Vec<egui::Event>]) -> Vec<ChatAsk> {
+        let ctx = egui::Context::default();
+        let palette = theme::palette(false);
+        let mut asked = Vec::new();
+        for frame in 0..steps.len() + 3 {
+            let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(300.0, 400.0));
+            let events = frame.checked_sub(1).and_then(|step| steps.get(step)).cloned().unwrap_or_default();
+            let input = egui::RawInput { screen_rect: Some(screen), focused: true, events, ..Default::default() };
+            let mut drawn = ctx.run_ui(input, |ui| {
+                ui.scope_builder(UiBuilder::new().max_rect(screen), |ui| asked.extend(past_chats(ui, rows, palette)));
+            });
+            drawn.textures_delta.clear();
+        }
+        asked
+    }
+
+    fn click(at: egui::Pos2) -> Vec<egui::Event> {
+        let button =
+            |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
+        vec![egui::Event::PointerMoved(at), button(true), button(false)]
+    }
+
+    #[test]
+    fn a_past_chat_is_opened_by_its_line_and_deleted_by_its_bin_with_the_pointer_or_the_keyboard() {
+        let row = |name: &str| PastRow {
+            file: PathBuf::from(format!("/chats/{name}.json")),
+            title: name.to_owned(),
+            note: "shop.quill · Yesterday".to_owned(),
+            current: false,
+        };
+        let rows = [row("first"), row("second")];
+        let opens = |asked: &[ChatAsk], name: &str| matches!(asked, [ChatAsk::OpenPast(file)] if file.ends_with(name));
+        let deletes = |asked: &[ChatAsk], name: &str| matches!(asked, [ChatAsk::DeletePast(file)] if file.ends_with(name));
+        let [height, gap] = theme::HISTORY_ROW;
+        let middle = |line: f32| SIDEBAR_LIST_TOP + line * (height + gap) + height / 2.0;
+        // A click on a line opens its chat; a click on the bin at its end asks to delete it.
+        let asked = history_frames(&rows, &[click(pos2(60.0, middle(1.0)))]);
+        assert!(opens(&asked, "second.json"), "{asked:?}");
+        let bin = 300.0 - theme::HISTORY_ROW_INSET[0] - SIDEBAR_ROW / 2.0;
+        let asked = history_frames(&rows, &[click(pos2(bin - 4.0, middle(0.0)))]);
+        assert!(deletes(&asked, "first.json"), "{asked:?}");
+        // With the keyboard: Tab reaches the first line and Return opens it; another Tab reaches its bin,
+        // the next one the second line.
+        let key = |key| vec![egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE }];
+        let tab = || key(egui::Key::Tab);
+        let asked = history_frames(&rows, &[tab(), key(egui::Key::Enter)]);
+        assert!(opens(&asked, "first.json"), "{asked:?}");
+        let asked = history_frames(&rows, &[tab(), tab(), key(egui::Key::Space)]);
+        assert!(deletes(&asked, "first.json"), "{asked:?}");
+        let asked = history_frames(&rows, &[tab(), tab(), tab(), key(egui::Key::Enter)]);
+        assert!(opens(&asked, "second.json"), "{asked:?}");
+        // Without chats the view says so and asks for nothing.
+        assert_eq!(history_frames(&[], &[click(pos2(60.0, 30.0))]), Vec::new());
+    }
 
     #[test]
     fn what_is_being_written_stays_with_its_chat() {

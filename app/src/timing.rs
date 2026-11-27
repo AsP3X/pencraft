@@ -401,3 +401,134 @@ fn timing_42_dragging_one_layer_in_a_large_artboard() {
         println!("42 one drag step, {how}: the canvas frame after it: {}", ms(frames[30]));
     }
 }
+
+/// One edit of the large design, a hundred times over: how long the edit with its undo step and the scene
+/// brought up to date took, and the canvas frame after it (the middle one of each).
+fn edits(name: &str, ctx: &egui::Context, canvas: &mut Canvas, editor: &mut Editor, mut edit: impl FnMut(&mut Editor, u16)) {
+    let (mut steps, mut frames) = (Vec::new(), Vec::new());
+    for turn in 0..100_u16 {
+        let start = Instant::now();
+        edit(editor, turn);
+        editor.refresh(&measure);
+        steps.push(start.elapsed());
+        frames.push(frame(ctx, |ui| canvas.show(ui, editor, false)));
+    }
+    steps.sort();
+    frames.sort();
+    println!("53 {name}: the edit and its scene: {}; the canvas frame after it: {}", ms(steps[50]), ms(frames[50]));
+}
+
+#[test]
+#[ignore = "timing: prints times"]
+fn timing_53_edits_that_know_their_layers() {
+    let ctx = egui::Context::default();
+    let mut editor = editor();
+    let mut canvas = Canvas::default();
+    looking_at(&ctx, &mut canvas, &mut editor, (700.0, 500.0), 1.0);
+    let visible = pen_doc::geom::Rect::new(0.0, 0.0, 1400.0, 1000.0);
+    let layer = |turn: u16| format!("l{}_{}_{}", turn % 5, turn % 10, (turn % 6) * 2);
+    edits("duplicate a layer", &ctx, &mut canvas, &mut editor, |editor, turn| {
+        editor.selection = vec![layer(turn)];
+        editor.duplicate();
+    });
+    edits("delete a layer", &ctx, &mut canvas, &mut editor, |editor, turn| {
+        editor.selection = vec![format!("l1_{}_{}", turn / 10, 12 + turn % 10)];
+        editor.delete_selection();
+    });
+    edits("paste a layer into a frame", &ctx, &mut canvas, &mut editor, |editor, turn| {
+        let copy = pen_doc::edit::find(&editor.doc, &layer(turn + 1)).cloned().unwrap();
+        editor.selection = vec![format!("g{}_{}", turn % 5, turn % 10)];
+        editor.paste(&[copy], visible);
+    });
+    edits("undo", &ctx, &mut canvas, &mut editor, |editor, _| editor.undo());
+    edits("redo", &ctx, &mut canvas, &mut editor, |editor, _| editor.redo());
+    edits("the assistant updates a layer and adds one", &ctx, &mut canvas, &mut editor, |editor, turn| {
+        let group = format!("g{}_{}", turn % 5, turn % 10);
+        let call = serde_json::json!({ "operations": [
+            { "op": "update", "id": layer(turn), "properties": { "fill": "#ef4444" } },
+            { "op": "insert", "parent": group, "node": { "type": "rectangle", "width": 20, "height": 20, "fill": "#000000" } },
+        ] });
+        // The order `App::edit_in` keeps: the change, then the undo step for the document as it was.
+        let before = editor.doc.clone();
+        let (results, _) = crate::agent::edit(editor, &call).unwrap();
+        let changed = crate::agent::changed_layers(&before, &editor.doc, &call, &results);
+        let after = std::mem::replace(&mut editor.doc, before);
+        editor.checkpoint();
+        editor.doc = after;
+        if let Some(changed) = changed {
+            editor.changed_only(&changed);
+        }
+    });
+    editor.selection = vec![layer(3)];
+    let start = editor.scale_start().unwrap();
+    editor.checkpoint();
+    edits("a step of the scale drag", &ctx, &mut canvas, &mut editor, |editor, turn| {
+        let written = editor.scale_from(&start, 1.0 + f32::from(turn) / 200.0, start.bounds.center());
+        editor.touched_only(&written);
+    });
+}
+
+/// How many photos the photo design shows, and each one's size in pixels.
+const PHOTOS: usize = 24;
+const PHOTO: (u32, u32) = (4000, 3000);
+
+/// A design of [`PHOTOS`] large photos, six to a row, written into a new folder with its picture files;
+/// the editor for it, and the folder.
+// Human: one photo is drawn and encoded once (a JPEG, as a camera writes it) and copied under a name per
+// layer, so every layer has a file of its own to read.
+fn photo_design() -> (Editor, std::path::PathBuf) {
+    let folder = std::env::temp_dir().join(format!("quill-timing-photos-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).unwrap();
+    let photo = image::RgbImage::from_fn(PHOTO.0, PHOTO.1, |x, y| {
+        let wave = |v: u32, by: u32| u8::try_from((v / by + (x ^ y) % 23) % 256).unwrap_or(0);
+        image::Rgb([wave(x, 16), wave(y, 12), wave(x + y, 28)])
+    });
+    let first = folder.join("photo-0.jpg");
+    photo.save(&first).unwrap();
+    let mut json = String::from(r#"{"version":"2.22","children":["#);
+    for at in 0..PHOTOS {
+        if at > 0 {
+            std::fs::copy(&first, folder.join(format!("photo-{at}.jpg"))).unwrap();
+            json.push(',');
+        }
+        let (x, y) = ((at % 6) * 420, (at / 6) * 320);
+        write!(
+            json,
+            r#"{{"type":"rectangle","id":"p{at}","x":{x},"y":{y},"width":400,"height":300,"fill":{{"type":"image","url":"./photo-{at}.jpg","mode":"cover"}}}}"#
+        )
+        .unwrap();
+    }
+    json.push_str("]}");
+    let mut editor = Editor::new(pen_doc::read(&json).unwrap(), Some(folder.join("photos.pen")), 1);
+    editor.refresh(&measure);
+    (editor, folder)
+}
+
+#[test]
+#[ignore = "timing: prints times and memory"]
+fn timing_37_opening_a_design_of_many_large_photos() {
+    let ctx = egui::Context::default();
+    let (mut editor, folder) = photo_design();
+    editor.camera = crate::editor::Camera { center: pen_doc::geom::Point::new(1250.0, 630.0), zoom: 0.6 };
+    let mut canvas = Canvas::default();
+    let before = held_mb();
+    let start = Instant::now();
+    let first = frame(&ctx, |ui| canvas.show(ui, &mut editor, false));
+    println!("37 first frame of {PHOTOS} photos of {} x {}: {}", PHOTO.0, PHOTO.1, ms(first));
+    // Frames until every photo is drawn: the longest of them is how long the window stood still.
+    let mut longest = first;
+    for _ in 0..2000 {
+        if canvas.list().pictures().0 == 0 && !ctx.has_requested_repaint() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(4));
+        longest = longest.max(frame(&ctx, |ui| canvas.show(ui, &mut editor, false)));
+    }
+    println!("37 every photo drawn after {}; the longest frame until then: {}", ms(start.elapsed()), ms(longest));
+    println!("37 memory after opening (this process, without the textures on the graphics card): {:.1} MB", held_mb() - before);
+    let (_, pictures, bytes) = canvas.list().pictures();
+    #[expect(clippy::cast_precision_loss, reason = "megabytes to show")]
+    let megabytes = bytes as f64 / (1024.0 * 1024.0);
+    println!("37 the pictures kept: {pictures}, {megabytes:.1} MB of textures and copies for effects");
+    std::fs::remove_dir_all(&folder).unwrap();
+}

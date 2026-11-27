@@ -15,9 +15,9 @@ use crate::render::{DisplayList, doc_point, screen};
 use crate::snap::{Lines, line_up, pulled};
 use crate::theme::{
     self, ACCENT, COMPONENT, EDGE_GRAB, EYEDROPPER_OFFSET, EYEDROPPER_SWATCH, FRAME_NAME_GAP, FRAME_NAME_LEAST, FRAME_NAME_MORPH, FRAME_NAME_PILL,
-    FRAME_NAME_PILL_RADIUS, FRAME_NAME_PLATE, FRAME_NAME_PLATE_RADIUS, FRAME_NAME_TEXT, HANDLE_SIZE, INSTANCE, PEN_ANCHOR, PEN_HANDLE, PEN_REACH,
-    RADIUS_HANDLE, RADIUS_HANDLE_INSET, RADIUS_HANDLE_ROOM, ROTATE_DOT, ROTATE_DOT_GAP, ROTATE_DOT_GRAB, ROTATE_REACH, SIZE_LABEL_TEXT, SNAP_GAP_BAR,
-    SNAP_GUIDE, SNAP_GUIDE_OVER, SNAP_REACH, WIRE_REACH,
+    FRAME_NAME_PILL_RADIUS, FRAME_NAME_PLATE, FRAME_NAME_PLATE_RADIUS, FRAME_NAME_TEXT, HANDLE_SIZE, HANDLE_SLACK, INSTANCE, PEN_ANCHOR, PEN_HANDLE,
+    PEN_REACH, RADIUS_HANDLE, RADIUS_HANDLE_INSET, RADIUS_HANDLE_ROOM, ROTATE_DOT, ROTATE_DOT_GAP, ROTATE_DOT_GRAB, ROTATE_REACH, SELECTION_LINE,
+    SIZE_LABEL_TEXT, SNAP_GAP_BAR, SNAP_GUIDE, SNAP_GUIDE_OVER, SNAP_REACH, TEXT_EDIT_CURVED, TEXT_EDIT_FONT, TEXT_EDIT_MIN, WIRE_REACH,
 };
 
 /// Wheel and trackpad panning: screen points per scroll point.
@@ -531,8 +531,8 @@ impl Canvas {
                         |pulled: i8, at: f32, anchor: f32, size: f32| (pulled != 0 && size > 0.0).then(|| (at - anchor) * f32::from(pulled) / size);
                     let factor =
                         [along(handle.x, at.x, anchor.x, b.w), along(handle.y, at.y, anchor.y, b.h)].into_iter().flatten().fold(0.0, f32::max);
-                    editor.scale_from(from, factor, anchor);
-                    editor.touched();
+                    let written = editor.scale_from(from, factor, anchor);
+                    editor.touched_only(&written);
                 }
                 Some(Drag::Select { start, base }) => {
                     let area = Rect::from_corners(*start, at);
@@ -744,7 +744,7 @@ impl Canvas {
         let over = over.map(|p| doc_point(cam, view, p));
         // Human: the turning handle and the size label lie over the names; the names make way for them. The
         // handle counts while a drag hides it too, so a board's name doesn't drop and rise as the board is moved.
-        let stem = rotate_dot(editor, view).map(|(foot, dot)| ScreenRect::from_two_pos(foot, dot).expand(ROTATE_DOT + 1.5));
+        let stem = rotate_dot(editor, view).map(|(foot, dot)| ScreenRect::from_two_pos(foot, dot).expand(ROTATE_DOT + SELECTION_LINE));
         let badge = self.size_badge(editor, view).map(|(at, text)| (size_label_rect(painter, at, &text), text));
         let covering = Covering { stem, badge: badge.as_ref().map(|(rect, _)| *rect) };
         self.names = self.board_names(painter, editor, view, &palette, over, covering);
@@ -758,7 +758,7 @@ impl Canvas {
                     if !editor.selection.contains(id) && !over.is_some_and(|p| layout::doc_bounds(node).contains(p)) {
                         return;
                     }
-                    outline(painter, cam, view, node, Stroke::new(1.0, COMPONENT.gamma_multiply(0.7)));
+                    outline(painter, cam, view, node, Stroke::new(1.0, COMPONENT.gamma_multiply(theme::COMPONENT_OUTLINE_FADE)));
                     if depth > 0 || node.node.kind != Kind::Frame {
                         let pos = screen(cam, view, node.to_doc.apply(Point::new(0.0, 0.0))) - egui::vec2(0.0, FRAME_NAME_GAP);
                         painter.text(
@@ -804,11 +804,11 @@ impl Canvas {
         if let [id] = editor.selection.as_slice()
             && let Some(node) = editor.scene_node(id)
         {
-            outline(painter, cam, view, node, Stroke::new(1.5, tint(id)));
+            outline(painter, cam, view, node, Stroke::new(SELECTION_LINE, tint(id)));
         }
         if several && let Some(all) = editor.selection.iter().filter_map(|id| editor.scene_node(id)).map(selection_box).reduce(|a, b| a.union(&b)) {
             let (min, max) = (screen(cam, view, Point::new(all.x, all.y)), screen(cam, view, Point::new(all.right(), all.bottom())));
-            painter.rect_stroke(ScreenRect::from_min_max(min, max), 0.0, Stroke::new(1.5, ACCENT), StrokeKind::Inside);
+            painter.rect_stroke(ScreenRect::from_min_max(min, max), 0.0, Stroke::new(SELECTION_LINE, ACCENT), StrokeKind::Inside);
         }
         self.handles(ui, painter, editor, view);
         guide_lines(painter, cam, view, &self.guides, &self.gaps);
@@ -820,7 +820,7 @@ impl Canvas {
             Some(Drag::Select { start, .. }) => {
                 if let Some(p) = ui.input(|i| i.pointer.hover_pos()) {
                     let r = ScreenRect::from_two_pos(screen(cam, view, *start), p);
-                    painter.rect(r, 0.0, ACCENT.gamma_multiply(0.1), Stroke::new(1.0, ACCENT), StrokeKind::Inside);
+                    painter.rect(r, 0.0, ACCENT.gamma_multiply(theme::MARQUEE_WASH), Stroke::new(1.0, ACCENT), StrokeKind::Inside);
                 }
             }
             Some(Drag::Create { start, .. }) => {
@@ -856,7 +856,7 @@ impl Canvas {
             && let Some((foot, dot)) = rotate_dot(editor, view)
         {
             painter.line_segment([foot, dot], Stroke::new(1.0, ACCENT));
-            painter.circle(dot, ROTATE_DOT, theme::HANDLE_FILL, Stroke::new(1.5, ACCENT));
+            painter.circle(dot, ROTATE_DOT, theme::HANDLE_FILL, Stroke::new(SELECTION_LINE, ACCENT));
             if self.drag.is_none() && ui.input(|i| i.pointer.hover_pos()).is_some_and(|p| dot.distance(p) <= ROTATE_DOT_GRAB) {
                 ui.ctx().set_cursor_icon(CursorIcon::Grab);
             }
@@ -879,7 +879,12 @@ impl Canvas {
                 && rotate_zone(editor, view, p)
             {
                 ui.ctx().set_cursor_icon(CursorIcon::Grab);
-                crate::icons::paint(painter, ScreenRect::from_center_size(p + egui::vec2(14.0, 14.0), egui::Vec2::splat(13.0)), "rotate-cw", ACCENT);
+                crate::icons::paint(
+                    painter,
+                    ScreenRect::from_center_size(p + egui::Vec2::splat(theme::ROTATE_CURSOR[0]), egui::Vec2::splat(theme::ROTATE_CURSOR[1])),
+                    "rotate-cw",
+                    ACCENT,
+                );
             }
             for (centre, _) in radius_handles(editor, view, id, node).into_iter().flatten() {
                 painter.circle(centre, RADIUS_HANDLE, theme::HANDLE_FILL, Stroke::new(1.0, ACCENT));
@@ -923,13 +928,16 @@ impl Canvas {
         let font = layout::text_style(&scene.node, Vars::new(&editor.doc), &scene.theme).size * editor.camera.zoom;
         let (mut min, mut size) = (
             screen(&editor.camera, view, Point::new(b.x, b.y)),
-            egui::vec2((b.w * editor.camera.zoom).max(120.0), (b.h * editor.camera.zoom).max(28.0)),
+            egui::vec2((b.w * editor.camera.zoom).max(TEXT_EDIT_MIN[0]), (b.h * editor.camera.zoom).max(TEXT_EDIT_MIN[1])),
         );
         // Human: a text set on a circle or along a line has that shape's box as its own; an editor that large
         // would hide the very letters being typed. Its words are edited in one line in the middle of the box,
         // and the text on its curve follows each key.
         if crate::render::runs_along(&scene.node) {
-            size = egui::vec2((size.x * 0.7).max(120.0), (font.clamp(8.0, 96.0) * 1.4).max(28.0));
+            size = egui::vec2(
+                (size.x * TEXT_EDIT_CURVED[0]).max(TEXT_EDIT_MIN[0]),
+                (font.clamp(TEXT_EDIT_FONT[0], TEXT_EDIT_FONT[1]) * TEXT_EDIT_CURVED[1]).max(TEXT_EDIT_MIN[1]),
+            );
             let centre = screen(&editor.camera, view, b.center());
             min = egui::pos2(centre.x - size.x / 2.0, centre.y - size.y / 2.0);
         }
@@ -937,12 +945,17 @@ impl Canvas {
         let mut text = scene.node.content.clone().unwrap_or_default();
         let area = egui::Area::new(egui::Id::unique(("text-edit", &id))).fixed_pos(min).order(egui::Order::Foreground);
         let output = area.show(ui.ctx(), |ui| {
-            egui::Frame::new().fill(ui.visuals().window_fill.gamma_multiply(0.92)).stroke(Stroke::new(1.0, ACCENT)).show(ui, |ui| {
-                ui.add_sized(
-                    size,
-                    egui::TextEdit::multiline(&mut text).font(egui::FontId::proportional(font.clamp(8.0, 96.0))).frame(egui::Frame::NONE),
-                )
-            })
+            egui::Frame::new().fill(ui.visuals().window_fill.gamma_multiply(theme::TEXT_EDIT_GROUND)).stroke(Stroke::new(1.0, ACCENT)).show(
+                ui,
+                |ui| {
+                    ui.add_sized(
+                        size,
+                        egui::TextEdit::multiline(&mut text)
+                            .font(egui::FontId::proportional(font.clamp(TEXT_EDIT_FONT[0], TEXT_EDIT_FONT[1])))
+                            .frame(egui::Frame::NONE),
+                    )
+                },
+            )
         });
         let edit_response = output.inner.inner;
         if !edit_response.has_focus() && !edit_response.lost_focus() {
@@ -1115,14 +1128,14 @@ fn place_names(boards: &[NamedBoard], covering: Covering) -> Vec<NamePlace> {
 /// The box of the blue label under a selection box, centred under `at`.
 fn size_label_rect(painter: &egui::Painter, at: Pos2, text: &str) -> ScreenRect {
     let galley = painter.layout_no_wrap(text.to_owned(), egui::FontId::proportional(SIZE_LABEL_TEXT), Color32::WHITE);
-    egui::Align2::CENTER_TOP.anchor_size(at + egui::vec2(0.0, 7.0), galley.size() + egui::vec2(12.0, 5.0))
+    egui::Align2::CENTER_TOP.anchor_size(at + egui::vec2(0.0, theme::SIZE_LABEL_GAP), galley.size() + egui::Vec2::from(theme::SIZE_LABEL_ROOM))
 }
 
 /// Draws the blue label under a selection box in `rect` (from [`size_label_rect`]).
 fn size_label(painter: &egui::Painter, rect: ScreenRect, text: &str) {
     let galley = painter.layout_no_wrap(text.to_owned(), egui::FontId::proportional(SIZE_LABEL_TEXT), Color32::WHITE);
-    painter.rect_filled(rect, 5.0, ACCENT);
-    painter.galley(rect.min + egui::vec2(6.0, 2.5), galley, theme::ON_ACCENT);
+    painter.rect_filled(rect, theme::SIZE_LABEL_RADIUS, ACCENT);
+    painter.galley(rect.min + egui::Vec2::from(theme::SIZE_LABEL_INSET), galley, theme::ON_ACCENT);
 }
 
 fn trim(v: f32) -> String {
@@ -1306,7 +1319,7 @@ fn radius_handle_at(editor: &Editor, view: ScreenRect, p: Pos2) -> Option<(Strin
     let [id] = editor.selection.as_slice() else { return None };
     let node = editor.scene_node(id)?;
     let handles = radius_handles(editor, view, id, node)?;
-    let (_, inward) = handles.into_iter().find(|(centre, _)| centre.distance(p) <= RADIUS_HANDLE + 3.0)?;
+    let (_, inward) = handles.into_iter().find(|(centre, _)| centre.distance(p) <= RADIUS_HANDLE + HANDLE_SLACK)?;
     Some((id.clone(), layout::doc_bounds(node), inward))
 }
 
@@ -1369,7 +1382,7 @@ fn rotate_zone(editor: &Editor, view: ScreenRect, p: Pos2) -> bool {
     }
     let Some((_, frame, local, unit)) = on_selection(editor, view, p) else { return false };
     let outside = !frame.contains(local);
-    let grip = (HANDLE_SIZE / 2.0 + 3.0) * unit;
+    let grip = (HANDLE_SIZE / 2.0 + HANDLE_SLACK) * unit;
     frame.corners().iter().any(|c| {
         let (dx, dy) = ((local.x - c.x).abs(), (local.y - c.y).abs());
         outside && dx.hypot(dy) <= ROTATE_REACH * unit && (dx > grip || dy > grip)
@@ -1382,7 +1395,7 @@ fn handle_at(editor: &Editor, view: ScreenRect, p: Pos2) -> Option<(String, Hand
     }
     // Human: worked out in the layer's own coordinates, so a turned layer's handles are where they are drawn.
     let (id, frame, local, unit) = on_selection(editor, view, p)?;
-    let grip = (HANDLE_SIZE / 2.0 + 3.0) * unit;
+    let grip = (HANDLE_SIZE / 2.0 + HANDLE_SLACK) * unit;
     let side = |at: f32, low: f32, high: f32, reach: f32| -> Option<i8> {
         if (at - low).abs() <= reach {
             Some(-1)
@@ -1803,7 +1816,8 @@ fn spotlight(painter: &egui::Painter, editor: &Editor, view: ScreenRect) {
     let (marked, current) = &editor.spotlight;
     for id in marked {
         if let Some(node) = editor.scene_node(id) {
-            let stroke = if current.as_ref() == Some(id) { Stroke::new(2.0, ACCENT) } else { Stroke::new(1.0, ACCENT.gamma_multiply(0.55)) };
+            let stroke =
+                if current.as_ref() == Some(id) { Stroke::new(2.0, ACCENT) } else { Stroke::new(1.0, ACCENT.gamma_multiply(theme::SPOTLIGHT_FAINT)) };
             outline(painter, &editor.camera, view, node, stroke);
         }
     }
@@ -1867,7 +1881,7 @@ fn pen_overlay(ui: &egui::Ui, painter: &egui::Painter, editor: &Editor, view: Sc
             last.after.map(place),
             None,
             place(next),
-            Stroke::new(1.0, ACCENT.gamma_multiply(0.6)),
+            Stroke::new(1.0, ACCENT.gamma_multiply(theme::PEN_NEXT_FAINT)),
         );
     }
     for handle in [last.before, last.after].into_iter().flatten().map(place) {
@@ -1878,7 +1892,7 @@ fn pen_overlay(ui: &egui::Ui, painter: &egui::Painter, editor: &Editor, view: Sc
         painter.add(egui::Shape::convex_polygon(diamond, theme::HANDLE_FILL, line));
     }
     for (index, anchor) in anchors.iter().enumerate() {
-        let radius = if index == 0 && closing { PEN_ANCHOR / 2.0 + 1.5 } else { PEN_ANCHOR / 2.0 };
+        let radius = if index == 0 && closing { PEN_ANCHOR / 2.0 + theme::PEN_OVER_GROW } else { PEN_ANCHOR / 2.0 };
         painter.circle(place(anchor.at), radius, theme::HANDLE_FILL, line);
     }
 }

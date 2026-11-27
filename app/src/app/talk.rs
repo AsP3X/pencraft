@@ -4,12 +4,13 @@
 
 use std::sync::Arc;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use craft_dialogs::FileDialog;
 
 use super::{App, Then};
 use crate::chat::{self, Ask, Chat, Waiting, files};
+use crate::editor::Editor;
 use crate::sidebar::{ChatAsk, Look, Writing};
 
 /// One conversation: the chat of one open document, or of the home screen.
@@ -27,8 +28,24 @@ pub(super) struct Talk {
     logged: usize,
     /// What was being written in it when another chat came to the front.
     kept: Writing,
-    /// The design file its conversation was last kept for, how many lines it had then, and what it had taken.
-    saved: Option<(PathBuf, usize, chat::usage::Spent)>,
+    /// The file its conversation is kept in ([`chat::history`]); `None` until something said in it was kept,
+    /// and again once it was started over.
+    file: Option<PathBuf>,
+    /// What its conversation was last kept as: its document's file and name, how many lines it had, and
+    /// what it had taken.
+    saved: Option<(Option<PathBuf>, String, usize, chat::usage::Spent)>,
+}
+
+/// A question about a chat that is being asked over the app.
+#[derive(Default)]
+pub(super) enum ChatQuestion {
+    /// None.
+    #[default]
+    None,
+    /// Whether to start the chat with this number over while its assistant is at work.
+    New(u64),
+    /// Whether to delete the kept chat in this file, which has this title.
+    Delete(PathBuf, String),
 }
 
 /// The document a tool call works on when it names none.
@@ -112,12 +129,15 @@ impl App {
         let at = self.talks.iter().position(|talk| talk.doc == doc).unwrap_or_else(|| {
             self.talks_made += 1;
             let mut talk = Talk { id: self.talks_made, doc, ..Talk::default() };
-            // Human: a design's chat starts with what was said about it before.
-            let file = self.active.and_then(|tab| self.tabs.get(tab)).and_then(|editor| editor.path.clone()).filter(|_| !self.private);
-            if let Some(file) = file {
-                (talk.chat.entries, talk.chat.total) = chat::history::read(&file);
+            // Human: a design's chat starts with what was last said about it.
+            let editor = self.active.and_then(|tab| self.tabs.get(tab)).filter(|_| !self.private);
+            let design = editor.and_then(|editor| editor.path.clone());
+            if let Some((design, kept)) = design.and_then(|design| chat::history::latest_for(&design).map(|kept| (design, kept))) {
+                (talk.chat.entries, talk.chat.total) = chat::history::read(&kept);
                 talk.logged = talk.chat.entries.len();
-                talk.saved = Some((file, talk.chat.entries.len(), talk.chat.total.clone()));
+                let name = editor.map(Editor::tab_name).unwrap_or_default();
+                talk.saved = Some((Some(design), name, talk.chat.entries.len(), talk.chat.total.clone()));
+                talk.file = Some(kept);
             }
             self.talks.push(talk);
             self.talks.len() - 1
@@ -203,28 +223,112 @@ impl App {
         changed
     }
 
-    /// Keeps what was said in each design's chat for the next run, once an answer is done or the chat was
-    /// started over. A design without a file has no place to keep it yet; it is kept once it is saved.
+    /// Keeps what was said in each chat for the next run, once an answer is done: every conversation in a
+    /// file of its own, with its document's name. A chat that was started over begins another file with
+    /// what is said next; the one before stays.
     // Agent: WRITES a small file per chat that changed, in the window's thread.
     pub(super) fn keep_chats(&mut self) {
         if self.private {
             return;
         }
         for talk in &mut self.talks {
-            let file = talk.doc.and_then(|doc| self.tabs.iter().find(|tab| tab.id == doc)).and_then(|editor| editor.path.clone());
-            let Some(file) = file.filter(|_| !talk.chat.running()) else { continue };
+            let editor = talk.doc.and_then(|doc| self.tabs.iter().find(|tab| tab.id == doc));
+            // A chat whose document is closed is on its way out; one at work is kept when its answer is done.
+            if talk.chat.running() || (talk.doc.is_some() && editor.is_none()) {
+                continue;
+            }
             // Human: the sums count too: a stopped answer can add tokens to the total without adding a line.
-            let now = (file, talk.chat.entries.len(), talk.chat.total.clone());
-            // A design never talked about is not written for.
-            let nothing = talk.saved.is_none() && now.1 == 0;
+            let (design, name) = (editor.and_then(|editor| editor.path.clone()), editor.map(Editor::tab_name).unwrap_or_default());
+            let now = (design, name, talk.chat.entries.len(), talk.chat.total.clone());
+            // A chat never talked in is not written for.
+            let nothing = talk.saved.is_none() && now.2 == 0;
             if nothing || talk.saved.as_ref() == Some(&now) {
                 continue;
             }
-            if let Err(problem) = chat::history::keep(&now.0, &talk.chat.entries, &talk.chat.total) {
-                log::warn!("chat history: {problem}");
+            if now.2 == 0 {
+                talk.file = None;
+            } else {
+                let about = chat::history::About { design: now.0.as_deref(), name: &now.1 };
+                match chat::history::keep(talk.file.as_deref(), about, &talk.chat.entries, &talk.chat.total) {
+                    Ok(kept) => talk.file = kept,
+                    Err(problem) => log::warn!("chat history: {problem}"),
+                }
+                self.sidebar.past = None;
             }
             talk.saved = Some(now);
         }
+    }
+
+    /// Reads the kept chats for the History view while it shows and its list is out of date.
+    // Agent: READS the kept chats' files (a hundred small ones at most), in the window's thread.
+    pub(super) fn list_past_chats(&mut self) {
+        if self.sidebar.view != crate::sidebar::View::History || self.sidebar.past.is_some() {
+            return;
+        }
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_secs());
+        let current = self.talks.iter().find(|talk| talk.id == self.shown).and_then(|talk| talk.file.clone());
+        let row = |past: chat::history::Past| {
+            let when = super::home::ago(std::time::Duration::from_secs(now.saturating_sub(past.changed)));
+            let note = if past.name.is_empty() { when } else { format!("{} · {when}", past.name) };
+            crate::sidebar::PastRow { current: current.as_ref() == Some(&past.file), file: past.file, title: past.title, note }
+        };
+        self.sidebar.past = Some(chat::history::list().into_iter().map(row).collect());
+    }
+
+    /// Shows the kept chat in `file` in the chat panel, to go on with it.
+    // Human: it takes the place of the conversation of the document in front, which is kept first and stays
+    // in the list. Whatever assistant is chosen goes on with it: it is told the last of what was said, as it
+    // is when a design is opened another day. From then on the chat is about the document in front.
+    fn open_past_chat(&mut self, file: PathBuf) {
+        let talk = self.shown_talk();
+        if talk.file.as_ref() == Some(&file) {
+            self.sidebar.view = crate::sidebar::View::Chat;
+            return;
+        }
+        if talk.chat.running() {
+            self.warn("The assistant is at work in this chat. Stop it first, then open the other chat.");
+            return;
+        }
+        // Human: a conversation is in one chat panel at a time: two that both wrote to its file would each
+        // write over what the other added.
+        let shown = talk.id;
+        if self.talks.iter().any(|other| other.id != shown && other.file.as_ref() == Some(&file)) {
+            self.warn("That chat is open in another tab. Go on with it there.");
+            return;
+        }
+        self.keep_chats();
+        let (entries, total) = chat::history::read(&file);
+        self.sidebar.past = None;
+        if entries.is_empty() {
+            self.warn("That chat couldn't be read.");
+            return;
+        }
+        let doc = self.shown_talk().doc;
+        let editor = doc.and_then(|doc| self.tabs.iter().find(|tab| tab.id == doc));
+        let (design, name) = (editor.and_then(|editor| editor.path.clone()), editor.map(Editor::tab_name).unwrap_or_default());
+        let talk = self.shown_talk();
+        talk.chat.clear();
+        (talk.chat.entries, talk.chat.total) = (entries, total);
+        talk.logged = talk.chat.entries.len();
+        // Human: opening a chat is not adding to it: it counts as kept the way it is, and keeps its date
+        // and its document's name in the list until something is said in it.
+        talk.saved = Some((design, name, talk.chat.entries.len(), talk.chat.total.clone()));
+        talk.file = Some(file);
+        self.sidebar.view = crate::sidebar::View::Chat;
+    }
+
+    /// Deletes the kept chat in `file`; a chat panel that shows it is emptied.
+    fn delete_past_chat(&mut self, file: &Path) {
+        if let Err(problem) = chat::history::delete(file) {
+            self.warn(format!("The chat couldn't be deleted: {problem}"));
+        }
+        // Human: gone for good: an assistant still at work in it stops, or its answer would bring the
+        // conversation back as a new file.
+        for talk in self.talks.iter_mut().filter(|talk| talk.file.as_deref() == Some(file)) {
+            talk.file = None;
+            talk.chat.clear();
+        }
+        self.sidebar.past = None;
     }
 
     /// Does what the chat panel asked for this frame: stop, start over, another assistant, send.
@@ -233,6 +337,11 @@ impl App {
             match ask {
                 ChatAsk::Stop => self.shown_talk().chat.stop(),
                 ChatAsk::New => self.ask_new_chat(),
+                ChatAsk::OpenPast(file) => self.open_past_chat(file),
+                ChatAsk::DeletePast(file) => {
+                    let title = self.sidebar.past.iter().flatten().find(|row| row.file == file).map(|row| row.title.clone()).unwrap_or_default();
+                    self.chat_question = ChatQuestion::Delete(file, title);
+                }
                 ChatAsk::Looked => self.find_assistants(),
                 ChatAsk::Assistants => self.settings.open_named("agents"),
                 ChatAsk::Pick(id) => {
@@ -247,43 +356,66 @@ impl App {
         }
     }
 
-    /// Starts the shown chat over, asking first when that would lose something.
-    // Human: starting over replaces the kept conversation with an empty one, so it can't be got back; an empty
-    // chat with nothing running has nothing to lose and starts over without a question.
+    /// Starts the shown chat over, asking first while its assistant is at work.
+    // Human: starting over loses nothing any more: the conversation is kept and stays in Chat history. Only
+    // an assistant in the middle of its work would be cut off, and that is asked about.
     fn ask_new_chat(&mut self) {
         let talk = self.shown_talk();
-        if talk.chat.entries.is_empty() && !talk.chat.running() {
-            talk.chat.clear();
+        let (id, running) = (talk.id, talk.chat.running());
+        if running {
+            self.chat_question = ChatQuestion::New(id);
         } else {
-            self.new_chat_asked = Some(talk.id);
+            self.start_new_chat(id);
         }
     }
 
-    /// Asks whether to start a chat over that has a conversation or a run in it; clears it on yes.
+    /// Starts the chat with the number `id` over: its assistant stops, what was said is kept, and what is
+    /// said next is another conversation.
+    fn start_new_chat(&mut self, id: u64) {
+        if let Some(talk) = self.talk_mut(id) {
+            talk.chat.stop();
+        }
+        self.keep_chats();
+        if let Some(talk) = self.talk_mut(id) {
+            talk.chat.clear();
+            talk.file = None;
+        }
+    }
+
+    /// Asks what is being asked about a chat: whether to start one over whose assistant is at work, or
+    /// whether to delete a kept one. Does it on yes.
     // Agent: the chat is found again by its number, so a tab closed while asking just ends the question.
-    pub(super) fn new_chat_prompt(&mut self, ctx: &egui::Context) {
-        let Some(id) = self.new_chat_asked else { return };
-        let Some(talk) = self.talks.iter().find(|talk| talk.id == id) else {
-            self.new_chat_asked = None;
-            return;
+    pub(super) fn chat_prompt(&mut self, ctx: &egui::Context) {
+        let (title, words, yes) = match &self.chat_question {
+            ChatQuestion::None => return,
+            ChatQuestion::New(id) => {
+                if !self.talk(*id).is_some_and(|talk| talk.chat.running()) {
+                    // Nothing is at work any more (or the chat is gone): there is nothing left to ask.
+                    let id = *id;
+                    self.chat_question = ChatQuestion::None;
+                    self.start_new_chat(id);
+                    return;
+                }
+                ("Start a new chat?", "The assistant will stop. This conversation stays in Chat history.".to_owned(), "New chat")
+            }
+            ChatQuestion::Delete(file, title) => {
+                let at_work = self.talks.iter().any(|talk| talk.file.as_ref() == Some(file) && talk.chat.running());
+                let stops = if at_work { " The assistant at work in it will stop." } else { "" };
+                ("Delete this chat?", format!("“{title}” will be gone for good.{stops}"), "Delete")
+            }
         };
-        let running = talk.chat.running();
         let palette = crate::theme::palette(self.dark());
         let mut choice = None;
-        let modal = egui::Modal::new(egui::Id::unique("new-chat")).show(ctx, |ui| {
-            ui.set_width(340.0);
-            ui.label(egui::RichText::new("Start a new chat?").strong());
-            ui.label(if running {
-                "The assistant will stop, and this conversation will be gone for good."
-            } else {
-                "This conversation will be gone for good."
-            });
-            ui.add_space(10.0);
+        let modal = egui::Modal::new(egui::Id::unique("chat-question")).show(ctx, |ui| {
+            ui.set_width(crate::theme::DIALOG_WIDTH[0]);
+            ui.label(egui::RichText::new(title).strong());
+            ui.add(egui::Label::new(words).wrap());
+            ui.add_space(crate::theme::DIALOG_BUTTONS_GAP);
             ui.horizontal(|ui| {
                 if ui.add(super::dialog_primary("Cancel", palette)).clicked() {
                     choice = Some(false);
                 }
-                if ui.add(super::dialog_button("New chat")).clicked() {
+                if ui.add(super::dialog_button(yes)).clicked() {
                     choice = Some(true);
                 }
             });
@@ -295,10 +427,11 @@ impl App {
         if choice.is_none() && (enter || modal.should_close()) {
             choice = Some(false);
         }
-        let Some(clear) = choice else { return };
-        self.new_chat_asked = None;
-        if clear && let Some(talk) = self.talks.iter_mut().find(|talk| talk.id == id) {
-            talk.chat.clear();
+        let Some(yes) = choice else { return };
+        match std::mem::take(&mut self.chat_question) {
+            ChatQuestion::New(id) if yes => self.start_new_chat(id),
+            ChatQuestion::Delete(file, _) if yes => self.delete_past_chat(&file),
+            ChatQuestion::None | ChatQuestion::New(_) | ChatQuestion::Delete(..) => {}
         }
     }
 

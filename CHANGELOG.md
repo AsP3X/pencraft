@@ -9,6 +9,18 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+### Added
+
+- **Chat history.** The History view in the sidebar lists your past
+  chats: each with the first thing you said, the design it was about
+  and how long ago. A click opens one in the chat panel and you can go
+  on with it, with whichever assistant is chosen; it is told the last
+  of what was said. The bin at the end of a line deletes a chat, after
+  asking. A new chat no longer writes over the one before: every
+  conversation is kept by itself, the newest hundred of them, so "New"
+  asks only while the assistant is still at work. Chats kept by earlier
+  versions are in the list too.
+
 ### Changed
 
 - **A logo is no longer the initials pushed together.** Every logo came
@@ -41,8 +53,96 @@ in the app before they download the update. Write it for them.
   are dropped; the model is told so and can call the tool again. What
   you wrote and attached stays whole. If the context still fills up,
   Quill says that this is what happened, with the number of tokens.
+- **A large design stays quick.** On a test design of 11 001 layers,
+  selecting everything took almost half a second a frame and now takes
+  2.4 ms; the layers list draws only the rows you can see; dragging a
+  layer builds only that layer again, not the whole design; and a
+  canvas that isn't changing reuses what it drew. Pasting, deleting
+  and duplicating a layer, undo and redo, the assistant's changes and
+  dragging with the Scale tool build only what they changed as well: a
+  step back went from 14 ms and a frame of 11 ms to under 1 ms each,
+  and adding or deleting a whole screen no longer builds every other
+  screen again. The panels no longer
+  copy the design on every frame, the pictures of your files on the
+  home screen are made in the background, and the installed fonts are
+  read while the app starts, not before.
+- **A design with many photos opens at once.** The pictures of a
+  design were read before its first frame was drawn: with 24 large
+  photos the window stood still for more than two and a half seconds.
+  Now the design is there at once, each picture's layer shows a light
+  grey until its file is read, and the files are read several at a
+  time. Exports and the pictures an assistant looks at still wait for
+  the real pictures.
+- **Pictures no longer pile up in memory.** Every picture any open
+  design had shown was kept until Quill was closed, up to 64 MB each.
+  They are now kept up to 512 MB together; past that, the ones not on
+  the canvas and used longest ago are let go and read again when they
+  are next shown.
+- **An export no longer freezes the window.** A large export took
+  seconds in which nothing moved. It is now made in the background: a
+  small window says "Exporting" with the file's name and a Cancel
+  button, and a cancelled export leaves no file behind. A second
+  export asked for meanwhile is refused with a sentence. An export
+  the assistant asks for is made the same way, without a window.
+- **Undo needs far less memory.** A step back used to hold a copy of
+  the whole design. It now holds only what the step changed: a hundred
+  steps on the same large design went from 2 182 MB to 52 MB.
+- **Quill asks before something is thrown away.** After a crash,
+  "Restore" comes first and "Discard" asks again. Removing the key of a
+  provider or an image service asks first, and closing Settings or
+  changing its page with a half-filled form asks "Discard the changes
+  to …?", with "Keep editing" first.
+- **Messages stack, and a problem stands out.** Up to three messages
+  show at once, the newest at the bottom, and one stays for as long as
+  the pointer is over it. A problem has a warning sign and a red edge,
+  stays for twelve seconds and is read out by a screen reader. Things
+  that went wrong quietly before (settings that couldn't be saved, a
+  recovery copy that couldn't be written) now say so once.
+- **Animations follow the computer's own setting.** When the system is
+  told to keep things still ("Reduce motion" on a Mac, "Animation
+  effects" turned off on Windows, animations turned off in GNOME on
+  Linux), Quill starts with its animations off. Once you set the switch
+  in Quill's settings yourself, yours is what counts.
+- **Easier to read, and to use with the keyboard or a screen reader.**
+  Muted text and white on the accent colour now have a contrast of at
+  least 4.5:1. Buttons tell a screen reader their name and show a ring
+  when the keyboard is on them, small icon buttons have a larger place
+  to click, and the dialogs for a new chat and for recovery answer to
+  Enter and Esc.
+- **Controls that did nothing are gone.** Mode, Script, Browser and
+  Comment are hidden until they do something. The properties panel's
+  buttons say "Create component", "Detach component" and "Detach
+  instance", and the action search writes its entries in sentence case.
+- **The assistant's tools are held tighter.** Saving and exporting
+  through the assistant refuse a file that is already there, so a run
+  can't write over your work. Paths to network shares and devices on
+  Windows are refused. Reading a web page or downloading a picture
+  connects only to the public address that was checked, on every
+  redirect too. The Pexels key is no longer sent on when a redirect
+  leaves Pexels, and the files that hold a token or a key are private
+  from the moment they are written.
+- **A Mac update must be signed by us.** Quill installs an update on a
+  Mac only if it carries our signature; anything else is refused.
+- **An update must come from us, on Windows too.** Each release's list of
+  checksums is now signed with a key that is kept away from GitHub, and
+  Quill installs an update only when that signature is ours and was made
+  for exactly that version. Until now, someone who got into our GitHub
+  account could have replaced an installer and its checksum together.
 
 ### Fixed
+
+- **Undoing back to the saved design is saved again.** After a change
+  and an undo the file still counted as changed, and Quill asked to
+  save it on closing. A design now counts as saved whenever it is the
+  one its file holds, also after undo, redo and the assistant's edits.
+- **The assistant's local connection can't be held up.** A program that
+  opened a connection to Quill's tool server and then sent nothing, or
+  never read the answer, could keep the assistant from its tools. Such
+  a connection is closed after ten seconds, and an idle one makes room
+  when all places are taken.
+- **A message to Grok no longer stays in the temp folder.** It is
+  written to a private file and deleted when the run ends, fails or is
+  stopped.
 
 - **A model's thinking no longer shows up as its answer.** A small model
   in Ollama sometimes sent pages of thinking as the words of its answer,

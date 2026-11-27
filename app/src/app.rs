@@ -185,8 +185,8 @@ pub struct App {
     /// The action search (⌘P).
     actions: crate::palette::Palette,
     find: crate::find::Find,
-    /// An export waiting to be made: where to, and what. Made in the next frame, where drawing is possible.
-    exporting: Option<(PathBuf, crate::export::Options)>,
+    /// The exports asked for and being made.
+    exports: Exports,
     /// The menu bar at the top of the screen, where the system has one (macOS).
     native_menu: Option<craft_menu::NativeMenu>,
     sidebar: Sidebar,
@@ -219,7 +219,7 @@ pub struct App {
     /// The assistant asked for on the command line, which goes before the one in the settings.
     assistant_asked: Option<String>,
     /// The chat the user asked to start over while it had something in it, until they confirm or cancel.
-    new_chat_asked: Option<u64>,
+    chat_question: talk::ChatQuestion,
     /// Nothing of this run is remembered (`--private`, or a picture).
     private: bool,
     /// Tool calls that wait for the user to finish a drag, each with when it came in.
@@ -465,7 +465,7 @@ impl App {
             actions: crate::palette::Palette::default(),
             find: crate::find::Find::default(),
             native_menu: None,
-            exporting: None,
+            exports: Exports::default(),
             sidebar: Sidebar::default(),
             settings: Settings::default(),
             dialogs,
@@ -486,7 +486,7 @@ impl App {
             shown: 0,
             assistants: Vec::new(),
             assistant_asked: launch.assistant.clone(),
-            new_chat_asked: None,
+            chat_question: talk::ChatQuestion::None,
             private: launch.private || launch.screenshot.is_some(),
             waiting: Vec::new(),
             picturing: Vec::new(),
@@ -529,7 +529,7 @@ impl App {
                 let ending = target.extension().map(|e| e.to_string_lossy().to_ascii_lowercase());
                 let format =
                     crate::export::Format::ALL.into_iter().find(|f| ending.as_deref() == Some(f.extension())).unwrap_or(crate::export::Format::Png);
-                app.exporting = Some((target, crate::export::Options { format, scale: 2, ..Default::default() }));
+                app.exports.waiting = Some((target, crate::export::Options { format, scale: 2, ..Default::default() }));
             }
             app.screenshot = Some(screenshot::Job::new(path));
         } else {
@@ -556,6 +556,9 @@ impl App {
     // Human: the picture shows those files in tabs, or without any the editor with the starter board, one card
     // selected; with `--home` it shows the home screen with those files as its recent ones.
     fn pose_documents(&mut self, home: bool, files: &[PathBuf]) {
+        // Human: the picture of the window shows the design's pictures themselves, never what stands in
+        // for one that is still being read.
+        self.canvas.list().wait_for_pictures();
         if home {
             self.pose_home(files);
             return;
@@ -983,6 +986,10 @@ impl App {
             self.say("There is nothing to export.");
             return;
         }
+        if self.exports.made.is_some() {
+            self.say(EXPORT_BUSY);
+            return;
+        }
         let name = crate::export::suggested_name(editor, options);
         let dialog = FileDialog::save().title("Export").filter(options.format.label(), &[options.format.extension()]).file_name(name);
         self.dialogs.ask(dialog, Then::Export(options));
@@ -990,22 +997,74 @@ impl App {
 
     /// Makes the export the user chose a place for, and says how it went.
     fn finish_export(&mut self, ctx: &egui::Context) {
-        let Some((target, options)) = self.exporting.take() else { return };
+        let Some((target, options)) = self.exports.waiting.take() else { return };
         let Some(editor) = self.active.and_then(|tab| self.tabs.get(tab)) else { return };
         // The document is laid out with the first frame; an export asked for before that waits for it.
         // Human: so does one asked for while a face of the document's text is still being made ready: until
         // then the text is measured in a stand-in, and what follows it in a row would sit in the wrong place.
         if (editor.scene.is_empty() && !editor.doc.children.is_empty()) || fonts::pending() || editor.stale() {
-            self.exporting = Some((target, options));
+            self.exports.waiting = Some((target, options));
             ctx.request_repaint();
             return;
         }
         let target = if target.extension().is_none() { target.with_extension(options.format.extension()) } else { target };
-        let said = match crate::export::run(self.canvas.list(), editor, ctx, options, &target) {
-            Ok(()) => format!("Exported {}", target.display()),
-            Err(error) => format!("Couldn't export: {error}"),
+        // Human: the run that makes one picture and ends has nobody to show progress to, and must have its
+        // file before it ends: it is made here and now.
+        if self.screenshot.is_some() {
+            let said = match crate::export::run(self.canvas.list(), editor, ctx, options, &target) {
+                Ok(()) => format!("Exported {}", target.display()),
+                Err(error) => format!("Couldn't export: {error}"),
+            };
+            self.say(said);
+            return;
+        }
+        // Human: one export at a time: a second one asked for while the first is being made is refused,
+        // with a sentence, and nothing of the first is lost.
+        if self.exports.made.is_some() {
+            self.say(EXPORT_BUSY);
+            return;
+        }
+        // The save dialog asked before it gave the name of a file that is there: it may be replaced.
+        match crate::export::Job::of(editor, options, target, true).and_then(|job| job.start(ctx)) {
+            Ok(running) => self.exports.made = Some(running),
+            Err(error) => self.warn(format!("Couldn't export: {error}")),
+        }
+    }
+
+    /// Shows the "Exporting" window while an export is being made, and says how each one ended.
+    // Human: Cancel takes the window away at once. The thread may be in the middle of drawing, which it
+    // finishes before it looks; it then writes no file. One that had its file in place already says so.
+    // Agent: MAIN-THREAD; never waits for the thread.
+    fn tend_export(&mut self, ctx: &egui::Context) {
+        let mut said: Vec<(String, bool)> = Vec::new();
+        let outcome = |running: &crate::export::Running, called_off: bool| {
+            let ended = running.ended()?;
+            let name = running.target.display();
+            Some(match (ended, called_off) {
+                (Ok(crate::export::Ended::Written), false) => (format!("Exported {name}"), false),
+                (Ok(crate::export::Ended::Written), true) => (format!("The export was already done when it was cancelled: {name}"), false),
+                (Ok(crate::export::Ended::Cancelled), _) => ("Export cancelled".to_owned(), false),
+                (Err(error), _) => (format!("Couldn't export: {error}"), true),
+            })
         };
-        self.say(said);
+        self.exports.called_off.retain(|running| outcome(running, true).map(|ended| said.push(ended)).is_none());
+        if let Some(running) = self.exports.made.take() {
+            if let Some(ended) = outcome(&running, false) {
+                said.push(ended);
+            } else {
+                let name =
+                    running.target.file_name().map_or_else(|| running.target.display().to_string(), |name| name.to_string_lossy().into_owned());
+                if crate::export::progress(ctx, theme::palette(self.dark()), &name) {
+                    running.cancel();
+                    self.exports.called_off.push(running);
+                } else {
+                    self.exports.made = Some(running);
+                }
+            }
+        }
+        for (text, problem) in said {
+            if problem { self.warn(text) } else { self.say(text) }
+        }
     }
 
     fn ask_import(&mut self) {
@@ -1192,7 +1251,7 @@ impl App {
                         self.export_pen(doc, path);
                     }
                 }
-                (Then::Export(options), Answer::Paths(paths)) => self.exporting = paths.into_iter().next().map(|path| (path, options)),
+                (Then::Export(options), Answer::Paths(paths)) => self.exports.waiting = paths.into_iter().next().map(|path| (path, options)),
                 (Then::Attach, Answer::Paths(paths)) => self.attach(paths),
                 (Then::Reference(doc), Answer::Paths(paths)) => self.add_references(doc, paths),
                 (Then::Import, Answer::Paths(paths)) => {
@@ -2133,6 +2192,22 @@ impl App {
     }
 }
 
+/// The exports asked for and being made.
+#[derive(Default)]
+struct Exports {
+    /// An export waiting to be made: where to, and what. Made in the next frame, where drawing is possible.
+    waiting: Option<(PathBuf, crate::export::Options)>,
+    /// The export being made on a thread of its own, for which the "Exporting" window shows.
+    made: Option<crate::export::Running>,
+    /// Exports the user called off whose threads have not ended yet: each still says how it ended.
+    called_off: Vec<crate::export::Running>,
+    /// `export_layers` calls whose file is still being made, each answered when it is.
+    asked: Vec<(crate::link::Call, crate::export::Running)>,
+}
+
+/// What is said when an export is asked for while another is being made.
+const EXPORT_BUSY: &str = "An export is being made. Wait for it to finish, or cancel it, then export again.";
+
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Closing the window (or ⌘Q) asks about unsaved tabs first, one at a time.
@@ -2200,6 +2275,7 @@ impl eframe::App for App {
         }
         self.handle_dialog_answers();
         self.finish_export(&ctx);
+        self.tend_export(&ctx);
         self.native_menus(&ctx);
         self.shortcuts(&ctx);
         let palette = theme::palette(self.dark());
@@ -2233,7 +2309,8 @@ impl eframe::App for App {
         }
         self.dropped(&ctx);
         self.chat_asks(&ctx);
-        self.new_chat_prompt(&ctx);
+        self.list_past_chats();
+        self.chat_prompt(&ctx);
         self.settings_window(&ctx);
         self.show_picture_dialog(&ctx);
         self.update_prompt(&ctx);

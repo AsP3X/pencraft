@@ -26,7 +26,7 @@ use serde_json::Value;
 
 use crate::editor::Camera;
 use crate::icons;
-use crate::images::{ImageStore, Picture};
+use crate::images::{Found, ImageStore, Picture};
 
 mod bake;
 mod glass;
@@ -421,6 +421,13 @@ pub struct DisplayList {
     works: std::sync::Arc<std::sync::Mutex<Works>>,
     /// How many pixels the baked pictures had between them after the last build.
     held: usize,
+    /// Whether a part of the list shows a plain colour for a picture that was still being read.
+    waiting: bool,
+    /// The count of picture files read so far ([`ImageStore::arrivals`]), and what it was when the list was
+    /// last built: with parts waiting and another count, those parts are built again.
+    arrivals: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    /// See `arrivals`.
+    arrivals_seen: u64,
     /// The copies of the scene's top-level nodes that builds beside the window work on, each with the
     /// stamp its node had when it was copied: a node is copied again only when its stamp is another one.
     frozen: Vec<(u64, std::sync::Arc<SceneNode>)>,
@@ -545,6 +552,9 @@ struct Part {
     extent: Option<Rect>,
     /// Which of its items each layer in it brought, in the order the layers are built ([`Span`]).
     spans: Vec<Span>,
+    /// Whether a picture in it was still being read when it was built: it shows a plain colour in the
+    /// picture's place, and is built again when pictures have arrived.
+    waiting: bool,
 }
 
 /// The items one layer brought, with everything in it: a run of the items of its top-level node.
@@ -661,11 +671,22 @@ struct Taken<'a> {
     rebuilt: &'a [crate::editor::Rebuilt],
 }
 
+/// The texture an item draws with, when it is not egui's own.
+fn textured(item: &Item) -> Option<egui::TextureId> {
+    match item {
+        Item::Mesh { mesh, .. } if mesh.texture_id != egui::TextureId::default() => Some(mesh.texture_id),
+        _ => None,
+    }
+}
+
 /// One walk through `scene`: its items, with the effects' pictures taken from `works` or started there, and
 /// which of them belong to which top-level node. `stamps` are the scene's (see [`DisplayList::update`]).
 /// With `kept` (the list on screen and its parts, built for the same order), a node whose stamp is the one
 /// its part was built at keeps that part's items, and only the others are built; of a node `rebuilt` names,
 /// only the layers it names are, where that can be done ([`Builder::rebuild`]).
+// Human: when top-level nodes came, went or changed places (a pasted screen, a deleted one, a step back over
+// either), the parts no longer lie where their nodes do. Each node then finds its part by its stamp, and
+// what a node that is gone painted counts as changed for the glass above it.
 // Human: a kept part is still built again when it draws what is behind it (glass, a background blur) and
 // a node under it changed there, in what it painted before or in what it paints now.
 fn walk(
@@ -691,6 +712,8 @@ fn walk(
         hidden: Some(&order.hidden),
         reads: std::cell::Cell::new(None),
         spans: Spans::default(),
+        wait: false,
+        coming: std::cell::Cell::new(false),
     };
     let taking_over = kept.is_some();
     let Taken { items: was, parts: had, rebuilt } = kept.unwrap_or_default();
@@ -698,16 +721,38 @@ fn walk(
     let (mut items, mut parts) = (Vec::new(), Vec::with_capacity(scene.len()));
     // Where the nodes built again painted before and paint now.
     let mut changed: Vec<Rect> = Vec::new();
+    // The parts by their stamps, each with its items, when they don't lie where their nodes do.
+    let in_place = had.len() == scene.len();
+    let mut apart: std::collections::HashMap<u64, (Part, Vec<Item>)> = std::collections::HashMap::new();
+    if !in_place {
+        apart = had.iter().map(|part| (part.stamp, (part.clone(), was.by_ref().take(part.len).collect()))).collect();
+        let still: std::collections::HashSet<u64> = stamps.iter().copied().collect();
+        changed.extend(apart.iter().filter(|(stamp, _)| !still.contains(stamp)).filter_map(|(_, (part, _))| part.extent));
+    }
     for (at, node) in scene.iter().copied().enumerate() {
         let stamp = stamps.get(at).copied().unwrap_or_default();
-        let part = had.get(at);
-        let holds = |part: &&Part| part.stamp == stamp && !part.reads.is_some_and(|area| changed.iter().any(|there| there.intersects(&area)));
+        if !in_place && let Some((part, old)) = apart.remove(&stamp) {
+            // A part that draws what is behind it is built again whatever changed: the nodes under it may be
+            // others now that they changed places, which `changed` doesn't tell.
+            if part.waiting || part.reads.is_some() {
+                changed.extend(part.extent);
+            } else {
+                items.extend(old);
+                parts.push(part);
+                continue;
+            }
+        }
+        let part = had.get(at).filter(|_| in_place);
+        let holds = |part: &&Part| {
+            part.stamp == stamp && !part.waiting && !part.reads.is_some_and(|area| changed.iter().any(|there| there.intersects(&area)))
+        };
         if let Some(part) = part.filter(holds) {
             items.extend(was.by_ref().take(part.len));
             parts.push(part.clone());
             continue;
         }
         let start = items.len();
+        builder.coming.set(false);
         if let Some(part) = part {
             let mut old: Vec<Item> = was.by_ref().take(part.len).collect();
             // Human: only some layers of the node were built again (a drag, a number being pulled): their
@@ -718,7 +763,7 @@ fn walk(
             {
                 changed.extend(touched);
                 let extent = old.iter().filter_map(bake::extent).reduce(|a, b| a.union(&b));
-                parts.push(Part { stamp, len: old.len(), reads, extent, spans });
+                parts.push(Part { stamp, len: old.len(), reads, extent, spans, waiting: builder.coming.get() });
                 items.extend(old);
                 continue;
             }
@@ -730,14 +775,10 @@ fn walk(
         let spans = builder.spans.take(start);
         let extent = items.get(start..).unwrap_or_default().iter().filter_map(bake::extent).reduce(|a, b| a.union(&b));
         changed.extend(extent);
-        parts.push(Part { stamp, len: items.len() - start, reads: builder.reads.get(), extent, spans });
+        parts.push(Part { stamp, len: items.len() - start, reads: builder.reads.get(), extent, spans, waiting: builder.coming.get() });
     }
     if taking_over {
         // The pictures of the parts taken over were not asked for by this walk; they are still in use.
-        let textured = |item: &Item| match item {
-            Item::Mesh { mesh, .. } if mesh.texture_id != egui::TextureId::default() => Some(mesh.texture_id),
-            _ => None,
-        };
         works.baked.hold(&items.iter().filter_map(textured).collect());
     }
     (items, parts)
@@ -872,12 +913,18 @@ impl DisplayList {
         if let Some(wait) = wait {
             ctx.request_repaint_after(wait);
         }
+        // Human: pictures that were still being read have arrived: the parts that show a plain colour in
+        // their place are built again, here and now (the rest of the list is taken over). Not while a build
+        // beside the window is under way or the zoom step is another one: that build brings them.
+        let arrived = self.arrivals.load(std::sync::atomic::Ordering::Relaxed);
+        let pictures_in = self.waiting && arrived != self.arrivals_seen && self.running.is_none() && self.zoom_bucket == bucket;
         let same = !self.items.is_empty()
             && self.generation == generation
             && self.folder.as_deref() == folder
             && self.background == background
             && self.hidden == *hidden
-            && self.stage == stage;
+            && self.stage == stage
+            && !pictures_in;
         let margin_of = |margin: f32| {
             Rect::new(
                 visible.x - visible.w * margin,
@@ -899,7 +946,7 @@ impl DisplayList {
                 && self.hidden == *hidden
                 && self.stage == stage;
             let covered = self.cover.is_none_or(|cover| cover.holds(&visible));
-            let kept = (alike && covered && self.zoom_bucket == bucket && self.parts.len() == scene.len() && stamps.len() == scene.len())
+            let kept = (alike && covered && self.zoom_bucket == bucket && stamps.len() == scene.len())
                 .then(|| (std::mem::take(&mut self.items), std::mem::take(&mut self.parts)));
             let taken_over = kept.is_some();
             let cover = if taken_over {
@@ -916,6 +963,15 @@ impl DisplayList {
                 walk(&works, (&roots, stamps), Vars::new(doc), ctx, &order, None, kept.map(|(items, parts)| Taken { items, parts, rebuilt }));
             drop(works.baked.finish());
             self.held = works.baked.pixels_held();
+            // Pictures read for layers that are gone meanwhile are taken in too, so they count and can go.
+            works.images.take_in(ctx);
+            (self.arrivals, self.arrivals_seen) = (works.images.arrivals(), arrived);
+            self.waiting = self.parts.iter().any(|part| part.waiting);
+            // Human: pictures no longer on the canvas go once they take more than their budget together.
+            // Nothing else draws with them: a build beside the window was called off above.
+            if works.images.held().1 > crate::images::BUDGET {
+                works.images.trim(&self.items.iter().filter_map(textured).collect(), crate::images::BUDGET);
+            }
             // A list taken over keeps the part that was baked for it.
             self.cover = if taken_over { cover } else { cover.filter(|_| works.baked.skipped()) };
             drop(works);
@@ -971,8 +1027,11 @@ impl DisplayList {
         // Human: the build works on copies of the scene's top-level nodes, since the ones here change with
         // the next edit. A node whose stamp is the one its copy was taken at keeps that copy.
         let stamped = stamps.len() == scene.len();
+        // Found by its stamp where it is no longer at its node's place (top-level nodes came or went).
+        let elsewhere = |stamp: &u64| self.frozen.iter().find(|(taken, _)| taken == stamp).map(|(_, copy)| copy.clone());
         let copy = |(at, node): (usize, &SceneNode)| match (stamps.get(at), self.frozen.get(at)) {
             (Some(stamp), Some((taken, copy))) if stamped && stamp == taken => copy.clone(),
+            (Some(stamp), _) if stamped && self.frozen.len() != scene.len() => elsewhere(stamp).unwrap_or_else(|| std::sync::Arc::new(node.clone())),
             _ => std::sync::Arc::new(node.clone()),
         };
         let copies: Vec<std::sync::Arc<SceneNode>> = scene.iter().enumerate().map(copy).collect();
@@ -1023,6 +1082,13 @@ impl DisplayList {
             self.items = built.items;
             // From a list with pictures still missing nothing is taken over.
             self.parts = if built.whole { built.parts } else { Vec::new() };
+            // Human: a picture may have arrived after the build asked for it and before now: the parts
+            // that wait are looked at once more at the next frame.
+            self.waiting = self.parts.iter().any(|part| part.waiting);
+            if self.waiting {
+                self.arrivals_seen = u64::MAX;
+                ctx.request_repaint();
+            }
             self.zoom_bucket = bucket;
             self.held = built.held;
             self.cover = (built.skipped || !built.whole).then_some(cover);
@@ -1096,6 +1162,20 @@ impl DisplayList {
         Self::builder(1.0, vars, ctx, folder, &works.images, &baked).svg(scenes)
     }
 
+    /// From now on the canvas waits for every picture it draws, as an export does: for the run that makes
+    /// one picture of the window and ends.
+    pub fn wait_for_pictures(&self) {
+        crate::app::lock(&self.works).images.wait_always();
+    }
+
+    /// How many pictures are still being read, how many are kept, and the bytes those take.
+    #[cfg(test)]
+    pub(crate) fn pictures(&self) -> (usize, usize, usize) {
+        let works = crate::app::lock(&self.works);
+        let (kept, bytes) = works.images.held();
+        (works.images.coming(), kept, bytes)
+    }
+
     /// A builder for exports: on a clear background, at `scale` pixels per unit.
     fn builder<'a>(
         scale: f32,
@@ -1117,6 +1197,8 @@ impl DisplayList {
             merged: std::cell::Cell::new(false),
             hidden: None,
             reads: std::cell::Cell::new(None),
+            wait: true,
+            coming: std::cell::Cell::new(false),
             spans: Spans::default(),
         }
     }
@@ -1352,6 +1434,11 @@ struct Builder<'a> {
     /// The part of the document whose items the nodes built so far read to draw what is behind them
     /// (glass, a background blur); `None` while none did. The list takes it down for each top-level node.
     reads: std::cell::Cell<Option<Rect>>,
+    /// Whether a picture that is not here yet is waited for (an export, a picture of the design) or left
+    /// to arrive later (the canvas).
+    wait: bool,
+    /// Whether a picture asked for since this was last cleared is still being read.
+    coming: std::cell::Cell<bool>,
     /// Which items each layer brought, while the list asks for them.
     spans: Spans,
 }
@@ -1458,8 +1545,16 @@ impl Builder<'_> {
                 // Human: a fill without a readable picture (no path, a web address, a missing file) shows as a
                 // neutral grey placeholder so the layout stays visible.
                 let url = object.get("url").and_then(Value::as_str);
-                let Some(picture) = url.and_then(|url| self.images.get(self.ctx, self.folder, url)) else {
-                    return Some(Brush::Solid(Rgba { r: 0xd9, g: 0xd9, b: 0xd9, a: 0xff }.with_opacity(opacity)));
+                let picture = match url.map_or(Found::Missing, |url| self.images.get(self.ctx, self.folder, url, self.wait)) {
+                    Found::Ready(picture) => picture,
+                    // Human: a picture still being read shows as a plain colour of the app's own; the
+                    // canvas builds the layer again when the picture is there.
+                    Found::Coming => {
+                        self.coming.set(true);
+                        let [r, g, b, a] = crate::theme::PICTURE_COMING.to_array();
+                        return Some(Brush::Solid(Rgba { r, g, b, a }.with_opacity(opacity)));
+                    }
+                    Found::Missing => return Some(Brush::Solid(Rgba { r: 0xd9, g: 0xd9, b: 0xd9, a: 0xff }.with_opacity(opacity))),
                 };
                 // Human: `cover` is the schema's default; older files say `fill`, which means the same.
                 let fit = match object.get("mode").and_then(Value::as_str) {
@@ -1535,7 +1630,7 @@ impl Builder<'_> {
     // Whether such a layer worked on its children's items depends on those children too (a mask among them,
     // glass it draws for them), so it must hold both for what was built then and for what is there now.
     fn rebuild(&self, root: &SceneNode, part: &Part, items: &mut Vec<Item>, paths: &[Vec<u32>]) -> Option<(Vec<Span>, Option<Rect>, Vec<Rect>)> {
-        if part.reads.is_some() || self.baked.stopped() {
+        if part.reads.is_some() || part.waiting || self.baked.stopped() {
             return None;
         }
         let mut spans = part.spans.clone();
@@ -3157,6 +3252,67 @@ mod tests {
         // The pictures of the parts taken over are kept alive: every picture in the list is still held.
         let works = crate::app::lock(&list.works);
         assert!(third.iter().flatten().all(|picture| works.baked.holds(*picture)));
+        drop(works);
+        // A board comes in front of the others, and goes again: the boards that were there keep their
+        // items and their pictures, wherever they now lie in the list.
+        let mut copy = pen_doc::edit::find(&editor.doc, "right").unwrap().clone();
+        editor.checkpoint();
+        editor.renew_ids(&mut copy);
+        copy.x = Some(serde_json::Number::from(400));
+        assert!(pen_doc::edit::insert(&mut editor.doc, None, 0, copy));
+        editor.refresh(&|_| (10.0, 10.0));
+        look(&mut list, &editor);
+        let fourth = pictures_by_part(&list);
+        assert_eq!((fourth.len(), &fourth[1..]), (4, &third[..]));
+        let mut whole = DisplayList::default();
+        look(&mut whole, &editor);
+        assert_eq!((lens(&list), list.items.len()), (lens(&whole), whole.items.len()));
+        editor.undo();
+        editor.refresh(&|_| (10.0, 10.0));
+        look(&mut list, &editor);
+        assert_eq!(pictures_by_part(&list), third);
+        let mut whole = DisplayList::default();
+        look(&mut whole, &editor);
+        assert_eq!((lens(&list), list.items.len()), (lens(&whole), whole.items.len()));
+    }
+
+    #[test]
+    fn the_canvas_shows_a_plain_colour_until_a_picture_is_read_and_an_export_waits_for_it() {
+        let folder = std::env::temp_dir().join(format!("quill-render-pictures-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        image::RgbaImage::from_pixel(8, 8, image::Rgba([200, 30, 30, 255])).save(folder.join("red.png")).unwrap();
+        let json = r##"{"version":"2.22","children":[
+            {"type":"rectangle","id":"plain","x":0,"y":0,"width":40,"height":40,"fill":"#00ff00"},
+            {"type":"rectangle","id":"photo","x":100,"y":0,"width":40,"height":40,"fill":{"type":"image","url":"./red.png"}}]}"##;
+        let mut editor = crate::editor::Editor::new(pen_doc::read(json).unwrap(), Some(folder.join("design.pen")), 1);
+        editor.refresh(&|_| (10.0, 10.0));
+        let ctx = egui::Context::default();
+        let hidden = std::collections::HashSet::new();
+        let look = |list: &mut DisplayList| {
+            let (visible, stamps) = (Rect::new(0.0, 0.0, 300.0, 100.0), (editor.stamps(), editor.rebuilt()));
+            list.update(&editor.scene, editor.generation, 1.0, visible, &editor.doc, &ctx, editor.folder(), Color32::WHITE, &hidden, 0, stamps);
+        };
+        let pictured = |list: &DisplayList| list.items.iter().filter_map(textured).count();
+        // The first look doesn't wait: the photo's layer is a plain colour, and its part says it waits.
+        let mut list = DisplayList::default();
+        look(&mut list);
+        assert_eq!((pictured(&list), list.parts.iter().map(|part| part.waiting).collect::<Vec<_>>()), (0, vec![false, true]));
+        let plain = list.parts[0].stamp;
+        // An export from the same list waits: the picture's own colour, not the stand-in's.
+        let shot = list.snapshot(&[&editor.scene[1]], 1.0, Vars::new(&editor.doc), &ctx, editor.folder()).unwrap();
+        let middle = (shot.h / 2 * shot.w + shot.w / 2) * 4;
+        assert_eq!(&shot.rgba[middle..middle + 4], &[200, 30, 30, 255]);
+        // Looked at again once the picture is read, the layer shows it; the other layer's part is kept.
+        for _ in 0..2000 {
+            look(&mut list);
+            if !list.waiting {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        assert_eq!((pictured(&list), list.waiting, list.parts[1].waiting, list.parts[0].stamp), (1, false, false, plain));
+        assert_eq!(list.pictures(), (0, 1, 2 * 8 * 8 * 4));
+        std::fs::remove_dir_all(&folder).unwrap();
     }
 
     #[test]

@@ -571,6 +571,37 @@ pub const RADIUS_HANDLE_INSET: f32 = 12.0;
 pub const RADIUS_HANDLE_ROOM: f32 = 56.0;
 /// Text size of the size label under the selection.
 pub const SIZE_LABEL_TEXT: f32 = 12.5;
+/// How far under the selection box the size label starts.
+pub const SIZE_LABEL_GAP: f32 = 7.0;
+/// The room the size label has around its words, across and down, both sides together.
+pub const SIZE_LABEL_ROOM: [f32; 2] = [12.0, 5.0];
+/// Where the size label's words start inside it, from its left and its top.
+pub const SIZE_LABEL_INSET: [f32; 2] = [6.0, 2.5];
+/// Corner radius of the size label.
+pub const SIZE_LABEL_RADIUS: f32 = 5.0;
+/// Width of the line around one selected layer and around several, and of the ring of the rotation handle's dot.
+pub const SELECTION_LINE: f32 = 1.5;
+/// How much farther than a resize or corner-radius handle reaches a press still takes hold of it.
+pub const HANDLE_SLACK: f32 = 3.0;
+/// How strong the outline of a component under the pointer is, as a share of the component colour.
+pub const COMPONENT_OUTLINE_FADE: f32 = 0.7;
+/// How strong the ground of the box dragged out to select layers is, as a share of the accent.
+pub const MARQUEE_WASH: f32 = 0.1;
+/// The turning arrow beside the pointer near a corner: how far its middle is from the pointer each way, and its side.
+pub const ROTATE_CURSOR: [f32; 2] = [14.0, 13.0];
+/// The least width and height of the box a text is typed in on the canvas.
+pub const TEXT_EDIT_MIN: [f32; 2] = [120.0, 28.0];
+/// The smallest and the largest size the letters have while a text is typed on the canvas, whatever the zoom.
+pub const TEXT_EDIT_FONT: [f32; 2] = [8.0, 96.0];
+/// The box a text on a curve is typed in: its width as a share of the text's box, and its height in letter sizes.
+pub const TEXT_EDIT_CURVED: [f32; 2] = [0.7, 1.4];
+/// How much of the window's ground shows behind a text being typed on the canvas.
+pub const TEXT_EDIT_GROUND: f32 = 0.92;
+/// How strong the outline of a layer the assistant points at is while it isn't the current one, as a share of
+/// the accent.
+pub const SPOTLIGHT_FAINT: f32 = 0.55;
+/// How strong the pen's line to where the next point would go is, as a share of the accent.
+pub const PEN_NEXT_FAINT: f32 = 0.6;
 /// Text size of a board's name above it on the canvas.
 pub const FRAME_NAME_TEXT: f32 = 11.0;
 /// A board narrower than this on screen shows no name, unless it is selected or under the pointer.
@@ -606,6 +637,13 @@ pub const RULE_FADE: f32 = 0.7;
 pub const SIDEBAR_NOTE_TOP: f32 = 12.0;
 /// The room over the list of a sidebar view (layers, components).
 pub const SIDEBAR_LIST_TOP: f32 = 8.0;
+/// Height of a past chat's line in the History view, and the room between two of them.
+pub const HISTORY_ROW: [f32; 2] = [46.0, 2.0];
+/// A past chat's line: the room at its left and right end, and how far under its top its title and its
+/// second line start.
+pub const HISTORY_ROW_INSET: [f32; 3] = [8.0, 7.0, 25.0];
+/// Size of a past chat's second line: its document and when it was last added to.
+pub const HISTORY_NOTE_TEXT: f32 = 11.5;
 /// How far down the new chat view its ideas start, as a share of the view's height.
 pub const CHAT_START_DROP: f32 = 0.17;
 /// The least and the most that is, in points.
@@ -1238,6 +1276,8 @@ pub const PIECE_CHIP_PADDING: f32 = 6.0;
 pub const PIECE_CROSS_OUT: f32 = 6.0;
 /// Words on the accent colour, such as a picture's "Change this" while it is marked.
 pub const ON_ACCENT: Color32 = Color32::WHITE;
+/// What a layer filled with a picture shows on the canvas until the picture has been read from its file.
+pub const PICTURE_COMING: Color32 = Color32::from_rgb(0xe8, 0xe8, 0xec);
 /// Width of the Cancel button that takes the place of the quick field's button while its picture is made.
 pub const PROPS_CANCEL: f32 = 56.0;
 
@@ -1290,6 +1330,36 @@ pub const HOME_THUMB_SCALE: f32 = 2.0;
 pub const HOME_EMPTY_HEIGHT: f32 = 112.0;
 /// Height of a shortcut's key on the home screen's last line.
 pub const HOME_KEY_HEIGHT: f32 = 20.0;
+/// The room a shortcut's key has around its letters, both sides together.
+pub const HOME_KEY_ROOM: f32 = 12.0;
+/// Space between a shortcut's name and its key.
+pub const HOME_KEY_LABEL_GAP: f32 = 7.0;
+/// Corner radius of a shortcut's key.
+pub const HOME_KEY_RADIUS: f32 = 5.0;
+/// Space between two shortcuts on the home screen's last line, across and down.
+pub const HOME_KEYS_GAP: [f32; 2] = [18.0, 8.0];
+/// Width of "Open…" beside the home screen's "Recent".
+pub const HOME_OPEN_WIDTH: f32 = 88.0;
+/// Width of "Set up an assistant" under the box a design is described in.
+pub const HOME_SET_UP_WIDTH: f32 = 160.0;
+/// The line under the text of that box: the space above it, and between its icon and the assistant's name.
+pub const HOME_PROMPT_FOOT: [f32; 2] = [8.0, 6.0];
+/// Space between that box and the ideas under it.
+pub const HOME_IDEAS_GAP: f32 = 10.0;
+/// The least room an idea is started in; with less, the row ends.
+pub const HOME_IDEA_LEAST: f32 = 150.0;
+/// Side of the icon in the middle of a card's picture, and of the one in the note for no recent files.
+pub const HOME_CARD_ICON: f32 = 18.0;
+/// Corner radius of the sheet a screen's card shows.
+pub const HOME_SHEET_RADIUS: f32 = 3.0;
+/// The note for no recent files: how far above its middle the icon is, and how far below it the two lines are.
+pub const HOME_EMPTY_LINES: [f32; 3] = [26.0, 2.0, 22.0];
+/// How strong the ground of a card under the pointer is, as a share of the hover colour.
+pub const HOME_CARD_HOVER: f32 = 0.6;
+/// How much farther in than a card's picture its two lines of text start and end.
+pub const HOME_CARD_TEXT_INSET: f32 = 4.0;
+/// How far under the top of a card's text its name and its note start.
+pub const HOME_CARD_LINE_TOPS: [f32; 2] = [10.0, 29.0];
 
 /// The space the welcome film is drawn in; it is fitted into the window whole.
 pub const SPLASH_STAGE: egui::Vec2 = egui::vec2(1280.0, 800.0);

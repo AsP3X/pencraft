@@ -248,6 +248,7 @@ impl App {
     // Agent: MAIN-THREAD; runs from `logic`, so also while the window is hidden or behind others.
     pub(super) fn serve_tools(&mut self, ctx: &egui::Context) {
         self.finish_pictures(ctx);
+        self.finish_exports();
         let mut calls = std::mem::take(&mut self.waiting);
         calls.extend(self.tool_calls.try_iter().map(|call| (call, Instant::now())));
         if calls.is_empty() {
@@ -327,18 +328,18 @@ impl App {
                 // then text is measured and drawn in a stand-in, and a picture or a box given now would be wrong.
                 self.waiting.push((call, since));
                 continue;
+            } else if call.tool == "export_layers" {
+                match self.export_tool(&call, ctx) {
+                    Ok(running) => {
+                        self.exports.asked.push((call, running));
+                        continue;
+                    }
+                    Err(why) => Err(why),
+                }
             } else {
                 self.tool(&call, ctx)
             };
-            // Human: a call that failed says why in the app's log and in the chat it came from.
-            if let Err(why) = &result {
-                log::warn!("the tool {} failed: {why}", call.tool);
-                if let Some(talk) = call.chat.and_then(|id| self.talk_mut(id)) {
-                    talk.chat.tool_failed(&call.tool, why);
-                }
-            }
-            // A client that stopped waiting has gone; there is no one to tell.
-            let _ = call.reply.send(result);
+            self.answer(&call, result);
         }
         if self.waiting.is_empty() {
             ctx.request_repaint();
@@ -510,7 +511,6 @@ impl App {
                 let editor = self.tabs.get(tab).ok_or("The document was closed.")?;
                 Ok(text(&export_document(editor, args, crate::imagery::store::home().as_deref())?))
             }
-            "export_layers" => self.export_tool(call, ctx),
             other => Err(format!("There is no tool called \"{other}\".")),
         }
     }
@@ -601,9 +601,14 @@ impl App {
             let worth = staged.len() + 1 < count && began.elapsed() < STAGING_MOST;
             staged.push(worth.then(|| editor.laid_out(&measure)));
         })?;
+        // Human: the call says which layers it changed, so only they are built again, not their whole screen.
+        let changed = agent::changed_layers(&before, &editor.doc, args, &results);
         let after = std::mem::replace(&mut editor.doc, before);
         editor.checkpoint();
         editor.doc = after;
+        if let Some(changed) = changed {
+            editor.changed_only(&changed);
+        }
         editor.refresh(&text_measure(ctx));
         let touched: Vec<String> = touched.into_iter().filter(|id| editor.scene_node(id).is_some()).collect();
         let selection: Vec<String> = editor.selection.iter().filter(|id| editor.scene_node(id).is_some()).cloned().collect();
@@ -877,7 +882,8 @@ impl App {
         Ok(text(&json!({ "selection": wanted })))
     }
 
-    fn export_tool(&mut self, call: &Call, ctx: &egui::Context) -> Result<Vec<Value>, String> {
+    /// `export_layers`: starts making the file; the call is answered when it is written ([`App::finish_exports`]).
+    fn export_tool(&mut self, call: &Call, ctx: &egui::Context) -> Result<crate::export::Running, String> {
         let args = &call.arguments;
         let target = full_path(args, "path")?.ok_or("`export_layers` needs the `path` of the file to write.")?;
         let ending = target.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).map(|e| if e == "jpeg" { "jpg".to_owned() } else { e });
@@ -898,13 +904,42 @@ impl App {
         let kept = std::mem::replace(&mut editor.selection, wanted);
         let options = crate::export::Options { format, scale, ..Default::default() };
         let editor = self.tabs.get(tab).ok_or("The document was closed.")?;
-        let made = crate::export::run(self.canvas.list(), editor, ctx, options, &target);
+        // Human: the file is made on a thread of its own, from the layers as they are now, and the call is
+        // answered when it is written: the window doesn't stand still for a model's export. A file that
+        // turns up at the path meanwhile is not replaced.
+        let started = crate::export::Job::of(editor, options, target, false).and_then(|job| job.start(ctx));
         if let Some(editor) = self.tabs.get_mut(tab) {
             editor.selection = kept;
             editor.activity.point(None, &label, Instant::now());
         }
-        made?;
-        Ok(text(&json!({ "exported": target.display().to_string() })))
+        started
+    }
+
+    /// Answers the `export_layers` calls whose files are written, or couldn't be.
+    fn finish_exports(&mut self) {
+        let mut done = Vec::new();
+        for (call, running) in std::mem::take(&mut self.exports.asked) {
+            match running.ended() {
+                None => self.exports.asked.push((call, running)),
+                Some(Ok(_)) => done.push((call, Ok(text(&json!({ "exported": running.target.display().to_string() }))))),
+                Some(Err(why)) => done.push((call, Err(why))),
+            }
+        }
+        for (call, result) in done {
+            self.answer(&call, result);
+        }
+    }
+
+    /// Sends a tool call its answer; one that failed says why in the app's log and in the chat it came from.
+    fn answer(&mut self, call: &Call, result: Result<Vec<Value>, String>) {
+        if let Err(why) = &result {
+            log::warn!("the tool {} failed: {why}", call.tool);
+            if let Some(talk) = call.chat.and_then(|id| self.talk_mut(id)) {
+                talk.chat.tool_failed(&call.tool, why);
+            }
+        }
+        // A client that stopped waiting has gone; there is no one to tell.
+        let _ = call.reply.send(result);
     }
 
     /// What `get_state` answers: the open documents, and in detail the one the call works on (for a chat its

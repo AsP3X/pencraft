@@ -4,12 +4,18 @@
 //! or written as SVG shapes, and saved where the user chose.
 
 use std::io::Cursor;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, mpsc};
 
+use pen_doc::scene::SceneNode;
 use pen_doc::vars::Vars;
 
 use crate::editor::Editor;
 use crate::render::DisplayList;
+use crate::theme::{
+    CHIP_RADIUS, DIALOG_BACKDROP, DIALOG_BUTTON, DIALOG_GAP, DIALOG_PADDING, DIALOG_TITLE_SIZE, DIALOG_WIDTH, FIELD_HEIGHT, Palette, SETTINGS_RADIUS,
+};
 
 /// A file format layers can be exported to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -246,37 +252,199 @@ pub fn suggested_name(editor: &Editor, options: Options) -> String {
 }
 
 /// Exports the selected layers of `editor` (or all of them, with nothing selected) together into the file
-/// `target`.
+/// `target`, here and now.
 ///
 /// # Errors
 /// A sentence when nothing can be exported, the picture would be too large, or the file can't be written.
+// Human: for the run that makes one picture and ends (`--export`), which has nobody to show progress to.
+// Agent: BLOCKS while drawing and writing; replaces a file that is there.
+pub fn run(list: &DisplayList, editor: &Editor, ctx: &egui::Context, options: Options, target: &Path) -> Result<(), String> {
+    Job::of(editor, options, target.to_path_buf(), true)?.make(list, ctx, &AtomicBool::new(false)).map(|_| ())
+}
+
+/// An export, taken from the document so that a thread of its own can make it: the layers as they are laid
+/// out, the document's variables, and where the file goes.
 // Human: several layers come out as one picture (or one PDF page, or one SVG): each where it is on the canvas,
 // in a file as large as the box around them all, without what lies between them unselected.
-// Agent: MAIN-THREAD (drawing text needs the egui context); BLOCKS while drawing and writing.
-pub fn run(list: &DisplayList, editor: &Editor, ctx: &egui::Context, options: Options, target: &Path) -> Result<(), String> {
-    let layers = layers(editor);
-    if layers.is_empty() {
-        return Err("There is nothing to export.".to_owned());
-    }
-    let vars = Vars::new(&editor.doc);
-    let folder = editor.folder();
-    let draw = |scale: f32| list.snapshot(&layers, scale, vars, ctx, folder).ok_or_else(|| "The layers are empty or too large to export.".to_owned());
-    let bytes = match options.format {
-        // Human: a PDF is vectors and real text wherever a PDF can say what the design shows; a design with a
-        // material, a background blur or a shader in it is one picture on its page, as it always was.
-        Format::Pdf => {
-            if let Some(vectors) = list.pdf(&layers, vars, ctx, folder) {
-                vectors?
-            } else {
-                let picture = draw(PDF_SCALE)?;
-                let size = (narrow_len(picture.w) / PDF_SCALE, narrow_len(picture.h) / PDF_SCALE);
-                pdf(&[Page { size, jpeg: picture.jpeg(PDF_QUALITY)?, pixels: (picture.w, picture.h) }])
-            }
+pub struct Job {
+    layers: Vec<SceneNode>,
+    variables: Option<serde_json::Map<String, serde_json::Value>>,
+    folder: Option<PathBuf>,
+    options: Options,
+    target: PathBuf,
+    /// Whether a file that is there may be replaced (the user said so in the save dialog; a model never may).
+    replace: bool,
+}
+
+/// How an export that didn't fail ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Ended {
+    /// The file is written.
+    Written,
+    /// It was called off; no file was written.
+    Cancelled,
+}
+
+impl Job {
+    /// The export of the selected layers of `editor` (or all of them, with nothing selected) to `target`.
+    ///
+    /// # Errors
+    /// A sentence when there is nothing to export.
+    // Agent: COPIES the layers to export; the document can change afterwards.
+    pub fn of(editor: &Editor, options: Options, target: PathBuf, replace: bool) -> Result<Job, String> {
+        let layers: Vec<SceneNode> = layers(editor).into_iter().cloned().collect();
+        if layers.is_empty() {
+            return Err("There is nothing to export.".to_owned());
         }
-        Format::Svg => list.svg(&layers, vars, ctx, folder).ok_or("The layers have no size to export.")?.into_bytes(),
-        Format::Png | Format::Jpeg | Format::WebP => draw(f32::from(options.scale.max(1)))?.encode(options.format, options.quality)?,
-    };
-    craft_atomic::atomic_write(target, &bytes).map_err(|e| format!("{}: {e}", target.display()))
+        Ok(Job { layers, variables: editor.doc.variables.clone(), folder: editor.folder().map(Path::to_path_buf), options, target, replace })
+    }
+
+    /// Draws the layers and writes the file, unless `stop` is set before the file is put in its place.
+    ///
+    /// # Errors
+    /// A sentence when the picture would be too large or the file can't be written.
+    // Human: an export that is called off leaves nothing behind. The file is written beside its place under
+    // another name and given its own name only at the end; `stop` is looked at one last time just before
+    // that, and an export called off by then is thrown away with what was written.
+    // Agent: BLOCKS while drawing and writing (drawing text needs the egui context, a clone of which works
+    // on any thread). WRITES `target` through `craft_atomic`, or nothing.
+    pub fn make(&self, list: &DisplayList, ctx: &egui::Context, stop: &AtomicBool) -> Result<Ended, String> {
+        let stopped = || stop.load(Ordering::Relaxed);
+        let (layers, options): (Vec<&SceneNode>, Options) = (self.layers.iter().collect(), self.options);
+        let (vars, folder) = (Vars::of(self.variables.as_ref()), self.folder.as_deref());
+        let draw =
+            |scale: f32| list.snapshot(&layers, scale, vars, ctx, folder).ok_or_else(|| "The layers are empty or too large to export.".to_owned());
+        if stopped() {
+            return Ok(Ended::Cancelled);
+        }
+        let bytes = match options.format {
+            // Human: a PDF is vectors and real text wherever a PDF can say what the design shows; a design with a
+            // material, a background blur or a shader in it is one picture on its page, as it always was.
+            Format::Pdf => {
+                if let Some(vectors) = list.pdf(&layers, vars, ctx, folder) {
+                    vectors?
+                } else {
+                    let picture = draw(PDF_SCALE)?;
+                    let size = (narrow_len(picture.w) / PDF_SCALE, narrow_len(picture.h) / PDF_SCALE);
+                    pdf(&[Page { size, jpeg: picture.jpeg(PDF_QUALITY)?, pixels: (picture.w, picture.h) }])
+                }
+            }
+            Format::Svg => list.svg(&layers, vars, ctx, folder).ok_or("The layers have no size to export.")?.into_bytes(),
+            Format::Png | Format::Jpeg | Format::WebP => {
+                let picture = draw(f32::from(options.scale.max(1)))?;
+                if stopped() {
+                    return Ok(Ended::Cancelled);
+                }
+                picture.encode(options.format, options.quality)?
+            }
+        };
+        put(&self.target, &bytes, self.replace, stop)
+    }
+
+    /// Starts making the export on a thread of its own, which tells `ctx` to draw again when it is done.
+    ///
+    /// # Errors
+    /// A sentence when no thread could be started.
+    // Human: drawing a large design and packing it into a file takes seconds, and the window stood still for
+    // them. The thread draws with a list of its own, so the canvas is never kept waiting for it; the
+    // pictures of the design are read again there.
+    // Agent: SPAWNS one thread, `pencraft-export`, which ends with the export.
+    pub fn start(self, ctx: &egui::Context) -> Result<Running, String> {
+        let stop = Arc::new(AtomicBool::new(false));
+        let (send, arrives) = mpsc::channel();
+        let (wake, called_off, target) = (ctx.clone(), stop.clone(), self.target.clone());
+        let work = move || {
+            let ended = self.make(&DisplayList::default(), &wake, &called_off);
+            // Whoever started it may be gone (the app is closing); then nobody takes the answer.
+            let _unheard = send.send(ended);
+            wake.request_repaint();
+        };
+        match std::thread::Builder::new().name("pencraft-export".to_owned()).spawn(work) {
+            Ok(_) => Ok(Running { target, stop, arrives }),
+            Err(error) => Err(format!("no thread to make the export on: {error}")),
+        }
+    }
+}
+
+/// Writes `bytes` as the file `target`, unless `stop` is set by the time they are written: then nothing is
+/// left, neither the file nor what was written beside it. A file that is there stays unless `replace`.
+// Agent: WRITES through `craft_atomic`, which writes beside `target` and renames at the end; an error from
+// the closure makes it remove what it wrote and rename nothing.
+fn put(target: &Path, bytes: &[u8], replace: bool, stop: &AtomicBool) -> Result<Ended, String> {
+    if !replace && target.exists() {
+        return Err(format!("{} is there already.", target.display()));
+    }
+    let mut called_off = false;
+    let written = craft_atomic::atomic_write_with(target, |file| {
+        std::io::Write::write_all(file, bytes)?;
+        if stop.load(Ordering::Relaxed) {
+            called_off = true;
+            return Err(std::io::Error::other("the export was called off"));
+        }
+        Ok(())
+    });
+    match written {
+        _ if called_off => Ok(Ended::Cancelled),
+        Ok(()) => Ok(Ended::Written),
+        Err(error) => Err(format!("{}: {error}", target.display())),
+    }
+}
+
+/// An export being made on a thread of its own.
+pub struct Running {
+    /// The file it writes.
+    pub target: PathBuf,
+    stop: Arc<AtomicBool>,
+    arrives: mpsc::Receiver<Result<Ended, String>>,
+}
+
+impl Running {
+    /// Calls the export off: it writes no file. One that has already put its file in place stays written,
+    /// and says so.
+    pub fn cancel(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+
+    /// How the export ended, once it has; `None` while it is being made.
+    pub fn ended(&self) -> Option<Result<Ended, String>> {
+        match self.arrives.try_recv() {
+            Ok(ended) => Some(ended),
+            Err(mpsc::TryRecvError::Empty) => None,
+            Err(mpsc::TryRecvError::Disconnected) => Some(Err("the export ended without an answer".to_owned())),
+        }
+    }
+}
+
+/// The window that shows while an export to the file `name` is made. Says whether Cancel was chosen (the
+/// button, Esc, or a click beside the window).
+// Human: in the manner of "Generate image": a small window over the app with what is going on, a turning
+// wheel (how far the export is isn't known), and the one thing there is to do.
+// Agent: MAIN-THREAD.
+pub fn progress(ctx: &egui::Context, palette: Palette, name: &str) -> bool {
+    let frame = egui::Frame::new()
+        .fill(palette.island)
+        .stroke(egui::Stroke::new(1.0, palette.outline))
+        .corner_radius(SETTINGS_RADIUS)
+        .inner_margin(egui::Margin::same(DIALOG_PADDING));
+    let id = egui::Id::unique("exporting");
+    let mut cancel = false;
+    let modal = egui::Modal::new(id)
+        .area(egui::Modal::default_area(id).fade_in(false))
+        .frame(frame)
+        .backdrop_color(egui::Color32::from_black_alpha(DIALOG_BACKDROP))
+        .show(ctx, |ui| {
+            ui.set_width(DIALOG_WIDTH[0]);
+            ui.add(egui::Label::new(egui::RichText::new("Exporting").size(DIALOG_TITLE_SIZE).color(palette.foreground)).selectable(false));
+            ui.add_space(DIALOG_GAP);
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.add(egui::Label::new(egui::RichText::new(name).color(palette.muted)).truncate().selectable(false));
+            });
+            ui.add_space(DIALOG_GAP);
+            let button = egui::Button::new("Cancel").corner_radius(CHIP_RADIUS).min_size(egui::vec2(DIALOG_BUTTON, FIELD_HEIGHT));
+            cancel = ui.add(button).clicked();
+        });
+    cancel || modal.should_close()
 }
 
 /// A count of pixels as a length.
@@ -292,6 +460,84 @@ mod tests {
     fn picture() -> Picture {
         // Two pixels: opaque red, and half-transparent green (premultiplied).
         Picture { w: 2, h: 1, rgba: vec![255, 0, 0, 255, 0, 128, 0, 128] }
+    }
+
+    /// A folder of its own for a test's files.
+    fn folder(name: &str) -> PathBuf {
+        let folder = std::env::temp_dir().join(format!("quill-export-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        folder
+    }
+
+    fn files_in(folder: &Path) -> Vec<String> {
+        let mut names: Vec<String> =
+            std::fs::read_dir(folder).unwrap().map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        names.sort();
+        names
+    }
+
+    fn editor() -> Editor {
+        let json = r##"{"version":"2.22","children":[{"type":"rectangle","id":"box","x":0,"y":0,"width":20,"height":10,"fill":"#ff0000"}]}"##;
+        let mut editor = Editor::new(pen_doc::read(json).unwrap(), None, 1);
+        editor.refresh(&|_| (10.0, 10.0));
+        editor
+    }
+
+    #[test]
+    fn an_export_called_off_leaves_no_file_and_nothing_beside_it() {
+        let folder = folder("called-off");
+        let target = folder.join("out.png");
+        // Called off by the time the bytes are written: nothing is put in place, and nothing is left beside.
+        assert_eq!(put(&target, b"bytes", true, &AtomicBool::new(true)), Ok(Ended::Cancelled));
+        assert_eq!(files_in(&folder), Vec::<String>::new());
+        // A file that was there is as it was after an export over it was called off.
+        std::fs::write(&target, b"mine").unwrap();
+        assert_eq!(put(&target, b"bytes", true, &AtomicBool::new(true)), Ok(Ended::Cancelled));
+        assert_eq!((std::fs::read(&target).unwrap(), files_in(&folder)), (b"mine".to_vec(), vec!["out.png".to_owned()]));
+        // Not called off, it is replaced only when that was allowed.
+        assert!(put(&target, b"bytes", false, &AtomicBool::new(false)).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"mine");
+        assert_eq!(put(&target, b"bytes", true, &AtomicBool::new(false)), Ok(Ended::Written));
+        assert_eq!((std::fs::read(&target).unwrap(), files_in(&folder)), (b"bytes".to_vec(), vec!["out.png".to_owned()]));
+        // A whole export called off before it began draws nothing and writes nothing.
+        let job = Job::of(&editor(), Options::default(), folder.join("never.png"), true).unwrap();
+        assert_eq!(job.make(&DisplayList::default(), &egui::Context::default(), &AtomicBool::new(true)), Ok(Ended::Cancelled));
+        assert_eq!(files_in(&folder), vec!["out.png".to_owned()]);
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn an_export_is_made_on_a_thread_of_its_own_from_the_layers_as_they_were() {
+        let folder = folder("thread");
+        let (ctx, mut editor) = (egui::Context::default(), editor());
+        let ended = |running: &Running| {
+            for _ in 0..5000 {
+                if let Some(ended) = running.ended() {
+                    return ended;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            Err("the export never ended".to_owned())
+        };
+        let running = Job::of(&editor, Options { format: Format::Png, scale: 2, ..Default::default() }, folder.join("box.png"), true)
+            .unwrap()
+            .start(&ctx)
+            .unwrap();
+        // The document changes while the file is made: the file shows it as it was when the export began.
+        editor.doc.children.clear();
+        assert_eq!(ended(&running), Ok(Ended::Written));
+        let back = image::open(&running.target).unwrap().to_rgba8();
+        assert_eq!((back.width(), back.height(), back.get_pixel(20, 10).0), (40, 20, [255, 0, 0, 255]));
+        // Called off at once, it writes nothing; nothing to export is said before a thread is started.
+        let running = Job::of(&self::editor(), Options::default(), folder.join("off.png"), true).unwrap().start(&ctx).unwrap();
+        running.cancel();
+        let how = ended(&running);
+        assert!(how == Ok(Ended::Cancelled) || how == Ok(Ended::Written), "{how:?}");
+        assert_eq!(folder.join("off.png").exists(), how == Ok(Ended::Written));
+        editor.touched();
+        editor.refresh(&|_| (10.0, 10.0));
+        assert!(Job::of(&editor, Options::default(), folder.join("empty.png"), true).is_err());
+        std::fs::remove_dir_all(&folder).unwrap();
     }
 
     #[test]

@@ -1096,7 +1096,11 @@ impl Builder<'_> {
         let files: Vec<Option<Arc<ColorImage>>> = sources
             .iter()
             .map(|(_, source)| match source {
-                Source::File(url) => self.images.get(self.ctx, self.folder, url).and_then(|p| self.images.pixels(p.texture)),
+                // A shader is given the picture itself, never a stand-in: it is waited for.
+                Source::File(url) => match self.images.get(self.ctx, self.folder, url, true) {
+                    crate::images::Found::Ready(picture) => self.images.pixels(picture.texture),
+                    crate::images::Found::Coming | crate::images::Found::Missing => None,
+                },
                 _ => None,
             })
             .collect();
