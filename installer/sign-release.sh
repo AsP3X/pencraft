@@ -31,7 +31,13 @@ if [ -n "$key" ] && [ ! -f "$key" ]; then
   exit 1
 fi
 
-if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" != "true" ]; then
+# Asked once: a release that isn't there and one that is already public need different advice.
+if ! draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2> /dev/null); then
+  echo "There is no release $tag on GitHub. Push the tag first (git push origin $tag) and wait for the" >&2
+  echo "release workflow to finish; it leaves the draft this signs." >&2
+  exit 1
+fi
+if [ "$draft" != "true" ]; then
   echo "$tag is not a draft: it is already public, so there is nothing to sign here." >&2
   exit 1
 fi

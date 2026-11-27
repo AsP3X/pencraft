@@ -9,6 +9,8 @@ in the app before they download the update. Write it for them.
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-27
+
 ### Added
 
 - **Chat history.** The History view in the sidebar lists your past
@@ -1063,7 +1065,8 @@ macOS.
   release when it starts and once a day, and shows what is new. A setting
   and `--no-update-check` switch it off.
 
-[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/AsP3X/pencraft/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/AsP3X/pencraft/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/AsP3X/pencraft/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/AsP3X/pencraft/compare/v0.3.28...v0.4.0
 [0.3.28]: https://github.com/AsP3X/pencraft/compare/v0.3.27...v0.3.28
