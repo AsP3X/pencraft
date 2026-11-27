@@ -645,7 +645,8 @@ fn node_panel(ui: &mut Ui, editor: &mut Editor, id: &str, dark: bool, pictures: 
         // Human: one undo step per edit; dragging a number merges into the step its first change made.
         let dragging = ui.ctx().dragged_id().is_some();
         if dragging && ui.data(|d| d.get_temp::<bool>(egui::Id::unique("prop-drag")).unwrap_or(false)) {
-            editor.touched();
+            // Only this layer changes while the number is dragged.
+            editor.touched_layer(id);
         } else {
             editor.checkpoint();
         }

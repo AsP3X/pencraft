@@ -1942,7 +1942,7 @@ impl App {
         let mut waiting = false;
         for tab in &self.tabs {
             let seen = crate::recover::Seen { id: tab.id, dirty: tab.dirty(), scene: tab.generation, path: tab.path.as_deref(), title: &tab.title() };
-            waiting |= keeper.look(&seen, &tab.doc, now);
+            waiting |= keeper.look(&seen, &|| tab.kept(), now);
         }
         if waiting {
             ctx.request_repaint_after(crate::recover::EVERY);

@@ -16,6 +16,8 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use pen_doc::Document;
+
+use crate::editor::Kept;
 use serde_json::{Value, json};
 
 /// The file in a run's folder that the running app keeps locked.
@@ -41,7 +43,7 @@ fn root() -> PathBuf {
 /// What the writing thread is asked to do.
 enum Job {
     /// Write the document with this number ([`crate::editor::Editor::id`]), with the file it belongs to.
-    Keep { id: u64, doc: Box<Document>, path: Option<PathBuf>, title: String },
+    Keep { id: u64, doc: Kept, path: Option<PathBuf>, title: String },
     /// Remove what was written for the document with this number.
     Forget(u64),
 }
@@ -115,9 +117,10 @@ impl Keeper {
     /// the writing thread, at most every [`EVERY`]; one without changes is no longer kept.
     ///
     /// Returns whether it has changes that wait for their turn, so the caller looks again after [`EVERY`].
-    // Agent: MAIN-THREAD; copies the document when it is handed over, nothing else. Call it while no drag is
+    // Agent: MAIN-THREAD; asks `doc` for a copy only when one is handed over; the copy shares its nodes with
+    // the editor's own ([`Kept`]), and the writing thread makes the document of it. Call it while no drag is
     // under way: a drag changes the document with every frame.
-    pub fn look(&mut self, seen: &Seen<'_>, doc: &Document, now: Instant) -> bool {
+    pub fn look(&mut self, seen: &Seen<'_>, doc: &dyn Fn() -> Kept, now: Instant) -> bool {
         if !seen.dirty {
             self.forget(seen.id);
             return false;
@@ -129,7 +132,7 @@ impl Keeper {
         if !changed || !due {
             return changed;
         }
-        let job = Job::Keep { id: seen.id, doc: Box::new(doc.clone()), path: seen.path.map(Path::to_path_buf), title: seen.title.to_owned() };
+        let job = Job::Keep { id: seen.id, doc: doc(), path: seen.path.map(Path::to_path_buf), title: seen.title.to_owned() };
         if self.jobs.send(job).is_ok() {
             self.kept.insert(seen.id, (seen.scene, now));
         }
@@ -164,7 +167,7 @@ impl Keeper {
 fn write_all(folder: &Path, asked: &Receiver<Job>, trouble: &Mutex<Option<String>>) {
     for job in asked {
         let failed = match job {
-            Job::Keep { id, doc, path, title } => write(folder, id, &doc, path.as_deref(), &title).err().map(|error| {
+            Job::Keep { id, doc, path, title } => write(folder, id, &doc.document(), path.as_deref(), &title).err().map(|error| {
                 log::warn!("recovery: {title} wasn't kept: {error}");
                 format!("Unsaved changes to “{title}” couldn't be kept for recovery: {error}")
             }),
@@ -325,10 +328,10 @@ mod tests {
         let root = fresh("crash");
         let now = Instant::now();
         let mut keeper = Keeper::start_in(&root).unwrap();
-        assert!(!keeper.look(&seen(1, true, 10, Some(Path::new("/designs/shop.pen")), "shop"), &doc(40), now));
-        let _ = keeper.look(&seen(2, true, 11, None, "Untitled"), &doc(50), now);
+        assert!(!keeper.look(&seen(1, true, 10, Some(Path::new("/designs/shop.pen")), "shop"), &|| Kept::sharing(&doc(40), None), now));
+        let _ = keeper.look(&seen(2, true, 11, None, "Untitled"), &|| Kept::sharing(&doc(50), None), now);
         // A document without changes is not kept.
-        let _ = keeper.look(&seen(3, false, 12, None, "Untitled"), &doc(60), now);
+        let _ = keeper.look(&seen(3, false, 12, None, "Untitled"), &|| Kept::sharing(&doc(60), None), now);
         // While the run lives, its folder is nobody's to take.
         assert_eq!(left_in(&root), Vec::new());
         crash(keeper);
@@ -344,7 +347,7 @@ mod tests {
         assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0);
         // A run that ends properly leaves nothing.
         let mut keeper = Keeper::start_in(&root).unwrap();
-        let _ = keeper.look(&seen(1, true, 10, None, "Untitled"), &doc(40), now);
+        let _ = keeper.look(&seen(1, true, 10, None, "Untitled"), &|| Kept::sharing(&doc(40), None), now);
         keeper.finish();
         assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0);
     }
@@ -354,16 +357,16 @@ mod tests {
         let root = fresh("again");
         let now = Instant::now();
         let mut keeper = Keeper::start_in(&root).unwrap();
-        let _ = keeper.look(&seen(1, true, 10, None, "Untitled"), &doc(40), now);
+        let _ = keeper.look(&seen(1, true, 10, None, "Untitled"), &|| Kept::sharing(&doc(40), None), now);
         // Changed a second later: too soon. Unchanged after ten: nothing to write. Changed after ten: written.
-        assert!(keeper.look(&seen(1, true, 11, None, "Untitled"), &doc(41), now + Duration::from_secs(1)));
-        let _ = keeper.look(&seen(1, true, 10, None, "Untitled"), &doc(42), now + Duration::from_secs(10));
+        assert!(keeper.look(&seen(1, true, 11, None, "Untitled"), &|| Kept::sharing(&doc(41), None), now + Duration::from_secs(1)));
+        let _ = keeper.look(&seen(1, true, 10, None, "Untitled"), &|| Kept::sharing(&doc(42), None), now + Duration::from_secs(10));
         assert_eq!(keeper.kept.get(&1).map(|kept| kept.0), Some(10));
-        let _ = keeper.look(&seen(1, true, 12, None, "Untitled"), &doc(43), now + Duration::from_secs(10));
+        let _ = keeper.look(&seen(1, true, 12, None, "Untitled"), &|| Kept::sharing(&doc(43), None), now + Duration::from_secs(10));
         assert_eq!(keeper.kept.get(&1).map(|kept| kept.0), Some(12));
         // A second document is saved (no changes left): what was kept of it goes, the first stays as last written.
-        let _ = keeper.look(&seen(2, true, 20, None, "Untitled"), &doc(70), now);
-        let _ = keeper.look(&seen(2, false, 20, None, "Untitled"), &doc(70), now);
+        let _ = keeper.look(&seen(2, true, 20, None, "Untitled"), &|| Kept::sharing(&doc(70), None), now);
+        let _ = keeper.look(&seen(2, false, 20, None, "Untitled"), &|| Kept::sharing(&doc(70), None), now);
         crash(keeper);
         let found = left_in(&root);
         assert_eq!(found.len(), 1);

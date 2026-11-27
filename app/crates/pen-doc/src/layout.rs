@@ -103,6 +103,34 @@ pub fn layout(scene: &mut [SceneNode], vars: Vars<'_>, measure: &Measure<'_>) {
 /// [`crate::connector::route`] on the whole scene afterwards when it has connectors.
 // Agent: WRITES SceneNode::local and ::to_doc for every node; CALLS measure about twice per text node.
 pub fn layout_roots(scene: &mut [SceneNode], vars: Vars<'_>, measure: &Measure<'_>) {
+    layout_under(scene, &Affine::IDENTITY, vars, measure);
+}
+
+/// Lays out `node` and what is in it by itself, as a child of a node whose local → document transform is
+/// `parent`: what laying out the whole scene gives for it, when [`stands_alone`] holds for it there.
+// Agent: WRITES SceneNode::local and ::to_doc for `node` and every node in it; connectors are not routed.
+pub fn layout_within(node: &mut SceneNode, parent: &Affine, vars: Vars<'_>, measure: &Measure<'_>) {
+    layout_under(std::slice::from_mut(node), parent, vars, measure);
+}
+
+/// Whether the child `node` (with `theme` in force for it) of `parent` can be laid out without `parent` and
+/// its other children, and they without it: `parent` neither takes its size from its children nor places them.
+// Human: a group is as big as its children and moves them all when one moves; a frame with a horizontal or
+// vertical layout places the children that take part in it one after the other, and may take its size from
+// them or give them theirs. In a frame without a layout, and for a child that keeps out of the layout
+// (absolute, or switched off), a child's box is its own x, y, width and height.
+#[must_use]
+pub fn stands_alone(parent: &SceneNode, node: &Node, theme: &ThemeContext, vars: Vars<'_>) -> bool {
+    if parent.node.kind == Kind::Group {
+        return false;
+    }
+    let enabled = node.enabled.as_ref().and_then(|flag| vars.flag(flag, theme)).unwrap_or(true);
+    let takes_part = enabled && !node.is_absolute() && node.kind != Kind::Connector;
+    Engine::direction(parent).is_none() || !takes_part
+}
+
+/// [`layout_roots`] for nodes that lie in a node whose local → document transform is `parent`.
+fn layout_under(scene: &mut [SceneNode], parent: &Affine, vars: Vars<'_>, measure: &Measure<'_>) {
     let engine = Engine { vars, measure };
     for root in scene.iter_mut() {
         engine.init(root);
@@ -126,7 +154,7 @@ pub fn layout_roots(scene: &mut [SceneNode], vars: Vars<'_>, measure: &Measure<'
         engine.positions(root);
     }
     for root in scene.iter_mut() {
-        place(root, &Affine::IDENTITY);
+        place(root, parent);
     }
 }
 

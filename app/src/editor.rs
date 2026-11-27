@@ -1,7 +1,8 @@
 //! One open document: its file, the document itself, the laid-out scene, selection, camera and undo history.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use pen_doc::edit::{self, IdMaker};
 use pen_doc::geom::{Point, Rect};
@@ -118,6 +119,11 @@ impl Places {
 
     /// Takes in `root`, the top-level node at `at`, and everything in it.
     fn add(&mut self, root: &SceneNode, at: usize) {
+        self.add_at(root, &[u32::try_from(at).unwrap_or(u32::MAX)]);
+    }
+
+    /// Takes in `node`, which lies at `path`, and everything in it.
+    fn add_at(&mut self, node: &SceneNode, path: &[u32]) {
         fn visit(places: &mut Places, node: &SceneNode, path: &mut Vec<u32>) {
             match places.at.entry(node.id.clone()) {
                 std::collections::hash_map::Entry::Occupied(_) => places.doubled = true,
@@ -131,20 +137,34 @@ impl Places {
                 path.pop();
             }
         }
-        visit(self, root, &mut vec![u32::try_from(at).unwrap_or(u32::MAX)]);
+        visit(self, node, &mut path.to_vec());
     }
 
     /// Forgets `root`, which was the top-level node at `at`, and everything in it.
     fn remove(&mut self, root: &SceneNode, at: usize) {
-        let at = u32::try_from(at).unwrap_or(u32::MAX);
-        root.walk(
-            &mut |node, _| {
-                if self.at.get(&node.id).is_some_and(|path| path.first() == Some(&at)) {
-                    self.at.remove(&node.id);
+        self.remove_at(root, &[u32::try_from(at).unwrap_or(u32::MAX)]);
+    }
+
+    /// Forgets `node`, which lay at `path`, and everything in it.
+    fn remove_at(&mut self, node: &SceneNode, path: &[u32]) {
+        node.walk(
+            &mut |inner, _| {
+                if self.at.get(&inner.id).is_some_and(|known| known.starts_with(path)) {
+                    self.at.remove(&inner.id);
                 }
             },
             0,
         );
+    }
+
+    /// [`Places::follow`] to change the node.
+    fn follow_mut<'a>(scene: &'a mut [SceneNode], path: &[u32]) -> Option<&'a mut SceneNode> {
+        let (first, rest) = path.split_first()?;
+        let mut node = scene.get_mut(usize::try_from(*first).ok()?)?;
+        for index in rest {
+            node = node.children.get_mut(usize::try_from(*index).ok()?)?;
+        }
+        Some(node)
     }
 
     /// The node `path` leads to in `scene`.
@@ -174,6 +194,84 @@ fn shown_by(node: &Node) -> Vec<String> {
 /// Whether `node` or anything in it is a component, or is among `shown` (the ids instances show).
 fn holds_shown(node: &Node, shown: &HashSet<&str>) -> bool {
     node.reusable == Some(true) || shown.contains(node.id.as_str()) || node.kids().iter().any(|kid| holds_shown(kid, shown))
+}
+
+/// A copy of a document that shares what it can with other copies of it: each top-level node is kept once,
+/// however many copies hold it.
+// Human: undo used to keep a whole document for every step, a hundred of them: on a design of 11,000 layers
+// that was two gigabytes. An edit changes one screen of dozens, so a copy made after it now holds that one
+// screen anew and the others together with the copy before.
+// Agent: nothing in a `Kept` is ever changed in place; a changed node is another `Arc`. `rest` is the document
+// without its top-level nodes (`children` empty). Can go to another thread (recovery writes from one).
+#[derive(Clone)]
+pub struct Kept {
+    rest: Arc<Document>,
+    roots: Vec<Arc<Node>>,
+}
+
+impl Kept {
+    /// A copy of `doc` that shares what `with` (an earlier copy) holds unchanged: a top-level node that is
+    /// as it was there, at the same place or under the same id, is taken from it, and only the others are
+    /// copied. Without `with` it shares nothing yet.
+    // Agent: READS every node of `doc` once to compare it; ALLOCATES only for what changed.
+    #[must_use]
+    pub fn sharing(doc: &Document, with: Option<&Kept>) -> Kept {
+        // Human: named field by field, so a field the document gets later can't be left out without the
+        // compiler saying so.
+        let Document { version, pencraft, children, themes, imports, variables, extra } = doc;
+        let same_rest = |held: &&Kept| {
+            let Document {
+                version: was_version,
+                pencraft: was_pencraft,
+                children: _,
+                themes: was_themes,
+                imports: was_imports,
+                variables: was_variables,
+                extra: was_extra,
+            } = &*held.rest;
+            (was_version, was_pencraft, was_themes, was_imports, was_variables, was_extra) == (version, pencraft, themes, imports, variables, extra)
+        };
+        let rest = with.filter(same_rest).map_or_else(
+            || {
+                Arc::new(Document {
+                    version: version.clone(),
+                    pencraft: pencraft.clone(),
+                    children: Vec::new(),
+                    themes: themes.clone(),
+                    imports: imports.clone(),
+                    variables: variables.clone(),
+                    extra: extra.clone(),
+                })
+            },
+            |held| held.rest.clone(),
+        );
+        let was: &[Arc<Node>] = with.map_or(&[], |held| &held.roots);
+        // The nodes of the earlier copy by their ids, made when a node isn't found at its place.
+        let mut by_id: Option<HashMap<&str, &Arc<Node>>> = None;
+        let share = |(at, node): (usize, &Node)| {
+            match was.get(at) {
+                Some(held) if **held == *node => return held.clone(),
+                // The same node, changed: it is nowhere else.
+                Some(held) if held.id == node.id => return Arc::new(node.clone()),
+                _ => {}
+            }
+            let by_id = by_id.get_or_insert_with(|| was.iter().map(|held| (held.id.as_str(), held)).collect());
+            match by_id.get(node.id.as_str()) {
+                Some(held) if ***held == *node => Arc::clone(*held),
+                _ => Arc::new(node.clone()),
+            }
+        };
+        Kept { rest, roots: children.iter().enumerate().map(share).collect() }
+    }
+
+    /// The document this is a copy of, as one of its own.
+    // Agent: ALLOCATES the whole document.
+    #[must_use]
+    pub fn document(&self) -> Document {
+        let mut doc = Document::clone(&self.rest);
+        doc.children = self.roots.iter().map(|node| Node::clone(node)).collect();
+        doc
+    }
 }
 
 /// One open document.
@@ -220,9 +318,11 @@ pub struct Editor {
     /// What an AI model working on this document shows on the canvas.
     pub activity: crate::activity::Activity,
     /// The documents to step back to, each with the number its state had ([`Editor::state`]).
-    undo: Vec<(Document, u64)>,
+    undo: VecDeque<(Kept, u64)>,
     /// The documents to step forward to again, each with its state's number.
-    redo: Vec<(Document, u64)>,
+    redo: Vec<(Kept, u64)>,
+    /// The last copy made of the document: the next one shares with it whatever has not changed since.
+    held: Option<Kept>,
     /// A number for the document as it is now; every change gives it one no state of this document had.
     // Human: this is how the editor knows whether there are unsaved changes: the file holds the state with
     // the number `saved`. Undoing back to that state, or redoing forward to it, lands on its number again
@@ -240,6 +340,58 @@ pub struct Editor {
     laid: Laid,
     /// Where each node of [`Editor::scene`] lies in it.
     places: Places,
+    /// Where the document changed since the scene was last brought up to date.
+    tracked: Tracked,
+    /// The document as it was when the scene was last brought up to date, to check what was tracked against.
+    #[cfg(debug_assertions)]
+    checked: Option<Kept>,
+}
+
+/// What is known of where the document changed since its scene was last brought up to date.
+// Human: a drag changes one layer, frame after frame. Finding that layer by comparing the whole document
+// with what it was, and then building its whole screen again, was most of what a drag in a large screen
+// cost. The edits that know which layers they change say so, and only those layers are built again.
+// Agent: `Layers` is a promise: nothing changed outside those layers and what is in them. Every way of
+// changing the document that doesn't make it leaves `All`, and the scene is found by comparing, as before.
+#[derive(Default)]
+enum Tracked {
+    /// Nothing changed.
+    #[default]
+    Nothing,
+    /// Only these layers changed, and what is in them.
+    Layers(Vec<String>),
+    /// Anything may have changed.
+    All,
+}
+
+impl Tracked {
+    /// What is known when, on top of this, `ids` and nothing else changed.
+    fn with(self, ids: &[String]) -> Tracked {
+        match self {
+            Tracked::Nothing => Tracked::Layers(ids.to_vec()),
+            Tracked::Layers(mut layers) => {
+                layers.extend(ids.iter().filter(|id| !layers.contains(id)).cloned().collect::<Vec<_>>());
+                Tracked::Layers(layers)
+            }
+            Tracked::All => Tracked::All,
+        }
+    }
+}
+
+/// A top-level node of the scene of which only some layers were built again when the scene was last brought
+/// up to date.
+// Human: the canvas keeps what it drew of the node and draws only those layers anew. It can tell that what it
+// drew is what the layers were taken out of: the node had the stamp `from` then, and has `to` now.
+pub struct Rebuilt {
+    /// The node's place in the scene.
+    pub root: usize,
+    /// The node's stamp before, and after ([`Editor::stamps`]).
+    pub from: u64,
+    /// See `from`.
+    pub to: u64,
+    /// Where the layers built again lie in the scene: each one's place among the nodes on the way down to it,
+    /// from the top level. None lies in another.
+    pub paths: Vec<Vec<u32>>,
 }
 
 /// What a scene was built from, and what is known of each of its top-level nodes.
@@ -248,9 +400,9 @@ pub struct Editor {
 #[derive(Default)]
 struct Laid {
     /// The document without its top-level nodes: its variables, themes and imports.
-    rest: Option<Document>,
-    /// The top-level nodes, as they were.
-    nodes: Vec<Node>,
+    rest: Option<Arc<Document>>,
+    /// The top-level nodes, as they were; shared with the copies undo keeps ([`Kept`]).
+    nodes: Vec<Arc<Node>>,
     /// The theme that was in force at the top level.
     theme: pen_doc::vars::ThemeContext,
     /// A number for each top-level scene node, another one each time it is built again.
@@ -259,6 +411,11 @@ struct Laid {
     shows: Vec<Vec<String>>,
     /// Whether each top-level scene node has a connector in it.
     wired: Vec<bool>,
+    /// Whether a part of each top-level scene node was built again by itself since `nodes` was written: that
+    /// node is then no longer what its scene node was built from, and counts as changed when compared.
+    loose: Vec<bool>,
+    /// The top-level nodes of which only some layers were built again the last time ([`Editor::rebuilt`]).
+    rebuilt: Vec<Rebuilt>,
     /// Whether everything is to be built again whatever changed (fonts became ready, the theme changed).
     all: bool,
 }
@@ -287,8 +444,9 @@ impl Editor {
             scaled: (1.0, Vec::new()),
             export: (crate::export::Options::default(), false),
             activity: crate::activity::Activity::default(),
-            undo: Vec::new(),
+            undo: VecDeque::new(),
             redo: Vec::new(),
+            held: None,
             state: 0,
             last_state: 0,
             saved: Some(0),
@@ -297,6 +455,9 @@ impl Editor {
             needs_fit: true,
             laid: Laid::default(),
             places: Places::default(),
+            tracked: Tracked::All,
+            #[cfg(debug_assertions)]
+            checked: None,
         }
     }
 
@@ -410,19 +571,41 @@ impl Editor {
 
     /// Records the document before a change, for undo. Call once per user action, before changing `doc`.
     pub fn checkpoint(&mut self) {
-        self.undo.push((self.doc.clone(), self.state));
+        let now = self.keep();
+        self.undo.push_back((now, self.state));
         if self.undo.len() > UNDO_LIMIT {
-            self.undo.remove(0);
+            self.undo.pop_front();
         }
         self.redo.clear();
         self.new_state();
         self.needs_layout = true;
+        self.tracked = Tracked::All;
     }
 
     /// Marks the document changed without a new undo step (continuing a drag).
     pub fn touched(&mut self) {
         self.new_state();
         self.needs_layout = true;
+        self.tracked = Tracked::All;
+    }
+
+    /// [`Editor::touched`] for a change that is made to the layers `ids` and what is in them, and to nothing
+    /// else: only they are built again. A layer that comes, goes or changes places is a change to the layer
+    /// it lies in.
+    // Agent: a promise the caller makes. In debug builds [`Editor::refresh`] checks it against a comparison
+    // of the whole document; in release builds a change outside `ids` is not seen until something else is
+    // built again.
+    pub fn touched_only(&mut self, ids: &[String]) {
+        let known = std::mem::take(&mut self.tracked);
+        self.touched();
+        self.tracked = known.with(ids);
+    }
+
+    /// [`Editor::touched_only`] for what [`Editor::change`] wrote for the layer with `id`: the layer itself,
+    /// or, for an instance's inside, the instance, whose overrides were written.
+    pub fn touched_layer(&mut self, id: &str) {
+        let written = if edit::find(&self.doc, id).is_some() { None } else { edit::owner(&self.doc, id) };
+        self.touched_only(&[written.map_or_else(|| id.to_owned(), |(instance, _)| instance)]);
     }
 
     /// The document is in a state it has not been in: it gets a number of its own.
@@ -456,8 +639,10 @@ impl Editor {
         if self.pen.pop() {
             return;
         }
-        if let Some((previous, state)) = self.undo.pop() {
-            self.redo.push((std::mem::replace(&mut self.doc, previous), std::mem::replace(&mut self.state, state)));
+        if let Some((previous, state)) = self.undo.pop_back() {
+            let now = self.keep();
+            self.put(&now, previous);
+            self.redo.push((now, std::mem::replace(&mut self.state, state)));
             self.after_history();
         }
     }
@@ -465,13 +650,67 @@ impl Editor {
     /// Steps forward again after an undo.
     pub fn redo(&mut self) {
         if let Some((next, state)) = self.redo.pop() {
-            self.undo.push((std::mem::replace(&mut self.doc, next), std::mem::replace(&mut self.state, state)));
+            let now = self.keep();
+            self.put(&now, next);
+            self.undo.push_back((now, std::mem::replace(&mut self.state, state)));
             self.after_history();
         }
     }
 
+    /// A copy of the document as it is now, sharing with the last copy made whatever is as it was then.
+    // Agent: READS every node to compare it with the last copy; ALLOCATES only the top-level nodes that changed.
+    #[must_use]
+    pub fn kept(&self) -> Kept {
+        Kept::sharing(&self.doc, self.held.as_ref())
+    }
+
+    /// How many top-level nodes the steps back and forward hold between them, each counted once however many
+    /// steps share it, and how many layers those are with everything in them.
+    #[cfg(test)]
+    pub(crate) fn history_holds(&self) -> (usize, usize) {
+        fn layers(node: &Node) -> usize {
+            1 + node.kids().iter().map(layers).sum::<usize>()
+        }
+        let mut seen: HashMap<*const Node, usize> = HashMap::new();
+        for root in self.undo.iter().chain(&self.redo).flat_map(|(past, _)| &past.roots) {
+            seen.entry(Arc::as_ptr(root)).or_insert_with(|| layers(root));
+        }
+        (seen.len(), seen.values().sum())
+    }
+
+    /// [`Editor::kept`], remembered as the last copy made.
+    fn keep(&mut self) -> Kept {
+        let now = self.kept();
+        self.held = Some(now.clone());
+        now
+    }
+
+    /// Makes `to` the document, which `now` is a copy of as it is at this moment.
+    // Human: a step back or forward changes one screen of dozens. The top-level nodes both copies share
+    // stay in the document as they are; only the others are copied out of `to`.
+    fn put(&mut self, now: &Kept, to: Kept) {
+        let mut have: Vec<Option<Node>> = std::mem::take(&mut self.doc.children).into_iter().map(Some).collect();
+        if !Arc::ptr_eq(&now.rest, &to.rest) {
+            self.doc = Document::clone(&to.rest);
+        }
+        // Where each node of `now` lies, by where it is kept; made when a node isn't found at its place.
+        let mut places: Option<HashMap<*const Node, usize>> = None;
+        let mut take = |(at, kept): (usize, &Arc<Node>)| {
+            let from = if now.roots.get(at).is_some_and(|here| Arc::ptr_eq(here, kept)) {
+                Some(at)
+            } else {
+                let places = places.get_or_insert_with(|| now.roots.iter().enumerate().map(|(at, here)| (Arc::as_ptr(here), at)).collect());
+                places.get(&Arc::as_ptr(kept)).copied()
+            };
+            from.and_then(|at| have.get_mut(at)).and_then(Option::take).unwrap_or_else(|| Node::clone(kept))
+        };
+        self.doc.children = to.roots.iter().enumerate().map(&mut take).collect();
+        self.held = Some(to);
+    }
+
     fn after_history(&mut self) {
         self.needs_layout = true;
+        self.tracked = Tracked::All;
         let doc = &self.doc;
         // A layer inside an instance stays selected while its instance is still there.
         self.selection.retain(|id| edit::find(doc, id).is_some() || edit::owner(doc, id).is_some());
@@ -510,23 +749,38 @@ impl Editor {
         // window draws whichever document's tab is in front, and tells by these numbers what it has drawn.
         self.generation = next_number();
         let theme = self.root_theme();
-        let Some(changed) = self.changed_roots(&theme) else {
+        self.laid.rebuilt.clear();
+        if let Tracked::Layers(ids) = std::mem::take(&mut self.tracked)
+            && let Some(patched) = self.patch(&ids, &theme, measure)
+        {
+            self.route_wires();
+            #[cfg(debug_assertions)]
+            self.check_tracked(&patched, measure);
+            #[cfg(not(debug_assertions))]
+            drop(patched);
+            return;
+        }
+        let now = self.keep();
+        #[cfg(debug_assertions)]
+        {
+            self.checked = Some(now.clone());
+        }
+        let Some(changed) = self.changed_roots(&theme, &now) else {
             self.scene = self.laid_out(measure);
             self.places = Places::of(&self.scene);
             let laid = &mut self.laid;
-            let mut rest = self.doc.clone();
-            laid.nodes = std::mem::take(&mut rest.children);
-            (laid.rest, laid.theme, laid.all) = (Some(rest), theme, false);
+            (laid.nodes, laid.rest, laid.theme, laid.all) = (now.roots, Some(now.rest), theme, false);
             laid.stamps = self.scene.iter().map(|_| next_number()).collect();
-            laid.shows = laid.nodes.iter().map(shown_by).collect();
+            laid.shows = laid.nodes.iter().map(|node| shown_by(node)).collect();
             laid.wired = self.scene.iter().map(pen_doc::connector::has_connector).collect();
+            laid.loose = vec![false; laid.nodes.len()];
             return;
         };
         let vars = Vars::new(&self.doc);
         let mut built = scene::build_some(&self.doc, &theme, &changed);
         layout::layout_roots(&mut built, vars, measure);
         for (at, root) in changed.iter().copied().zip(built) {
-            let (Some(node), Some(place)) = (self.doc.children.get(at), self.scene.get_mut(at)) else { continue };
+            let (Some(node), Some(place)) = (now.roots.get(at), self.scene.get_mut(at)) else { continue };
             self.laid.wired[at] = pen_doc::connector::has_connector(&root);
             self.places.remove(place, at);
             self.places.add(&root, at);
@@ -534,7 +788,14 @@ impl Editor {
             self.laid.nodes[at] = node.clone();
             self.laid.shows[at] = shown_by(node);
             self.laid.stamps[at] = next_number();
+            self.laid.loose[at] = false;
         }
+        self.route_wires();
+    }
+
+    /// What every way of building part of the scene again ends with: the map of where its nodes lie is put
+    /// right, and the connectors are routed.
+    fn route_wires(&mut self) {
         // Human: an id that is there twice is found where it comes first in the whole scene, which the map
         // only keeps to when it is built whole.
         if self.places.doubled {
@@ -543,11 +804,161 @@ impl Editor {
         // Human: a connector follows layers that may lie in another top-level node, so every one is routed
         // again, and every top-level node with a connector in it counts as changed.
         if self.laid.wired.contains(&true) {
-            pen_doc::connector::route(&mut self.scene, vars);
+            pen_doc::connector::route(&mut self.scene, Vars::new(&self.doc));
             for (stamp, _) in self.laid.stamps.iter_mut().zip(&self.laid.wired).filter(|(_, wired)| **wired) {
                 *stamp = next_number();
             }
         }
+    }
+
+    /// Builds again only what lies in the layers `ids`, which is all that changed since the scene was built,
+    /// and gives the places of the top-level nodes they lie in; `None`, with the scene as it was, when
+    /// that can't be done and the document has to be compared instead.
+    // Human: each layer is built again by itself where its box is its own affair. Where it is not (it lies
+    // in a group, or takes part in a layout that places it and may take its size from it), the layer it
+    // lies in is built again instead, and so on upwards; a layout thus follows a drag inside it.
+    // Human: it can't be done when the scene is to be built whole anyway, when a layer isn't found where
+    // the scene has it (it is new, or layers changed places), when the layer to build again would be a
+    // top-level node (those are compared, as before), or when it holds a component or anything an instance
+    // shows, or lies in one: the instances have to follow.
+    // Agent: what can't be done is found before anything is written, so `None` leaves the scene as it was. (A
+    // top-level node that was written to all the same is marked `loose`, and the comparison builds it again.)
+    fn patch(&mut self, ids: &[String], theme: &pen_doc::vars::ThemeContext, measure: &Measure<'_>) -> Option<Vec<usize>> {
+        let laid = &self.laid;
+        let count = self.doc.children.len();
+        if laid.all
+            || laid.theme != *theme
+            || self.places.doubled
+            || [laid.nodes.len(), laid.stamps.len(), laid.shows.len(), laid.wired.len(), laid.loose.len(), self.scene.len()] != [count; 6]
+        {
+            return None;
+        }
+        let vars = Vars::new(&self.doc);
+        let shown: HashSet<&str> = laid.shows.iter().flatten().map(String::as_str).collect();
+        let mut paths: Vec<Vec<u32>> = Vec::new();
+        for id in ids {
+            let path = self.places.at.get(id)?;
+            let (doc_nodes, scene_nodes) = Self::along(&self.doc, &self.scene, path)?;
+            // What an instance that is new in the layer shows counts too.
+            let new = *doc_nodes.last()?;
+            let new_shows = shown_by(new);
+            let known: HashSet<&str> = shown.iter().copied().chain(new_shows.iter().map(String::as_str)).collect();
+            // The layers it lies in: none may be a component or shown by an instance.
+            let (_, above) = doc_nodes.split_last()?;
+            if above.iter().any(|node| node.reusable == Some(true) || known.contains(node.id.as_str())) {
+                return None;
+            }
+            // How far up the layer to build again lies: as far as its box is not its own affair.
+            let mut depth = doc_nodes.len() - 1;
+            loop {
+                if depth == 0 {
+                    return None;
+                }
+                let (parent, was, is) = (scene_nodes[depth - 1], scene_nodes[depth], doc_nodes[depth]);
+                let theme_now = parent.theme.with(is.theme.as_ref());
+                if layout::stands_alone(parent, &was.node, &was.theme, vars) && layout::stands_alone(parent, is, &theme_now, vars) {
+                    break;
+                }
+                depth -= 1;
+            }
+            let (was, is) = (scene_nodes[depth], doc_nodes[depth]);
+            let mut held = false;
+            was.walk(&mut |node, _| held |= node.node.reusable == Some(true) || node.doc_id.as_deref().is_some_and(|id| known.contains(id)), 0);
+            if held || holds_shown(is, &known) {
+                return None;
+            }
+            paths.push(path.get(..=depth)?.to_vec());
+        }
+        // A layer that lies in another one built again comes with it.
+        paths.sort();
+        paths.dedup_by(|path, before| path.starts_with(before));
+        let mut patched: Vec<usize> = Vec::new();
+        for path in &paths {
+            let (at, above) = (usize::try_from(*path.first()?).ok()?, path.get(..path.len() - 1)?);
+            let (doc_nodes, _) = Self::along(&self.doc, &self.scene, path)?;
+            let parent = Places::follow(&self.scene, above)?;
+            let mut built = scene::build_node(&self.doc, doc_nodes.last()?, &parent.theme);
+            layout::layout_within(&mut built, &parent.to_doc, vars, measure);
+            let instances = !shown_by(doc_nodes.last()?).is_empty();
+            let place = Places::follow_mut(&mut self.scene, path)?;
+            let had_instances = {
+                let mut any = false;
+                place.walk(&mut |node, _| any |= node.node.kind == Kind::Ref, 0);
+                any
+            };
+            self.places.remove_at(place, path);
+            self.places.add_at(&built, path);
+            self.laid.wired[at] |= pen_doc::connector::has_connector(&built);
+            *place = built;
+            if instances || had_instances {
+                self.laid.shows[at] = self.doc.children.get(at).map(shown_by).unwrap_or_default();
+            }
+            let from = std::mem::replace(&mut self.laid.stamps[at], next_number());
+            let to = self.laid.stamps[at];
+            self.laid.loose[at] = true;
+            match self.laid.rebuilt.iter_mut().find(|some| some.root == at) {
+                Some(some) => {
+                    some.to = to;
+                    some.paths.push(path.clone());
+                }
+                None => self.laid.rebuilt.push(Rebuilt { root: at, from, to, paths: vec![path.clone()] }),
+            }
+            if !patched.contains(&at) {
+                patched.push(at);
+            }
+        }
+        Some(patched)
+    }
+
+    /// The nodes of `doc` and of `scene` that `path` (a place in the scene) leads through, from the top-level
+    /// node to the one it ends at; `None` when the document doesn't have the same nodes there.
+    // Human: inside an instance the scene has the component's layers, which are no nodes of the document;
+    // no path leads through one for this.
+    fn along<'a>(doc: &'a Document, scene: &'a [SceneNode], path: &[u32]) -> Option<(Vec<&'a Node>, Vec<&'a SceneNode>)> {
+        let (mut doc_nodes, mut scene_nodes) = (Vec::with_capacity(path.len()), Vec::with_capacity(path.len()));
+        let (mut kids, mut children): (&[Node], &[SceneNode]) = (&doc.children, scene);
+        for (step, index) in path.iter().enumerate() {
+            let index = usize::try_from(*index).ok()?;
+            let (node, scene_node) = (kids.get(index)?, children.get(index)?);
+            let last = step + 1 == path.len();
+            if scene_node.doc_id.as_deref() != Some(node.id.as_str())
+                || (!last && (node.kind == Kind::Ref || node.kids().len() != scene_node.children.len()))
+            {
+                return None;
+            }
+            doc_nodes.push(node);
+            scene_nodes.push(scene_node);
+            (kids, children) = (node.kids(), &scene_node.children);
+        }
+        Some((doc_nodes, scene_nodes))
+    }
+
+    /// Checks what was tracked against a comparison of the whole document: every top-level node that
+    /// changed since the scene was last brought up to date must be among `patched`, and nothing else of the
+    /// document may have changed. In tests the scene must also be what building it whole gives.
+    // Human: an edit that says it changed one layer and changed another would leave that other one on the
+    // canvas as it was. A debug build stops at such an edit, where it is found at once.
+    #[cfg(debug_assertions)]
+    fn check_tracked(&mut self, patched: &[usize], measure: &Measure<'_>) {
+        let now = Kept::sharing(&self.doc, self.checked.as_ref());
+        if let Some(was) = &self.checked {
+            debug_assert!(Arc::ptr_eq(&was.rest, &now.rest), "a tracked edit changed the document's variables, themes or imports");
+            debug_assert_eq!(was.roots.len(), now.roots.len(), "a tracked edit added or removed a top-level node");
+            for (at, (before, after)) in was.roots.iter().zip(&now.roots).enumerate() {
+                debug_assert!(Arc::ptr_eq(before, after) || patched.contains(&at), "a tracked edit changed {} without saying so", after.id);
+            }
+        }
+        self.checked = Some(now);
+        if cfg!(test) {
+            debug_assert!(self.scene == self.laid_out(measure), "the scene built in part is not the scene built whole");
+        }
+    }
+
+    /// The top-level nodes of which only some layers were built again when the scene was last brought up to
+    /// date; of every other node whose stamp is another one, everything was.
+    #[must_use]
+    pub fn rebuilt(&self) -> &[Rebuilt] {
+        &self.laid.rebuilt
     }
 
     /// A number for each top-level node of [`Editor::scene`] that is another one each time that node is built
@@ -562,27 +973,27 @@ impl Editor {
     // Human: everything is built again when what all nodes share changed (variables, themes, the theme
     // chosen, the fonts), when top-level nodes came, went or changed places, and when a changed node holds
     // a component or anything else an instance somewhere shows: that instance has to follow.
-    fn changed_roots(&mut self, theme: &pen_doc::vars::ThemeContext) -> Option<Vec<usize>> {
+    // Agent: `now` is the document as it is ([`Editor::keep`]). A node that is as it was is the same `Arc`
+    // in `now` as in what was laid out; one that is not the same `Arc` counts as changed, which at worst
+    // builds a node again that didn't need it.
+    fn changed_roots(&self, theme: &pen_doc::vars::ThemeContext, now: &Kept) -> Option<Vec<usize>> {
         let laid = &self.laid;
-        let count = self.doc.children.len();
+        let count = now.roots.len();
         if laid.all
             || laid.theme != *theme
-            || [laid.nodes.len(), laid.stamps.len(), laid.shows.len(), laid.wired.len(), self.scene.len()] != [count; 5]
+            || [laid.nodes.len(), laid.stamps.len(), laid.shows.len(), laid.wired.len(), laid.loose.len(), self.scene.len()] != [count; 6]
+            || !laid.rest.as_ref().is_some_and(|rest| Arc::ptr_eq(rest, &now.rest))
         {
             return None;
         }
-        // The document is compared without its children, which are compared one by one below.
-        let children = std::mem::take(&mut self.doc.children);
-        let same_rest = self.laid.rest.as_ref() == Some(&self.doc);
-        self.doc.children = children;
-        if !same_rest {
-            return None;
-        }
-        let laid = &self.laid;
-        let changed: Vec<usize> = (0..count).filter(|at| laid.nodes.get(*at) != self.doc.children.get(*at)).collect();
+        let changed: Vec<usize> = (0..count)
+            .filter(|at| {
+                laid.loose.get(*at) != Some(&false) || !laid.nodes.get(*at).zip(now.roots.get(*at)).is_some_and(|(was, is)| Arc::ptr_eq(was, is))
+            })
+            .collect();
         let shown: HashSet<&str> = laid.shows.iter().flatten().map(String::as_str).collect();
         for at in &changed {
-            let (Some(was), Some(is)) = (laid.nodes.get(*at), self.doc.children.get(*at)) else { return None };
+            let (Some(was), Some(is)) = (laid.nodes.get(*at), now.roots.get(*at)) else { return None };
             if was.id != is.id || holds_shown(was, &shown) || holds_shown(is, &shown) {
                 return None;
             }
@@ -609,6 +1020,7 @@ impl Editor {
     pub fn relayout(&mut self) {
         self.needs_layout = true;
         self.laid.all = true;
+        self.tracked = Tracked::All;
     }
 
     /// The laid-out scene node for an id: a document node's id, or `instance/inner` for a node inside an instance.
@@ -698,6 +1110,8 @@ impl Editor {
     /// `url`s, so stepping back doesn't bring an old one back.
     // Human: not an undo step and not a change to save: it is done while saving, to say where a picture lies now.
     pub fn repicture(&mut self, new: &mut dyn FnMut(&str) -> Option<String>) {
+        // The copy of the document as it is before anything is written: it is written like undo's copies below.
+        self.held = Some(self.kept());
         let mut moved: std::collections::HashMap<String, Option<String>> = std::collections::HashMap::new();
         image_urls(&mut self.doc, &mut |url| {
             if let Some(to) = moved.entry(url.clone()).or_insert_with(|| new(url)) {
@@ -707,14 +1121,27 @@ impl Editor {
         if moved.values().all(Option::is_none) {
             return;
         }
-        for (past, _) in self.undo.iter_mut().chain(&mut self.redo) {
-            image_urls(past, &mut |url| {
-                if let Some(Some(to)) = moved.get(url.as_str()) {
-                    url.clone_from(to);
-                }
+        // Human: the copies undo keeps share their nodes, and must go on sharing them: a node is written
+        // anew once, and every copy that held the old one gets that new one. The copy of the document as
+        // it is now is among them, so the next step shares with these.
+        // Agent: `done` holds each old node until the end, so no other node can take its address meanwhile.
+        let mut done: HashMap<*const Node, (Arc<Node>, Arc<Node>)> = HashMap::new();
+        let copies = self.undo.iter_mut().chain(&mut self.redo).map(|(past, _)| past).chain(&mut self.held);
+        for root in copies.flat_map(|past| &mut past.roots) {
+            let (_, new) = done.entry(Arc::as_ptr(root)).or_insert_with(|| {
+                let (mut written, mut any) = (Node::clone(root), false);
+                node_image_urls(&mut written, &mut |url| {
+                    if let Some(Some(to)) = moved.get(url.as_str()) {
+                        url.clone_from(to);
+                        any = true;
+                    }
+                });
+                (root.clone(), if any { Arc::new(written) } else { root.clone() })
             });
+            *root = new.clone();
         }
         self.needs_layout = true;
+        self.tracked = Tracked::All;
     }
 
     /// Writes the document to its file, crash-safely: a `.quill` file with the files the document names. Stamps it as Quill's first ([`pen_doc::stamp`]). Gives a sentence for what the user
@@ -831,6 +1258,13 @@ fn newer_than_this(doc: &Document, layout: Option<u64>, later: bool) -> Option<S
 // Human: fills and strokes are read as paints; an instance's overrides are kept as plain JSON, so every
 // object in them that is an image paint counts.
 fn image_urls(doc: &mut Document, visit: &mut dyn FnMut(&mut String)) {
+    for top in &mut doc.children {
+        node_image_urls(top, visit);
+    }
+}
+
+/// [`image_urls`] for one node and everything in it.
+fn node_image_urls(node: &mut Node, visit: &mut dyn FnMut(&mut String)) {
     use pen_doc::model::{Paint, Paints};
     fn in_paint(object: &mut Map<String, Value>, visit: &mut dyn FnMut(&mut String)) {
         if object.get("type").and_then(Value::as_str) == Some("image")
@@ -871,14 +1305,300 @@ fn image_urls(doc: &mut Document, visit: &mut dyn FnMut(&mut String)) {
             in_node(child, visit);
         }
     }
-    for top in &mut doc.children {
-        in_node(top, visit);
-    }
+    in_node(node, visit);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A design to build in part: a board without a layout that holds a rectangle, a text, a frame in a frame,
+    /// a row with a layout that is as wide as its children, and a group; and a board that is a layout itself.
+    fn parts_editor() -> Editor {
+        let json = r##"{"version":"2.22","children":[
+            {"type":"frame","id":"plain","x":0,"y":0,"width":800,"height":600,"layout":"none","children":[
+                {"type":"rectangle","id":"a","x":10,"y":10,"width":40,"height":20,"fill":"#ff0000"},
+                {"type":"text","id":"t","x":10,"y":50,"content":"Hello","fontSize":16},
+                {"type":"frame","id":"outer","x":100,"y":100,"width":300,"height":200,"layout":"none","children":[
+                    {"type":"frame","id":"inner","x":10,"y":10,"width":100,"height":100,"layout":"none","children":[
+                        {"type":"rectangle","id":"deep","x":5,"y":5,"width":20,"height":20,"fill":"#00ff00"}]}]},
+                {"type":"frame","id":"row","x":10,"y":400,"layout":"horizontal","gap":8,"padding":4,"children":[
+                    {"type":"rectangle","id":"r1","width":30,"height":30,"fill":"#0000ff"},
+                    {"type":"rectangle","id":"r2","width":"fill_container","height":30,"fill":"#0000ff"},
+                    {"type":"rectangle","id":"float","layoutPosition":"absolute","x":2,"y":2,"width":5,"height":5}]},
+                {"type":"group","id":"grp","x":500,"y":100,"children":[
+                    {"type":"rectangle","id":"g1","x":0,"y":0,"width":30,"height":30,"fill":"#333333"},
+                    {"type":"rectangle","id":"g2","x":50,"y":50,"width":30,"height":30,"fill":"#333333"}]}]},
+            {"type":"frame","id":"flow","x":900,"y":0,"layout":"vertical","gap":10,"children":[
+                {"type":"rectangle","id":"f1","width":100,"height":40,"fill":"#ff00ff"},
+                {"type":"rectangle","id":"f2","width":100,"height":40,"fill":"#ff00ff"}]}
+        ]}"##;
+        let mut editor = Editor::new(pen_doc::read(json).unwrap(), None, 1);
+        editor.refresh(&measure);
+        editor
+    }
+
+    /// Changes the layers `ids` with `change`, saying that only they change, and brings the scene up to date.
+    /// Gives whether the scene was built in part: the first top-level node is then marked as no longer what
+    /// was last compared. (That the scene is what building it whole gives is checked by the refresh itself.)
+    fn tracked(editor: &mut Editor, ids: &[&str], change: &dyn Fn(&mut Node)) -> bool {
+        // A comparison first, so the mark is this change's.
+        editor.touched();
+        editor.refresh(&measure);
+        let ids: Vec<String> = ids.iter().map(|id| (*id).to_owned()).collect();
+        editor.touched_only(&ids);
+        for id in &ids {
+            assert!(editor.change(id, change));
+        }
+        let stamps = editor.stamps().to_vec();
+        editor.refresh(&measure);
+        assert_eq!(editor.scene, editor.laid_out(&measure));
+        let built = editor.laid.loose.contains(&true);
+        // What was built in part has another stamp, so the canvas draws it anew; nothing else has.
+        assert_eq!(built, editor.laid.loose.iter().zip(stamps.iter().zip(editor.stamps())).all(|(loose, (was, is))| *loose == (was != is)));
+        built
+    }
+
+    fn at_x(x: u32) -> impl Fn(&mut Node) {
+        move |node| node.x = Some(x.into())
+    }
+
+    #[test]
+    fn a_layer_whose_box_is_its_own_affair_is_built_again_by_itself() {
+        let mut editor = parts_editor();
+        // A layer of a frame without a layout, a layer deep in such frames, and a text.
+        assert!(tracked(&mut editor, &["a"], &at_x(77)));
+        assert!((editor.scene_node("a").unwrap().local.x - 77.0).abs() < 1e-6);
+        assert!(tracked(&mut editor, &["deep"], &at_x(33)));
+        assert!((layout::doc_bounds(editor.scene_node("deep").unwrap()).x - 143.0).abs() < 1e-6);
+        assert!(tracked(&mut editor, &["t"], &|node| node.content = Some("Hello there".to_owned())));
+        // Several at once, one of them inside another: the outer one brings the inner one along.
+        assert!(tracked(&mut editor, &["deep", "inner", "a"], &at_x(12)));
+        // A layer that keeps out of the layout it lies in.
+        assert!(tracked(&mut editor, &["float"], &at_x(9)));
+        // The other board was never built again.
+        assert_eq!(editor.laid.loose, [true, false]);
+    }
+
+    #[test]
+    fn a_layout_and_a_group_follow_a_layer_that_changes_in_them() {
+        let mut editor = parts_editor();
+        let width = |editor: &Editor, id: &str| editor.scene_node(id).unwrap().local.w;
+        // The row is as wide as its children: it is built again, and it alone, since the board has no layout.
+        let before = width(&editor, "row");
+        assert!(tracked(&mut editor, &["r1"], &|node| node.width = Some(pen_doc::value::Num::new(90.0))));
+        assert!((width(&editor, "row") - before - 60.0).abs() < 1e-4);
+        // A group is as big as what is in it.
+        assert!(tracked(&mut editor, &["g2"], &at_x(200)));
+        assert!((width(&editor, "grp") - 230.0).abs() < 1e-4);
+        // A board that is a layout itself is a top-level node: those are compared, as before.
+        assert!(!tracked(&mut editor, &["f1"], &|node| node.height = Some(pen_doc::value::Num::new(80.0))));
+        assert!((editor.scene_node("f2").unwrap().local.y - 90.0).abs() < 1e-4);
+        // A layer that goes into a layout, or comes out of it, moves the others: the layout is built again.
+        assert!(tracked(&mut editor, &["float"], &|node| node.layout_position = None));
+        assert!(tracked(&mut editor, &["float"], &|node| node.layout_position = Some("absolute".to_owned())));
+    }
+
+    #[test]
+    fn layers_that_come_and_go_are_a_change_to_the_layer_they_lie_in() {
+        let mut editor = parts_editor();
+        editor.touched_only(&["inner".to_owned()]);
+        let mut new = edit::find(&editor.doc, "deep").unwrap().clone();
+        new.id = "new".to_owned();
+        assert!(edit::insert(&mut editor.doc, Some("inner"), 0, new));
+        editor.refresh(&measure);
+        assert!(editor.laid.loose[0] && editor.scene_node("new").is_some() && editor.scene_parent("deep").unwrap().id == "inner");
+        editor.touched_only(&["inner".to_owned()]);
+        assert!(edit::remove(&mut editor.doc, "deep").is_some());
+        editor.refresh(&measure);
+        assert!(editor.scene_node("deep").is_none() && editor.scene_node("new").is_some());
+        // A layer the scene doesn't know yet is found by comparing.
+        editor.touched_only(&["nowhere".to_owned()]);
+        editor.refresh(&measure);
+        assert_eq!(editor.scene, editor.laid_out(&measure));
+    }
+
+    #[test]
+    fn a_comparison_after_parts_were_built_sees_what_they_left() {
+        let mut editor = parts_editor();
+        let first = editor.doc.clone();
+        assert!(tracked(&mut editor, &["a"], &at_x(77)));
+        // Back to the document that was last compared, without saying where: it is as it was then, and the
+        // scene, which is not, has to follow all the same.
+        editor.touched();
+        editor.doc = first;
+        editor.refresh(&measure);
+        assert_eq!(editor.scene, editor.laid_out(&measure));
+        assert!((editor.scene_node("a").unwrap().local.x - 10.0).abs() < 1e-6 && editor.laid.loose == [false, false]);
+        // Undo and redo, which say nothing either.
+        editor.checkpoint();
+        assert!(tracked(&mut editor, &["deep"], &at_x(40)));
+        editor.undo();
+        editor.refresh(&measure);
+        assert_eq!(editor.scene, editor.laid_out(&measure));
+        editor.redo();
+        editor.refresh(&measure);
+        assert_eq!(editor.scene, editor.laid_out(&measure));
+        assert!((editor.scene_node("deep").unwrap().local.x - 40.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn instances_are_built_in_part_and_components_bring_their_instances_along() {
+        let mut editor = editor();
+        // An instance is a layer like another; the connector on the next board is still routed.
+        editor.touched_layer("one");
+        assert!(editor.change("one", &at_x(60)));
+        editor.refresh(&measure);
+        assert!(editor.laid.loose[1] && (editor.scene_node("one").unwrap().local.x - 60.0).abs() < 1e-6);
+        // The layer a connector starts at: the connector follows it into the other board.
+        editor.touched_layer("from");
+        assert!(editor.change("from", &at_x(150)));
+        let wire = editor.scene_node("wire").unwrap().clone();
+        editor.refresh(&measure);
+        assert_ne!(*editor.scene_node("wire").unwrap(), wire);
+        // A component is shown elsewhere: everything is built, and the instance has its new width.
+        editor.touched_layer("chip");
+        assert!(editor.change("chip", &|node| node.width = Some(pen_doc::value::Num::new(64.0))));
+        editor.refresh(&measure);
+        assert!((editor.scene_node("one").unwrap().local.w - 64.0).abs() < 1e-6);
+        assert_eq!(editor.laid.loose, [false; 4]);
+        assert_eq!(editor.scene, editor.laid_out(&measure));
+    }
+
+    #[test]
+    #[should_panic(expected = "without saying so")]
+    fn a_change_that_is_not_where_it_was_said_to_be_is_caught() {
+        let mut editor = parts_editor();
+        editor.touched_only(&["a".to_owned()]);
+        assert!(editor.change("f1", &at_x(5)));
+        editor.refresh(&measure);
+    }
+
+    #[test]
+    #[should_panic(expected = "not the scene built whole")]
+    fn a_change_beside_the_layer_it_was_said_to_be_in_is_caught() {
+        let mut editor = parts_editor();
+        editor.touched_only(&["a".to_owned()]);
+        assert!(editor.change("t", &at_x(5)));
+        editor.refresh(&measure);
+    }
+
+    #[test]
+    fn a_step_back_holds_only_the_top_level_nodes_that_changed() {
+        let mut editor = editor();
+        let first = editor.doc.clone();
+        // Three edits of one layer on one board: each step holds that board anew, the other three once.
+        for x in [11, 12, 13] {
+            editor.checkpoint();
+            assert!(editor.change("word", &|node| node.x = Some(x.into())));
+            editor.refresh(&measure);
+        }
+        assert_eq!(editor.history_holds().0, 4 + 2);
+        let shared = |a: &Kept, b: &Kept| a.roots.iter().zip(&b.roots).filter(|(a, b)| Arc::ptr_eq(a, b)).count();
+        assert_eq!(shared(&editor.undo[0].0, &editor.undo[1].0), 3);
+        assert!(Arc::ptr_eq(&editor.undo[0].0.rest, &editor.undo[2].0.rest));
+        // What the scene was laid out from is those same nodes, not copies of its own.
+        let now = editor.kept();
+        assert_eq!(shared(&now, &editor.undo[2].0), 3);
+        assert!(editor.laid.nodes.iter().zip(&now.roots).all(|(laid, now)| Arc::ptr_eq(laid, now)));
+        // Each step back and forward is the document as it was then.
+        let last = editor.doc.clone();
+        editor.undo();
+        assert_eq!(edit::find(&editor.doc, "word").and_then(|node| node.x.clone()), Some(12.into()));
+        editor.undo();
+        editor.undo();
+        assert_eq!(editor.doc, first);
+        editor.undo();
+        assert_eq!(editor.doc, first);
+        for _ in 0..3 {
+            editor.redo();
+        }
+        assert_eq!(editor.doc, last);
+        editor.redo();
+        assert_eq!(editor.doc, last);
+        // A copy as a document of its own is the document.
+        assert_eq!(editor.kept().document(), last);
+        assert_eq!(Kept::sharing(&last, None).document(), last);
+    }
+
+    #[test]
+    fn steps_back_follow_top_level_nodes_that_come_go_and_change_places() {
+        let mut editor = editor();
+        let mut states = vec![editor.doc.clone()];
+        let mut step = |editor: &mut Editor, change: &dyn Fn(&mut Document)| {
+            editor.checkpoint();
+            change(&mut editor.doc);
+            editor.refresh(&measure);
+            states.push(editor.doc.clone());
+        };
+        // A board goes, two change places, one comes in at the front, the variables change, a layer changes.
+        step(&mut editor, &|doc| drop(doc.children.remove(3)));
+        step(&mut editor, &|doc| doc.children.swap(0, 2));
+        step(&mut editor, &|doc| {
+            let mut new = doc.children[1].clone();
+            new.id = "new".to_owned();
+            new.children = None;
+            doc.children.insert(0, new);
+        });
+        step(&mut editor, &|doc| doc.variables = Some(serde_json::Map::new()));
+        step(&mut editor, &|doc| doc.children[2].x = Some(7.into()));
+        // A board that only changed its place is held once: by the step before and the step after.
+        let (before, after) = (&editor.undo[1].0, &editor.undo[2].0);
+        assert!(Arc::ptr_eq(&before.roots[0], &after.roots[2]) && Arc::ptr_eq(&before.roots[2], &after.roots[0]));
+        for state in states.iter().rev().skip(1) {
+            editor.undo();
+            assert_eq!(&editor.doc, state);
+            editor.refresh(&measure);
+            assert_eq!(editor.scene.len(), state.children.len());
+        }
+        for state in states.iter().skip(1) {
+            editor.redo();
+            assert_eq!(&editor.doc, state);
+        }
+    }
+
+    #[test]
+    fn no_more_steps_back_are_kept_than_the_limit() {
+        let mut editor = editor();
+        for x in 0..u32::try_from(UNDO_LIMIT).unwrap() + 5 {
+            editor.checkpoint();
+            editor.change("word", &|node| node.x = Some(x.into()));
+        }
+        assert_eq!(editor.undo.len(), UNDO_LIMIT);
+        // The oldest steps are the ones that went: the first one left is the document after five edits.
+        for _ in 0..UNDO_LIMIT {
+            editor.undo();
+        }
+        assert_eq!(edit::find(&editor.doc, "word").and_then(|node| node.x.clone()), Some(4.into()));
+    }
+
+    #[test]
+    fn a_picture_that_moved_is_written_into_every_step_and_the_steps_go_on_sharing() {
+        let json = r##"{"version":"2.22","children":[
+            {"type":"rectangle","id":"a","fill":{"type":"image","url":"./old.png"}},
+            {"type":"rectangle","id":"b","x":0,"fill":"#ff0000"}]}"##;
+        let mut editor = Editor::new(pen_doc::read(json).unwrap(), None, 1);
+        for x in [1, 2, 3] {
+            editor.checkpoint();
+            editor.change("b", &|node| node.x = Some(x.into()));
+        }
+        editor.undo();
+        editor.repicture(&mut |url| (url == "./old.png").then(|| "./new.png".to_owned()));
+        // The picture's layer is still held once, by every step and by the document's own copy.
+        assert_eq!(editor.history_holds().0, 1 + 3);
+        let held = editor.held.clone().unwrap();
+        assert!(editor.undo.iter().chain(&editor.redo).all(|(past, _)| Arc::ptr_eq(&past.roots[0], &held.roots[0])));
+        let url = |doc: &Document| serde_json::to_value(&doc.children[0]).unwrap()["fill"]["url"].clone();
+        assert_eq!(url(&editor.doc), "./new.png");
+        for _ in 0..2 {
+            editor.undo();
+            assert_eq!(url(&editor.doc), "./new.png");
+        }
+        for _ in 0..3 {
+            editor.redo();
+            assert_eq!(url(&editor.doc), "./new.png");
+        }
+    }
 
     /// A design of three boards: one holds a component, one an instance of it, and one a plain rectangle with
     /// a connector to a rectangle on the board before it.

@@ -224,3 +224,180 @@ fn timing_36_text_on_the_canvas() {
     });
     println!("36 job and egui's own kept galley, one text: {asked:.0} ns (of which the job with its face chosen anew, above)");
 }
+
+/// The canvas with the camera at `center` and `zoom`, built and at rest.
+fn looking_at(ctx: &egui::Context, canvas: &mut Canvas, editor: &mut Editor, center: (f32, f32), zoom: f32) {
+    frame(ctx, |ui| canvas.show(ui, editor, false));
+    editor.camera = crate::editor::Camera { center: pen_doc::geom::Point::new(center.0, center.1), zoom };
+    for _ in 0..20 {
+        settle(ctx, canvas, editor);
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// A design of shapes with many corners each: forty boards of rounded, outlined cards and circles, 9,640 layers.
+// Human: the large design is rectangles of four corners, which cost next to nothing to copy. A real design
+// is round corners, outlines, circles and icons, and those are what moving meshes to the screen costs.
+fn round_design() -> String {
+    let mut json = String::from(r#"{"version":"2.22","children":["#);
+    for board in 0..BOARDS {
+        let (x, y) = ((board % 8) * 1500, (board / 8) * 1100);
+        write!(
+            json,
+            r##"{{"type":"frame","id":"b{board}","x":{x},"y":{y},"width":1400,"height":1000,"layout":"none","fill":"#ffffff","cornerRadius":40,"children":["##
+        )
+        .unwrap();
+        for layer in 0..240 {
+            let (lx, ly) = ((layer % 20) * 68 + 20, (layer / 20) * 80 + 20);
+            let id = format!("r{board}_{layer}");
+            if layer % 2 == 0 {
+                write!(json, r##"{{"type":"rectangle","id":"{id}","x":{lx},"y":{ly},"width":60,"height":70,"cornerRadius":16,"fill":"#3b82f6","stroke":{{"thickness":2,"fill":"#1e3a8a"}}}}"##).unwrap();
+            } else {
+                write!(json, r##"{{"type":"ellipse","id":"{id}","x":{lx},"y":{ly},"width":60,"height":60,"fill":"#f59e0b","stroke":{{"thickness":2,"fill":"#78350f"}}}}"##).unwrap();
+            }
+            json.push(if layer + 1 < 240 { ',' } else { ']' });
+        }
+        json.push('}');
+        json.push(if board + 1 < BOARDS { ',' } else { ']' });
+    }
+    json.push('}');
+    json
+}
+
+/// How many meshes one frame of the canvas hands to egui, and the corners they have between them.
+fn meshes_drawn(ctx: &egui::Context, canvas: &mut Canvas, editor: &mut Editor) -> (usize, usize) {
+    fn meshes(shape: &egui::Shape) -> (usize, usize) {
+        match shape {
+            egui::Shape::Mesh(mesh) => (1, mesh.vertices.len()),
+            egui::Shape::Vec(shapes) => shapes.iter().map(meshes).fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1)),
+            _ => (0, 0),
+        }
+    }
+    let input = egui::RawInput { screen_rect: Some(ScreenRect::from_min_size(Pos2::ZERO, WINDOW)), focused: true, ..Default::default() };
+    let drawn = ctx.run_ui(input, |ui| canvas.show(ui, editor, false));
+    drawn.shapes.iter().map(|clipped| meshes(&clipped.shape)).fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1))
+}
+
+#[test]
+#[ignore = "timing: prints frame times"]
+fn timing_40_frames_with_the_camera_still_and_moving() {
+    let ctx = egui::Context::default();
+    for (design, text) in [("rectangles and text", large_design()), ("round shapes", round_design())] {
+        let mut editor = Editor::new(pen_doc::read(&text).unwrap(), None, 1);
+        editor.refresh(&measure);
+        let mut canvas = Canvas::default();
+        for (name, center, zoom) in [("the whole design in view", (5950.0, 3250.0), 0.13), ("sixteen boards in view", (2950.0, 2150.0), 0.25)] {
+            looking_at(&ctx, &mut canvas, &mut editor, center, zoom);
+            let (meshes, corners) = meshes_drawn(&ctx, &mut canvas, &mut editor);
+            println!("40 {design}, {name}: {meshes} meshes with {corners} corners");
+            let still = median(&ctx, 10, 61, |ui| canvas.show(ui, &mut editor, false));
+            println!("40 {design}, {name}, camera still: {}", ms(still));
+            // A pan: the camera a little further each frame, within the part whose effects are baked.
+            let mut step = 0.0_f32;
+            let moving = median(&ctx, 10, 61, |ui| {
+                step += 1.0;
+                editor.camera.center.x = center.0 + (step % 20.0);
+                canvas.show(ui, &mut editor, false);
+            });
+            println!("40 {design}, {name}, camera moving: {}", ms(moving));
+            editor.camera.center.x = center.0;
+        }
+    }
+}
+
+/// How much memory this process holds at the moment, in megabytes, as `ps` tells it.
+fn held_mb() -> f64 {
+    let told = std::process::Command::new("ps").args(["-o", "rss=", "-p", &std::process::id().to_string()]).output().unwrap();
+    String::from_utf8_lossy(&told.stdout).trim().parse::<f64>().unwrap_or(0.0) / 1024.0
+}
+
+#[test]
+#[ignore = "timing: prints times and memory"]
+fn timing_41_a_hundred_undo_steps_on_a_large_design() {
+    let mut editor = editor();
+    let before = held_mb();
+    let mut steps = Duration::ZERO;
+    // A hundred edits, each of one layer, on five of the forty boards in turn.
+    for edit in 0..100_u16 {
+        let id = format!("l{}_{}_{}", edit % 5, edit % 10, (edit % 12) * 2);
+        let start = Instant::now();
+        editor.checkpoint();
+        steps += start.elapsed();
+        editor.change(&id, &|node| node.x = Some(serde_json::Number::from(edit)));
+        editor.refresh(&measure);
+    }
+    println!("41 memory for 100 undo steps on {} layers: {:.1} MB", count(&editor.doc.children), held_mb() - before);
+    println!("41 one checkpoint: {}", ms(steps / 100));
+    let (roots, layers) = editor.history_holds();
+    println!("41 the 100 steps hold {roots} top-level nodes with {layers} layers between them");
+    let start = Instant::now();
+    for _ in 0..100 {
+        editor.undo();
+    }
+    println!("41 one undo: {}", ms(start.elapsed() / 100));
+    let start = Instant::now();
+    for _ in 0..100 {
+        editor.redo();
+    }
+    println!("41 one redo: {}", ms(start.elapsed() / 100));
+    println!("41 memory with the 100 steps taken back and made again: {:.1} MB", held_mb() - before);
+}
+
+/// One artboard that holds everything: 440 groups of 24 rectangles and texts in one frame, 11,001 layers.
+fn one_board_design() -> String {
+    let mut json = String::from(
+        r##"{"version":"2.22","children":[{"type":"frame","id":"board","x":0,"y":0,"width":6000,"height":10000,"layout":"none","fill":"#ffffff","children":["##,
+    );
+    for group in 0..440 {
+        let (gx, gy) = ((group % 22) * 270 + 20, (group / 22) * 480 + 20);
+        write!(json, r#"{{"type":"frame","id":"g{group}","x":{gx},"y":{gy},"width":250,"height":460,"layout":"none","children":["#).unwrap();
+        for layer in 0..IN_GROUP {
+            let (lx, ly) = ((layer % 2) * 120 + 5, (layer / 2) * 36 + 5);
+            let id = format!("s{group}_{layer}");
+            if layer % 2 == 0 {
+                write!(json, r##"{{"type":"rectangle","id":"{id}","x":{lx},"y":{ly},"width":110,"height":30,"fill":"#3b82f6"}}"##).unwrap();
+            } else {
+                write!(json, r##"{{"type":"text","id":"{id}","x":{lx},"y":{ly},"content":"Layer {layer} of {group}","fontSize":16,"fontFamily":"Helvetica","fill":"#111111"}}"##).unwrap();
+            }
+            json.push(if layer + 1 < IN_GROUP { ',' } else { ']' });
+        }
+        json.push('}');
+        json.push(if group + 1 < 440 { ',' } else { ']' });
+    }
+    json.push_str("}]}");
+    json
+}
+
+#[test]
+#[ignore = "timing: prints frame times"]
+fn timing_42_dragging_one_layer_in_a_large_artboard() {
+    let ctx = egui::Context::default();
+    let mut editor = Editor::new(pen_doc::read(&one_board_design()).unwrap(), None, 1);
+    editor.refresh(&measure);
+    println!("42 layers: {}", count(&editor.doc.children));
+    let mut canvas = Canvas::default();
+    looking_at(&ctx, &mut canvas, &mut editor, (700.0, 500.0), 1.0);
+    editor.checkpoint();
+    // A drag: the layer a unit further each frame, the scene brought up to date, the canvas drawn. Once with
+    // the drag saying which layer it moves, once leaving it to be found by comparing the document.
+    for tracked in [true, false] {
+        let (mut edits, mut frames) = (Vec::new(), Vec::new());
+        for step in 0..60_u16 {
+            let start = Instant::now();
+            if tracked {
+                editor.touched_only(&["s25_4".to_owned()]);
+            } else {
+                editor.touched();
+            }
+            editor.change("s25_4", &|node| node.x = Some(serde_json::Number::from(step)));
+            editor.refresh(&measure);
+            edits.push(start.elapsed());
+            frames.push(frame(&ctx, |ui| canvas.show(ui, &mut editor, false)));
+        }
+        edits.sort();
+        frames.sort();
+        let how = if tracked { "the layer named" } else { "the document compared" };
+        println!("42 one drag step, {how}: the document and its scene brought up to date: {}", ms(edits[30]));
+        println!("42 one drag step, {how}: the canvas frame after it: {}", ms(frames[30]));
+    }
+}

@@ -208,7 +208,7 @@ impl Canvas {
             editor.activity.hidden(),
             stamp,
             // A stage of a model's change is a scene of its own, without stamps: it is built whole.
-            if stage.is_some() { &[] } else { editor.stamps() },
+            if stage.is_some() { (&[], &[]) } else { (editor.stamps(), editor.rebuilt()) },
         );
         self.list.draw(&painter, &editor.camera, view);
         // Human: a path being drawn becomes a layer when the tool changes (Escape goes back to Move) or with
@@ -481,7 +481,9 @@ impl Canvas {
                         }
                         _ => None,
                     };
-                    editor.touched();
+                    // Only the moved layers changed: in a large screen they alone are built again.
+                    let moved: Vec<String> = origins.iter().map(|(id, ..)| id.clone()).collect();
+                    editor.touched_only(&moved);
                 }
                 Some(Drag::Resize { id, handle, start, original, to_local, from_local, shown }) => {
                     let (mut dx, mut dy) = (at.x - start.x, at.y - start.y);
@@ -510,7 +512,7 @@ impl Canvas {
                     }
                     *turned = degrees;
                     editor.rotate_from(from, degrees);
-                    editor.touched();
+                    editor.touched_only(&from.layers());
                 }
                 Some(Drag::Radius { id, bounds, inward }) => {
                     // Human: the radius is how far the pointer is in from the corner, on the nearer axis, up to
@@ -520,7 +522,7 @@ impl Canvas {
                     let pulled = ((at.x - corner.x) * inward.0).min((at.y - corner.y) * inward.1);
                     let radius = pulled.clamp(0.0, bounds.w.min(bounds.h) / 2.0).round();
                     editor.change(id, &|node| node.corner_radius = (radius > 0.0).then(|| pen_doc::model::Corners::All(Num::new(radius))));
-                    editor.touched();
+                    editor.touched_layer(id);
                 }
                 Some(Drag::Scale { from, handle }) => {
                     let b = from.bounds;
@@ -947,7 +949,7 @@ impl Canvas {
             edit_response.request_focus();
         }
         if edit_response.changed() && editor.change(&id, &|node| node.content = Some(text.clone())) {
-            editor.touched();
+            editor.touched_layer(&id);
         }
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) || edit_response.lost_focus() {
             self.editing = None;
@@ -1773,7 +1775,7 @@ fn resize(editor: &mut Editor, id: &str, handle: Handle, original: Rect, pull: (
         let (px, py) = linear(from_local, r.x - original.x, r.y - original.y);
         set_position(node, sx + px, sy + py);
     }
-    editor.touched();
+    editor.touched_only(&[id.to_owned()]);
 }
 
 /// `p` on the pixel grid when `snap` (on by default), else `p` itself.

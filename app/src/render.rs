@@ -448,6 +448,68 @@ pub struct DisplayList {
     zooming: bool,
     /// Which letters the canvas has drawn at which sizes.
     warmth: Warmth,
+    /// The meshes as they were last drawn, in screen coordinates.
+    moved: std::cell::RefCell<Moved>,
+}
+
+/// The meshes of the last frame in screen coordinates, kept for the next one.
+// Human: most frames show the design where the frame before showed it (a chat animates, a cursor blinks).
+// Moving every mesh to the screen anew each time was most of such a frame, so the moved meshes are kept, one
+// per item, for as long as the camera and the canvas's place in the window stay as they are.
+// Human: while the camera moves (a pan, a zoom) every frame is another look, and meshes kept for it would be
+// thrown away with the next: measured, that made a panning frame half again as slow. So nothing is kept in
+// the first frame of a look, only from the second one on, when the look has shown that it stays.
+// Agent: a slot holds the mesh it was moved from too, and counts only while the item still has that very
+// mesh (a rebuilt item has another). An item that is not drawn in a frame gives its slot up, so no more is
+// kept than is on screen.
+#[derive(Default)]
+struct Moved {
+    /// The camera and view the slots were moved for.
+    seen: Option<(Camera, egui::Rect)>,
+    /// Whether this frame's meshes are kept: the look is the one of the frame before.
+    keeping: bool,
+    /// For each item of the list: the mesh it was moved from, and the moved one.
+    slots: Vec<Option<(std::sync::Arc<Mesh>, std::sync::Arc<Mesh>)>>,
+}
+
+impl Moved {
+    /// Starts a frame of a list of `len` items seen through `camera` in `view`: another look empties it.
+    fn begin(&mut self, camera: &Camera, view: egui::Rect, len: usize) {
+        self.keeping = self.seen == Some((*camera, view));
+        if !self.keeping {
+            self.slots.clear();
+            self.seen = Some((*camera, view));
+            return;
+        }
+        self.slots.resize_with(len, || None);
+    }
+
+    /// Item `at` is not drawn as a mesh in this frame.
+    fn skip(&mut self, at: usize) {
+        if let Some(slot) = self.slots.get_mut(at) {
+            *slot = None;
+        }
+    }
+
+    /// `mesh` (item `at`) in screen coordinates: the one kept, or made with `to_screen` and kept.
+    fn of(&mut self, at: usize, mesh: &std::sync::Arc<Mesh>, to_screen: impl Fn(Pos2) -> Pos2) -> std::sync::Arc<Mesh> {
+        if let Some(Some((from, there))) = self.slots.get(at)
+            && std::sync::Arc::ptr_eq(from, mesh)
+        {
+            return there.clone();
+        }
+        let mut there = Mesh::clone(mesh);
+        for v in &mut there.vertices {
+            v.pos = to_screen(v.pos);
+        }
+        let there = std::sync::Arc::new(there);
+        if self.keeping
+            && let Some(slot) = self.slots.get_mut(at)
+        {
+            *slot = Some((mesh.clone(), there.clone()));
+        }
+        there
+    }
 }
 
 /// What a build needs besides the scene: the design's pictures, and the pictures effects were baked into.
@@ -481,6 +543,66 @@ struct Part {
     reads: Option<Rect>,
     /// The part of the document its items paint on.
     extent: Option<Rect>,
+    /// Which of its items each layer in it brought, in the order the layers are built ([`Span`]).
+    spans: Vec<Span>,
+}
+
+/// The items one layer brought, with everything in it: a run of the items of its top-level node.
+// Human: a drag moves one layer of a screen with thousands. The screen's items are kept, and only the moved
+// layer's are made anew and put in the place of its old ones; for that the list has to know which they are.
+// Agent: the spans of a top-level node follow each other the way its layers are built: a layer, then each
+// layer in it with all of its own. `nodes` is how many spans a layer has with everything in it, so the next
+// layer beside it is that many further on. Only right for a layer none of whose parents gathers its
+// children's items to work on them ([`Builder::plain`]); for others it is never asked.
+#[derive(Clone, Copy)]
+struct Span {
+    /// Where its items begin and end, counted from the first item of its top-level node.
+    start: usize,
+    end: usize,
+    nodes: usize,
+    /// Whether it handed its children's items on as they were made ([`Builder::plain`]) when it was built.
+    plain: bool,
+}
+
+/// The spans of the layers a builder goes through, while it is asked to keep them.
+#[derive(Default)]
+struct Spans {
+    on: std::cell::Cell<bool>,
+    list: std::cell::RefCell<Vec<Span>>,
+}
+
+impl Spans {
+    /// A layer's items begin at item `at`; gives the layer's place among the spans.
+    fn begin(&self, at: usize) -> Option<usize> {
+        if !self.on.get() {
+            return None;
+        }
+        let mut list = self.list.borrow_mut();
+        list.push(Span { start: at, end: at, nodes: 1, plain: false });
+        Some(list.len() - 1)
+    }
+
+    /// The layer at `place` and everything in it ended before item `at`; `plain` says whether it handed its
+    /// children's items on as they were made.
+    fn end(&self, place: Option<usize>, at: usize, plain: bool) {
+        let mut list = self.list.borrow_mut();
+        let count = list.len();
+        if let Some(place) = place
+            && let Some(span) = list.get_mut(place)
+        {
+            (span.end, span.nodes, span.plain) = (at, count - place, plain);
+        }
+    }
+
+    /// Keeps spans from now on, and gives the ones kept so far, counted from item `from`.
+    fn take(&self, from: usize) -> Vec<Span> {
+        self.on.set(true);
+        let mut spans = std::mem::take(&mut *self.list.borrow_mut());
+        for span in &mut spans {
+            (span.start, span.end) = (span.start.saturating_sub(from), span.end.saturating_sub(from));
+        }
+        spans
+    }
 }
 
 /// What a build is made for.
@@ -530,10 +652,20 @@ struct Built {
     let_go: Vec<egui::TextureHandle>,
 }
 
+/// The list on screen as a walk takes it over: its items and parts, and the top-level nodes of which only
+/// some layers were built again since ([`crate::editor::Editor::rebuilt`]).
+#[derive(Default)]
+struct Taken<'a> {
+    items: Vec<Item>,
+    parts: Vec<Part>,
+    rebuilt: &'a [crate::editor::Rebuilt],
+}
+
 /// One walk through `scene`: its items, with the effects' pictures taken from `works` or started there, and
 /// which of them belong to which top-level node. `stamps` are the scene's (see [`DisplayList::update`]).
 /// With `kept` (the list on screen and its parts, built for the same order), a node whose stamp is the one
-/// its part was built at keeps that part's items, and only the others are built.
+/// its part was built at keeps that part's items, and only the others are built; of a node `rebuilt` names,
+/// only the layers it names are, where that can be done ([`Builder::rebuild`]).
 // Human: a kept part is still built again when it draws what is behind it (glass, a background blur) and
 // a node under it changed there, in what it painted before or in what it paints now.
 fn walk(
@@ -543,7 +675,7 @@ fn walk(
     ctx: &egui::Context,
     order: &Order,
     stop: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
-    kept: Option<(Vec<Item>, Vec<Part>)>,
+    kept: Option<Taken<'_>>,
 ) -> (Vec<Item>, Vec<Part>) {
     works.baked.begin_within(order.cover, stop);
     let builder = Builder {
@@ -558,9 +690,10 @@ fn walk(
         merged: std::cell::Cell::new(false),
         hidden: Some(&order.hidden),
         reads: std::cell::Cell::new(None),
+        spans: Spans::default(),
     };
     let taking_over = kept.is_some();
-    let (was, had) = kept.unwrap_or_default();
+    let Taken { items: was, parts: had, rebuilt } = kept.unwrap_or_default();
     let mut was = was.into_iter();
     let (mut items, mut parts) = (Vec::new(), Vec::with_capacity(scene.len()));
     // Where the nodes built again painted before and paint now.
@@ -574,16 +707,30 @@ fn walk(
             parts.push(part.clone());
             continue;
         }
+        let start = items.len();
         if let Some(part) = part {
-            was.by_ref().take(part.len).for_each(drop);
+            let mut old: Vec<Item> = was.by_ref().take(part.len).collect();
+            // Human: only some layers of the node were built again (a drag, a number being pulled): their
+            // items are made anew and take the place of their old ones; the node's other items stay.
+            let paths = rebuilt.iter().find(|some| some.root == at && some.from == part.stamp && some.to == stamp).map(|some| &some.paths);
+            if let Some(paths) = paths
+                && let Some((spans, reads, touched)) = builder.rebuild(node, part, &mut old, paths)
+            {
+                changed.extend(touched);
+                let extent = old.iter().filter_map(bake::extent).reduce(|a, b| a.union(&b));
+                parts.push(Part { stamp, len: old.len(), reads, extent, spans });
+                items.extend(old);
+                continue;
+            }
             changed.extend(part.extent);
         }
-        let start = items.len();
         builder.reads.set(None);
+        drop(builder.spans.take(0));
         builder.node(node, 1.0, None, &mut items);
+        let spans = builder.spans.take(start);
         let extent = items.get(start..).unwrap_or_default().iter().filter_map(bake::extent).reduce(|a, b| a.union(&b));
         changed.extend(extent);
-        parts.push(Part { stamp, len: items.len() - start, reads: builder.reads.get(), extent });
+        parts.push(Part { stamp, len: items.len() - start, reads: builder.reads.get(), extent, spans });
     }
     if taking_over {
         // The pictures of the parts taken over were not asked for by this walk; they are still in use.
@@ -688,6 +835,8 @@ impl DisplayList {
     // Human: `hidden` are layers a model made that are not shown yet (it shows its work a layer at a time): they
     // are left out with everything in them, and the list is built again when they change. `stage` says which
     // step of such a change `scene` is: it has the document's `generation`, and is another scene each time.
+    // Human: `stamps` has a number for each top-level node that is another one when the node was built again,
+    // and `rebuilt` says of which nodes only some layers were ([`crate::editor::Editor::rebuilt`]).
     // Agent: CALLS ctx.request_repaint_after while a rebuild is waiting for the zoom to settle or the view to
     // rest; a build beside the window asks for a frame when it has sent a list. BLOCKS on the lock a build
     // beside the window holds only when the scene changed, after calling that build off.
@@ -704,7 +853,7 @@ impl DisplayList {
         background: Color32,
         hidden: &std::collections::HashSet<String>,
         stage: u64,
-        stamps: &[u64],
+        (stamps, rebuilt): (&[u64], &[crate::editor::Rebuilt]),
     ) {
         let bucket = zoom_bucket(zoom);
         let now = std::time::Instant::now();
@@ -763,7 +912,8 @@ impl DisplayList {
             let order = Order { zoom, bucket, cover, folder: folder.map(std::path::Path::to_path_buf), background, hidden: hidden.clone() };
             let works = crate::app::lock(&self.works);
             let roots: Vec<&SceneNode> = scene.iter().collect();
-            (self.items, self.parts) = walk(&works, (&roots, stamps), Vars::new(doc), ctx, &order, None, kept);
+            (self.items, self.parts) =
+                walk(&works, (&roots, stamps), Vars::new(doc), ctx, &order, None, kept.map(|(items, parts)| Taken { items, parts, rebuilt }));
             drop(works.baked.finish());
             self.held = works.baked.pixels_held();
             // A list taken over keeps the part that was baked for it.
@@ -967,43 +1117,47 @@ impl DisplayList {
             merged: std::cell::Cell::new(false),
             hidden: None,
             reads: std::cell::Cell::new(None),
+            spans: Spans::default(),
         }
     }
 
     /// Draws everything visible in `view` (screen rectangle) through `camera`.
-    // Agent: HOT-PATH per frame; ALLOCATES one transformed mesh per visible item (egui takes ownership).
+    // Agent: HOT-PATH per frame; ALLOCATES a transformed mesh per visible item only in the first frame of a
+    // look (see [`Moved`]); the frames after hand egui the ones kept.
     pub fn draw(&self, painter: &Painter, camera: &Camera, view: egui::Rect) {
         let visible = view_to_doc(camera, view);
         // Pixels of the screen per document unit.
         let shown_px = camera.zoom * painter.ctx().pixels_per_point();
         self.warmth.begin(painter.ctx());
         let to_screen = |p: Pos2| screen(camera, view, Point::new(p.x, p.y));
-        for item in &self.items {
+        let mut moved = self.moved.borrow_mut();
+        moved.begin(camera, view, self.items.len());
+        for (at, item) in self.items.iter().enumerate() {
             match item {
                 Item::Mesh { mesh, bounds, clip, .. } => {
                     // Human: a mesh without triangles (a picture fill on a frame with no height) must not
                     // reach the GPU, which refuses to draw nothing and would end the app.
                     if !bounds.intersects(&visible) || mesh.indices.is_empty() {
+                        moved.skip(at);
                         continue;
                     }
                     // Human: zoomed far out, most of a large design's layers are smaller than a pixel: an
                     // icon is a speck, and thousands of specks cost as much to draw as thousands of icons.
                     // A mesh under a pixel both ways is left out. (A hairline is long one way and stays.)
                     if bake::extent(item).is_some_and(|painted| too_small(painted.w.max(painted.h), shown_px)) {
+                        moved.skip(at);
                         continue;
                     }
-                    let mut moved = Mesh::clone(mesh);
-                    for v in &mut moved.vertices {
-                        v.pos = to_screen(v.pos);
-                    }
-                    clipped(painter, camera, view, *clip).add(Shape::mesh(moved));
+                    clipped(painter, camera, view, *clip).add(Shape::Mesh(moved.of(at, mesh, to_screen)));
                 }
                 Item::Text { text, bounds, clip } => {
+                    moved.skip(at);
                     if bounds.intersects(&visible) {
                         draw_text(&clipped(painter, camera, view, *clip), camera, view, text, !self.zooming, &self.warmth);
                     }
                 }
                 Item::Shadow { rect, radius, offset, blur, color, clip } => {
+                    moved.skip(at);
                     if !rect.intersects(&visible) || too_small(rect.w.max(rect.h) + blur, shown_px) {
                         continue;
                     }
@@ -1198,6 +1352,8 @@ struct Builder<'a> {
     /// The part of the document whose items the nodes built so far read to draw what is behind them
     /// (glass, a background blur); `None` while none did. The list takes it down for each top-level node.
     reads: std::cell::Cell<Option<Rect>>,
+    /// Which items each layer brought, while the list asks for them.
+    spans: Spans,
 }
 
 /// The line a stroke is drawn with.
@@ -1327,20 +1483,138 @@ impl Builder<'_> {
     }
 
     /// Adds the items for `scene` and its children.
-    #[expect(clippy::too_many_lines, reason = "one arm per node kind; splitting it would scatter the drawing rules")]
     fn node(&self, scene: &SceneNode, opacity: f32, clip: Option<Rect>, out: &mut Vec<Item>) {
+        let place = self.spans.begin(out.len());
+        let plain = self.node_items(scene, opacity, clip, out);
+        self.spans.end(place, out.len(), plain);
+    }
+
+    /// The opacity `scene` and what is in it are drawn at, in a layer drawn at `opacity`.
+    fn opacity_in(&self, scene: &SceneNode, opacity: f32) -> f32 {
+        opacity * self.num(scene.node.opacity.as_ref(), &scene.theme).unwrap_or(1.0).clamp(0.0, 1.0)
+    }
+
+    /// Whether `scene` cuts its children to its box, and what they are cut to, when `scene` is cut to `clip`.
+    fn clip_in(&self, scene: &SceneNode, bounds: Rect, clip: Option<Rect>) -> (bool, Option<Rect>) {
+        let clips = scene.node.clip.as_ref().and_then(|c| self.vars.flag(c, &scene.theme)).unwrap_or(false);
+        (clips, if clips { Some(clip.map_or(bounds, |c| intersect(&c, &bounds))) } else { clip })
+    }
+
+    /// The corners `scene` cuts its children's items round, when it does: it clips, and has round corners.
+    fn rounds(&self, scene: &SceneNode, clips: bool) -> Option<[f32; 4]> {
+        let (w, h) = (scene.local.w, scene.local.h);
+        let boxed = matches!(scene.node.kind, Kind::Frame | Kind::Rectangle | Kind::Browser) && scene.to_doc.is_axis_aligned();
+        let radii = if clips && boxed { self.corner_radii(&scene.node, &scene.theme, w, h) } else { [0.0; 4] };
+        (radii.iter().any(|radius| *radius > 0.5) && !scene.children.is_empty()).then_some(radii)
+    }
+
+    /// Whether `scene`, cut to `clip`, hands its children's items on as they are made, one layer after the
+    /// other: it is drawn, and neither it nor a mask in it gathers them to make something else of them (an
+    /// effect, glass, a cut to round corners or to a mask's shape).
+    fn plain(&self, scene: &SceneNode, clip: Option<Rect>) -> bool {
+        let (node, theme) = (&scene.node, &scene.theme);
+        let (clips, _) = self.clip_in(scene, layout::doc_bounds(scene), clip);
+        !self.hides(scene)
+            && node.enabled.as_ref().and_then(|e| self.vars.flag(e, theme)) != Some(false)
+            && self.effects_of(scene).is_empty()
+            && self.pane_of(scene, false, clip).is_none()
+            && self.rounds(scene, clips).is_none()
+            && !scene.children.iter().any(|child| is_mask(&child.node))
+    }
+
+    /// Makes the items of the layers at `paths` in `root` anew and puts them in the place of their old ones in
+    /// `items`, the items of `root` as `part` has them. Gives the spans of `root` as they are now, what it
+    /// reads of what is behind it, and where the layers painted and paint; `None`, with `items` to be thrown
+    /// away, when the whole node has to be built.
+    // Human: that is so when a layer the changed one lies in works on its children's items ([`Builder::plain`])
+    // or draws their glass as one pane, when the node reads what is behind it (glass, a background blur: it
+    // may be the changed layer it reads), and when the changed layer does so itself: built alone, it has
+    // nothing behind it.
+    // Agent: a path is a layer's place among the scene's nodes, from the top-level node down; the layers
+    // above the changed one are as they were when `part` was built, which is what makes the old spans right.
+    // Whether such a layer worked on its children's items depends on those children too (a mask among them,
+    // glass it draws for them), so it must hold both for what was built then and for what is there now.
+    fn rebuild(&self, root: &SceneNode, part: &Part, items: &mut Vec<Item>, paths: &[Vec<u32>]) -> Option<(Vec<Span>, Option<Rect>, Vec<Rect>)> {
+        if part.reads.is_some() || self.baked.stopped() {
+            return None;
+        }
+        let mut spans = part.spans.clone();
+        let mut touched = Vec::new();
+        for path in paths {
+            let (mut scene, mut place, mut opacity, mut clip) = (root, 0_usize, 1.0_f32, None);
+            let mut above = Vec::with_capacity(path.len());
+            for index in path.get(1..)? {
+                if !spans.get(place)?.plain || !self.plain(scene, clip) {
+                    return None;
+                }
+                let child = scene.children.get(usize::try_from(*index).ok()?)?;
+                if self.merges(scene, child) {
+                    return None;
+                }
+                opacity = self.opacity_in(scene, opacity);
+                (_, clip) = self.clip_in(scene, layout::doc_bounds(scene), clip);
+                // The child's span: past the spans of the children before it.
+                let end = place + spans.get(place)?.nodes;
+                above.push(place);
+                place += 1;
+                for _ in 0..*index {
+                    place += spans.get(place)?.nodes;
+                }
+                if place >= end {
+                    return None;
+                }
+                scene = child;
+            }
+            let Span { start, end, nodes, .. } = *spans.get(place)?;
+            let old = items.get(start..end)?;
+            touched.extend(old.iter().filter_map(bake::extent).reduce(|a, b| a.union(&b)));
+            // The layer's own items, made as its parent would have them made.
+            self.reads.set(None);
+            drop(self.spans.take(0));
+            self.merged.set(false);
+            let mut new = Vec::new();
+            self.node(scene, opacity, clip, &mut new);
+            let mut within = self.spans.take(0);
+            if self.reads.get().is_some() || self.baked.stopped() {
+                return None;
+            }
+            touched.extend(new.iter().filter_map(bake::extent).reduce(|a, b| a.union(&b)));
+            // The spans after it move by as many items as it has more or fewer now; the ones it lies in grow.
+            let (was_long, is_long) = (end - start, new.len());
+            for span in &mut within {
+                (span.start, span.end) = (span.start + start, span.end + start);
+            }
+            // (A span that is never asked for, see [`Span`], may hold any numbers: none may make this fail.)
+            let moved = |at: usize| (at + is_long).saturating_sub(was_long);
+            for span in spans.get_mut(place + nodes..)? {
+                (span.start, span.end) = (moved(span.start), moved(span.end));
+            }
+            for parent in above {
+                let span = spans.get_mut(parent)?;
+                (span.end, span.nodes) = (moved(span.end), (span.nodes + within.len()).saturating_sub(nodes));
+            }
+            spans.splice(place..place + nodes, within);
+            items.splice(start..end, new);
+        }
+        Some((spans, None, touched))
+    }
+
+    /// [`Builder::node`]'s work; gives whether the children's items were handed on as they were made
+    /// ([`Builder::plain`]).
+    #[expect(clippy::too_many_lines, reason = "one arm per node kind; splitting it would scatter the drawing rules")]
+    fn node_items(&self, scene: &SceneNode, opacity: f32, clip: Option<Rect>, out: &mut Vec<Item>) -> bool {
         let node = &scene.node;
         let theme = &scene.theme;
         // Whether the glass group this node is in draws its material; said by `children` just before.
         let merged = self.merged.replace(false);
         // A build that was called off ends its walk here; what it has so far is thrown away.
         if self.hides(scene) || self.baked.stopped() {
-            return;
+            return false;
         }
         if node.enabled.as_ref().and_then(|e| self.vars.flag(e, theme)) == Some(false) {
-            return;
+            return false;
         }
-        let opacity = opacity * self.num(node.opacity.as_ref(), theme).unwrap_or(1.0).clamp(0.0, 1.0);
+        let opacity = self.opacity_in(scene, opacity);
         let (w, h) = (scene.local.w, scene.local.h);
         let bounds = layout::doc_bounds(scene);
         let fills = node.fill.as_ref().map(|f| self.brushes(f.as_slice(), theme)).unwrap_or_default();
@@ -1431,7 +1705,7 @@ impl Builder<'_> {
             }
             Kind::Path => {
                 let Some(shape) = node.geometry.as_deref().and_then(|g| svg::parse(g).ok()).map(|segments| fit_path(&segments, node, w, h)) else {
-                    return;
+                    return false;
                 };
                 let rule = if node.fill_rule.as_deref() == Some("evenodd") { FillRule::EvenOdd } else { FillRule::NonZero };
                 for brush in &fills {
@@ -1531,13 +1805,15 @@ impl Builder<'_> {
             }
         }
         let own_end = out.len();
-        self.children(scene, opacity, bounds, clip, out);
+        let straight = self.children(scene, opacity, bounds, clip, out);
         let pane = self.pane_of(scene, merged, clip);
         if !effects.is_empty() || pane.is_some() {
             let opaque = opacity >= 0.999 && fills.iter().any(|b| matches!(b, Brush::Solid(c) if c.a == 255));
             let look = bake::Look { opacity, opaque, clip, radius: self.box_radius(scene) };
             self.apply_effects(scene, &effects, pane.as_ref(), [start, fill_end.clamp(start, own_end), own_end], &look, out);
+            return false;
         }
+        straight
     }
 
     /// Marks an empty slot: diagonal lines across the frame, so the place an instance can fill is seen.
@@ -1632,21 +1908,21 @@ impl Builder<'_> {
         Some((Item::Mesh { mesh: mesh.into(), bounds, clip: None, memo: Memo::default() }, bounds))
     }
 
-    /// Adds the items of `scene`'s children, clipped to its box when it clips.
-    fn children(&self, scene: &SceneNode, opacity: f32, bounds: Rect, clip: Option<Rect>, out: &mut Vec<Item>) {
-        let clips = scene.node.clip.as_ref().and_then(|c| self.vars.flag(c, &scene.theme)).unwrap_or(false);
-        let child_clip = if clips { Some(clip.map_or(bounds, |c| intersect(&c, &bounds))) } else { clip };
+    /// Adds the items of `scene`'s children, clipped to its box when it clips. Gives whether they were added
+    /// as they were made: none was gathered to be cut round the corners or to a mask's shape.
+    fn children(&self, scene: &SceneNode, opacity: f32, bounds: Rect, clip: Option<Rect>, out: &mut Vec<Item>) -> bool {
+        let (clips, child_clip) = self.clip_in(scene, bounds, clip);
         // Human: a frame that clips cuts its children to its own outline, rounded corners included. Only an
         // unturned box has corners that can be cut this way; a turned one cuts to the box around it.
         let (w, h) = (scene.local.w, scene.local.h);
-        let boxed = matches!(scene.node.kind, Kind::Frame | Kind::Rectangle | Kind::Browser) && scene.to_doc.is_axis_aligned();
-        let radii = if clips && boxed { self.corner_radii(&scene.node, &scene.theme, w, h) } else { [0.0; 4] };
-        let rounded = radii.iter().any(|radius| *radius > 0.5) && !scene.children.is_empty();
+        let radii = self.rounds(scene, clips);
+        let (rounded, radii) = (radii.is_some(), radii.unwrap_or([0.0; 4]));
         let mut inside = Vec::new();
         // Human: a layer with `"mask": true` is drawn as it is, and cuts the layers that follow it in the same
         // group or frame to its shape: water inside a shield, shading inside a letter. Those layers are
         // gathered apart and become one picture, cut to the mask's outline.
         let mut mask: Option<(Item, Rect, Vec<Item>)> = None;
+        let mut straight = !rounded;
         let mut joined = 0;
         for child in &scene.children {
             // Human: a glass group draws the glass of its children as one pane, so they don't draw their own.
@@ -1656,6 +1932,7 @@ impl Builder<'_> {
             let drawn: &mut Vec<Item> = if rounded { &mut inside } else { &mut *out };
             // Human: a second mask layer ends what the first one cuts: it is drawn whole, and cuts what follows.
             let next = self.mask_layer(child);
+            straight &= next.is_none();
             if next.is_some()
                 && let Some((outline, area, masked)) = mask.take()
             {
@@ -1680,6 +1957,7 @@ impl Builder<'_> {
                 None => out.extend(inside),
             }
         }
+        straight
     }
 
     #[expect(clippy::many_single_char_names, reason = "x, y, w, h are the box's position and size; b is the path builder")]
@@ -2436,6 +2714,48 @@ mod tests {
     use super::*;
 
     #[test]
+    fn moved_meshes_are_kept_while_the_look_and_the_item_stay() {
+        use std::sync::Arc;
+        let corner = |x: f32| egui::epaint::Vertex { pos: Pos2::new(x, 0.0), uv: Pos2::ZERO, color: Color32::WHITE };
+        let mesh = Arc::new(Mesh { indices: vec![0, 1, 2], vertices: vec![corner(0.0), corner(1.0), corner(2.0)], ..Default::default() });
+        let view = egui::Rect::from_min_size(Pos2::ZERO, egui::vec2(100.0, 100.0));
+        let camera = Camera { center: Point::new(0.0, 0.0), zoom: 2.0 };
+        let shift = |by: f32| move |p: Pos2| Pos2::new(p.x + by, p.y);
+        let mut moved = Moved::default();
+        // The first frame of a look keeps nothing: the look may be gone with the next frame.
+        moved.begin(&camera, view, 2);
+        let first = moved.of(0, &mesh, shift(10.0));
+        assert_eq!(moved.slots.len(), 0);
+        // The second keeps what it moves, and the third is handed the very same mesh.
+        moved.begin(&camera, view, 2);
+        let second = moved.of(0, &mesh, shift(10.0));
+        moved.begin(&camera, view, 2);
+        let third = moved.of(0, &mesh, shift(10.0));
+        assert!(Arc::ptr_eq(&second, &third) && !Arc::ptr_eq(&first, &second));
+        assert!((third.vertices[1].pos.x - 11.0).abs() < 1e-6 && (mesh.vertices[1].pos.x - 1.0).abs() < 1e-6);
+        // An item with another mesh (built again) is moved anew, though its place in the list is the same.
+        let rebuilt = Arc::new(Mesh::clone(&mesh));
+        moved.begin(&camera, view, 2);
+        assert!(!Arc::ptr_eq(&moved.of(0, &rebuilt, shift(10.0)), &third));
+        // An item that isn't drawn gives its mesh up.
+        moved.begin(&camera, view, 2);
+        moved.skip(0);
+        assert!(moved.slots.iter().all(Option::is_none));
+        // Another look (a pan, a zoom, the canvas somewhere else in the window) empties everything.
+        moved.begin(&camera, view, 2);
+        moved.of(1, &mesh, shift(10.0));
+        let panned = Camera { center: Point::new(5.0, 0.0), zoom: 2.0 };
+        moved.begin(&panned, view, 2);
+        assert_eq!(moved.slots.len(), 0);
+        assert!((moved.of(1, &mesh, shift(20.0)).vertices[0].pos.x - 20.0).abs() < 1e-6);
+        // A shorter list lets go of the slots past its end.
+        moved.begin(&panned, view, 2);
+        moved.of(1, &mesh, shift(20.0));
+        moved.begin(&panned, view, 1);
+        assert_eq!(moved.slots.len(), 1);
+    }
+
+    #[test]
     fn text_is_laid_out_at_few_sizes_and_no_larger_than_the_atlas_takes() {
         // At rest text up to 64 pixels high is laid out at the size it is drawn at.
         assert_eq!(glyph_scale(16.0, 1.3, 2.0, true), (1.3, 1.0));
@@ -2567,7 +2887,7 @@ mod tests {
             // The zoom is looked at as one that has come to rest.
             list.zoom_seen = zoom;
             list.zoom_moved = None;
-            list.update(&editor.scene, editor.generation, zoom, visible, &editor.doc, &ctx, None, Color32::WHITE, &hidden, 0, &[]);
+            list.update(&editor.scene, editor.generation, zoom, visible, &editor.doc, &ctx, None, Color32::WHITE, &hidden, 0, (&[], &[]));
         };
         // Looks until the build beside the window has sent its whole list; the list on screen is `shown` until then.
         let until_whole = |list: &mut DisplayList, zoom: f32, shown: &[egui::TextureId], step: i32| {
@@ -2608,11 +2928,11 @@ mod tests {
         let hidden = std::collections::HashSet::new();
         let visible = Rect::new(0.0, 0.0, 200.0, 80.0);
         let mut list = DisplayList::default();
-        list.update(&editor.scene, editor.generation, 1.0, visible, &editor.doc, &ctx, None, Color32::WHITE, &hidden, 0, &[]);
+        list.update(&editor.scene, editor.generation, 1.0, visible, &editor.doc, &ctx, None, Color32::WHITE, &hidden, 0, (&[], &[]));
         let first = pictures(&list);
         // A build for another zoom step is started beside the window.
         list.zoom_seen = 4.0;
-        list.update(&editor.scene, editor.generation, 4.0, visible, &editor.doc, &ctx, None, Color32::WHITE, &hidden, 0, &[]);
+        list.update(&editor.scene, editor.generation, 4.0, visible, &editor.doc, &ctx, None, Color32::WHITE, &hidden, 0, (&[], &[]));
         let called_off = list.running.as_ref().map(|running| running.stop.clone()).unwrap();
         // Every layer gets another colour: all three pictures are made anew, here and at once, at the zoom
         // the window is at, and the build of the scene as it was is called off.
@@ -2621,7 +2941,7 @@ mod tests {
         }
         editor.touched();
         editor.refresh(&|_| (10.0, 10.0));
-        list.update(&editor.scene, editor.generation, 4.0, visible, &editor.doc, &ctx, None, Color32::WHITE, &hidden, 0, &[]);
+        list.update(&editor.scene, editor.generation, 4.0, visible, &editor.doc, &ctx, None, Color32::WHITE, &hidden, 0, (&[], &[]));
         let second = pictures(&list);
         assert_eq!((second.len(), list.running.is_some(), list.zoom_bucket), (3, false, 2));
         assert!(second.iter().all(|picture| !first.contains(picture)));
@@ -2652,6 +2972,120 @@ mod tests {
         editor
     }
 
+    /// What `list` draws, item by item, in words: two lists that say the same draw the same.
+    fn told(list: &DisplayList) -> Vec<String> {
+        let one = |item: &Item| match item {
+            Item::Mesh { mesh, bounds, clip, .. } => {
+                let corners: Vec<(u32, u32, [u8; 4])> =
+                    mesh.vertices.iter().map(|v| (v.pos.x.to_bits(), v.pos.y.to_bits(), v.color.to_array())).collect();
+                format!("mesh {bounds:?} {clip:?} {:?} {corners:?} {}", mesh.indices, mesh.texture_id == egui::TextureId::default())
+            }
+            Item::Text { text, bounds, clip } => {
+                format!("text {bounds:?} {clip:?} {:?} {:?} {:?} {}", text.to_doc, text.size, text.color, text.style.content)
+            }
+            Item::Shadow { rect, radius, offset, blur, color, clip } => format!("shadow {rect:?} {radius} {offset:?} {blur} {color:?} {clip:?}"),
+        };
+        list.items.iter().map(one).collect()
+    }
+
+    /// The meshes of `list` by where they are kept: a mesh that is still the same one was not made anew.
+    fn kept_meshes(list: &DisplayList) -> std::collections::HashSet<usize> {
+        let held = |item: &Item| match item {
+            Item::Mesh { mesh, .. } => Some(std::sync::Arc::as_ptr(mesh) as usize),
+            _ => None,
+        };
+        list.items.iter().filter_map(held).collect()
+    }
+
+    #[test]
+    fn a_layer_built_again_by_itself_brings_only_its_own_items_anew() {
+        let json = r##"{"version":"2.22","children":[
+            {"type":"frame","id":"plain","x":0,"y":0,"width":400,"height":300,"layout":"none","fill":"#ffffff","clip":true,"children":[
+                {"type":"rectangle","id":"a","x":10,"y":10,"width":40,"height":20,"fill":"#ff0000"},
+                {"type":"frame","id":"faint","x":100,"y":20,"width":200,"height":200,"layout":"none","opacity":0.5,"clip":true,"children":[
+                    {"type":"rectangle","id":"b","x":5,"y":5,"width":20,"height":20,"fill":"#00ff00","stroke":{"thickness":2,"fill":"#003300"}},
+                    {"type":"frame","id":"deep","x":40,"y":40,"width":80,"height":80,"layout":"none","fill":"#eeeeee","children":[
+                        {"type":"ellipse","id":"c","x":5,"y":5,"width":20,"height":20,"fill":"#0000ff"},
+                        {"type":"text","id":"t","x":5,"y":40,"content":"Word","fontSize":12,"fill":"#111111"}]},
+                    {"type":"rectangle","id":"last","x":150,"y":150,"width":20,"height":20,"fill":"#ff00ff"}]},
+                {"type":"frame","id":"cut","x":10,"y":150,"width":80,"height":80,"layout":"none","children":[
+                    {"type":"ellipse","id":"m","mask":true,"x":0,"y":0,"width":60,"height":60,"fill":"#000000"},
+                    {"type":"rectangle","id":"under","x":10,"y":10,"width":70,"height":70,"fill":"#00ffff"}]},
+                {"type":"rectangle","id":"z","x":300,"y":250,"width":40,"height":20,"fill":"#ffff00"}]},
+            {"type":"frame","id":"round","x":500,"y":0,"width":200,"height":200,"layout":"none","fill":"#ffffff","clip":true,"cornerRadius":20,"children":[
+                {"type":"rectangle","id":"r","x":10,"y":10,"width":40,"height":20,"fill":"#ff0000"}]},
+            {"type":"frame","id":"soft","x":800,"y":0,"width":200,"height":200,"layout":"none","fill":"#ffffff","effect":{"type":"blur","radius":4},"children":[
+                {"type":"rectangle","id":"s","x":10,"y":10,"width":40,"height":20,"fill":"#ff0000"}]}
+        ]}"##;
+        let mut editor = crate::editor::Editor::new(pen_doc::read(json).unwrap(), None, 1);
+        editor.refresh(&|_| (10.0, 10.0));
+        let ctx = egui::Context::default();
+        let hidden = std::collections::HashSet::new();
+        let visible = Rect::new(0.0, 0.0, 1000.0, 300.0);
+        let look = |list: &mut DisplayList, editor: &crate::editor::Editor| {
+            list.update(
+                &editor.scene,
+                editor.generation,
+                1.0,
+                visible,
+                &editor.doc,
+                &ctx,
+                None,
+                Color32::WHITE,
+                &hidden,
+                0,
+                (editor.stamps(), editor.rebuilt()),
+            );
+        };
+        let mut list = DisplayList::default();
+        look(&mut list, &editor);
+        // Changes `id` saying so, looks, and gives how many meshes were made anew. What the list draws
+        // must be what a list built from nothing draws.
+        let mut change = |editor: &mut crate::editor::Editor, id: &str, change: &dyn Fn(&mut Node)| {
+            let before = kept_meshes(&list);
+            assert!(editor.change(id, change));
+            editor.touched_layer(id);
+            editor.refresh(&|_| (10.0, 10.0));
+            look(&mut list, editor);
+            let mut whole = DisplayList::default();
+            look(&mut whole, editor);
+            assert_eq!(told(&list), told(&whole), "after changing {id}");
+            kept_meshes(&list).difference(&before).count()
+        };
+        let x = |x: u32| move |node: &mut Node| node.x = Some(x.into());
+        // A layer straight in the board, one in a faint clipping frame, one three frames deep: one mesh each
+        // (a fill and its outline are one), of the board's nine.
+        assert_eq!(change(&mut editor, "a", &x(30)), 1);
+        assert_eq!(change(&mut editor, "b", &x(9)), 1);
+        assert_eq!(change(&mut editor, "c", &x(9)), 1);
+        // A text has no mesh.
+        assert_eq!(change(&mut editor, "t", &x(9)), 0);
+        // A frame with what is in it: its own mesh and its child's.
+        assert_eq!(change(&mut editor, "deep", &x(50)), 2);
+        // A layer that has fewer items than before, then more: the ones after it are still the right ones.
+        assert_eq!(change(&mut editor, "b", &|node| node.stroke = None), 1);
+        assert_eq!(change(&mut editor, "a", &|node| node.fill = None), 0);
+        assert_eq!(change(&mut editor, "a", &|node| node.fill = serde_json::from_str("[\"#ff0000\",\"#00ff0080\"]").ok()), 2);
+        assert_eq!(change(&mut editor, "last", &x(160)), 1);
+        assert_eq!(change(&mut editor, "c", &x(12)), 1);
+        // A layer that is switched off, and on again.
+        assert_eq!(change(&mut editor, "deep", &|node| node.enabled = Some(pen_doc::value::Flag::Value(false))), 0);
+        assert_eq!(change(&mut editor, "deep", &|node| node.enabled = None), 2);
+        // A board that cuts its children round its corners, and one with an effect, work on their children's
+        // items: they are built whole (the cut and the effect are pictures, so no mesh says so here; that
+        // the list is the one built from nothing is what counts).
+        change(&mut editor, "r", &x(30));
+        change(&mut editor, "s", &x(30));
+        // So does a frame with a mask in it, and still when the changed layer is the mask that stops being one:
+        // what it cut before is no longer cut.
+        change(&mut editor, "under", &x(20));
+        change(&mut editor, "m", &|node| drop(node.extra.insert(MASK.to_owned(), false.into())));
+        assert_eq!(change(&mut editor, "under", &x(15)), 1);
+        change(&mut editor, "m", &|node| drop(node.extra.insert(MASK.to_owned(), true.into())));
+        change(&mut editor, "under", &x(12));
+        assert_eq!(change(&mut editor, "z", &x(310)), 1);
+    }
+
     /// The textures of the pictures in each part of the list.
     fn pictures_by_part(list: &DisplayList) -> Vec<Vec<egui::TextureId>> {
         let mut start = 0;
@@ -2675,7 +3109,19 @@ mod tests {
         let visible = Rect::new(0.0, 0.0, 300.0, 100.0);
         let mut list = DisplayList::default();
         let look = |list: &mut DisplayList, editor: &crate::editor::Editor| {
-            list.update(&editor.scene, editor.generation, 1.0, visible, &editor.doc, &ctx, None, Color32::WHITE, &hidden, 0, editor.stamps());
+            list.update(
+                &editor.scene,
+                editor.generation,
+                1.0,
+                visible,
+                &editor.doc,
+                &ctx,
+                None,
+                Color32::WHITE,
+                &hidden,
+                0,
+                (editor.stamps(), editor.rebuilt()),
+            );
         };
         let recolour = |editor: &mut crate::editor::Editor, id: &str, fill: &str| {
             editor.change(id, &|node| node.fill = serde_json::from_str(&format!("\"{fill}\"")).ok());

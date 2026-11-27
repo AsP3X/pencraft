@@ -1116,6 +1116,14 @@ pub struct RotateStart {
     pub centre: Point,
 }
 
+impl RotateStart {
+    /// The layers a turn from here changes.
+    #[must_use]
+    pub fn layers(&self) -> Vec<String> {
+        self.items.iter().map(|(id, ..)| id.clone()).collect()
+    }
+}
+
 /// The document, its laid-out scene and the selection's bounds as they were when a scaling began.
 pub struct ScaleStart {
     doc: pen_doc::Document,

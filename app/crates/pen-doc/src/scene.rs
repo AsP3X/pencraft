@@ -15,7 +15,7 @@ use crate::vars::ThemeContext;
 const MAX_INSTANCE_DEPTH: usize = 16;
 
 /// One node of the scene.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SceneNode {
     /// Unique within the scene: the document id, or `instance/inner` for nodes inside an instance.
     pub id: String,
@@ -68,6 +68,24 @@ pub fn build_some(doc: &Document, theme: &ThemeContext, which: &[usize]) -> Vec<
     }
     let builder = Builder { index };
     which.iter().filter_map(|at| doc.children.get(*at)).map(|node| builder.convert(node, theme, None, true, 0)).collect()
+}
+
+/// The scene node of `node` by itself: what [`build`] gives for it where it lies in `doc`. `node` is a node of
+/// `doc` that is in no instance, and `theme` is the theme in force for the node it lies in.
+// Human: a drag changes one layer of thousands. Only that layer and what is in it are built again; the
+// document is looked through for components only when an instance is among them.
+#[must_use]
+pub fn build_node(doc: &Document, node: &Node, theme: &ThemeContext) -> SceneNode {
+    fn holds_instance(node: &Node) -> bool {
+        node.kind == Kind::Ref || node.kids().iter().any(holds_instance)
+    }
+    let mut index: HashMap<&str, &Node> = HashMap::new();
+    if holds_instance(node) {
+        for child in &doc.children {
+            index_nodes(child, &mut index);
+        }
+    }
+    Builder { index }.convert(node, theme, None, true, 0)
 }
 
 fn index_nodes<'a>(node: &'a Node, index: &mut HashMap<&'a str, &'a Node>) {
